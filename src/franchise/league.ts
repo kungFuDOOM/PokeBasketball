@@ -1,5 +1,6 @@
 import { EVOLUTIONS, RATING_LABELS, monByDex, positionWeights, withBonus, type Mon, type PokeType, type Ratings } from '../data/pokemon';
 import { Game } from '../game/game';
+import { courtFor, userCourt } from '../data/courts';
 import type { Difficulty, PStats, TeamDef } from '../game/types';
 import type { DraftState } from '../screens/draft';
 
@@ -261,14 +262,30 @@ export function teamDef(f: Franchise, id: number, human: boolean): { def: TeamDe
   return { def: { name: t.name, abbr: t.abbr, color: t.color, color2: t.color2, roster, human, boost: t.boost, coach: t.leader }, uidOf };
 }
 
+function colorDistance(a: string, b: string): number {
+  const rgb = (h: string) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
+  const [x, y] = [rgb(a), rgb(b)];
+  return Math.hypot(x[0] - y[0], x[1] - y[1], x[2] - y[2]);
+}
+
+/** The home team's floor. */
+export function venueOf(f: Franchise, teamId: number) {
+  const t = f.teams[teamId];
+  return t.human ? userCourt(t.name) : courtFor(t);
+}
+
 /** Teams as seen by the engine: the user's team is always engine team 0 so the controls stay the same. */
 export function gameConfig(f: Franchise, game: FGame, humanPlays: boolean, quarterLen: number, difficulty: Difficulty) {
   const userIn = game.home === 0 || game.away === 0;
   const sides: [number, number] = userIn ? [0, game.home === 0 ? game.away : game.home] : [game.home, game.away];
   const a = teamDef(f, sides[0], humanPlays && sides[0] === 0);
   const b = teamDef(f, sides[1], false);
+  // Two blues (you vs Misty) are hard to tell apart on the floor: give the second team a contrasting color.
+  if (colorDistance(a.def.color, b.def.color) < 110) {
+    b.def = { ...b.def, color: colorDistance(a.def.color, '#e3350d') < 110 ? '#f4f1e8' : '#e3350d' };
+  }
   const uidOf = new Map([...a.uidOf, ...b.uidOf]);
-  return { cfg: { home: a.def, away: b.def, quarterLen, difficulty }, sides, uidOf };
+  return { cfg: { home: a.def, away: b.def, quarterLen, difficulty, court: venueOf(f, game.home) }, sides, uidOf };
 }
 
 /** Plays a CPU-controlled game with the real engine, yielding to the browser between slices. */

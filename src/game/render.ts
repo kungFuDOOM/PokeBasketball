@@ -1,3 +1,5 @@
+import { courtFor, type CourtStyle } from '../data/courts';
+import { badgeSvg } from '../ui/badges';
 import { IDEAL_RELEASE, type Game } from './game';
 import { getSprite } from './sprites';
 import { BALL_R, COURT_L, COURT_W, HOOP_Y, RIM_R, RIM_Z, clamp, rand, type GameEvent, type Player } from './types';
@@ -32,13 +34,30 @@ export class Renderer {
   private hype = 0;
   private meterGhost = { v: 0, w: 0, t: 0, p: null as Player | null };
   private t = 0;
+  private court: CourtStyle | null = null;
+  private logo: HTMLCanvasElement | null = null;
 
   constructor(canvas: HTMLCanvasElement) {
     canvas.width = VW;
     canvas.height = VH;
     this.ctx = canvas.getContext('2d')!;
     this.ctx.imageSmoothingEnabled = false;
-    this.crowd = [this.buildCrowd(0), this.buildCrowd(1)];
+  }
+
+  /** Builds the crowd and center logo for this game's home floor. */
+  private useCourt(court: CourtStyle) {
+    this.court = court;
+    this.crowd = [this.buildCrowd(0, court.crowd), this.buildCrowd(1, court.crowd)];
+    if (court.logo === 'pokeball') return;
+    const img = new Image();
+    img.onload = () => {
+      const c = document.createElement('canvas');
+      c.width = 64;
+      c.height = 64;
+      c.getContext('2d')!.drawImage(img, 0, 0, 64, 64);
+      this.logo = c;
+    };
+    img.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(badgeSvg(court.logo, true, 64))}`;
   }
 
   private proj(x: number, y: number, z = 0): Pt {
@@ -47,14 +66,15 @@ export class Renderer {
     return { x: VW / 2 + (x - this.camX) * s, y: Y_FAR + (Y_NEAR - Y_FAR) * d - z * s * 0.95, s };
   }
 
-  private buildCrowd(frame: number): HTMLCanvasElement {
+  private buildCrowd(frame: number, home: string[]): HTMLCanvasElement {
     const c = document.createElement('canvas');
     c.width = 1200;
     c.height = Y_FAR - 12;
     const g = c.getContext('2d')!;
     g.fillStyle = '#141833';
     g.fillRect(0, 0, c.width, c.height);
-    const shirts = ['#e3350d', '#3b5ba7', '#ffcb05', '#f4f1e8', '#7ac74c', '#a33ea1', '#6390f0', '#ee8130', '#2a2f55'];
+    // Mostly home colors, with some visiting fans mixed in.
+    const shirts = [...home, ...home, ...home, '#e3350d', '#3b5ba7', '#ffcb05', '#f4f1e8', '#7ac74c', '#2a2f55'];
     const skins = ['#f1c27d', '#c68642', '#8d5524', '#ffdbac', '#e0ac69'];
     let seed = 1337;
     const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
@@ -134,8 +154,9 @@ export class Renderer {
     ctx.save();
     if (g.shake > 0) ctx.translate(Math.round(rand(-1, 1) * g.shake * 3), Math.round(rand(-1, 1) * g.shake * 3));
 
+    if (!this.court) this.useCourt(g.cfg.court ?? courtFor(g.teams[0]));
     this.drawArena(ctx);
-    this.drawFloor(ctx, g);
+    this.drawFloor(ctx);
 
     // Shadows first, then depth-sorted players, ball and hoops.
     for (const p of g.players) this.shadow(ctx, p.x, p.y, p.z, 1.1 * p.size);
@@ -172,10 +193,10 @@ export class Renderer {
     const top = Y_FAR - 14;
     ctx.fillStyle = '#05060f';
     ctx.fillRect(0, top, VW, 12);
-    ctx.fillStyle = this.hype > 0 && Math.floor(this.t * 6) % 2 ? '#ffcb05' : '#3b5ba7';
+    ctx.fillStyle = this.hype > 0 && Math.floor(this.t * 6) % 2 ? '#ffffff' : this.court!.boardColor;
     ctx.font = '7px "Press Start 2P", monospace';
     ctx.textBaseline = 'middle';
-    const msg = this.hype > 0 ? '  BUCKETS!  ★  BUCKETS!  ★ ' : '  POKE JAM  ★  SILPH CO.  ★  PALLET TOWN  ★  POKE MART  ★  CELADON CITY  ★ ';
+    const msg = this.hype > 0 ? '  BUCKETS!  ★  BUCKETS!  ★ ' : `  ${this.court!.board}  ★ `;
     const w = ctx.measureText(msg).width || 400;
     const scroll = -((this.camX * S_FAR + this.t * 12) % w);
     for (let x = scroll; x < VW; x += w) ctx.fillText(msg, Math.round(x), top + 6.5);
@@ -210,47 +231,77 @@ export class Renderer {
     ctx.stroke();
   }
 
-  private drawFloor(ctx: CanvasRenderingContext2D, g: Game) {
-    const home = g.teams[0];
+  /** Draws an image flat on the floor, centered on court point (x, y), `w` by `h` feet. */
+  private floorImage(ctx: CanvasRenderingContext2D, draw: () => void, x: number, y: number, w: number, h: number) {
+    const p = this.proj(x, y);
+    ctx.save();
+    ctx.translate(p.x, p.y);
+    ctx.scale(p.s * w, DEPTH_PX * h);
+    draw();
+    ctx.restore();
+  }
+
+  private drawFloor(ctx: CanvasRenderingContext2D) {
+    const court = this.court!;
     // Apron
-    ctx.fillStyle = home.color2;
+    ctx.fillStyle = court.apron;
     this.poly(ctx, [[-30, -2], [COURT_L + 30, -2], [COURT_L + 30, COURT_W + 6], [-30, COURT_W + 6]]);
     ctx.fill();
     // Hardwood
-    ctx.fillStyle = '#d99a5b';
+    ctx.fillStyle = court.wood;
     this.poly(ctx, [[0, 0], [COURT_L, 0], [COURT_L, COURT_W], [0, COURT_W]]);
     ctx.fill();
-    ctx.fillStyle = 'rgba(120,60,20,0.08)';
+    ctx.fillStyle = 'rgba(40,20,0,0.07)';
     for (let y = 0; y < COURT_W; y += 2.5) {
       this.poly(ctx, [[0, y], [COURT_L, y], [COURT_L, y + 1.25], [0, y + 1.25]]);
       ctx.fill();
     }
     // Paint
-    ctx.fillStyle = home.color;
-    ctx.globalAlpha = 0.55;
+    ctx.fillStyle = court.paint;
+    ctx.globalAlpha = 0.8;
     this.poly(ctx, [[0, 17], [19, 17], [19, 33], [0, 33]]);
     ctx.fill();
     this.poly(ctx, [[COURT_L - 19, 17], [COURT_L, 17], [COURT_L, 33], [COURT_L - 19, 33]]);
     ctx.fill();
     ctx.globalAlpha = 1;
 
-    // Center court Poké Ball
-    ctx.fillStyle = '#e3350d';
-    this.poly(ctx, this.arcPts(47, 25, 6, Math.PI, Math.PI * 2));
-    ctx.fill();
-    ctx.fillStyle = '#f4f1e8';
-    this.poly(ctx, this.arcPts(47, 25, 6, 0, Math.PI));
-    ctx.fill();
-    ctx.fillStyle = '#1b1b1b';
-    this.poly(ctx, [[41, 24.4], [53, 24.4], [53, 25.6], [41, 25.6]]);
-    ctx.fill();
-    this.poly(ctx, this.arcPts(47, 25, 2, 0, Math.PI * 2, 20));
-    ctx.fill();
-    ctx.fillStyle = '#f4f1e8';
-    this.poly(ctx, this.arcPts(47, 25, 1.3, 0, Math.PI * 2, 20));
-    ctx.fill();
+    if (court.logo === 'pokeball') {
+      // Center court Poké Ball
+      ctx.fillStyle = '#e3350d';
+      this.poly(ctx, this.arcPts(47, 25, 6, Math.PI, Math.PI * 2));
+      ctx.fill();
+      ctx.fillStyle = '#f4f1e8';
+      this.poly(ctx, this.arcPts(47, 25, 6, 0, Math.PI));
+      ctx.fill();
+      ctx.fillStyle = '#1b1b1b';
+      this.poly(ctx, [[41, 24.4], [53, 24.4], [53, 25.6], [41, 25.6]]);
+      ctx.fill();
+      this.poly(ctx, this.arcPts(47, 25, 2, 0, Math.PI * 2, 20));
+      ctx.fill();
+      ctx.fillStyle = '#f4f1e8';
+      this.poly(ctx, this.arcPts(47, 25, 1.3, 0, Math.PI * 2, 20));
+      ctx.fill();
+    } else {
+      // The home gym's badge at center court
+      ctx.fillStyle = court.paint;
+      this.poly(ctx, this.arcPts(47, 25, 6, 0, Math.PI * 2, 40));
+      ctx.fill();
+      const logo = this.logo;
+      if (logo) this.floorImage(ctx, () => ctx.drawImage(logo, -0.5, -0.5, 1, 1), 47, 25, 9.5, 9.5);
+    }
+    // Home name painted near the far sideline
+    ctx.font = '10px "Press Start 2P", monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    const tw = ctx.measureText(court.floorText).width || 100;
+    const fh = Math.min(3.2, (34 / tw) * 10);
+    ctx.globalAlpha = 0.45;
+    ctx.fillStyle = court.lines;
+    this.floorImage(ctx, () => ctx.fillText(court.floorText, 0, 0), 47, 9, fh / 10, fh / 10);
+    ctx.globalAlpha = 1;
+    ctx.textAlign = 'start';
 
-    ctx.strokeStyle = 'rgba(250,247,238,0.92)';
+    ctx.strokeStyle = court.lines;
     ctx.lineWidth = 1;
     this.line(ctx, [[0, 0], [COURT_L, 0], [COURT_L, COURT_W], [0, COURT_W], [0, 0]]);
     this.line(ctx, [[47, 0], [47, COURT_W]]);
@@ -286,9 +337,14 @@ export class Renderer {
     // Team ring under the feet
     const rx = 1.15 * p.size * foot.s;
     const ry = 1.15 * p.size * DEPTH_PX * 0.6;
+    // Dark outline first so the ring reads on light and dark floors alike.
+    ctx.beginPath();
+    ctx.ellipse(foot.x, foot.y, rx + 1, ry + 1, 0, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(0,0,0,0.45)';
+    ctx.fill();
     ctx.beginPath();
     ctx.ellipse(foot.x, foot.y, rx, ry, 0, 0, Math.PI * 2);
-    ctx.fillStyle = team.color + (p.human ? 'aa' : '55');
+    ctx.fillStyle = team.color + (p.human ? 'cc' : '88');
     ctx.fill();
     ctx.lineWidth = 2;
     ctx.strokeStyle = p.human ? '#ffffff' : team.color;
@@ -402,7 +458,7 @@ export class Renderer {
     const armEnd = this.proj(bx, HOOP_Y, 12.5);
     ctx.fillStyle = '#2b2f45';
     ctx.fillRect(Math.round(poleBase.x - 3), Math.round(poleTop.y), 6, Math.round(poleBase.y - poleTop.y));
-    ctx.fillStyle = g.teams[0].color;
+    ctx.fillStyle = this.court!.paint;
     ctx.fillRect(Math.round(poleBase.x - 4), Math.round(poleBase.y - 18), 8, 18);
     ctx.strokeStyle = '#3a3f5c';
     ctx.lineWidth = 3;

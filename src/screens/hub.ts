@@ -1,6 +1,6 @@
 import { POSITIONS, monByDex, spriteUrl } from '../data/pokemon';
 import {
-  badgesEarned, canSign, finalWeek, monOf, perGame, sign, standings, teamOvrOf, userGame, weekGames, weekLabel,
+  badgesEarned, canSign, finalWeek, venueOf, monOf, perGame, sign, standings, teamOvrOf, userGame, weekGames, weekLabel,
   xpToNext, type FGame, type FTeam, type Franchise,
 } from '../franchise/league';
 import { badgeSvg } from '../ui/badges';
@@ -82,7 +82,7 @@ function nextCard(f: Franchise, settings: Settings): string {
   const title = g.round === 'final' ? 'The Final' : g.round === 'semi' ? 'Semifinal' : weekLabel(f);
   return `
     <section class="card next">
-      <p class="eyebrow">${title}${g.round ? ' · win or go home' : ''}</p>
+      <p class="eyebrow">${title}${g.round ? ' · win or go home' : ''} · ${esc(venueOf(f, g.home).venue)}</p>
       <div class="nx-cols">${side(home, 'Home')}<div class="vs">VS</div>${side(away, 'Away')}</div>
       ${settingsHtml(settings)}
       <div class="actions center">

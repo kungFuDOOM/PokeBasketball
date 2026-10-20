@@ -1,3 +1,4 @@
+import type { CourtStyle } from '../data/courts';
 import type { Mon, Ratings } from '../data/pokemon';
 
 export type TeamId = 0 | 1;
@@ -62,6 +63,8 @@ export interface GameConfig {
   away: TeamDef;
   quarterLen: number; // seconds
   difficulty: Difficulty;
+  /** Whose floor the game is on; defaults to a classic court in the home team's colors. */
+  court?: CourtStyle;
 }
 
 export interface Intent {

@@ -24,5 +24,5 @@ const shapes: Record<string, string> = {
 /** `earned: false` draws the empty slot in the case. */
 export function badgeSvg(name: string, earned: boolean, size = 40): string {
   const body = shapes[name] ?? shapes.Elite;
-  return `<svg class="badge-svg ${earned ? 'earned' : 'locked'}" viewBox="0 0 40 40" width="${size}" height="${size}" role="img" aria-label="${name} Badge${earned ? '' : ' (not earned)'}">${body}</svg>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" class="badge-svg ${earned ? 'earned' : 'locked'}" viewBox="0 0 40 40" width="${size}" height="${size}" role="img" aria-label="${name} Badge${earned ? '' : ' (not earned)'}">${body}</svg>`;
 }

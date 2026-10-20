@@ -23,11 +23,12 @@ The game makes no requests to third parties: code, fonts (self-hosted, OFL), spr
 Poké Jam is a franchise game. Your team and its Pokémon carry over from season to season, and progress is saved in the browser.
 
 1. **Name your team** on the title screen and start a franchise (or continue a saved one).
-2. **League draft.** You draft against the eight Kanto Gym Leaders and the Elite Four: Brock's Pewter Boulders (Rock), Misty's Cerulean Cascades (Water), Lt. Surge's Vermilion Thunder (Electric), Erika's Celadon Rainbows (Grass), Koga's Fuchsia Ninjas (Poison), Sabrina's Saffron Psychics (Psychic), Blaine's Cinnabar Volcanoes (Fire), Giovanni's Viridian Quakes (Ground) and the Indigo Elite (Ice, Fighting, Ghost, Dragon). Ten teams snake-draft five Pokémon each from 122; CPU teams favor their types. Each card has an OVR, a position, an archetype (Floor General, Rim Protector, Stretch Big…) and eight ratings. Cover all five positions for a +2 lineup bonus. Undrafted Pokémon become free agents.
+2. **League draft.** You draft against the eight Kanto Gym Leaders and the Elite Four: Brock's Pewter Boulders (Rock), Misty's Cerulean Cascades (Water), Lt. Surge's Vermilion Thunder (Electric), Erika's Celadon Rainbows (Grass), Koga's Fuchsia Ninjas (Poison), Sabrina's Saffron Psychics (Psychic), Blaine's Cinnabar Volcanoes (Fire), Giovanni's Viridian Quakes (Ground) and the Indigo Elite (Ice, Fighting, Ghost, Dragon). Ten teams snake-draft five Pokémon each from 298 (every Gen 1 and Gen 2 Pokémon plus later favorites); CPU teams favor their types. Each card has an OVR, a position, an archetype (Floor General, Rim Protector, Stretch Big…) and eight ratings. Cover all five positions for a +2 lineup bonus. Undrafted Pokémon become free agents.
 3. **Season.** Nine weeks; every team plays every other team once. Your schedule follows the badge journey: Brock in week 1 through Giovanni in week 8, then the Elite Four. Gyms get tougher in badge order (a rating boost from -3 for Brock to +3 for Giovanni) and the Elite Four play at +4. Each week you play your game or sim it; the other games are simulated with the same engine, so league stats are real. Difficulty and quarter length are set on the hub before each game.
-4. **Hub.** Next opponent and their Gym Leader, a badge case (beat a gym to earn its badge; beat the Elite Four for their emblem), standings, your roster's season stats, league leaders, last week's scores and league news. Once a week you can swap a player for a free agent.
-5. **Leveling and evolution.** Pokémon earn XP from every game. Each level adds rating points weighted toward their position. Some evolve at set levels: Magikarp → Gyarados, Squirtle → Wartortle → Blastoise, Eevee → Jolteon/Espeon/Umbreon, Psyduck → Golduck, Slowpoke → Slowbro, Jigglypuff → Wigglytuff, Onix → Steelix.
-6. **Playoffs.** The top four play semifinals (1 vs 4, 2 vs 3) and a final. Then a champion and season MVP are crowned, and the next season starts with the same rosters.
+4. **Home courts.** Every team has its own floor: paint, lines, wood, its badge at center court, a crowd in its colors and its own arena sign (Pewter's stone-gray court, Cerulean's blue floor, Cinnabar's volcanic wood, the Indigo Plateau's dark floor with gold lines…). Games are played on the home team's court.
+5. **Hub.** Next opponent and their Gym Leader, a badge case (beat a gym to earn its badge; beat the Elite Four for their emblem), standings, your roster's season stats, league leaders, last week's scores and league news. Once a week you can swap a player for a free agent.
+6. **Leveling and evolution.** Pokémon earn XP from every game. Each level adds rating points weighted toward their position. Pokémon evolve along their real evolution lines at levels scaled from the games (Charmander → Charmeleon at Lv 2 → Charizard at Lv 4, Magikarp → Gyarados at Lv 3, Larvitar → Pupitar → Tyranitar, Pichu → Pikachu; stone, trade and friendship evolutions at Lv 4; Eevee picks a random Eeveelution), so cheap early picks can grow into stars.
+7. **Playoffs.** The top four play semifinals (1 vs 4, 2 vs 3) and a final. Then a champion and season MVP are crowned, and the next season starts with the same rosters.
 
 | Action | Keyboard | Gamepad |
 | --- | --- | --- |
@@ -69,7 +70,9 @@ src/franchise/league.ts  league state: schedule, standings, playoffs, XP, evolut
 src/screens/          title, draft, franchise hub, game loop, box score
 ```
 
-Adding a Pokémon is one row in `ROWS` in `src/data/pokemon.ts`. OVR, archetype, size and special move are derived from that row. Evolved forms go in `EVOLVED_ROWS`, with the level they're reached at in `EVOLUTIONS`.
+Gen 1 and Gen 2 ratings are generated: `node scripts/gen-pokemon-data.mjs` reads PokeAPI's open data (base stats, height, weight, evolution chains), maps it to basketball ratings calibrated against the hand-tuned cards, picks positions from body size and stat profile, and writes `src/data/generated.ts`. Court designs live in `src/data/courts.ts`.
+
+Adding or hand-tuning a Pokémon is one row in `ROWS` in `src/data/pokemon.ts`; hand-tuned rows override generated ones. OVR, archetype, size and special move are derived from that row. Evolved forms go in `EVOLVED_ROWS`, with the level they're reached at in `EVOLUTIONS`.
 
 Add `?speed=4` to the URL to run the simulation faster when testing.
 

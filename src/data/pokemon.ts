@@ -1,3 +1,5 @@
+import { GENERATED_EVOLUTIONS, GENERATED_ROWS } from './generated';
+
 export type Pos = 'PG' | 'SG' | 'SF' | 'PF' | 'C';
 
 export type PokeType =
@@ -110,7 +112,7 @@ function archetype(pos: Pos, r: Ratings, ovr: number): string {
 }
 
 // dex, name, types, pos, spd, sht, ins, pas, def, blk, reb, hnd
-type Row = [number, string, PokeType[], Pos, number, number, number, number, number, number, number, number];
+export type Row = [number, string, PokeType[], Pos, number, number, number, number, number, number, number, number];
 
 const ROWS: Row[] = [
   [150, 'Mewtwo', ['Psychic'], 'SF', 88, 96, 95, 88, 88, 86, 84, 86],
@@ -245,16 +247,14 @@ const ROWS: Row[] = [
   [123, 'Scyther', ['Bug', 'Flying'], 'SG', 92, 74, 80, 62, 90, 58, 56, 82],
   [214, 'Heracross', ['Bug', 'Fighting'], 'PF', 74, 56, 92, 54, 82, 80, 84, 62],
   [127, 'Pinsir', ['Bug'], 'PF', 70, 52, 86, 50, 84, 76, 78, 58],
-];
-
-// Evolved forms: not in the draft pool, reached only by leveling up in franchise mode.
-const EVOLVED_ROWS: Row[] = [
+  // Evolved forms with hand-tuned ratings
   [55, 'Golduck', ['Water'], 'SG', 80, 82, 70, 72, 74, 55, 60, 78],
   [80, 'Slowbro', ['Water', 'Psychic'], 'PF', 38, 84, 74, 80, 64, 78, 80, 62],
   [8, 'Wartortle', ['Water'], 'PG', 84, 87, 64, 78, 74, 50, 56, 82],
   [40, 'Wigglytuff', ['Normal', 'Fairy'], 'PG', 70, 80, 60, 86, 66, 50, 60, 78],
   [208, 'Steelix', ['Steel', 'Ground'], 'C', 50, 44, 90, 48, 82, 98, 92, 50],
 ];
+
 
 function buildMon([dex, name, types, pos, spd, sht, ins, pas, def, blk, reb, hnd]: Row): Mon {
   const r: Ratings = { spd, sht, ins, pas, def, blk, reb, hnd };
@@ -275,9 +275,14 @@ function buildMon([dex, name, types, pos, spd, sht, ins, pas, def, blk, reb, hnd
 }
 
 /** The draft pool. */
-export const POKEMON: Mon[] = ROWS.map(buildMon);
+const HAND = new Set(ROWS.map((r) => r[0]));
 
-const BY_DEX = new Map<number, Mon>([...POKEMON, ...EVOLVED_ROWS.map(buildMon)].map((m) => [m.dex, m]));
+/** The draft pool: every Gen 1 and Gen 2 Pokémon plus later favorites. Hand-tuned rows win over generated ones. */
+export const POKEMON: Mon[] = [...ROWS, ...GENERATED_ROWS.filter((r) => !HAND.has(r[0]))]
+  .sort((a, b) => a[0] - b[0])
+  .map(buildMon);
+
+const BY_DEX = new Map<number, Mon>(POKEMON.map((m) => [m.dex, m]));
 
 export function monByDex(dex: number): Mon {
   const m = BY_DEX.get(dex);
@@ -294,17 +299,8 @@ export function withBonus(dex: number, bonus: Partial<Ratings>): Mon {
   return { ...base, r, ovr, archetype: archetype(base.pos, r, ovr), size: 0.8 + Math.max(0, (r.blk + r.reb) / 2 - 30) / 70 * 0.5 };
 }
 
-/** Evolutions by level. `to` lists candidates; Eevee picks one at random. */
-export const EVOLUTIONS: Record<number, { level: number; to: number[] }> = {
-  129: { level: 3, to: [130] }, // Magikarp -> Gyarados
-  54: { level: 4, to: [55] }, // Psyduck -> Golduck
-  79: { level: 4, to: [80] }, // Slowpoke -> Slowbro
-  7: { level: 3, to: [8] }, // Squirtle -> Wartortle
-  8: { level: 6, to: [9] }, // Wartortle -> Blastoise
-  133: { level: 4, to: [135, 196, 197] }, // Eevee -> Jolteon / Espeon / Umbreon
-  39: { level: 4, to: [40] }, // Jigglypuff -> Wigglytuff
-  95: { level: 5, to: [208] }, // Onix -> Steelix
-};
+/** Evolutions by franchise level (generated from the games' evolution data). */
+export const EVOLUTIONS = GENERATED_EVOLUTIONS;
 
 /** How much each rating matters for a position; used to steer level-up gains. */
 export function positionWeights(pos: Pos): Partial<Ratings> {

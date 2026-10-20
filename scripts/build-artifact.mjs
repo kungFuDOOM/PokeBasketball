@@ -4,8 +4,8 @@
 import { copyFile, mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 
 const SPRITES = new URL('../public/sprites/', import.meta.url);
-const src = await readFile(new URL('../src/data/pokemon.ts', import.meta.url), 'utf8');
-const dexes = [...src.matchAll(/^\s*\[(\d+), '/gm)].map((m) => Number(m[1]));
+const src = (await Promise.all(['pokemon.ts', 'generated.ts'].map((f) => readFile(new URL(`../src/data/${f}`, import.meta.url), 'utf8')))).join('\n');
+const dexes = [...new Set([...src.matchAll(/^\s*\[(\d+), '/gm)].map((m) => Number(m[1])))];
 
 async function dataUri(file) {
   try {
