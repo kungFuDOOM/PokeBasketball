@@ -49,7 +49,9 @@ Poké Jam has two modes.
 | Special move | I / E when the bar is full | Y |
 | Pause | P / Esc | Start |
 
-On phones the game shows a virtual stick and buttons (landscape works best).
+On phones the game shows a virtual stick and Xbox-style face buttons in the same colors and diamond layout: green A to shoot, red B to steal, blue X to pass, yellow Y for the special (it lights up when the bar is full), and RB for turbo. Landscape works best.
+
+**Defense switching.** On defense you control one player at a time. With Defense switching on Auto (the default), every time the other team catches the ball you jump to the defender who should pick him up: his man-to-man matchup, or the nearest teammate still on his feet if that defender is out of the play. If you're already on the ball, you stay put. Pass/Switch still switches by hand anytime. Set it to Manual on the matchup or hub screen to only switch yourself.
 
 ### Systems
 

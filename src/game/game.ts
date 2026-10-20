@@ -255,6 +255,7 @@ export class Game {
     p.lastCatch = this.time;
     p.ai.think = Math.min(p.ai.think, rand(0.1, 0.3));
     if (p.team !== this.offense) this.setOffense(p.team);
+    if (p.team === 1) this.autoSwitch(p);
     if (!silent) this.sfx.push('catch');
   }
 
@@ -278,6 +279,27 @@ export class Game {
     }
     for (const p of this.players) p.human = p === u;
     this.user = u;
+  }
+
+  /**
+   * On defense, hands the user the defender who should pick up whoever just got the ball: his man-to-man
+   * matchup if that defender is close enough to recover, otherwise the nearest one on his feet.
+   * Leaves the user alone if they're already on the ball.
+   */
+  private autoSwitch(handler: Player) {
+    if (!this.teams[0].human || this.cfg.autoSwitch === false) return;
+    const u = this.user;
+    const ok = (p: Player) => p.state !== 'stun';
+    if (u && ok(u) && dist(u.x, u.y, handler.x, handler.y) < 6) return;
+    const ours = this.teamPlayers(0).filter(ok);
+    if (!ours.length) return;
+    const d = (p: Player) => dist(p.x, p.y, handler.x, handler.y);
+    const man = ours.find((p) => p.slot === handler.slot);
+    const near = ours.reduce((a, b) => (d(b) < d(a) ? b : a));
+    const pick = man && d(man) < d(near) + 8 ? man : near;
+    if (pick === u) return;
+    for (const p of this.players) p.human = p === pick;
+    this.user = pick;
   }
 
   // ---------- main tick ----------

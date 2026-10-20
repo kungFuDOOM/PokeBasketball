@@ -122,7 +122,7 @@ export function quickPlay(root: HTMLElement, settings: Settings, audio: Audio, a
       name: opp.name, abbr: opp.abbr, color: opp.color, color2: opp.color2,
       roster: theirs, human: false, boost: opp.boost, coach: opp.leader,
     });
-    playGame(root, { home, away, quarterLen: settings.quarterLen, difficulty: settings.difficulty, court }, audio, (g) => {
+    playGame(root, { home, away, quarterLen: settings.quarterLen, difficulty: settings.difficulty, court, autoSwitch: settings.autoSwitch !== false }, audio, (g) => {
       root.className = 'screen-results';
       window.scrollTo(0, 0);
       resultsScreen(root, g, {

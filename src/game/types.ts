@@ -71,6 +71,8 @@ export interface GameConfig {
   stamina?: boolean;
   /** false: the coach never subs the human team; the user does it from the pause menu. */
   userAutoSubs?: boolean;
+  /** On defense, switch the user to the defender guarding whoever catches the ball (default on). */
+  autoSwitch?: boolean;
   /** Franchise rule: hard knockdowns and big landings can injure, more often when tired. */
   injuries?: boolean;
 }

@@ -1,7 +1,7 @@
 import { EVOLUTIONS, RATING_LABELS, monByDex, positionWeights, withBonus, type Mon, type PokeType, type Ratings } from '../data/pokemon';
 import { Game, bestLineup } from '../game/game';
 import { courtFor, userCourt } from '../data/courts';
-import type { Difficulty, PStats, TeamDef } from '../game/types';
+import type { Difficulty, GameConfig, PStats, TeamDef } from '../game/types';
 import type { DraftState } from '../screens/draft';
 
 const SAVE_KEY = 'pokejam.franchise.v1';
@@ -362,7 +362,8 @@ export function gameConfig(f: Franchise, game: FGame, humanPlays: boolean, quart
   // Two blues (you vs Misty) are hard to tell apart on the floor: give the second team a contrasting color.
   b.def = contrastAway(a.def, b.def);
   const uidOf = new Map([...a.uidOf, ...b.uidOf]);
-  return { cfg: { home: a.def, away: b.def, quarterLen, difficulty, court: venueOf(f, game.home), stamina: true, injuries: true, userAutoSubs: autoSubs }, sides, uidOf };
+  const cfg: GameConfig = { home: a.def, away: b.def, quarterLen, difficulty, court: venueOf(f, game.home), stamina: true, injuries: true, userAutoSubs: autoSubs };
+  return { cfg, sides, uidOf };
 }
 
 /** Plays a CPU-controlled game with the real engine, yielding to the browser between slices. */

@@ -149,6 +149,7 @@ function playUserGame(f: Franchise, g: FGame) {
   app.className = 'screen-game';
   audio.unlock();
   const { cfg, sides, uidOf } = gameConfig(f, g, true, settings.quarterLen, settings.difficulty, settings.autoSubs !== false);
+  cfg.autoSwitch = settings.autoSwitch !== false;
   playGame(app, cfg, audio, (game) => afterUserGame(f, g, game, sides, uidOf, false), hub, {
     onAutoSubs: (on) => {
       settings.autoSubs = on;

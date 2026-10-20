@@ -96,7 +96,7 @@ export class Input {
     const l = this.labels;
     if (l.shoot) l.shoot.textContent = offense ? 'SHOOT' : 'JUMP';
     if (l.pass) l.pass.textContent = offense ? 'PASS' : 'SWITCH';
-    if (l.special) l.special.classList.toggle('ready', specialReady);
+    l.special?.closest('.tb')?.classList.toggle('ready', specialReady);
   }
 
   /** On-screen joystick and buttons for touch devices. */
@@ -106,18 +106,18 @@ export class Input {
     root.innerHTML = `
       <div class="stick-zone"><div class="stick-base"><div class="stick-knob"></div></div></div>
       <div class="btns">
-        <button class="tb special" data-b="special">SPECIAL</button>
-        <button class="tb turbo" data-b="turbo">TURBO</button>
-        <button class="tb steal" data-b="steal">STEAL</button>
-        <button class="tb pass" data-b="pass">PASS</button>
-        <button class="tb shoot" data-b="shoot">SHOOT</button>
+        <button class="tb turbo" data-b="turbo"><b>RB</b><span>TURBO</span></button>
+        <button class="tb special xy" data-b="special"><b>Y</b><span>SPECIAL</span></button>
+        <button class="tb pass xx" data-b="pass"><b>X</b><span>PASS</span></button>
+        <button class="tb steal xb" data-b="steal"><b>B</b><span>STEAL</span></button>
+        <button class="tb shoot xa" data-b="shoot"><b>A</b><span>SHOOT</span></button>
       </div>`;
     parent.appendChild(root);
     this.touchRoot = root;
 
     root.querySelectorAll<HTMLButtonElement>('.tb').forEach((el) => {
       const b = el.dataset.b as Btn;
-      this.labels[b] = el;
+      this.labels[b] = el.querySelector('span') ?? el;
       const down = (e: PointerEvent) => {
         e.preventDefault();
         el.setPointerCapture(e.pointerId);

@@ -8,6 +8,8 @@ export interface Settings {
   teamName: string;
   /** Franchise: let the coach rotate your team (default) or sub yourself. */
   autoSubs?: boolean;
+  /** On defense, jump to the defender on the ball after every catch (default) or only switch yourself. */
+  autoSwitch?: boolean;
 }
 
 export function controlsHtml(): string {
@@ -24,7 +26,7 @@ export function controlsHtml(): string {
         <tr><th>Special move</th><td><kbd>I</kbd> or <kbd>E</kbd> when the special bar is full</td></tr>
         <tr><th>Pause</th><td><kbd>P</kbd> or <kbd>Esc</kbd></td></tr>
       </table>
-      <p class="note">Gamepad: A shoot, X pass, B steal, Y special, any bumper or trigger for turbo. On phones, use the on-screen stick and buttons.</p>
+      <p class="note">Gamepad: <span class="xbtn xa">A</span> shoot, <span class="xbtn xx">X</span> pass, <span class="xbtn xb">B</span> steal, <span class="xbtn xy">Y</span> special, any bumper or trigger for turbo. On phones, use the on-screen stick and buttons.</p>
     </div>`;
 }
 
@@ -42,6 +44,12 @@ export function settingsHtml(settings: Settings, opts: { subs?: boolean } = {}):
         <div class="seg" id="qlen">
           ${[60, 120, 180, 300].map((s) =>
             `<button data-v="${s}" class="${s === settings.quarterLen ? 'on' : ''}">${s / 60} min</button>`).join('')}
+        </div>
+      </div>
+      <div class="field">Defense switching
+        <div class="seg" id="dswitch">
+          <button data-v="auto" class="${settings.autoSwitch !== false ? 'on' : ''}">Auto</button>
+          <button data-v="manual" class="${settings.autoSwitch === false ? 'on' : ''}">Manual</button>
         </div>
       </div>
       ${opts.subs ? `
@@ -69,6 +77,7 @@ export function bindSettings(root: HTMLElement, settings: Settings, onChange: ()
   seg('#difficulty', (v) => (settings.difficulty = v as Difficulty));
   seg('#qlen', (v) => (settings.quarterLen = Number(v)));
   seg('#subs', (v) => (settings.autoSubs = v === 'auto'));
+  seg('#dswitch', (v) => (settings.autoSwitch = v === 'auto'));
 }
 
 export interface TitleOptions {
