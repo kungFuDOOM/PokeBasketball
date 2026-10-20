@@ -59,6 +59,7 @@ export class Hud {
           <div class="pname"><span data-k="pname"></span><span class="povr" data-k="povr"></span></div>
           <div class="bar turbo"><i data-k="turbo"></i><b>TURBO</b></div>
           <div class="bar spec"><i data-k="spec"></i><b data-k="specname">SPECIAL</b></div>
+          ${g.cfg.stamina ? '<div class="bar energy"><i data-k="energy"></i><b>ENERGY</b></div>' : ''}
         </div>
       </div>
       <div class="battle" data-k="battle"><p data-k="msg"></p></div>`;
@@ -147,6 +148,12 @@ export class Hud {
           if (e.on) this.banner(`${NAME(e.player)}`, 'IS ON FIRE!', 2.2);
           else this.say(`${NAME(e.player)} cooled off.`);
           break;
+        case 'sub': {
+          const coach = this.g.teams[e.in.team].coach;
+          if (e.in.team === 0 && this.g.isHumanTeam(0)) this.say(`Come back, ${NAME(e.out)}!`, `Go! ${NAME(e.in)}!`);
+          else this.say(`${(coach ?? this.g.teams[e.in.team].name).toUpperCase()} sent out ${NAME(e.in)}!`);
+          break;
+        }
         case 'oop':
           this.say(`ALLEY-OOP to ${NAME(e.player)}!`);
           break;
@@ -184,6 +191,11 @@ export class Hud {
       }
       this.q('turbo').style.width = `${(u.fx.surge > 0 || u.fire ? 1 : u.turbo) * 100}%`;
       this.q('spec').style.width = `${u.special * 100}%`;
+      if (this.g.cfg.stamina) {
+        const en = this.q('energy');
+        en.style.width = `${u.energy * 100}%`;
+        en.classList.toggle('low', u.energy < 0.5);
+      }
       this.q('pcard').classList.toggle('ready', u.special >= 1);
       this.q('pcard').classList.toggle('fire', u.fire);
     }

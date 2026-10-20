@@ -24,6 +24,27 @@ export function teamOvr(roster: Mon[]): number {
   return Math.round(roster.reduce((a, m) => a + m.ovr, 0) / roster.length) + chemistry(roster);
 }
 
+/** Stamina from the HP-heavy ratings: Snorlax and Blissey run all day, Pikachu needs breathers. */
+export function staminaOf(mon: Mon): number {
+  return clamp(Math.round(35 + mon.r.reb * 0.45 + mon.r.def * 0.15), 40, 99);
+}
+
+/**
+ * Starting five for a roster: the best Pokémon at each position, unless that would start someone
+ * far worse than the best available; then the rest by overall. Everyone else is the bench.
+ */
+export function bestLineup(mons: Mon[]): { starters: Mon[]; bench: Mon[] } {
+  if (mons.length <= 5) return { starters: [...mons], bench: [] };
+  const left = [...mons].sort((a, b) => b.ovr - a.ovr);
+  const starters: Mon[] = [];
+  for (const pos of POSITIONS) {
+    const i = left.findIndex((m) => m.pos === pos);
+    if (i >= 0 && left[i].ovr >= left[0].ovr - 8) starters.push(...left.splice(i, 1));
+  }
+  while (starters.length < 5) starters.push(left.shift()!);
+  return { starters, bench: left };
+}
+
 function makePlayer(id: number, team: TeamId, slot: number, mon: Mon, boost: number): Player {
   const r = { ...mon.r };
   for (const k of Object.keys(r) as (keyof typeof r)[]) r[k] = clamp(r[k] + boost, 20, 99);
@@ -43,12 +64,15 @@ function makePlayer(id: number, team: TeamId, slot: number, mon: Mon, boost: num
     meter: 0, releaseAt: IDEAL_RELEASE,
     dunk: null,
     fx: { surge: 0, phase: 0, slow: 0, lockin: false },
-    stats: { pts: 0, fgm: 0, fga: 0, tpm: 0, tpa: 0, reb: 0, ast: 0, stl: 0, blk: 0, dnk: 0 },
+    stats: { pts: 0, fgm: 0, fga: 0, tpm: 0, tpa: 0, reb: 0, ast: 0, stl: 0, blk: 0, dnk: 0, sec: 0 },
     ai: { think: 0, tx: 0, ty: 0, jitterT: 0, jx: 0, jy: 0, cutT: 0, jumpIn: -1, plan: 'none', planT: 0, dodge: 1, pullUp: false },
     intent: emptyIntent(),
     human: false,
     lastCatch: -9,
     lastPasser: null,
+    energy: 1,
+    stamina: staminaOf(mon),
+    starter: slot >= 0,
   };
 }
 
@@ -56,7 +80,10 @@ export class Game {
   readonly cfg: GameConfig;
   readonly teams: [TeamDef, TeamDef];
   readonly diff: (typeof DIFFICULTIES)[keyof typeof DIFFICULTIES];
+  /** The ten Pokémon on the floor. */
   players: Player[] = [];
+  /** Franchise reserves, not on the floor. */
+  bench: Player[] = [];
   ball: Ball;
   score: [number, number] = [0, 0];
   offense: TeamId = 0;
@@ -88,6 +115,7 @@ export class Game {
       const cpuBoost = !def.human && cfg.home.human ? this.diff.cpuBoost : 0;
       const boost = chemistry(def.roster) + cpuBoost + (def.boost ?? 0);
       roster.forEach((mon, slot) => this.players.push(makePlayer(id++, t, slot, mon, boost)));
+      for (const mon of def.bench ?? []) this.bench.push(makePlayer(id++, t, -1, mon, boost));
     }
     this.clock = cfg.quarterLen;
     this.firstPossession = Math.random() < 0.5 ? 0 : 1;
@@ -103,6 +131,14 @@ export class Game {
 
   teamPlayers(t: TeamId): Player[] {
     return this.players.filter((p) => p.team === t);
+  }
+  /** Everyone dressed for a team: starters first, then the bench in the order they were listed. */
+  rosterOf(t: TeamId): Player[] {
+    return [...this.players, ...this.bench].filter((p) => p.team === t).sort((a, b) => a.id - b.id);
+  }
+  /** Tired players lose up to 18% of their speed and touch. */
+  effort(p: Player): number {
+    return p.energy >= 0.55 ? 1 : 0.82 + 0.18 * (p.energy / 0.55);
   }
   opponents(t: TeamId): Player[] {
     return this.players.filter((p) => p.team !== t);
@@ -149,6 +185,12 @@ export class Game {
       : q === 1 || q === 4 ? this.firstPossession : ((1 - this.firstPossession) as TeamId);
     this.clock = q > 4 ? Math.max(30, Math.round(this.cfg.quarterLen / 2)) : this.cfg.quarterLen;
     this.shotClock = 24;
+    if (this.cfg.stamina && q > 1) {
+      const rest = q === 3 ? 0.3 : 0.15;
+      for (const p of [...this.players, ...this.bench]) p.energy = Math.min(1, p.energy + rest);
+      this.autoSubs(0, true);
+      this.autoSubs(1, true);
+    }
     const offs = [[4, 25], [12, 9], [12, 41], [21, 17], [21, 33]];
     for (const p of this.players) {
       const [dx, y] = offs[p.slot];
@@ -256,6 +298,7 @@ export class Game {
     const live = this.phase === 'live';
     if (live) {
       this.clock -= dt;
+      this.tickStamina(dt);
       const shotClockRuns = b.mode === 'held' || b.mode === 'pass' || (b.mode === 'loose' && b.fromShot === -1);
       if (shotClockRuns) this.shotClock -= dt;
     } else if (this.phase === 'dead') {
@@ -306,6 +349,8 @@ export class Game {
   }
 
   private inbound() {
+    this.autoSubs(0, false);
+    this.autoSubs(1, false);
     const b = this.ball;
     let best: Player | null = null;
     let bd = Infinity;
@@ -319,6 +364,74 @@ export class Game {
     this.shotClock = 24;
     this.giveBall(best, true);
     this.updateUser(true);
+  }
+
+  // ---------- stamina and substitutions ----------
+
+  private tickStamina(dt: number) {
+    for (const p of this.players) p.stats.sec += dt;
+    if (!this.cfg.stamina) return;
+    // Scaled so tiredness follows game time the same way whatever the quarter length.
+    const scale = 120 / this.cfg.quarterLen;
+    for (const p of this.players) {
+      const drain = 0.0044 * (1.6 - p.stamina / 100) + (p.turboOn ? 0.0022 : 0);
+      p.energy = Math.max(0, p.energy - drain * scale * dt);
+    }
+    for (const p of this.bench) p.energy = Math.min(1, p.energy + 0.005 * scale * dt);
+  }
+
+  /**
+   * The coach's rotation, run at dead balls and quarter breaks: tired players come out for the
+   * freshest good fit on the bench, and rested starters come back in.
+   */
+  private autoSubs(t: TeamId, quarterBreak: boolean) {
+    if (!this.cfg.stamina) return;
+    const bench = () => this.bench.filter((p) => p.team === t);
+    if (!bench().length) return;
+    const onCourt = this.teamPlayers(t).sort((a, b) => a.energy - b.energy);
+    let swaps = 0;
+    for (const out of onCourt) {
+      if (swaps >= (quarterBreak ? 5 : 2)) break;
+      if (out === this.ball.owner || out.state !== 'free') continue;
+      const tired = out.energy < (quarterBreak ? 0.6 : 0.5);
+      let best: Player | null = null;
+      let bs = -Infinity;
+      for (const c of bench()) {
+        const restedStarter = c.starter && !out.starter && c.energy >= 0.85;
+        if (c.energy < 0.7 || !(tired || restedStarter)) continue;
+        const s = c.mon.ovr + (c.mon.pos === out.mon.pos ? 6 : 0) + c.energy * 10 + (restedStarter ? 8 : 0);
+        if (s > bs) { bs = s; best = c; }
+      }
+      if (best) {
+        this.swap(out, best);
+        swaps++;
+      }
+    }
+  }
+
+  private swap(out: Player, sub: Player) {
+    sub.slot = out.slot;
+    sub.x = out.x; sub.y = out.y; sub.z = 0;
+    sub.vx = 0; sub.vy = 0; sub.vz = 0;
+    sub.state = 'free'; sub.dunk = null; sub.meter = 0;
+    sub.facing = out.facing;
+    sub.ai.jumpIn = -1; sub.ai.plan = 'none';
+    out.slot = -1;
+    out.state = 'free'; out.dunk = null; out.z = 0; out.vz = 0;
+    if (out.fire) {
+      // Sitting down cools off a hot hand.
+      out.fire = false;
+      out.streak = 0;
+      this.events.push({ kind: 'fire', player: out, on: false });
+    }
+    this.players[this.players.indexOf(out)] = sub;
+    this.bench[this.bench.indexOf(sub)] = out;
+    if (this.user === out) {
+      this.user = sub;
+      out.human = false;
+      sub.human = true;
+    }
+    this.events.push({ kind: 'sub', out, in: sub });
   }
 
   // ---------- player actions ----------
@@ -435,6 +548,7 @@ export class Game {
       case 'early': case 'late': prob = base * contest * 0.8; break;
       default: prob = base * contest * 0.3;
     }
+    prob *= 0.7 + 0.3 * this.effort(p);
     if (p.fire) prob = Math.min(0.97, prob + 0.25);
     if (d > 35) prob = Math.min(prob, grade === 'perfect' ? 0.25 : 0.04);
     const make = Math.random() < prob;
@@ -447,7 +561,7 @@ export class Game {
 
   private releaseLayup(p: Player) {
     const contest = this.contest(p);
-    let prob = (0.55 + p.r.ins * 0.004) * (0.45 + 0.55 * contest);
+    let prob = (0.55 + p.r.ins * 0.004) * (0.45 + 0.55 * contest) * (0.7 + 0.3 * this.effort(p));
     if (p.fx.lockin) { prob = 0.97; p.fx.lockin = false; }
     if (p.fire) prob = Math.min(0.97, prob + 0.2);
     this.launchShot(p, Math.random() < prob, false, 2, 'layup');
@@ -500,7 +614,7 @@ export class Game {
     const d = this.distToHoop(p);
     const ang = Math.atan2(p.y - HOOP_Y, p.x - hx);
     const contest = this.contest(p);
-    let prob = clamp(0.5 + p.r.ins * 0.0035 - (1 - contest) * 0.6, 0.3, 0.93);
+    let prob = clamp(0.5 + p.r.ins * 0.0035 - (1 - contest) * 0.6, 0.3, 0.93) * (0.7 + 0.3 * this.effort(p));
     if (p.fire || p.fx.lockin) prob = 0.99;
     p.fx.lockin = false;
     p.dunk = {
@@ -823,7 +937,7 @@ export class Game {
       if (m > 1) { mx /= m; my /= m; }
       const unlimited = p.fx.surge > 0 || p.fire;
       const turbo = it.turbo && m > 0.1 && (p.turbo > 0.02 || unlimited);
-      let speed = 11 + p.r.spd * 0.085;
+      let speed = (11 + p.r.spd * 0.085) * this.effort(p);
       if (turbo) speed *= 1.42;
       if (p.fx.surge > 0) speed *= 1.2;
       if (p.fx.slow > 0) speed *= 0.55;

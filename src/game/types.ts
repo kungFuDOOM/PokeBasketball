@@ -50,7 +50,9 @@ export interface TeamDef {
   abbr: string;
   color: string;
   color2: string;
-  roster: Mon[]; // five, any order
+  roster: Mon[]; // the five starters, any order
+  /** Franchise reserves; empty or missing means no subs. */
+  bench?: Mon[];
   human: boolean;
   /** Added to every rating (franchise gyms and the Elite Four). */
   boost?: number;
@@ -65,6 +67,8 @@ export interface GameConfig {
   difficulty: Difficulty;
   /** Whose floor the game is on; defaults to a classic court in the home team's colors. */
   court?: CourtStyle;
+  /** Franchise rule: players tire, play worse when tired, and get subbed. Off in Quick Play. */
+  stamina?: boolean;
 }
 
 export interface Intent {
@@ -87,6 +91,8 @@ export function emptyIntent(): Intent {
 export interface PStats {
   pts: number; fgm: number; fga: number; tpm: number; tpa: number;
   reb: number; ast: number; stl: number; blk: number; dnk: number;
+  /** Seconds of game clock on the court. */
+  sec: number;
 }
 
 export type PState = 'free' | 'shoot' | 'layup' | 'dunk' | 'hang' | 'stun' | 'swipe';
@@ -145,6 +151,11 @@ export interface Player {
   human: boolean; // currently driven by the user
   lastCatch: number; // game time of last catch, for assists
   lastPasser: Player | null;
+  /** 1 = fresh, 0 = gassed. Only drains when the game uses stamina. */
+  energy: number;
+  /** 40-99: how slowly energy drains. */
+  stamina: number;
+  starter: boolean;
 }
 
 export type BallMode = 'held' | 'pass' | 'shot' | 'loose' | 'net';
@@ -198,6 +209,7 @@ export type GameEvent =
   | { kind: 'special'; player: Player; hits: { victim: Player; mult: number }[] }
   | { kind: 'fire'; player: Player; on: boolean }
   | { kind: 'oop'; player: Player }
+  | { kind: 'sub'; out: Player; in: Player }
   | { kind: 'shotclock'; team: TeamId }
   | { kind: 'quarter'; label: string; sub: string }
   | { kind: 'final' };

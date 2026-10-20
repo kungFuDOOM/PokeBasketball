@@ -1,5 +1,5 @@
 import { EVOLUTIONS, RATING_LABELS, monByDex, positionWeights, withBonus, type Mon, type PokeType, type Ratings } from '../data/pokemon';
-import { Game } from '../game/game';
+import { Game, bestLineup } from '../game/game';
 import { courtFor, userCourt } from '../data/courts';
 import type { Difficulty, PStats, TeamDef } from '../game/types';
 import type { DraftState } from '../screens/draft';
@@ -107,15 +107,25 @@ export interface Franchise {
   history: { season: number; champion: string; mvp: string }[];
 }
 
-const emptyStats = (): SeasonStats => ({ gp: 0, pts: 0, fgm: 0, fga: 0, tpm: 0, tpa: 0, reb: 0, ast: 0, stl: 0, blk: 0, dnk: 0 });
+const emptyStats = (): SeasonStats => ({ gp: 0, pts: 0, fgm: 0, fga: 0, tpm: 0, tpa: 0, reb: 0, ast: 0, stl: 0, blk: 0, dnk: 0, sec: 0 });
 
 export const monOf = (f: Franchise, uid: string): Mon => {
   const p = f.players[uid];
   return withBonus(p.dex, p.bonus);
 };
 
-export const teamOvrOf = (f: Franchise, t: FTeam) =>
-  Math.round(t.roster.reduce((a, u) => a + monOf(f, u).ovr, 0) / t.roster.length);
+/** Uids of a team's starting five and bench, in the order the coach would use them. */
+export function lineupOf(f: Franchise, t: FTeam): { starters: string[]; bench: string[] } {
+  const byMon = new Map(t.roster.map((u) => [monOf(f, u), u]));
+  const { starters, bench } = bestLineup([...byMon.keys()]);
+  return { starters: starters.map((m) => byMon.get(m)!), bench: bench.map((m) => byMon.get(m)!) };
+}
+
+/** Rating of the starting five. */
+export const teamOvrOf = (f: Franchise, t: FTeam) => {
+  const { starters } = lineupOf(f, t);
+  return Math.round(starters.reduce((a, u) => a + monOf(f, u).ovr, 0) / starters.length);
+};
 
 export function perGame(s: SeasonStats) {
   const g = Math.max(1, s.gp);
@@ -254,12 +264,20 @@ export function badgesEarned(f: Franchise): Set<number> {
 export function teamDef(f: Franchise, id: number, human: boolean): { def: TeamDef; uidOf: Map<Mon, string> } {
   const t = f.teams[id];
   const uidOf = new Map<Mon, string>();
-  const roster = t.roster.map((u) => {
+  const { starters, bench } = lineupOf(f, t);
+  const toMon = (u: string) => {
     const m = monOf(f, u);
     uidOf.set(m, u);
     return m;
-  });
-  return { def: { name: t.name, abbr: t.abbr, color: t.color, color2: t.color2, roster, human, boost: t.boost, coach: t.leader }, uidOf };
+  };
+  const roster = starters.map(toMon);
+  return { def: { name: t.name, abbr: t.abbr, color: t.color, color2: t.color2, roster, bench: bench.map(toMon), human, boost: t.boost, coach: t.leader }, uidOf };
+}
+
+/** Two blues (you vs Misty) are hard to tell apart on the floor: give the second team a contrasting color. */
+export function contrastAway(home: TeamDef, away: TeamDef): TeamDef {
+  if (colorDistance(home.color, away.color) >= 110) return away;
+  return { ...away, color: colorDistance(home.color, '#e3350d') < 110 ? '#f4f1e8' : '#e3350d' };
 }
 
 function colorDistance(a: string, b: string): number {
@@ -281,11 +299,9 @@ export function gameConfig(f: Franchise, game: FGame, humanPlays: boolean, quart
   const a = teamDef(f, sides[0], humanPlays && sides[0] === 0);
   const b = teamDef(f, sides[1], false);
   // Two blues (you vs Misty) are hard to tell apart on the floor: give the second team a contrasting color.
-  if (colorDistance(a.def.color, b.def.color) < 110) {
-    b.def = { ...b.def, color: colorDistance(a.def.color, '#e3350d') < 110 ? '#f4f1e8' : '#e3350d' };
-  }
+  b.def = contrastAway(a.def, b.def);
   const uidOf = new Map([...a.uidOf, ...b.uidOf]);
-  return { cfg: { home: a.def, away: b.def, quarterLen, difficulty, court: venueOf(f, game.home) }, sides, uidOf };
+  return { cfg: { home: a.def, away: b.def, quarterLen, difficulty, court: venueOf(f, game.home), stamina: true }, sides, uidOf };
 }
 
 /** Plays a CPU-controlled game with the real engine, yielding to the browser between slices. */
@@ -349,18 +365,22 @@ export function recordGame(f: Franchise, fg: FGame, g: Game, sides: [number, num
 
   const progress: Progress[] = [];
   let best = -Infinity;
-  for (const gp of g.players) {
+  const fullGame = g.cfg.quarterLen * 4;
+  for (const gp of [...g.rosterOf(0), ...g.rosterOf(1)]) {
     const uid = uidOf.get(gp.mon);
     if (!uid) continue;
     const p = f.players[uid];
     const s = gp.stats;
-    p.stats.gp++;
-    for (const k of Object.keys(s) as (keyof PStats)[]) p.stats[k] += s[k];
+    if (s.sec > 0) p.stats.gp++;
+    // `?? 0` covers stats saved before a field existed.
+    for (const k of Object.keys(s) as (keyof PStats)[]) p.stats[k] = (p.stats[k] ?? 0) + s[k];
     const score = gameScore(s);
     if (score > best) { best = score; fg.pog = uid; }
 
     const team = sides[gp.team];
-    p.xp += Math.round(15 + s.pts * 0.8 + s.reb + s.ast * 1.5 + (s.stl + s.blk) * 2 + (team === winner ? 10 : 0));
+    // XP follows minutes: a full game is worth 15 on top of production; a DNP still earns 5 in practice.
+    const share = Math.min(1, s.sec / fullGame);
+    p.xp += Math.round(5 + 10 * share + s.pts * 0.8 + s.reb + s.ast * 1.5 + (s.stl + s.blk) * 2 + (team === winner ? 10 * share : 0));
     while (p.xp >= xpToNext(p.level)) {
       p.xp -= xpToNext(p.level);
       p.level++;

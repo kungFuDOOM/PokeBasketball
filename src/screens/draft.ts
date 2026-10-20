@@ -1,16 +1,17 @@
 import { POKEMON, POSITIONS, RATING_LABELS, SPECIALS, TYPE_COLORS, spriteUrl, type Mon, type PokeType, type Pos, type Ratings } from '../data/pokemon';
 import type { Audio } from '../game/audio';
-import { chemistry, teamOvr } from '../game/game';
+import { bestLineup, chemistry, teamOvr } from '../game/game';
 import { esc, tier } from '../util';
 
 /** CPU general manager: best available, nudged toward open positions and the team's favorite types. */
 export function cpuPick(pool: Mon[], roster: Mon[], types: PokeType[] = []): Mon {
-  const have = new Set(roster.map((m) => m.pos));
+  const count = (pos: string) => roster.filter((m) => m.pos === pos).length;
   let best = pool[0];
   let bs = -Infinity;
   for (const m of pool) {
     const onType = m.types.some((t) => types.includes(t));
-    const s = m.ovr + (have.has(m.pos) ? 0 : 5) + (onType ? 8 : 0) + Math.random() * 5;
+    const need = [5, 2, 0][Math.min(2, count(m.pos))];
+    const s = m.ovr + need + (onType ? 8 : 0) + Math.random() * 5;
     if (s > bs) { bs = s; best = m; }
   }
   return best;
@@ -68,26 +69,31 @@ export interface DraftTeam {
   elite?: boolean;
 }
 
-function rosterHtml(t: DraftTeam, picks: Mon[]): string {
-  const slots = Array.from({ length: 5 }, (_, i) => {
+/** Overall of the five who would start. */
+const startersOvr = (picks: Mon[]) => teamOvr(bestLineup(picks).starters);
+
+function rosterHtml(t: DraftTeam, picks: Mon[], size: number): string {
+  const { starters } = bestLineup(picks);
+  const slots = Array.from({ length: size }, (_, i) => {
     const m = picks[i];
+    const role = size > 5 && m ? `<small>${starters.includes(m) ? 'Starter' : 'Bench'}</small>` : '';
     return m
-      ? `<li><img src="${spriteUrl(m.dex)}" alt=""><span class="nm">${esc(m.name)}</span><span class="pos">${m.pos}</span><b class="t-${tier(m.ovr)}">${m.ovr}</b></li>`
-      : `<li class="empty"><span>Pick ${i + 1}</span></li>`;
+      ? `<li><img src="${spriteUrl(m.dex)}" alt=""><span class="nm">${esc(m.name)}${role}</span><span class="pos">${m.pos}</span><b class="t-${tier(m.ovr)}">${m.ovr}</b></li>`
+      : `<li class="empty"><span>Pick ${i + 1}${size > 5 && i >= 5 ? ' (bench)' : ''}</span></li>`;
   }).join('');
-  const chem = picks.length === 5 && chemistry(picks) ? '<span class="chem">+2 Balanced lineup</span>' : '';
-  return `<div class="roster you"><h4>${esc(t.name)} <span class="tovr">${picks.length ? teamOvr(picks) : '--'}</span>${chem}</h4><ul>${slots}</ul></div>`;
+  const chem = picks.length >= 5 && chemistry(starters) ? '<span class="chem">+2 Balanced lineup</span>' : '';
+  return `<div class="roster you"><h4>${esc(t.name)} <span class="tovr">${picks.length ? startersOvr(picks) : '--'}</span>${chem}</h4><ul>${slots}</ul></div>`;
 }
 
-function boardHtml(teams: DraftTeam[], rosters: Mon[][]): string {
+function boardHtml(teams: DraftTeam[], rosters: Mon[][], size: number): string {
   const rows = teams.map((t, i) => t.human ? '' : `
     <li style="--tc:${t.color}" title="${esc(t.name)}${t.leader ? ` (${esc(t.leader)})` : ''}">
       <span class="abbr">${esc(t.abbr)}</span>
-      ${Array.from({ length: 5 }, (_, k) => rosters[i][k]
+      ${Array.from({ length: size }, (_, k) => rosters[i][k]
         ? `<img src="${spriteUrl(rosters[i][k].dex)}" alt="${esc(rosters[i][k].name)}" title="${esc(rosters[i][k].name)} (${rosters[i][k].ovr})">`
         : '<i></i>').join('')}
     </li>`).join('');
-  return `<div class="board"><h4>League board</h4><ul>${rows}</ul></div>`;
+  return `<div class="board ${size > 5 ? 'many' : ''}" style="--slots:${size}"><h4>League board</h4><ul>${rows}</ul></div>`;
 }
 
 /** Everything needed to resume a draft: who is in it, the round-one order, and every pick so far (dex numbers). */
@@ -95,19 +101,21 @@ export interface DraftState {
   teams: DraftTeam[];
   order: number[];
   taken: number[];
+  /** Picks per team: 5 in Quick Play, 10 in franchise (older saved drafts have none and used 5). */
+  rounds?: number;
 }
 
 /** Positions a roster doesn't have yet, in PG..C order. */
 const needs = (roster: Mon[]) => POSITIONS.filter((p) => !roster.some((m) => m.pos === p));
 
-function teamBarHtml(roster: Mon[]): string {
+function teamBarHtml(roster: Mon[], size: number): string {
   const need = needs(roster);
   return `
-    <span class="tbar-lbl">My team <b>${roster.length}/5</b></span>
-    <span class="tbar-slots">${Array.from({ length: 5 }, (_, i) => roster[i]
+    <span class="tbar-lbl">My team <b>${roster.length}/${size}</b></span>
+    <span class="tbar-slots ${size > 5 ? 'many' : ''}">${Array.from({ length: size }, (_, i) => roster[i]
       ? `<img src="${spriteUrl(roster[i].dex)}" alt="${esc(roster[i].name)}">`
       : '<i></i>').join('')}</span>
-    <span class="tbar-need">${roster.length ? `${teamOvr(roster)} OVR` : ''}${need.length && roster.length < 5 ? ` · Need ${need.join(' ')}` : ''}</span>`;
+    <span class="tbar-need">${roster.length ? `${startersOvr(roster)} OVR` : ''}${need.length && roster.length < size ? ` · Need ${need.join(' ')}` : ''}</span>`;
 }
 
 /**
@@ -132,7 +140,8 @@ export function draftScreen(
   const pool = [...POKEMON].sort((a, b) => b.ovr - a.ovr);
   const rosters: Mon[][] = teams.map(() => []);
   const picks: number[] = [];
-  for (let r = 0; r < 5; r++) picks.push(...(r % 2 ? [...order].reverse() : order));
+  const size = state.rounds ?? 5;
+  for (let r = 0; r < size; r++) picks.push(...(r % 2 ? [...order].reverse() : order));
   const me = teams.findIndex((t) => t.human);
   let pick = 0;
   let filter: Pos | 'ALL' = 'ALL';
@@ -197,16 +206,16 @@ export function draftScreen(
     otc.classList.toggle('you', userTurn());
     const shown = pool.filter((m) => (filter === 'ALL' || m.pos === filter) && (!typeFilter || m.types.includes(typeFilter as PokeType)));
     grid.innerHTML = shown.map((m) => monCard(m, selected === m ? 'sel' : '')).join('');
-    $('.rosters').innerHTML = rosterHtml(teams[me], rosters[me]) + boardHtml(teams, rosters);
+    $('.rosters').innerHTML = rosterHtml(teams[me], rosters[me], size) + boardHtml(teams, rosters, size);
     $('.log').innerHTML = log.slice(-6).reverse().map((l) => `<li>${esc(l)}</li>`).join('');
-    $('.tbar').innerHTML = teamBarHtml(rosters[me]);
+    $('.tbar').innerHTML = teamBarHtml(rosters[me], size);
     const sheet = $('.team-sheet');
     sheet.hidden = !teamOpen;
     if (teamOpen) {
       const need = needs(rosters[me]);
-      $('.team-sheet-body').innerHTML = rosterHtml(teams[me], rosters[me])
-        + `<p class="note">${rosters[me].length >= 5 ? 'Your starting five is set.' : need.length ? `Still open: ${need.join(', ')}. Cover all five positions for the +2 lineup bonus.` : 'All five positions covered.'}</p>`
-        + boardHtml(teams, rosters);
+      $('.team-sheet-body').innerHTML = rosterHtml(teams[me], rosters[me], size)
+        + `<p class="note">${need.length ? `Still open: ${need.join(', ')}. Cover all five positions in your starting five for the +2 lineup bonus.` : 'All five positions covered.'}${size > 5 ? ' Picks 6-10 are your bench: they spell tired starters and grow with minutes.' : ''}</p>`
+        + boardHtml(teams, rosters, size);
     }
     if (selected) {
       detail.hidden = false;

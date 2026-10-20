@@ -84,7 +84,7 @@ export function playGame(
   const onVis = () => { if (document.hidden && g.phase !== 'final') setPaused(true); };
   document.addEventListener('visibilitychange', onVis);
 
-  void preload([...cfg.home.roster, ...cfg.away.roster]).then(() => {
+  void preload([...cfg.home.roster, ...cfg.away.roster, ...(cfg.home.bench ?? []), ...(cfg.away.bench ?? [])]).then(() => {
     ready = true;
     loading.remove();
     audio.startCrowd();

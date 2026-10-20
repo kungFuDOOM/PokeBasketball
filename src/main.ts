@@ -11,9 +11,10 @@ import { draftScreen, type DraftState } from './screens/draft';
 import { hubScreen } from './screens/hub';
 import { menuScreen, type Settings } from './screens/menu';
 import { playGame } from './screens/play';
+import { quickPlay } from './screens/quick';
 import { resultsScreen } from './screens/results';
 import { badgeSvg } from './ui/badges';
-import { esc } from './util';
+import { abbr, esc, shuffle } from './util';
 
 const app = document.querySelector<HTMLElement>('#app')!;
 const audio = new Audio();
@@ -34,14 +35,6 @@ let franchise: Franchise | null = loadFranchise();
 window.addEventListener('pointerdown', () => audio.unlock(), { passive: true });
 window.addEventListener('keydown', () => audio.unlock(), { passive: true });
 
-const abbr = (name: string) => (name.replace(/[^a-z0-9]/gi, '').slice(0, 3) || 'YOU').toUpperCase();
-const shuffle = <T,>(a: T[]) => {
-  for (let i = a.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [a[i], a[j]] = [a[j], a[i]];
-  }
-  return a;
-};
 
 function overlay(text: string): () => void {
   const el = document.createElement('div');
@@ -59,7 +52,8 @@ function draftSummary(d: DraftState): string {
     const order = round % 2 ? [...d.order].reverse() : d.order;
     return order[i % d.order.length] === me;
   }).length;
-  return `${d.teams[me].name} · Pick ${n + 1} of ${d.order.length * 5} · ${mine}/5 drafted`;
+  const rounds = d.rounds ?? 5;
+  return `${d.teams[me].name} · Pick ${n + 1} of ${d.order.length * rounds} · ${mine}/${rounds} drafted`;
 }
 
 function menu() {
@@ -80,6 +74,11 @@ function menu() {
       const status = app.querySelector('.foot-status');
       if (status) status.textContent = 'All saved data on this device was deleted.';
     },
+    onQuick: () => {
+      audio.unlock();
+      app.className = 'screen-quick';
+      quickPlay(app, settings, audio, { menu, saved: save });
+    },
     onResumeDraft: () => {
       const saved = loadDraft();
       if (saved) draft(saved);
@@ -92,7 +91,7 @@ function menu() {
         { name, abbr: abbr(name), ...USER_STYLE, human: true },
         ...LEAGUE.map((t) => ({ ...t, human: false })),
       ];
-      draft({ teams, order: shuffle(teams.map((_, i) => i)), taken: [] });
+      draft({ teams, order: shuffle(teams.map((_, i) => i)), taken: [], rounds: 10 });
     },
   });
 }

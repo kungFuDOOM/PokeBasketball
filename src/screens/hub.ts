@@ -1,9 +1,10 @@
 import { POSITIONS, monByDex, spriteUrl } from '../data/pokemon';
 import {
-  badgesEarned, canSign, finalWeek, venueOf, monOf, perGame, sign, standings, teamOvrOf, userGame, weekGames, weekLabel,
+  badgesEarned, canSign, finalWeek, lineupOf, venueOf, monOf, perGame, sign, standings, teamOvrOf, userGame, weekGames, weekLabel,
   xpToNext, type FGame, type FTeam, type Franchise,
 } from '../franchise/league';
 import { badgeSvg } from '../ui/badges';
+import { staminaOf } from '../game/game';
 import { esc, tier } from '../util';
 import { bindSettings, settingsHtml, type Settings } from './menu';
 import { typeChips } from './draft';
@@ -29,8 +30,9 @@ const fmt = (v: number) => v.toFixed(1);
 const byPos = (f: Franchise, roster: string[]) =>
   [...roster].sort((a, b) => POSITIONS.indexOf(monOf(f, a).pos) - POSITIONS.indexOf(monOf(f, b).pos));
 
+/** A team's starting five, PG to C. */
 function lineup(f: Franchise, t: FTeam): string {
-  return `<ul class="lineup">${byPos(f, t.roster).map((u) => {
+  return `<ul class="lineup">${byPos(f, lineupOf(f, t).starters).map((u) => {
     const m = monOf(f, u);
     return `<li title="${esc(m.name)}"><img src="${spriteUrl(m.dex)}" alt=""><span>${m.pos}</span><b class="t-${tier(m.ovr)}">${m.ovr}</b></li>`;
   }).join('')}</ul>`;
@@ -137,29 +139,36 @@ function standingsHtml(f: Franchise): string {
 function rosterHtml(f: Franchise): string {
   const me = f.teams[0];
   const open = canSign(f);
-  const rows = byPos(f, me.roster).map((u) => {
+  const { starters, bench } = lineupOf(f, me);
+  const row = (u: string) => {
     const p = f.players[u];
     const m = monOf(f, u);
     const pg = perGame(p.stats);
+    const mpg = p.stats.gp ? `${((p.stats.sec ?? 0) / 60 / p.stats.gp).toFixed(1)}` : '–';
     return `
       <tr>
         <th><div><img src="${spriteUrl(m.dex)}" alt=""><span>${esc(m.name)}<small>${m.pos} · ${m.archetype}</small></span></div></th>
         <td class="lv">Lv ${p.level}<i style="--v:${(p.xp / xpToNext(p.level)) * 100}%"></i></td>
         <td><b class="t-${tier(m.ovr)}">${m.ovr}</b></td>
+        ${bench.length ? `<td class="opt">${staminaOf(m)}</td><td>${mpg}</td>` : ''}
         <td>${p.stats.gp ? fmt(pg.ppg) : '–'}</td><td class="opt">${p.stats.gp ? fmt(pg.rpg) : '–'}</td><td class="opt">${p.stats.gp ? fmt(pg.apg) : '–'}</td>
         <td>${open ? `<button class="btn small ghost" data-swap="${u}">Swap</button>` : ''}</td>
       </tr>`;
-  }).join('');
+  };
+  const cols = bench.length ? 10 : 8;
+  const rows = bench.length
+    ? `<tr class="grp"><th colspan="${cols}">Starters</th></tr>${byPos(f, starters).map(row).join('')}<tr class="grp"><th colspan="${cols}">Bench</th></tr>${bench.map(row).join('')}`
+    : byPos(f, starters).map(row).join('');
   return `
     <section class="card">
       <h3 class="sec">${esc(me.name)} roster</h3>
       <div class="tbl-scroll">
         <table class="tbl roster-tbl">
-          <thead><tr><th>Pokémon</th><th>Level</th><th>OVR</th><th>PPG</th><th class="opt">RPG</th><th class="opt">APG</th><th></th></tr></thead>
+          <thead><tr><th>Pokémon</th><th>Level</th><th>OVR</th>${bench.length ? '<th class="opt" title="Stamina">STA</th><th>MPG</th>' : ''}<th>PPG</th><th class="opt">RPG</th><th class="opt">APG</th><th></th></tr></thead>
           <tbody>${rows}</tbody>
         </table>
       </div>
-      <p class="note">${open ? 'You can swap one player for a free agent this week.' : f.phase === 'done' ? 'Free agency reopens next season.' : "You've used this week's free-agent signing."} Pokémon earn XP every game; some evolve when they level up.</p>
+      <p class="note">${open ? 'You can swap one player for a free agent this week.' : f.phase === 'done' ? 'Free agency reopens next season.' : "You've used this week's free-agent signing."} ${bench.length ? 'The coach starts the best five that cover every position and subs tired players at dead balls. ' : ''}Pokémon earn XP every game, more with more minutes; some evolve when they level up.</p>
     </section>`;
 }
 

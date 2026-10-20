@@ -70,9 +70,10 @@ export interface TitleOptions {
   /** Erases every save and setting this game keeps in the browser. */
   onDeleteData: () => void;
   onNew: () => void;
+  onQuick: () => void;
 }
 
-/** Title screen: continue the saved franchise, or name a team and start a new one with the draft. */
+/** Title screen: name your team, then Quick Play or Franchise (continue, resume a draft, or start over). */
 export function menuScreen(root: HTMLElement, settings: Settings, onChange: () => void, opts: TitleOptions) {
   const parade = [...POKEMON].sort(() => Math.random() - 0.5).slice(0, 14);
   root.innerHTML = `
@@ -82,10 +83,20 @@ export function menuScreen(root: HTMLElement, settings: Settings, onChange: () =
       </div>
       <header class="title">
         <h1 class="logo"><span class="logo-poke">POKé</span><span class="logo-jam">JAM</span></h1>
-        <p class="tag">Draft five Pokémon. Run the floor. Full-court 5-on-5 arcade hoops.</p>
+        <p class="tag">Draft your Pokémon. Run the floor. Full-court 5-on-5 arcade hoops.</p>
       </header>
       <div class="menu-grid">
         <section class="card setup">
+          <label class="field" for="team-name">Your team
+            <input id="team-name" maxlength="20" autocomplete="off" value="${esc(settings.teamName)}">
+          </label>
+          <div class="mode">
+            <h2>Quick Play</h2>
+            <p class="setup-note">Pick any Gym Leader or the Elite Four, draft five Pokémon against them and play on any court. Pure arcade.</p>
+            <div class="actions"><button class="btn primary big" data-go="quick">Quick Play</button></div>
+          </div>
+          <div class="mode">
+            <h2>Franchise</h2>
           ${opts.draft ? `
             <div class="continue">
               <span class="lbl">Draft in progress</span>
@@ -98,12 +109,10 @@ export function menuScreen(root: HTMLElement, settings: Settings, onChange: () =
               <strong>${esc(opts.saved)}</strong>
               <button class="btn ${opts.draft ? '' : 'primary big'}" data-go="continue">Continue franchise</button>
             </div>` : ''}
-          <label class="field" for="team-name">${opts.saved || opts.draft ? 'Or start over with a new team' : 'Name your team'}
-            <input id="team-name" maxlength="20" autocomplete="off" value="${esc(settings.teamName)}">
-          </label>
-          <p class="setup-note">Start a franchise: draft five Pokémon against the eight Kanto Gym Leaders and the Elite Four, then play a 9-week season and the playoffs. Beat a gym to earn its badge. Your Pokémon level up, evolve and carry over to the next season.</p>
-          <div class="actions">
-            <button class="btn ${opts.saved || opts.draft ? '' : 'primary big'}" data-go="new">${opts.saved || opts.draft ? 'New franchise' : 'Draft your team'}</button>
+            <p class="setup-note">Draft ten Pokémon against the eight Kanto Gym Leaders and the Elite Four, then play a 9-week season and the playoffs. Starters tire and the bench steps in. Earn badges, level up and evolve, season after season.</p>
+            <div class="actions">
+              <button class="btn" data-go="new">${opts.saved || opts.draft ? 'New franchise' : 'Start a franchise'}</button>
+            </div>
           </div>
         </section>
         <section class="card">${controlsHtml()}</section>
@@ -132,7 +141,7 @@ export function menuScreen(root: HTMLElement, settings: Settings, onChange: () =
     startNew.textContent = opts.saved ? 'Tap again to replace your franchise' : 'Tap again to restart the draft';
     startNew.classList.add('warn');
   };
-  name.addEventListener('keydown', (e) => { if (e.key === 'Enter') tryNew(); });
+  root.querySelector('[data-go="quick"]')!.addEventListener('click', opts.onQuick);
   startNew.addEventListener('click', tryNew);
   root.querySelector('[data-go="continue"]')?.addEventListener('click', opts.onContinue);
   root.querySelector('[data-go="resume-draft"]')?.addEventListener('click', opts.onResumeDraft);
