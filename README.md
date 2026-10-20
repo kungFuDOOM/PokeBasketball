@@ -16,6 +16,8 @@ npm run build      # static site in dist/
 
 The game makes no requests to third parties: code, fonts (self-hosted, OFL), sprites and sound all come from the site's own host. There are no accounts, payments, analytics or cookies. Saves live in the browser's local storage under `pokejam.*` keys and can be erased with **Delete saved data** on the title screen. `public/privacy.html` is the privacy policy and terms page. Fill in its contact address before launch, and update the Hosting section if you host somewhere other than GitHub Pages. If you ever add analytics, accounts or payments, update that page first.
 
+The app icon is `public/icon.svg` (PNG sizes and `apple-touch-icon.png` are rendered from it), and `public/og.png` is the 1200×630 link-preview card. The link-preview tags in `index.html` use absolute URLs, so update them if the site moves to a custom domain.
+
 `npm run build:artifact` also writes `dist-artifact/`, the same game with every sprite inlined as a data URI, for hosts that block third-party images.
 
 ## How it plays
