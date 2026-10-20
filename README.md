@@ -69,6 +69,17 @@ Adding a Pokémon is one row in `ROWS` in `src/data/pokemon.ts`. OVR, archetype,
 
 Add `?speed=4` to the URL to run the simulation faster when testing.
 
+## Trailer
+
+`trailer.html` + `src/trailer/trailer.ts` build an NBA Jam-style trailer from the real engine. Seeded CPU-vs-CPU games are scanned for highlights (alley-oops, spin dunks, blocks, players catching fire). The best ones are replayed frame by frame with slow-motion punch-ins and callouts, between title cards for the draft, type matchups, evolution and franchise mode.
+
+```sh
+npm run dev   # then open /trailer.html?play for a real-time preview (no sound)
+NODE_PATH=$(npm root -g) node scripts/render-trailer.mjs   # writes trailer-out/poke-jam-trailer.mp4
+```
+
+Rendering needs Playwright with Chromium, ffmpeg (libx264 + aac) and python3 with numpy. `scripts/trailer-audio.py` composes the 120 BPM chiptune and places sound effects on the cue times the engine reports.
+
 ---
 
 Fan-made and not affiliated with Nintendo, Game Freak or The Pokémon Company. Pokémon names and sprites belong to their owners.

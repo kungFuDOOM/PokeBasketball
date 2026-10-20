@@ -74,6 +74,17 @@ export class Renderer {
     return c;
   }
 
+  /** Where a court point lands on the 480×270 canvas. */
+  screenOf(x: number, y: number, z = 0): { x: number; y: number } {
+    const p = this.proj(x, y, z);
+    return { x: p.x, y: p.y };
+  }
+
+  /** Jumps the camera straight to the action instead of easing toward it. */
+  snap(g: Game) {
+    this.camX = clamp(g.focusX(), 21, COURT_L - 21);
+  }
+
   handle(events: GameEvent[], g: Game) {
     for (const e of events) {
       if (e.kind === 'score') {

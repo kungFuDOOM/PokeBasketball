@@ -2,7 +2,7 @@ import { spriteUrl, type PokeType } from '../data/pokemon';
 import type { Game } from './game';
 import type { GameEvent, Grade, Player } from './types';
 
-const DUNK_MOVES: Record<PokeType, string> = {
+export const DUNK_MOVES: Record<PokeType, string> = {
   Normal: 'BODY SLAM', Fire: 'FLARE BLITZ', Water: 'WATERFALL', Electric: 'THUNDER PUNCH',
   Grass: 'WOOD HAMMER', Ice: 'ICICLE CRASH', Fighting: 'SKY UPPERCUT', Poison: 'POISON JAB',
   Ground: 'HIGH HORSEPOWER', Flying: 'BRAVE BIRD', Psychic: 'ZEN HEADBUTT', Bug: 'MEGAHORN',
