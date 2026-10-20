@@ -10,7 +10,7 @@ npm run dev        # http://localhost:5173
 npm run build      # static site in dist/
 ```
 
-`dist/` is a plain static site (relative paths), so it can be hosted on GitHub Pages, Netlify or any file server. `npm run dev` and `npm run build` first download the sprites from [PokeAPI/sprites](https://github.com/PokeAPI/sprites) into `public/sprites/` (git-ignored), so the deployed site serves them itself.
+`dist/` is a plain static site (relative paths), so it can be hosted on GitHub Pages, Netlify or any file server. The live site is https://kungfudoom.github.io/PokeBasketball/: `.github/workflows/pages.yml` builds and deploys it on every push (one-time setup: repo Settings → Pages → Source: GitHub Actions). `npm run dev` and `npm run build` first download the sprites from [PokeAPI/sprites](https://github.com/PokeAPI/sprites) into `public/sprites/` (git-ignored), so the deployed site serves them itself.
 
 ## Privacy
 
