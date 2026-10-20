@@ -62,6 +62,8 @@ export interface FTeam {
   badge?: string;
   elite?: boolean;
   roster: string[];
+  /** The user's depth chart: five starters, then the bench in order. Missing means the coach decides. */
+  lineup?: string[];
   w: number;
   l: number;
   pf: number;
@@ -116,9 +118,30 @@ export const monOf = (f: Franchise, uid: string): Mon => {
 
 /** Uids of a team's starting five and bench, in the order the coach would use them. */
 export function lineupOf(f: Franchise, t: FTeam): { starters: string[]; bench: string[] } {
+  const custom = t.lineup;
+  if (custom && t.roster.length > 5 && custom.length === t.roster.length && t.roster.every((u) => custom.includes(u))) {
+    return { starters: custom.slice(0, 5), bench: custom.slice(5) };
+  }
   const byMon = new Map(t.roster.map((u) => [monOf(f, u), u]));
   const { starters, bench } = bestLineup([...byMon.keys()]);
   return { starters: starters.map((m) => byMon.get(m)!), bench: bench.map((m) => byMon.get(m)!) };
+}
+
+/** Swaps two players in the user's depth chart (starting from the coach's lineup the first time). */
+export function swapInLineup(f: Franchise, a: string, b: string) {
+  const t = f.teams[0];
+  const { starters, bench } = lineupOf(f, t);
+  const order = [...starters, ...bench];
+  const i = order.indexOf(a);
+  const j = order.indexOf(b);
+  if (i < 0 || j < 0) return;
+  [order[i], order[j]] = [order[j], order[i]];
+  t.lineup = order;
+}
+
+/** Hands the depth chart back to the coach. */
+export function resetLineup(f: Franchise) {
+  delete f.teams[0].lineup;
 }
 
 /** Rating of the starting five. */
@@ -293,7 +316,7 @@ export function venueOf(f: Franchise, teamId: number) {
 }
 
 /** Teams as seen by the engine: the user's team is always engine team 0 so the controls stay the same. */
-export function gameConfig(f: Franchise, game: FGame, humanPlays: boolean, quarterLen: number, difficulty: Difficulty) {
+export function gameConfig(f: Franchise, game: FGame, humanPlays: boolean, quarterLen: number, difficulty: Difficulty, autoSubs = true) {
   const userIn = game.home === 0 || game.away === 0;
   const sides: [number, number] = userIn ? [0, game.home === 0 ? game.away : game.home] : [game.home, game.away];
   const a = teamDef(f, sides[0], humanPlays && sides[0] === 0);
@@ -301,7 +324,7 @@ export function gameConfig(f: Franchise, game: FGame, humanPlays: boolean, quart
   // Two blues (you vs Misty) are hard to tell apart on the floor: give the second team a contrasting color.
   b.def = contrastAway(a.def, b.def);
   const uidOf = new Map([...a.uidOf, ...b.uidOf]);
-  return { cfg: { home: a.def, away: b.def, quarterLen, difficulty, court: venueOf(f, game.home), stamina: true }, sides, uidOf };
+  return { cfg: { home: a.def, away: b.def, quarterLen, difficulty, court: venueOf(f, game.home), stamina: true, userAutoSubs: autoSubs }, sides, uidOf };
 }
 
 /** Plays a CPU-controlled game with the real engine, yielding to the browser between slices. */
@@ -457,6 +480,7 @@ export function sign(f: Franchise, release: string, add: string) {
   const j = f.freeAgents.indexOf(add);
   if (i < 0 || j < 0 || !canSign(f)) return;
   team.roster[i] = add;
+  if (team.lineup) team.lineup = team.lineup.map((u) => (u === release ? add : u));
   f.freeAgents[j] = release;
   f.signedWeek = f.week;
   f.news.unshift(`${team.name} signed ${monOf(f, add).name} and released ${monOf(f, release).name}.`);

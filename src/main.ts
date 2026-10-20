@@ -145,8 +145,13 @@ async function finishWeek(f: Franchise) {
 function playUserGame(f: Franchise, g: FGame) {
   app.className = 'screen-game';
   audio.unlock();
-  const { cfg, sides, uidOf } = gameConfig(f, g, true, settings.quarterLen, settings.difficulty);
-  playGame(app, cfg, audio, (game) => afterUserGame(f, g, game, sides, uidOf, false), hub);
+  const { cfg, sides, uidOf } = gameConfig(f, g, true, settings.quarterLen, settings.difficulty, settings.autoSubs !== false);
+  playGame(app, cfg, audio, (game) => afterUserGame(f, g, game, sides, uidOf, false), hub, {
+    onAutoSubs: (on) => {
+      settings.autoSubs = on;
+      save();
+    },
+  });
 }
 
 async function simUserGame(f: Franchise, g: FGame) {

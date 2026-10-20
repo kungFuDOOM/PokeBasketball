@@ -1,6 +1,6 @@
 import { POSITIONS, monByDex, spriteUrl } from '../data/pokemon';
 import {
-  badgesEarned, canSign, finalWeek, lineupOf, venueOf, monOf, perGame, sign, standings, teamOvrOf, userGame, weekGames, weekLabel,
+  badgesEarned, canSign, finalWeek, lineupOf, resetLineup, swapInLineup, venueOf, monOf, perGame, sign, standings, teamOvrOf, userGame, weekGames, weekLabel,
   xpToNext, type FGame, type FTeam, type Franchise,
 } from '../franchise/league';
 import { badgeSvg } from '../ui/badges';
@@ -86,7 +86,7 @@ function nextCard(f: Franchise, settings: Settings): string {
     <section class="card next">
       <p class="eyebrow">${title}${g.round ? ' · win or go home' : ''} · ${esc(venueOf(f, g.home).venue)}</p>
       <div class="nx-cols">${side(home, 'Home')}<div class="vs">VS</div>${side(away, 'Away')}</div>
-      ${settingsHtml(settings)}
+      ${settingsHtml(settings, { subs: f.teams[0].roster.length > 5 })}
       <div class="actions center">
         <button class="btn primary big" data-a="play">Play game</button>
         <button class="btn" data-a="sim-mine">Sim game</button>
@@ -136,18 +136,23 @@ function standingsHtml(f: Franchise): string {
     </section>`;
 }
 
-function rosterHtml(f: Franchise): string {
+/** `editing`: rows become tappable to rearrange the depth chart; `picked` is the first tap. */
+function rosterHtml(f: Franchise, editing: boolean, picked: string | null): string {
   const me = f.teams[0];
-  const open = canSign(f);
+  const signable = canSign(f);
+  const open = signable && !editing;
   const { starters, bench } = lineupOf(f, me);
+  const ordinalOf = (i: number) => ['6th', '7th', '8th', '9th', '10th'][i] ?? `${i + 6}th`;
   const row = (u: string) => {
     const p = f.players[u];
     const m = monOf(f, u);
     const pg = perGame(p.stats);
     const mpg = p.stats.gp ? `${((p.stats.sec ?? 0) / 60 / p.stats.gp).toFixed(1)}` : '–';
+    const bi = bench.indexOf(u);
+    const tag = bi >= 0 ? `${ordinalOf(bi)} · ` : '';
     return `
-      <tr>
-        <th><div><img src="${spriteUrl(m.dex)}" alt=""><span>${esc(m.name)}<small>${m.pos} · ${m.archetype}</small></span></div></th>
+      <tr class="${editing ? 'pickable' : ''} ${picked === u ? 'picked' : ''}" ${editing ? `data-lu="${u}" tabindex="0"` : ''}>
+        <th><div><img src="${spriteUrl(m.dex)}" alt=""><span>${esc(m.name)}<small>${tag}${m.pos} · ${m.archetype}</small></span></div></th>
         <td class="lv">Lv ${p.level}<i style="--v:${(p.xp / xpToNext(p.level)) * 100}%"></i></td>
         <td><b class="t-${tier(m.ovr)}">${m.ovr}</b></td>
         ${bench.length ? `<td class="opt">${staminaOf(m)}</td><td>${mpg}</td>` : ''}
@@ -156,19 +161,29 @@ function rosterHtml(f: Franchise): string {
       </tr>`;
   };
   const cols = bench.length ? 10 : 8;
+  const covered = new Set(starters.map((u) => monOf(f, u).pos));
+  const missing = POSITIONS.filter((p) => !covered.has(p));
   const rows = bench.length
     ? `<tr class="grp"><th colspan="${cols}">Starters</th></tr>${byPos(f, starters).map(row).join('')}<tr class="grp"><th colspan="${cols}">Bench</th></tr>${bench.map(row).join('')}`
     : byPos(f, starters).map(row).join('');
   return `
     <section class="card">
-      <h3 class="sec">${esc(me.name)} roster</h3>
+      <div class="roster-head">
+        <h3 class="sec">${esc(me.name)} roster${bench.length ? ` <small>${me.lineup ? 'Your lineup' : "Coach's lineup"}</small>` : ''}</h3>
+        ${bench.length ? `<div class="head-actions">
+          ${editing ? '<button class="btn small primary" data-a="lineup-done">Done</button>' : '<button class="btn small" data-a="lineup-edit">Edit lineup</button>'}
+          ${me.lineup ? '<button class="btn small ghost" data-a="lineup-auto">Auto lineup</button>' : ''}
+        </div>` : ''}
+      </div>
+      ${editing ? `<p class="note lineup-help">${picked ? `Now tap who trades places with ${esc(monOf(f, picked).name)}.` : 'Tap two players to trade places: a starter and a bench player to change the starting five, or two bench players to change the order the coach uses them.'}</p>` : ''}
+      ${bench.length && missing.length ? `<p class="note warn-note">No ${missing.join(' or ')} in your starting five, so no +2 lineup bonus.</p>` : ''}
       <div class="tbl-scroll">
         <table class="tbl roster-tbl">
           <thead><tr><th>Pokémon</th><th>Level</th><th>OVR</th>${bench.length ? '<th class="opt" title="Stamina">STA</th><th>MPG</th>' : ''}<th>PPG</th><th class="opt">RPG</th><th class="opt">APG</th><th></th></tr></thead>
           <tbody>${rows}</tbody>
         </table>
       </div>
-      <p class="note">${open ? 'You can swap one player for a free agent this week.' : f.phase === 'done' ? 'Free agency reopens next season.' : "You've used this week's free-agent signing."} ${bench.length ? 'The coach starts the best five that cover every position and subs tired players at dead balls. ' : ''}Pokémon earn XP every game, more with more minutes; some evolve when they level up.</p>
+      <p class="note">${signable ? 'You can swap one player for a free agent this week.' : f.phase === 'done' ? 'Free agency reopens next season.' : "You've used this week's free-agent signing."} ${bench.length ? (me.lineup ? 'Your lineup is set. ' : 'The coach starts the best five that cover every position. ') + 'With Subs on Auto, tired players come out at dead balls, 6th man first. ' : ''}Pokémon earn XP every game, more with more minutes; some evolve when they level up.</p>
     </section>`;
 }
 
@@ -227,6 +242,8 @@ export function hubScreen(root: HTMLElement, f: Franchise, settings: Settings, a
   root = document.createElement('div');
   host.replaceChildren(root);
   let swapping: string | null = null;
+  let editing = false;
+  let picked: string | null = null;
 
   const render = () => {
     const me = f.teams[0];
@@ -243,7 +260,7 @@ export function hubScreen(root: HTMLElement, f: Franchise, settings: Settings, a
         ${nextCard(f, settings)}
         ${badgeCaseHtml(f)}
         <div class="hub-grid">
-          <div class="col">${rosterHtml(f)}${scoresHtml(f)}</div>
+          <div class="col">${rosterHtml(f, editing, picked)}${scoresHtml(f)}</div>
           <div class="col">${standingsHtml(f)}${leadersHtml(f)}</div>
         </div>
         ${swapping ? freeAgentSheet(f, swapping) : ''}
@@ -251,10 +268,29 @@ export function hubScreen(root: HTMLElement, f: Franchise, settings: Settings, a
     if (root.querySelector('#difficulty')) bindSettings(root, settings, act.saved);
   };
 
+  // Lineup rows are keyboard-selectable too.
+  root.addEventListener('keydown', (e) => {
+    const row = (e.target as HTMLElement).closest<HTMLElement>('[data-lu]');
+    if (row && (e.key === 'Enter' || e.key === ' ')) {
+      e.preventDefault();
+      row.click();
+    }
+  });
   root.addEventListener('click', (e) => {
     const t = e.target as HTMLElement;
     const swap = t.closest<HTMLElement>('[data-swap]')?.dataset.swap;
     if (swap) { swapping = swap; render(); return; }
+    const lu = t.closest<HTMLElement>('[data-lu]')?.dataset.lu;
+    if (lu && editing) {
+      if (!picked || picked === lu) picked = picked === lu ? null : lu;
+      else {
+        swapInLineup(f, picked, lu);
+        picked = null;
+        act.saved();
+      }
+      render();
+      return;
+    }
     const add = t.closest<HTMLElement>('[data-sign]')?.dataset.sign;
     if (add && swapping) {
       sign(f, swapping, add);
@@ -266,6 +302,9 @@ export function hubScreen(root: HTMLElement, f: Franchise, settings: Settings, a
     if (t.classList.contains('sheet-bg')) { swapping = null; render(); return; }
     const a = t.closest<HTMLElement>('[data-a]')?.dataset.a;
     const g = userGame(f);
+    if (a === 'lineup-edit') { editing = true; picked = null; render(); return; }
+    if (a === 'lineup-done') { editing = false; picked = null; render(); return; }
+    if (a === 'lineup-auto') { resetLineup(f); editing = false; picked = null; act.saved(); render(); return; }
     if (a === 'close-fa') { swapping = null; render(); }
     else if (a === 'menu') act.menu();
     else if (a === 'play' && g) act.play(g);

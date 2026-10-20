@@ -6,6 +6,8 @@ export interface Settings {
   difficulty: Difficulty;
   quarterLen: number;
   teamName: string;
+  /** Franchise: let the coach rotate your team (default) or sub yourself. */
+  autoSubs?: boolean;
 }
 
 export function controlsHtml(): string {
@@ -27,7 +29,7 @@ export function controlsHtml(): string {
 }
 
 /** Difficulty and quarter-length pickers, shown on the matchup screen after the draft. */
-export function settingsHtml(settings: Settings): string {
+export function settingsHtml(settings: Settings, opts: { subs?: boolean } = {}): string {
   return `
     <div class="game-settings">
       <div class="field">Difficulty
@@ -42,12 +44,20 @@ export function settingsHtml(settings: Settings): string {
             `<button data-v="${s}" class="${s === settings.quarterLen ? 'on' : ''}">${s / 60} min</button>`).join('')}
         </div>
       </div>
+      ${opts.subs ? `
+      <div class="field">Substitutions
+        <div class="seg" id="subs">
+          <button data-v="auto" class="${settings.autoSubs !== false ? 'on' : ''}">Auto</button>
+          <button data-v="manual" class="${settings.autoSubs === false ? 'on' : ''}">Manual</button>
+        </div>
+      </div>` : ''}
     </div>`;
 }
 
 export function bindSettings(root: HTMLElement, settings: Settings, onChange: () => void) {
   const seg = (id: string, apply: (v: string) => void) => {
-    const el = root.querySelector<HTMLElement>(id)!;
+    const el = root.querySelector<HTMLElement>(id);
+    if (!el) return;
     el.addEventListener('click', (e) => {
       const b = (e.target as HTMLElement).closest<HTMLButtonElement>('button');
       if (!b) return;
@@ -58,6 +68,7 @@ export function bindSettings(root: HTMLElement, settings: Settings, onChange: ()
   };
   seg('#difficulty', (v) => (settings.difficulty = v as Difficulty));
   seg('#qlen', (v) => (settings.quarterLen = Number(v)));
+  seg('#subs', (v) => (settings.autoSubs = v === 'auto'));
 }
 
 export interface TitleOptions {

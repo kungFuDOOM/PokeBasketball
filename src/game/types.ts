@@ -69,6 +69,8 @@ export interface GameConfig {
   court?: CourtStyle;
   /** Franchise rule: players tire, play worse when tired, and get subbed. Off in Quick Play. */
   stamina?: boolean;
+  /** false: the coach never subs the human team; the user does it from the pause menu. */
+  userAutoSubs?: boolean;
 }
 
 export interface Intent {
@@ -156,6 +158,8 @@ export interface Player {
   /** 40-99: how slowly energy drains. */
   stamina: number;
   starter: boolean;
+  /** Depth chart position: 0-4 starters, 5+ bench in the order the coach should use them. */
+  rotation: number;
 }
 
 export type BallMode = 'held' | 'pass' | 'shot' | 'loose' | 'net';
@@ -210,6 +214,7 @@ export type GameEvent =
   | { kind: 'fire'; player: Player; on: boolean }
   | { kind: 'oop'; player: Player }
   | { kind: 'sub'; out: Player; in: Player }
+  | { kind: 'subQueued'; out: Player; in: Player }
   | { kind: 'shotclock'; team: TeamId }
   | { kind: 'quarter'; label: string; sub: string }
   | { kind: 'final' };

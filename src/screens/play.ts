@@ -4,7 +4,9 @@ import { Hud } from '../game/hud';
 import { Input } from '../game/input';
 import { Renderer } from '../game/render';
 import { preload } from '../game/sprites';
-import type { GameConfig } from '../game/types';
+import type { GameConfig, Player } from '../game/types';
+import { spriteUrl } from '../data/pokemon';
+import { esc } from '../util';
 import { controlsHtml } from './menu';
 
 const STEP = 1 / 60;
@@ -21,6 +23,7 @@ export function playGame(
   audio: Audio,
   onFinal: (g: Game) => void,
   onQuit: () => void,
+  opts: { onAutoSubs?: (on: boolean) => void } = {},
 ): PlayHandle {
   root.innerHTML = `
     <div class="game">
@@ -34,6 +37,7 @@ export function playGame(
             <button class="btn" data-a="mute"></button>
             <button class="btn ghost" data-a="quit">Quit to menu</button>
           </div>
+          <div class="subs-panel" hidden></div>
           ${controlsHtml()}
         </div>
       </div>
@@ -65,10 +69,70 @@ export function playGame(
 
   const setMuteLabel = () => (muteBtn.textContent = audio.muted ? 'Sound: off' : 'Sound: on');
   setMuteLabel();
+  // ---- substitutions (franchise games with a bench) ----
+  const subsPanel = pauseMenu.querySelector<HTMLElement>('.subs-panel')!;
+  const hasBench = !!cfg.stamina && cfg.home.human && (cfg.home.bench?.length ?? 0) > 0;
+  let picked: Player | null = null;
+  const renderSubs = () => {
+    if (!hasBench) return;
+    subsPanel.hidden = false;
+    const pendingFor = (p: Player) => g.pendingSubs.find((s) => s.out === p || s.in === p);
+    const row = (p: Player) => {
+      const pend = pendingFor(p);
+      const note = pend ? `<em>${pend.out === p ? 'out' : 'in'} at next dead ball</em>` : '';
+      return `<li><button class="sub-row ${picked === p ? 'sel' : ''} ${pend ? 'pend' : ''}" data-pid="${p.id}">
+        <img src="${spriteUrl(p.mon.dex)}" alt="">
+        <span class="nm">${esc(p.mon.name)}<small>${p.mon.pos} · ${p.mon.ovr} · STA ${p.stamina}</small>${note}</span>
+        <i class="en ${p.energy < 0.5 ? 'low' : ''}" style="--v:${Math.round(p.energy * 100)}%" title="Energy ${Math.round(p.energy * 100)}%"></i>
+      </button></li>`;
+    };
+    const auto = g.cfg.userAutoSubs !== false;
+    subsPanel.innerHTML = `
+      <div class="subs-head">
+        <h3>Substitutions</h3>
+        <button class="btn small" data-a="autosubs">${auto ? 'Auto subs: on' : 'Auto subs: off'}</button>
+      </div>
+      <p class="note">${picked ? `Now pick who ${g.players.includes(picked) ? 'comes in for' : 'goes out for'} ${esc(picked.mon.name)}.` : 'Tap a player on the floor, then a bench player. Subs check in at the next dead ball.'}${auto ? ' The coach also rotates for you; turn auto subs off to run it yourself.' : ''}</p>
+      <div class="subs-cols">
+        <div><h4>On the floor</h4><ul>${g.teamPlayers(0).sort((a, b) => a.slot - b.slot).map(row).join('')}</ul></div>
+        <div><h4>Bench</h4><ul>${g.bench.filter((p) => p.team === 0).sort((a, b) => a.rotation - b.rotation).map(row).join('')}</ul></div>
+      </div>`;
+  };
+  subsPanel.addEventListener('click', (e) => {
+    const t = e.target as HTMLElement;
+    if (t.closest('[data-a="autosubs"]')) {
+      g.cfg.userAutoSubs = g.cfg.userAutoSubs === false;
+      opts.onAutoSubs?.(g.cfg.userAutoSubs);
+      renderSubs();
+      return;
+    }
+    const id = Number(t.closest<HTMLElement>('[data-pid]')?.dataset.pid);
+    const p = [...g.players, ...g.bench].find((x) => x.id === id);
+    if (!p) return;
+    if (g.pendingSubs.some((s) => s.out === p || s.in === p)) {
+      g.cancelSub(p);
+      picked = null;
+    } else if (!picked || picked === p) {
+      picked = picked === p ? null : p;
+    } else {
+      const onFloor = g.players.includes(p);
+      if (onFloor === g.players.includes(picked)) picked = p;
+      else {
+        g.requestSub(onFloor ? p : picked, onFloor ? picked : p);
+        picked = null;
+      }
+    }
+    renderSubs();
+  });
+
   const setPaused = (p: boolean) => {
     g.paused = p;
     pauseMenu.hidden = !p;
     input.enabled = !p;
+    if (p) {
+      picked = null;
+      renderSubs();
+    }
   };
   root.querySelector('.pause-btn')!.addEventListener('click', () => setPaused(!g.paused));
   pauseMenu.addEventListener('click', (e) => {

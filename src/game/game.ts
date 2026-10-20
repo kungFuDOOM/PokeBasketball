@@ -73,6 +73,7 @@ function makePlayer(id: number, team: TeamId, slot: number, mon: Mon, boost: num
     energy: 1,
     stamina: staminaOf(mon),
     starter: slot >= 0,
+    rotation: slot,
   };
 }
 
@@ -84,6 +85,8 @@ export class Game {
   players: Player[] = [];
   /** Franchise reserves, not on the floor. */
   bench: Player[] = [];
+  /** Subs the user asked for; they check in at the next dead ball. */
+  pendingSubs: { out: Player; in: Player }[] = [];
   ball: Ball;
   score: [number, number] = [0, 0];
   offense: TeamId = 0;
@@ -115,7 +118,11 @@ export class Game {
       const cpuBoost = !def.human && cfg.home.human ? this.diff.cpuBoost : 0;
       const boost = chemistry(def.roster) + cpuBoost + (def.boost ?? 0);
       roster.forEach((mon, slot) => this.players.push(makePlayer(id++, t, slot, mon, boost)));
-      for (const mon of def.bench ?? []) this.bench.push(makePlayer(id++, t, -1, mon, boost));
+      (def.bench ?? []).forEach((mon, i) => {
+        const p = makePlayer(id++, t, -1, mon, boost);
+        p.rotation = 5 + i;
+        this.bench.push(p);
+      });
     }
     this.clock = cfg.quarterLen;
     this.firstPossession = Math.random() < 0.5 ? 0 : 1;
@@ -188,6 +195,7 @@ export class Game {
     if (this.cfg.stamina && q > 1) {
       const rest = q === 3 ? 0.3 : 0.15;
       for (const p of [...this.players, ...this.bench]) p.energy = Math.min(1, p.energy + rest);
+      this.applyPendingSubs();
       this.autoSubs(0, true);
       this.autoSubs(1, true);
     }
@@ -349,6 +357,7 @@ export class Game {
   }
 
   private inbound() {
+    this.applyPendingSubs();
     this.autoSubs(0, false);
     this.autoSubs(1, false);
     const b = this.ball;
@@ -386,6 +395,7 @@ export class Game {
    */
   private autoSubs(t: TeamId, quarterBreak: boolean) {
     if (!this.cfg.stamina) return;
+    if (t === 0 && this.teams[0].human && this.cfg.userAutoSubs === false) return;
     const bench = () => this.bench.filter((p) => p.team === t);
     if (!bench().length) return;
     const onCourt = this.teamPlayers(t).sort((a, b) => a.energy - b.energy);
@@ -399,7 +409,8 @@ export class Game {
       for (const c of bench()) {
         const restedStarter = c.starter && !out.starter && c.energy >= 0.85;
         if (c.energy < 0.7 || !(tired || restedStarter)) continue;
-        const s = c.mon.ovr + (c.mon.pos === out.mon.pos ? 6 : 0) + c.energy * 10 + (restedStarter ? 8 : 0);
+        // Bench order matters: the coach goes to the 6th man before the 10th.
+        const s = c.mon.ovr + (c.mon.pos === out.mon.pos ? 6 : 0) + c.energy * 10 + (restedStarter ? 8 : 0) - (c.rotation - 5) * 4;
         if (s > bs) { bs = s; best = c; }
       }
       if (best) {
@@ -409,7 +420,32 @@ export class Game {
     }
   }
 
+  /**
+   * A sub the user called from the pause menu. It happens right away during a stoppage,
+   * otherwise at the next dead ball. Returns false if the pair isn't valid.
+   */
+  requestSub(out: Player, sub: Player): boolean {
+    if (out.team !== sub.team || !this.players.includes(out) || !this.bench.includes(sub)) return false;
+    this.pendingSubs = this.pendingSubs.filter((s) => s.out !== out && s.in !== sub);
+    this.pendingSubs.push({ out, in: sub });
+    if (this.phase === 'dead' || this.phase === 'break' || this.phase === 'tip') this.applyPendingSubs();
+    else this.events.push({ kind: 'subQueued', out, in: sub });
+    return true;
+  }
+
+  cancelSub(p: Player) {
+    this.pendingSubs = this.pendingSubs.filter((s) => s.out !== p && s.in !== p);
+  }
+
+  private applyPendingSubs() {
+    for (const s of this.pendingSubs) {
+      if (this.players.includes(s.out) && this.bench.includes(s.in)) this.swap(s.out, s.in);
+    }
+    this.pendingSubs = [];
+  }
+
   private swap(out: Player, sub: Player) {
+    if (this.ball.owner === out) this.ball.owner = sub;
     sub.slot = out.slot;
     sub.x = out.x; sub.y = out.y; sub.z = 0;
     sub.vx = 0; sub.vy = 0; sub.vz = 0;
