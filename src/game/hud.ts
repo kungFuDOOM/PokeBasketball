@@ -69,7 +69,9 @@ export class Hud {
     if (!g.isHumanTeam(0)) this.q('pcard').hidden = true;
     else {
       const starter = g.players.find((p) => p.team === 0 && p.slot === 0)!;
-      this.say(a.coach ? `${a.coach.toUpperCase()} wants to ball!` : `Wild ${a.name.toUpperCase()} appeared!`, `Go! ${NAME(starter)} and crew!`, 'Hold SHOOT, release on green.');
+      const jumper = g.tipoff?.jumpers[0];
+      this.say(a.coach ? `${a.coach.toUpperCase()} wants to ball!` : `Wild ${a.name.toUpperCase()} appeared!`,
+        jumper ? `Go! ${NAME(jumper)}! Hit SHOOT when the toss peaks!` : `Go! ${NAME(starter)} and crew!`);
     }
   }
 
@@ -168,6 +170,9 @@ export class Hud {
           break;
         case 'quarter':
           this.banner(e.label, e.sub, 2.2);
+          break;
+        case 'jumpball':
+          this.say(`${NAME(e.winner)} wins the tip over ${NAME(e.loser)}!`, `${this.g.teams[e.winner.team].abbr} ball.`);
           break;
         case 'final':
           this.banner('FINAL', `${this.g.teams[0].abbr} ${this.g.score[0]} - ${this.g.score[1]} ${this.g.teams[1].abbr}`, 3);

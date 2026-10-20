@@ -225,6 +225,7 @@ export type GameEvent =
   | { kind: 'subQueued'; out: Player; in: Player }
   | { kind: 'injury'; player: Player; weeks: number }
   | { kind: 'shotclock'; team: TeamId }
+  | { kind: 'jumpball'; winner: Player; loser: Player }
   | { kind: 'quarter'; label: string; sub: string }
   | { kind: 'final' };
 

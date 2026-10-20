@@ -173,6 +173,7 @@ export class Renderer {
 
     this.updateParticles(ctx, g, dt);
     this.drawMeter(ctx, g, dt);
+    this.drawJumpMeter(ctx, g, dt);
     this.drawUserMarker(ctx, g);
     ctx.restore();
 
@@ -562,6 +563,51 @@ export class Renderer {
     const inGreen = m.v >= lo && m.v <= hi;
     ctx.fillStyle = inGreen ? '#ffffff' : '#ffcb05';
     ctx.fillRect(x - 1, Math.round(y + h - Math.min(1, v) * h), 7, 2);
+    ctx.globalAlpha = 1;
+  }
+
+  private jumpGhost = { v: 0, w: 0, t: 0 };
+
+  /** Tip-off timing meter over the user's jumper: fill to the green band (the ball's peak) and jump. */
+  private drawJumpMeter(ctx: CanvasRenderingContext2D, g: Game, dt: number) {
+    const j = g.tipoff;
+    const m = this.jumpGhost;
+    const p = j?.jumpers[0];
+    if (j && p?.human && j.t >= -0.4) {
+      m.v = j.at[0] ?? g.jumpMeter();
+      m.w = j.window;
+      m.t = j.at[0] === null ? 0.7 : m.t - dt;
+    } else m.t -= dt;
+    if (m.t <= 0) return;
+    const top = 1.5;
+    const who = j?.jumpers[0] ?? g.user;
+    if (!who) return;
+    const at = this.proj(who.x, who.y, who.z + spriteFt(who));
+    const x = Math.round(at.x - 18);
+    const h = 36;
+    const y = Math.round(at.y - 10);
+    ctx.globalAlpha = clamp(m.t * 3, 0, 1);
+    ctx.fillStyle = '#05060f';
+    ctx.fillRect(x - 1, y - 1, 8, h + 2);
+    ctx.fillStyle = '#2f3560';
+    ctx.fillRect(x, y, 6, h);
+    const lo = (1 - m.w) / top;
+    const hi = (1 + m.w) / top;
+    ctx.fillStyle = '#21d07a';
+    ctx.fillRect(x, Math.round(y + h - hi * h), 6, Math.max(2, Math.round((hi - lo) * h)));
+    const v = clamp(m.v / top, 0, 1);
+    const inGreen = m.v >= 1 - m.w && m.v <= 1 + m.w;
+    ctx.fillStyle = inGreen ? '#ffffff' : '#ffcb05';
+    ctx.fillRect(x - 1, Math.round(y + h - v * h) - 1, 8, 2);
+    if (j && j.at[0] === null) {
+      ctx.font = '6px "Press Start 2P", monospace';
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#05060f';
+      ctx.fillText(j.t < 0 ? 'JUMP BALL' : 'JUMP AT THE TOP!', Math.round(at.x) + 1, y - 5);
+      ctx.fillStyle = j.t < 0 ? '#ffffff' : '#ffcb05';
+      ctx.fillText(j.t < 0 ? 'JUMP BALL' : 'JUMP AT THE TOP!', Math.round(at.x), y - 6);
+      ctx.textAlign = 'start';
+    }
     ctx.globalAlpha = 1;
   }
 

@@ -12,6 +12,30 @@ export const IDEAL_RELEASE = 0.8;
 const METER_TIME = 0.62;
 
 export type Phase = 'tip' | 'live' | 'dead' | 'break' | 'final';
+
+/** Seconds from the toss until the ball peaks: the ideal moment to jump. */
+export const JUMP_TOP = 1.0;
+/** Seconds of setup before the toss, while the quarter banner shows. */
+const JUMP_PRE = 1.3;
+
+/**
+ * Opening tip (and overtime): the ref tosses the ball, each center times a jump. Timing is a meter that
+ * fills as the ball rises (1.0 = the peak); the better jump, plus leaping ability, wins the tip.
+ */
+export interface JumpBall {
+  /** Time since the toss; negative during setup. */
+  t: number;
+  jumpers: [Player, Player];
+  /** Meter value each side jumped at (null until they jump). */
+  at: [number | null, number | null];
+  /** When each CPU side will jump (meter value). */
+  plan: [number, number];
+  /** Green window half-width for the user. */
+  window: number;
+  /** After the tip: who gets it, and how far along its flight the ball is. */
+  to: Player | null;
+  fly: number;
+}
 export type Sfx = 'dribble' | 'swish' | 'rim' | 'dunk' | 'buzzer' | 'block' | 'steal' | 'shove' | 'pass' | 'fire' | 'special' | 'catch' | 'bounce' | 'shot' | 'whistle';
 
 /** +2 to every rating when the five starters cover all five positions. */
@@ -95,6 +119,7 @@ export class Game {
   clock: number;
   shotClock = 24;
   phase: Phase = 'tip';
+  tipoff: JumpBall | null = null;
   phaseT = 0;
   time = 0;
   user: Player | null = null;
@@ -211,15 +236,128 @@ export class Game {
       p.facing = p.team === 0 ? 1 : -1;
       p.ai.jumpIn = -1; p.ai.plan = 'none';
     }
+    const label = q > 4 ? (q === 5 ? 'OVERTIME' : `${q - 4}OT`) : ['1ST', '2ND', '3RD', '4TH'][q - 1] + ' QUARTER';
+    this.phase = 'tip';
+    if (q === 1 || q > 4) {
+      this.setupJump();
+      this.events.push({ kind: 'quarter', label, sub: 'JUMP BALL' });
+      return;
+    }
     this.offense = start;
     const pg = this.players.find((p) => p.team === start && p.slot === 0)!;
     this.giveBall(pg, true);
-    this.phase = 'tip';
     this.phaseT = 1.8;
     this.updateUser(true);
-    const label = q > 4 ? (q === 5 ? 'OVERTIME' : `${q - 4}OT`) : ['1ST', '2ND', '3RD', '4TH'][q - 1] + ' QUARTER';
     this.events.push({ kind: 'quarter', label, sub: `${this.teams[start].abbr} BALL` });
     this.sfx.push('whistle');
+  }
+
+  /** Best leaper on a team: shot blocking, rebounding and size. */
+  private jumperOf(t: TeamId): Player {
+    const score = (p: Player) => p.r.blk * 0.5 + p.r.reb * 0.3 + p.size * 30;
+    return this.teamPlayers(t).reduce((a, b) => (score(b) > score(a) ? b : a));
+  }
+
+  private setupJump() {
+    const a = this.jumperOf(0);
+    const b = this.jumperOf(1);
+    // Jumpers face off at center court; everyone else rings the circle, each team on its own side.
+    const ring = [[-9, -6], [-9, 6], [4, -10], [4, 10]];
+    for (const t of [0, 1] as TeamId[]) {
+      const j = t === 0 ? a : b;
+      const s = t === 0 ? -1 : 1;
+      j.x = 47 + s * 1.3;
+      j.y = 25;
+      this.teamPlayers(t).filter((p) => p !== j).forEach((p, i) => {
+        p.x = 47 + s * -ring[i][0];
+        p.y = 25 + ring[i][1];
+      });
+    }
+    const human = [this.isHumanTeam(0), this.isHumanTeam(1)];
+    // CPU timing: a noisy guess around the peak, sharper on higher difficulties.
+    const sd = (t: TeamId) => (this.teams[0].human && !human[t] ? 0.2 - this.diff.cpuBoost * 0.012 : 0.2);
+    const guess = (t: TeamId) => 1 + (Math.random() + Math.random() + Math.random() - 1.5) * sd(t) * 1.4;
+    this.tipoff = { t: -JUMP_PRE, jumpers: [a, b], at: [null, null], plan: [guess(0), guess(1)], window: 0.08 * this.diff.green, to: null, fly: 0 };
+    const ball = this.ball;
+    ball.owner = null;
+    ball.mode = 'loose';
+    ball.x = 47; ball.y = 25; ball.z = 4.5;
+    ball.vx = 0; ball.vy = 0; ball.vz = 0;
+    ball.noPickup = 99;
+    this.phaseT = 99;
+    if (this.teams[0].human) {
+      this.user = a;
+      for (const p of this.players) p.human = p === a;
+    }
+  }
+
+  /** Meter value right now (1.0 = ball at its peak). */
+  jumpMeter(): number {
+    return this.tipoff ? Math.max(0, this.tipoff.t) / JUMP_TOP : 0;
+  }
+
+  private updateJump(dt: number) {
+    const j = this.tipoff!;
+    const ball = this.ball;
+    j.t += dt;
+    for (const p of this.players) this.movePlayer(p, dt);
+    if (j.to) {
+      // Tipped: the ball flies to a teammate, then play is live.
+      j.fly += dt / 0.5;
+      const k = Math.min(1, j.fly);
+      ball.x += (j.to.x - ball.x) * Math.min(1, k * 0.6 + 0.1);
+      ball.y += (j.to.y - ball.y) * Math.min(1, k * 0.6 + 0.1);
+      ball.z += (4 - ball.z) * Math.min(1, dt * 6);
+      if (k >= 1) {
+        const winner = j.to.team;
+        this.tipoff = null;
+        ball.noPickup = 0;
+        if (this.quarter === 1) this.firstPossession = winner;
+        this.phase = 'live';
+        this.offense = (1 - winner) as TeamId;
+        this.giveBall(j.to);
+        this.updateUser(true);
+      }
+      return;
+    }
+    if (j.t < 0) return;
+    if (j.t < dt) this.sfx.push('whistle');
+    // The toss: up to a peak a little above the jumpers' reach, then back down.
+    const P = JUMP_TOP + 0.35;
+    const u = Math.min(j.t, 2 * P);
+    ball.z = 4.5 + 5 * (1 - ((u - P) / P) ** 2);
+    const m = this.jumpMeter();
+    for (const t of [0, 1] as TeamId[]) {
+      if (j.at[t] !== null) continue;
+      const p = j.jumpers[t];
+      const human = this.teams[t].human && p.human;
+      const go = human ? this.userInput.shoot || m >= 1.7 : m >= j.plan[t];
+      if (!go) continue;
+      j.at[t] = m;
+      p.vz = 15;
+      p.z = 0.01;
+      if (human) {
+        const off = m - 1;
+        const a = Math.abs(off);
+        const grade: Grade = a <= j.window ? 'perfect' : a <= j.window * 2 ? 'good' : a <= 0.3 ? (off < 0 ? 'early' : 'late') : off < 0 ? 'very-early' : 'very-late';
+        this.events.push({ kind: 'release', player: p, grade });
+      }
+    }
+    if (j.at[0] === null || j.at[1] === null) return;
+    // Both are up: resolve once the later jumper nears the top of his leap.
+    const last = Math.max(j.at[0], j.at[1]);
+    if (m < Math.max(1.3, last + 0.3)) return;
+    const quality = (t: TeamId) => Math.max(0, 1 - Math.abs(j.at[t]! - 1) / 0.45);
+    const ability = (p: Player) => (p.r.blk * 0.5 + p.r.reb * 0.3 + p.r.spd * 0.2) / 100 + (p.size - 1) * 0.4;
+    const score = (t: TeamId) => quality(t) * 0.65 + ability(j.jumpers[t]) * 0.35 + Math.random() * 0.06;
+    const win: TeamId = score(0) >= score(1) ? 0 : 1;
+    const w = j.jumpers[win];
+    const mates = this.teamPlayers(win).filter((p) => p !== w);
+    j.to = mates.find((p) => p.slot === 0) ?? mates[0];
+    j.fly = 0;
+    ball.x = (j.jumpers[0].x + j.jumpers[1].x) / 2 + (win === 0 ? -0.5 : 0.5);
+    this.sfx.push('block');
+    this.events.push({ kind: 'jumpball', winner: w, loser: j.jumpers[(1 - win) as TeamId] });
   }
 
   private endQuarter() {
@@ -316,6 +454,10 @@ export class Game {
     if (this.phase === 'break') {
       this.phaseT -= dt;
       if (this.phaseT <= 0) this.startQuarter();
+      return;
+    }
+    if (this.phase === 'tip' && this.tipoff) {
+      this.updateJump(dt);
       return;
     }
     if (this.phase === 'tip') {
