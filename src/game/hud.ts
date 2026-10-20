@@ -154,6 +154,9 @@ export class Hud {
           else this.say(`${(coach ?? this.g.teams[e.in.team].name).toUpperCase()} sent out ${NAME(e.in)}!`);
           break;
         }
+        case 'injury':
+          this.say(`${NAME(e.player)} is hurt!`, `Out ${e.weeks} week${e.weeks > 1 ? 's' : ''}.`);
+          break;
         case 'subQueued':
           this.say(`${NAME(e.in)} checks in for ${NAME(e.out)} at the next dead ball.`);
           break;

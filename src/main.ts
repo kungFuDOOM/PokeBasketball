@@ -2,7 +2,7 @@ import './fonts.css';
 import './style.css';
 import { monByDex, spriteUrl, type Mon } from './data/pokemon';
 import {
-  LEAGUE, USER_STYLE, advance, badgesEarned, createFranchise, gameConfig, loadDraft, loadFranchise, nextSeason, recordGame, saveDraft, saveFranchise,
+  LEAGUE, USER_STYLE, advance, badgesEarned, createFranchise, gameConfig, loadDraft, loadFranchise, recordGame, startRookieDraft, saveDraft, saveFranchise,
   simulate, weekGames, weekLabel, type FGame, type Franchise, type Progress,
 } from './franchise/league';
 import { Audio } from './game/audio';
@@ -13,6 +13,7 @@ import { menuScreen, type Settings } from './screens/menu';
 import { playGame } from './screens/play';
 import { quickPlay } from './screens/quick';
 import { resultsScreen } from './screens/results';
+import { rookieScreen } from './screens/rookies';
 import { badgeSvg } from './ui/badges';
 import { abbr, esc, shuffle } from './util';
 
@@ -116,10 +117,12 @@ function hub() {
     play: (g) => playUserGame(f, g),
     simMine: (g) => void simUserGame(f, g),
     simWeek: () => void finishWeek(f).then(hub),
-    nextSeason: () => {
-      nextSeason(f);
+    rookies: () => {
+      startRookieDraft(f);
       saveFranchise(f);
-      hub();
+      app.className = 'screen-draft';
+      window.scrollTo(0, 0);
+      rookieScreen(app, f, audio, { done: hub, menu, saved: () => saveFranchise(f) });
     },
     menu,
     saved: () => {

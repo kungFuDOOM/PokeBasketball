@@ -64,7 +64,7 @@ function makePlayer(id: number, team: TeamId, slot: number, mon: Mon, boost: num
     meter: 0, releaseAt: IDEAL_RELEASE,
     dunk: null,
     fx: { surge: 0, phase: 0, slow: 0, lockin: false },
-    stats: { pts: 0, fgm: 0, fga: 0, tpm: 0, tpa: 0, reb: 0, ast: 0, stl: 0, blk: 0, dnk: 0, sec: 0 },
+    stats: { pts: 0, fgm: 0, fga: 0, tpm: 0, tpa: 0, reb: 0, ast: 0, stl: 0, blk: 0, dnk: 0, sec: 0, gs: slot >= 0 ? 1 : 0 },
     ai: { think: 0, tx: 0, ty: 0, jitterT: 0, jx: 0, jy: 0, cutT: 0, jumpIn: -1, plan: 'none', planT: 0, dodge: 1, pullUp: false },
     intent: emptyIntent(),
     human: false,
@@ -74,6 +74,7 @@ function makePlayer(id: number, team: TeamId, slot: number, mon: Mon, boost: num
     stamina: staminaOf(mon),
     starter: slot >= 0,
     rotation: slot,
+    hurt: 0,
   };
 }
 
@@ -395,9 +396,14 @@ export class Game {
    */
   private autoSubs(t: TeamId, quarterBreak: boolean) {
     if (!this.cfg.stamina) return;
-    if (t === 0 && this.teams[0].human && this.cfg.userAutoSubs === false) return;
-    const bench = () => this.bench.filter((p) => p.team === t);
+    const bench = () => this.bench.filter((p) => p.team === t && !p.hurt);
     if (!bench().length) return;
+    // An injured player always comes out, even when the user runs the rotation.
+    for (const hurt of this.teamPlayers(t).filter((p) => p.hurt && p !== this.ball.owner && p.state === 'free')) {
+      const fill = bench().sort((a, b) => (b.mon.pos === hurt.mon.pos ? 6 : 0) + b.mon.ovr - b.rotation * 2 - ((a.mon.pos === hurt.mon.pos ? 6 : 0) + a.mon.ovr - a.rotation * 2))[0];
+      if (fill) this.swap(hurt, fill);
+    }
+    if (t === 0 && this.teams[0].human && this.cfg.userAutoSubs === false) return;
     const onCourt = this.teamPlayers(t).sort((a, b) => a.energy - b.energy);
     let swaps = 0;
     for (const out of onCourt) {
@@ -425,7 +431,7 @@ export class Game {
    * otherwise at the next dead ball. Returns false if the pair isn't valid.
    */
   requestSub(out: Player, sub: Player): boolean {
-    if (out.team !== sub.team || !this.players.includes(out) || !this.bench.includes(sub)) return false;
+    if (out.team !== sub.team || !this.players.includes(out) || !this.bench.includes(sub) || sub.hurt) return false;
     this.pendingSubs = this.pendingSubs.filter((s) => s.out !== out && s.in !== sub);
     this.pendingSubs.push({ out, in: sub });
     if (this.phase === 'dead' || this.phase === 'break' || this.phase === 'tip') this.applyPendingSubs();
@@ -842,7 +848,18 @@ export class Game {
     }
   }
 
+  /** Injury chance grows as a player tires: up to 3x when fully gassed. */
+  private maybeInjure(p: Player, base: number) {
+    if (!this.cfg.injuries || p.hurt || Math.random() >= base * (1 + (1 - p.energy) * 2)) return;
+    const r = Math.random();
+    p.hurt = r < 0.6 ? 1 : r < 0.9 ? 2 : 3;
+    p.energy = Math.min(p.energy, 0.15);
+    this.events.push({ kind: 'injury', player: p, weeks: p.hurt });
+    this.sfx.push('whistle');
+  }
+
   private knock(target: Player, by: Player, dur: number) {
+    this.maybeInjure(target, 0.012);
     const l = dist(target.x, target.y, by.x, by.y) || 1;
     const nx = (target.x - by.x) / l;
     const ny = (target.y - by.y) / l;
@@ -950,7 +967,11 @@ export class Game {
     if (p.state === 'dunk') { this.updateDunk(p, dt); return; }
     if (p.state === 'hang') {
       p.stateT -= dt;
-      if (p.stateT <= 0) { p.state = 'free'; p.vz = 0; }
+      if (p.stateT <= 0) {
+        p.state = 'free';
+        p.vz = 0;
+        this.maybeInjure(p, 0.003);
+      }
       return;
     }
 

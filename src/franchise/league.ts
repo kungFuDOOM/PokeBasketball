@@ -46,6 +46,10 @@ export interface FPlayer {
   xp: number;
   bonus: Partial<Ratings>;
   stats: SeasonStats;
+  /** OVR when the season began, for Most Improved. */
+  ovrStart?: number;
+  /** Weeks left on the injury list. */
+  injury?: number;
 }
 
 export interface FTeam {
@@ -106,10 +110,35 @@ export interface Franchise {
   news: string[];
   champion?: number;
   mvp?: string;
+  /** This season's awards, set when the final ends. */
+  awards?: Award[];
   history: { season: number; champion: string; mvp: string }[];
+  /** Offseason rookie draft, between the final and the next season. */
+  rookies?: RookieDraft;
 }
 
-const emptyStats = (): SeasonStats => ({ gp: 0, pts: 0, fgm: 0, fga: 0, tpm: 0, tpa: 0, reb: 0, ast: 0, stl: 0, blk: 0, dnk: 0, sec: 0 });
+/**
+ * One-round rookie draft from the unevolved free agents, worst record first and the champion last.
+ * Every team then has eleven players and cuts one before the next season.
+ */
+export interface RookieDraft {
+  /** Team ids in pick order. */
+  order: number[];
+  /** Uids picked so far, in order. */
+  picks: string[];
+  /** The prospects (free-agent uids). */
+  pool: string[];
+}
+
+export interface Award {
+  key: 'mvp' | 'smoy' | 'dpoy' | 'mip' | 'scoring';
+  label: string;
+  uid: string;
+  team: number;
+  line: string;
+}
+
+const emptyStats = (): SeasonStats => ({ gp: 0, pts: 0, fgm: 0, fga: 0, tpm: 0, tpa: 0, reb: 0, ast: 0, stl: 0, blk: 0, dnk: 0, sec: 0, gs: 0 });
 
 export const monOf = (f: Franchise, uid: string): Mon => {
   const p = f.players[uid];
@@ -117,21 +146,30 @@ export const monOf = (f: Franchise, uid: string): Mon => {
 };
 
 /** Uids of a team's starting five and bench, in the order the coach would use them. */
-export function lineupOf(f: Franchise, t: FTeam): { starters: string[]; bench: string[] } {
+/**
+ * Who dresses: starters and bench in order, from the user's depth chart or the coach's pick.
+ * Injured players sit out (`out`) unless the team can't field five without them.
+ */
+export function lineupOf(f: Franchise, t: FTeam): { starters: string[]; bench: string[]; out: string[] } {
+  const hurt = (u: string) => (f.players[u].injury ?? 0) > 0;
+  let out = t.roster.filter(hurt);
+  if (t.roster.length - out.length < 5) out = [];
+  const healthy = t.roster.filter((u) => !out.includes(u));
   const custom = t.lineup;
   if (custom && t.roster.length > 5 && custom.length === t.roster.length && t.roster.every((u) => custom.includes(u))) {
-    return { starters: custom.slice(0, 5), bench: custom.slice(5) };
+    const order = custom.filter((u) => !out.includes(u));
+    return { starters: order.slice(0, 5), bench: order.slice(5), out };
   }
-  const byMon = new Map(t.roster.map((u) => [monOf(f, u), u]));
+  const byMon = new Map(healthy.map((u) => [monOf(f, u), u]));
   const { starters, bench } = bestLineup([...byMon.keys()]);
-  return { starters: starters.map((m) => byMon.get(m)!), bench: bench.map((m) => byMon.get(m)!) };
+  return { starters: starters.map((m) => byMon.get(m)!), bench: bench.map((m) => byMon.get(m)!), out };
 }
 
 /** Swaps two players in the user's depth chart (starting from the coach's lineup the first time). */
 export function swapInLineup(f: Franchise, a: string, b: string) {
   const t = f.teams[0];
-  const { starters, bench } = lineupOf(f, t);
-  const order = [...starters, ...bench];
+  const { starters, bench, out } = lineupOf(f, t);
+  const order = t.lineup && t.lineup.length === t.roster.length ? [...t.lineup] : [...starters, ...bench, ...out];
   const i = order.indexOf(a);
   const j = order.indexOf(b);
   if (i < 0 || j < 0) return;
@@ -192,7 +230,7 @@ export function createFranchise(
   let n = 0;
   const add = (m: Mon) => {
     const uid = `p${n++}`;
-    players[uid] = { uid, dex: m.dex, level: 1, xp: 0, bonus: {}, stats: emptyStats() };
+    players[uid] = { uid, dex: m.dex, level: 1, xp: 0, bonus: {}, stats: emptyStats(), ovrStart: m.ovr };
     return uid;
   };
   return {
@@ -324,7 +362,7 @@ export function gameConfig(f: Franchise, game: FGame, humanPlays: boolean, quart
   // Two blues (you vs Misty) are hard to tell apart on the floor: give the second team a contrasting color.
   b.def = contrastAway(a.def, b.def);
   const uidOf = new Map([...a.uidOf, ...b.uidOf]);
-  return { cfg: { home: a.def, away: b.def, quarterLen, difficulty, court: venueOf(f, game.home), stamina: true, userAutoSubs: autoSubs }, sides, uidOf };
+  return { cfg: { home: a.def, away: b.def, quarterLen, difficulty, court: venueOf(f, game.home), stamina: true, injuries: true, userAutoSubs: autoSubs }, sides, uidOf };
 }
 
 /** Plays a CPU-controlled game with the real engine, yielding to the browser between slices. */
@@ -395,6 +433,11 @@ export function recordGame(f: Franchise, fg: FGame, g: Game, sides: [number, num
     const p = f.players[uid];
     const s = gp.stats;
     if (s.sec > 0) p.stats.gp++;
+    if (gp.hurt) {
+      // +1 because the week this game belongs to is about to tick off in advance().
+      p.injury = Math.max(p.injury ?? 0, gp.hurt + 1);
+      f.news.unshift(`${f.teams[sides[gp.team]].name}'s ${gp.mon.name} is out ${gp.hurt} week${gp.hurt > 1 ? 's' : ''}.`);
+    }
     // `?? 0` covers stats saved before a field existed.
     for (const k of Object.keys(s) as (keyof PStats)[]) p.stats[k] = (p.stats[k] ?? 0) + s[k];
     const score = gameScore(s);
@@ -427,6 +470,8 @@ export function recordGame(f: Franchise, fg: FGame, g: Game, sides: [number, num
 /** Moves the league forward once every game this week is final: next week, playoffs, or a crowned champion. */
 export function advance(f: Franchise) {
   if (weekGames(f).some((g) => !g.score)) return;
+  // A week passes: everyone on the injury list gets a week closer to healthy.
+  for (const p of Object.values(f.players)) if (p.injury) p.injury--;
   if (f.phase === 'season' && f.week < seasonWeeks(f)) {
     f.week++;
   } else if (f.phase === 'season') {
@@ -446,16 +491,38 @@ export function advance(f: Franchise) {
     const fin = weekGames(f)[0];
     f.champion = fin.score![0] > fin.score![1] ? fin.home : fin.away;
     f.phase = 'done';
-    const rostered = f.teams.flatMap((t) => t.roster);
-    f.mvp = rostered
-      .map((u) => f.players[u])
-      .filter((p) => p.stats.gp >= 4)
-      .sort((a, b) => gameScore(b.stats) / b.stats.gp - gameScore(a.stats) / a.stats.gp)[0]?.uid;
+    f.awards = computeAwards(f);
+    f.mvp = f.awards.find((a) => a.key === 'mvp')?.uid;
+    for (const a of [...f.awards].reverse()) f.news.unshift(`${a.label}: ${monOf(f, a.uid).name} (${f.teams[a.team].abbr}), ${a.line}`);
     const champ = f.teams[f.champion];
     f.history.push({ season: f.season, champion: champ.name, mvp: f.mvp ? monByDex(f.players[f.mvp].dex).name : '—' });
     f.news.unshift(`${champ.name} win the Season ${f.season} championship!`);
   }
   f.news = f.news.slice(0, 8);
+}
+
+/** Season awards from per-game numbers; a player needs at least four games to qualify. */
+function computeAwards(f: Franchise): Award[] {
+  const pool = f.teams.flatMap((t) => t.roster.map((uid) => ({ uid, team: t.id, p: f.players[uid] })))
+    .filter(({ p }) => p.stats.gp >= 4);
+  const pg = (p: FPlayer, k: keyof SeasonStats) => (p.stats[k] ?? 0) / p.stats.gp;
+  const line = (p: FPlayer) => `${pg(p, 'pts').toFixed(1)} PPG · ${pg(p, 'reb').toFixed(1)} RPG · ${pg(p, 'ast').toFixed(1)} APG`;
+  const best = (list: typeof pool, score: (p: FPlayer) => number) =>
+    [...list].sort((a, b) => score(b.p) - score(a.p))[0];
+  const out: Award[] = [];
+  const add = (key: Award['key'], label: string, pick: (typeof pool)[number] | undefined, text: (p: FPlayer) => string) => {
+    if (pick) out.push({ key, label, uid: pick.uid, team: pick.team, line: text(pick.p) });
+  };
+  add('mvp', 'MVP', best(pool, (p) => gameScore(p.stats) / p.stats.gp), line);
+  add('scoring', 'Scoring title', best(pool, (p) => pg(p, 'pts')), (p) => `${pg(p, 'pts').toFixed(1)} PPG`);
+  add('dpoy', 'Defensive Player', best(pool, (p) => pg(p, 'stl') * 2 + pg(p, 'blk') * 2 + pg(p, 'reb') * 0.5),
+    (p) => `${pg(p, 'stl').toFixed(1)} STL · ${pg(p, 'blk').toFixed(1)} BLK`);
+  const bench = pool.filter(({ p }) => (p.stats.gs ?? 0) <= p.stats.gp / 2);
+  add('smoy', 'Sixth Man', best(bench, (p) => gameScore(p.stats) / p.stats.gp), line);
+  const improved = pool.filter(({ uid, p }) => p.ovrStart !== undefined && monOf(f, uid).ovr - p.ovrStart >= 1);
+  add('mip', 'Most Improved', best(improved, (p) => withBonus(p.dex, p.bonus).ovr - (p.ovrStart ?? 0)),
+    (p) => `${p.ovrStart} → ${withBonus(p.dex, p.bonus).ovr} OVR`);
+  return out;
 }
 
 /** Same rosters and levels, fresh schedule and records. */
@@ -468,11 +535,77 @@ export function nextSeason(f: Franchise) {
   f.signedWeek = 0;
   f.games = schedule(f.teams.length, !f.weeks);
   for (const t of f.teams) Object.assign(t, { w: 0, l: 0, pf: 0, pa: 0, streak: 0 });
-  for (const p of Object.values(f.players)) p.stats = emptyStats();
+  for (const [uid, p] of Object.entries(f.players)) {
+    p.stats = emptyStats();
+    p.ovrStart = monOf(f, uid).ovr;
+    p.injury = 0;
+  }
+  f.awards = undefined;
   f.news = [`Season ${f.season} tips off.`];
 }
 
 export const canSign = (f: Franchise) => f.phase !== 'done' && f.signedWeek < f.week;
+
+// ---------- trades ----------
+
+/** Trading is open until three weeks before the regular season ends, and again in the offseason. */
+export const tradeDeadline = (f: Franchise) => Math.max(1, seasonWeeks(f) - 3);
+export const canTrade = (f: Franchise) => (f.phase === 'season' && f.week <= tradeDeadline(f)) || f.phase === 'done';
+
+/** What a Pokémon is worth to a team: rating first, then level and evolution upside. */
+export function tradeValue(f: Franchise, uid: string, toTeam?: FTeam): number {
+  const p = f.players[uid];
+  const m = monOf(f, uid);
+  let v = Math.pow(Math.max(0, m.ovr - 55), 1.5);
+  const evo = EVOLUTIONS[p.dex];
+  if (evo) {
+    // Upside: the best form it can reach, discounted by how far away it is.
+    const best = Math.max(...evo.to.map((d) => withBonus(d, p.bonus).ovr));
+    const away = Math.max(0, evo.level - p.level);
+    v += Math.max(0, Math.pow(Math.max(0, best - 55), 1.5) - v) * (0.55 - away * 0.08);
+  }
+  if ((p.injury ?? 0) > 0) v *= 0.75;
+  if (toTeam?.types && m.types.some((t) => toTeam.types!.includes(t))) v *= 1.15;
+  return v;
+}
+
+export interface TradeVerdict {
+  ok: boolean;
+  /** -1 (insulting) … 0 (fair) … 1 (they love it), for the meter. */
+  lean: number;
+  reason: string;
+}
+
+/** The other GM's answer to `give` (yours) for `get` (theirs). */
+export function judgeTrade(f: Franchise, teamId: number, give: string[], get: string[]): TradeVerdict {
+  if (!canTrade(f)) return { ok: false, lean: 0, reason: 'The trade deadline has passed. Trading reopens in the offseason.' };
+  if (!give.length || give.length !== get.length) return { ok: false, lean: 0, reason: 'Pick the same number of players on each side (1 or 2).' };
+  const them = f.teams[teamId];
+  const incoming = give.reduce((a, u) => a + tradeValue(f, u, them), 0);
+  const outgoing = get.reduce((a, u) => a + tradeValue(f, u, them), 0);
+  // They want to come out a little ahead.
+  const ratio = incoming / Math.max(1, outgoing * 1.05);
+  const lean = Math.max(-1, Math.min(1, (ratio - 1) * 2.5));
+  const who = them.leader ?? them.name;
+  if (ratio >= 1) return { ok: true, lean, reason: `${who}: "Deal!"` };
+  if (ratio >= 0.85) return { ok: false, lean, reason: `${who}: "Close. Add a little more."` };
+  if (ratio >= 0.6) return { ok: false, lean, reason: `${who}: "That's not enough."` };
+  return { ok: false, lean, reason: `${who}: "Not even close."` };
+}
+
+export function makeTrade(f: Franchise, teamId: number, give: string[], get: string[]): boolean {
+  if (!judgeTrade(f, teamId, give, get).ok) return false;
+  const me = f.teams[0];
+  const them = f.teams[teamId];
+  me.roster = me.roster.map((u) => (give.includes(u) ? get[give.indexOf(u)] : u));
+  them.roster = them.roster.map((u) => (get.includes(u) ? give[get.indexOf(u)] : u));
+  if (me.lineup) me.lineup = me.lineup.map((u) => (give.includes(u) ? get[give.indexOf(u)] : u));
+  delete them.lineup;
+  const names = (us: string[]) => us.map((u) => monOf(f, u).name).join(' and ');
+  f.news.unshift(`Trade! ${me.name} send ${names(give)} to ${them.name} for ${names(get)}.`);
+  f.news = f.news.slice(0, 8);
+  return true;
+}
 
 export function sign(f: Franchise, release: string, add: string) {
   const team = f.teams[0];
@@ -485,4 +618,85 @@ export function sign(f: Franchise, release: string, add: string) {
   f.signedWeek = f.week;
   f.news.unshift(`${team.name} signed ${monOf(f, add).name} and released ${monOf(f, release).name}.`);
   f.news = f.news.slice(0, 8);
+}
+
+/** The best form a Pokémon can grow into in franchise mode, and the level it gets there. */
+export function potentialOf(dex: number): { dex: number; ovr: number; level: number } {
+  let best = { dex, ovr: monByDex(dex).ovr, level: 1 };
+  const walk = (d: number, seen: number) => {
+    const evo = EVOLUTIONS[d];
+    if (!evo || seen > 3) return;
+    for (const to of evo.to) {
+      const o = monByDex(to).ovr;
+      if (o > best.ovr) best = { dex: to, ovr: o, level: evo.level };
+      walk(to, seen + 1);
+    }
+  };
+  walk(dex, 0);
+  return best;
+}
+
+/** Sets up the rookie draft once the final is over. Prospects are level-1 free agents that can still evolve. */
+export function startRookieDraft(f: Franchise) {
+  if (f.phase !== 'done' || f.rookies) return;
+  const seen = new Set<number>();
+  const rookies = f.freeAgents
+    .filter((u) => f.players[u].level === 1 && EVOLUTIONS[f.players[u].dex])
+    .sort((a, b) => potentialOf(f.players[b].dex).ovr - potentialOf(f.players[a].dex).ovr)
+    .filter((u) => !seen.has(f.players[u].dex) && seen.add(f.players[u].dex));
+  const pool = rookies.slice(0, 24);
+  const order = standings(f).reverse().map((t) => t.id);
+  if (f.champion !== undefined) order.push(...order.splice(order.indexOf(f.champion), 1));
+  f.rookies = { order, picks: [], pool };
+}
+
+/** Whose pick it is, or null once every team has picked. */
+export const rookieOnClock = (f: Franchise): FTeam | null =>
+  f.rookies && f.rookies.picks.length < f.rookies.order.length ? f.teams[f.rookies.order[f.rookies.picks.length]] : null;
+
+export const rookieLeft = (f: Franchise) => (f.rookies ? f.rookies.pool.filter((u) => !f.rookies!.picks.includes(u)) : []);
+
+/** Rookie value for a team: grown-up rating, how soon it gets there, its type, and an open position. */
+function rookieScore(f: Franchise, uid: string, t: FTeam): number {
+  const m = monOf(f, uid);
+  const pot = potentialOf(m.dex);
+  const have = t.roster.filter((u) => monOf(f, u).pos === m.pos).length;
+  return pot.ovr * 1.2 + m.ovr * 0.3 - pot.level * 1.5 + (have === 0 ? 6 : have === 1 ? 2 : 0)
+    + (t.types?.some((ty) => m.types.includes(ty)) ? 5 : 0) + Math.random() * 3;
+}
+
+/** Makes the current pick: `uid` for the team on the clock, or the CPU's choice when omitted. */
+export function rookiePick(f: Franchise, uid?: string): string | null {
+  const t = rookieOnClock(f);
+  const left = rookieLeft(f);
+  if (!t || !left.length) return null;
+  const pick = uid && left.includes(uid) ? uid : left.reduce((a, b) => (rookieScore(f, b, t) > rookieScore(f, a, t) ? b : a));
+  f.rookies!.picks.push(pick);
+  t.roster.push(pick);
+  if (t.lineup) t.lineup.push(pick);
+  f.freeAgents.splice(f.freeAgents.indexOf(pick), 1);
+  return pick;
+}
+
+/** CPU teams cut their least valuable player; the user cuts `release`. Then the next season starts. */
+export function finishRookieDraft(f: Franchise, release: string) {
+  const r = f.rookies;
+  if (!r || rookieOnClock(f)) return;
+  const cut = (t: FTeam, uid: string) => {
+    t.roster = t.roster.filter((u) => u !== uid);
+    if (t.lineup) t.lineup = t.lineup.filter((u) => u !== uid);
+    f.freeAgents.push(uid);
+  };
+  const me = f.teams[0];
+  if (me.roster.includes(release)) cut(me, release);
+  for (const t of f.teams) {
+    if (t.human || t.roster.length <= 10) continue;
+    cut(t, t.roster.reduce((a, b) => (tradeValue(f, b, t) < tradeValue(f, a, t) ? b : a)));
+  }
+  const mine = r.picks[r.order.indexOf(0)];
+  delete f.rookies;
+  nextSeason(f);
+  if (mine && me.roster.includes(mine)) f.news.push(`${me.name} drafted ${monOf(f, mine).name} in the rookie draft.`);
+  const top = r.picks[0];
+  f.news.push(`${f.teams[r.order[0]].name} took ${monOf(f, top).name} first overall.`);
 }

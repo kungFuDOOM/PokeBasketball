@@ -71,6 +71,8 @@ export interface GameConfig {
   stamina?: boolean;
   /** false: the coach never subs the human team; the user does it from the pause menu. */
   userAutoSubs?: boolean;
+  /** Franchise rule: hard knockdowns and big landings can injure, more often when tired. */
+  injuries?: boolean;
 }
 
 export interface Intent {
@@ -95,6 +97,8 @@ export interface PStats {
   reb: number; ast: number; stl: number; blk: number; dnk: number;
   /** Seconds of game clock on the court. */
   sec: number;
+  /** Games started. */
+  gs: number;
 }
 
 export type PState = 'free' | 'shoot' | 'layup' | 'dunk' | 'hang' | 'stun' | 'swipe';
@@ -160,6 +164,8 @@ export interface Player {
   starter: boolean;
   /** Depth chart position: 0-4 starters, 5+ bench in the order the coach should use them. */
   rotation: number;
+  /** Weeks out if hurt in this game; 0 = healthy. */
+  hurt: number;
 }
 
 export type BallMode = 'held' | 'pass' | 'shot' | 'loose' | 'net';
@@ -215,6 +221,7 @@ export type GameEvent =
   | { kind: 'oop'; player: Player }
   | { kind: 'sub'; out: Player; in: Player }
   | { kind: 'subQueued'; out: Player; in: Player }
+  | { kind: 'injury'; player: Player; weeks: number }
   | { kind: 'shotclock'; team: TeamId }
   | { kind: 'quarter'; label: string; sub: string }
   | { kind: 'final' };

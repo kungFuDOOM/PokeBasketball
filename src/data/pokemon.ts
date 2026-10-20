@@ -1,4 +1,4 @@
-import { GENERATED_EVOLUTIONS, GENERATED_ROWS } from './generated';
+import { GENERATED_BODY, GENERATED_EVOLUTIONS, GENERATED_ROWS } from './generated';
 
 export type Pos = 'PG' | 'SG' | 'SF' | 'PF' | 'C';
 
@@ -140,7 +140,7 @@ const ROWS: Row[] = [
   [461, 'Weavile', ['Dark', 'Ice'], 'PG', 94, 74, 64, 75, 93, 50, 52, 90],
   [196, 'Espeon', ['Psychic'], 'SG', 85, 93, 62, 86, 66, 48, 52, 84],
   [197, 'Umbreon', ['Dark'], 'SF', 78, 72, 66, 74, 93, 72, 70, 76],
-  [282, 'Gardevoir', ['Psychic', 'Fairy'], 'SF', 74, 90, 66, 88, 70, 72, 66, 78],
+  [282, 'Gardevoir', ['Psychic', 'Fairy'], 'PG', 74, 90, 66, 88, 70, 72, 66, 78],
   [212, 'Scizor', ['Bug', 'Steel'], 'SF', 80, 74, 80, 64, 92, 78, 72, 74],
   [130, 'Gyarados', ['Water', 'Flying'], 'C', 70, 54, 92, 52, 76, 90, 92, 60],
   [68, 'Machamp', ['Fighting'], 'PF', 66, 52, 93, 60, 80, 82, 90, 62],
@@ -151,7 +151,7 @@ const ROWS: Row[] = [
   [135, 'Jolteon', ['Electric'], 'PG', 97, 80, 68, 78, 76, 42, 48, 90],
   [95, 'Onix', ['Rock', 'Ground'], 'C', 48, 40, 84, 44, 66, 96, 88, 46],
   [76, 'Golem', ['Rock', 'Ground'], 'PF', 45, 48, 88, 50, 72, 88, 86, 50],
-  [3, 'Venusaur', ['Grass', 'Poison'], 'PF', 52, 60, 86, 74, 70, 86, 90, 56],
+  [3, 'Venusaur', ['Grass', 'Poison'], 'C', 52, 60, 86, 74, 70, 86, 90, 56],
   [106, 'Hitmonlee', ['Fighting'], 'SF', 84, 68, 90, 56, 78, 72, 60, 70],
   [107, 'Hitmonchan', ['Fighting'], 'SG', 82, 74, 72, 60, 88, 60, 58, 78],
   [122, 'Mr. Mime', ['Psychic', 'Fairy'], 'PF', 64, 66, 60, 78, 90, 86, 70, 70],
@@ -159,7 +159,7 @@ const ROWS: Row[] = [
   [7, 'Squirtle', ['Water'], 'PG', 80, 84, 58, 76, 70, 44, 50, 80],
   [53, 'Persian', ['Normal'], 'PG', 90, 78, 58, 76, 80, 40, 45, 86],
   [39, 'Jigglypuff', ['Normal', 'Fairy'], 'PG', 66, 74, 50, 80, 60, 30, 36, 72],
-  [132, 'Ditto', ['Normal'], 'SF', 70, 70, 70, 70, 70, 70, 70, 70],
+  [132, 'Ditto', ['Normal'], 'PG', 70, 70, 70, 70, 70, 70, 70, 70],
   [54, 'Psyduck', ['Water'], 'PG', 60, 64, 52, 62, 50, 40, 46, 60],
   [79, 'Slowpoke', ['Water', 'Psychic'], 'PF', 30, 72, 56, 70, 54, 62, 64, 58],
   [129, 'Magikarp', ['Water'], 'C', 40, 30, 30, 30, 30, 25, 30, 35],
@@ -178,7 +178,7 @@ const ROWS: Row[] = [
   [160, 'Feraligatr', ['Water'], 'SF', 76, 70, 90, 58, 84, 74, 80, 70],
   [230, 'Kingdra', ['Water', 'Dragon'], 'SG', 82, 90, 72, 74, 72, 62, 62, 80],
   [350, 'Milotic', ['Water'], 'C', 60, 72, 78, 84, 72, 86, 88, 62],
-  [730, 'Primarina', ['Water', 'Fairy'], 'SF', 72, 88, 70, 86, 70, 70, 66, 78],
+  [730, 'Primarina', ['Water', 'Fairy'], 'SG', 72, 88, 70, 86, 70, 70, 66, 78],
   [91, 'Cloyster', ['Water', 'Ice'], 'C', 52, 58, 78, 52, 88, 94, 84, 50],
   [62, 'Poliwrath', ['Water', 'Fighting'], 'PF', 64, 64, 88, 60, 82, 78, 82, 62],
   // Electric
@@ -256,6 +256,25 @@ const ROWS: Row[] = [
 ];
 
 
+const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
+
+/**
+ * On-court size, 0.8-1.3: half from the real height and weight (log scale, Pichu to Onix), half from
+ * the inside ratings, so a 0.3 m Pokémon never towers over the paint and a big glass-eater still plays big.
+ */
+function sizeOf(dex: number, r: Ratings): number {
+  const stat = clamp01(((r.blk + r.reb) / 2 - 30) / 70);
+  const b = GENERATED_BODY[dex];
+  const body = b ? 0.7 * clamp01(Math.log(b[0] / 0.3) / Math.log(20)) + 0.3 * clamp01(Math.log(b[1] / 2) / Math.log(200)) : stat;
+  return 0.8 + 0.5 * (stat + body) / 2;
+}
+
+/** Real height in meters and weight in kg (0 if unknown). */
+export function bodyOf(dex: number): { h: number; w: number } {
+  const b = GENERATED_BODY[dex];
+  return { h: b?.[0] ?? 0, w: b?.[1] ?? 0 };
+}
+
 function buildMon([dex, name, types, pos, spd, sht, ins, pas, def, blk, reb, hnd]: Row): Mon {
   const r: Ratings = { spd, sht, ins, pas, def, blk, reb, hnd };
   const ovr = overall(pos, r);
@@ -267,7 +286,7 @@ function buildMon([dex, name, types, pos, spd, sht, ins, pas, def, blk, reb, hnd
     pos,
     r,
     ovr,
-    size: 0.8 + Math.max(0, (blk + reb) / 2 - 30) / 70 * 0.5,
+    size: sizeOf(dex, r),
     archetype: archetype(pos, r, ovr),
     special,
     move,
@@ -296,7 +315,7 @@ export function withBonus(dex: number, bonus: Partial<Ratings>): Mon {
   const r = { ...base.r };
   for (const k of Object.keys(bonus) as (keyof Ratings)[]) r[k] = Math.min(99, r[k] + (bonus[k] ?? 0));
   const ovr = overall(base.pos, r);
-  return { ...base, r, ovr, archetype: archetype(base.pos, r, ovr), size: 0.8 + Math.max(0, (r.blk + r.reb) / 2 - 30) / 70 * 0.5 };
+  return { ...base, r, ovr, archetype: archetype(base.pos, r, ovr), size: sizeOf(dex, r) };
 }
 
 /** Evolutions by franchise level (generated from the games' evolution data). */

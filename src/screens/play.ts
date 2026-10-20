@@ -79,7 +79,7 @@ export function playGame(
     const pendingFor = (p: Player) => g.pendingSubs.find((s) => s.out === p || s.in === p);
     const row = (p: Player) => {
       const pend = pendingFor(p);
-      const note = pend ? `<em>${pend.out === p ? 'out' : 'in'} at next dead ball</em>` : '';
+      const note = p.hurt ? `<em>hurt · out ${p.hurt} wk, comes out at the next dead ball</em>` : pend ? `<em>${pend.out === p ? 'out' : 'in'} at next dead ball</em>` : '';
       return `<li><button class="sub-row ${picked === p ? 'sel' : ''} ${pend ? 'pend' : ''}" data-pid="${p.id}">
         <img src="${spriteUrl(p.mon.dex)}" alt="">
         <span class="nm">${esc(p.mon.name)}<small>${p.mon.pos} · ${p.mon.ovr} · STA ${p.stamina}</small>${note}</span>

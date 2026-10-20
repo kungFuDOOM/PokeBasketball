@@ -82,7 +82,7 @@ function rosterHtml(t: DraftTeam, picks: Mon[], size: number): string {
       : `<li class="empty"><span>Pick ${i + 1}${size > 5 && i >= 5 ? ' (bench)' : ''}</span></li>`;
   }).join('');
   const chem = picks.length >= 5 && chemistry(starters) ? '<span class="chem">+2 Balanced lineup</span>' : '';
-  return `<div class="roster you"><h4>${esc(t.name)} <span class="tovr">${picks.length ? startersOvr(picks) : '--'}</span>${chem}</h4><ul>${slots}</ul></div>`;
+  return `<div class="roster you"><h4>${esc(t.name)} <span class="tovr">${picks.length ? startersOvr(picks) : '--'}</span>${chem}</h4>${posTrackHtml(picks, size)}<p class="pos-note">${needText(picks, size)}</p><ul>${slots}</ul></div>`;
 }
 
 function boardHtml(teams: DraftTeam[], rosters: Mon[][], size: number): string {
@@ -105,17 +105,54 @@ export interface DraftState {
   rounds?: number;
 }
 
+/** Seconds you get on the clock for each pick. When it runs out, the best fit is picked for you. */
+const PICK_SECONDS = 60;
+
+/** How many of each position a full roster wants: one starter each, plus a backup each with a 10-man roster. */
+export const targetPer = (size: number) => (size > 5 ? 2 : 1);
+export const countAt = (roster: Mon[], p: Pos) => roster.filter((m) => m.pos === p).length;
+
 /** Positions a roster doesn't have yet, in PG..C order. */
-const needs = (roster: Mon[]) => POSITIONS.filter((p) => !roster.some((m) => m.pos === p));
+const needs = (roster: Mon[]) => POSITIONS.filter((p) => !countAt(roster, p));
+/** Positions with a starter but no backup yet (10-man rosters only). */
+const thin = (roster: Mon[], size: number) => POSITIONS.filter((p) => countAt(roster, p) > 0 && countAt(roster, p) < targetPer(size));
+
+/** One cell per position: how many you have against the target, and who they are. */
+export function posTrackHtml(roster: Mon[], size: number, compact = false): string {
+  const goal = targetPer(size);
+  return `<ul class="pos-track ${compact ? 'compact' : ''}">${POSITIONS.map((p) => {
+    const at = roster.filter((m) => m.pos === p);
+    const cls = at.length === 0 ? 'need' : at.length < goal ? 'thin' : 'ok';
+    const label = at.length === 0 ? 'Need' : at.length < goal ? 'Backup' : '✓';
+    return `<li class="${cls}" title="${p}: ${at.map((m) => m.name).join(', ') || 'none yet'}">
+      <b>${p}</b><span>${at.length}/${goal}</span>${compact ? '' : `<small>${label}</small>
+      <span class="who">${at.map((m) => `<img src="${spriteUrl(m.dex)}" alt="${esc(m.name)}">`).join('')}</span>`}
+    </li>`;
+  }).join('')}</ul>`;
+}
+
+/** Plain-language summary of what the roster still needs, and a warning when picks are running out. */
+function needText(roster: Mon[], size: number): string {
+  const left = size - roster.length;
+  if (!left) return 'Roster full.';
+  const need = needs(roster);
+  const backup = thin(roster, size);
+  if (need.length) {
+    const must = need.length >= left ? ' <b class="warn">Draft them now: you are running out of picks.</b>' : '';
+    return `Still need a starter at <b>${need.join(', ')}</b>.${must}`;
+  }
+  if (backup.length) return `Starting five covered. Backups wanted at <b>${backup.join(', ')}</b>.`;
+  return size > 5 ? 'Every position has a starter and a backup. Take the best Pokémon left.' : 'All five positions covered.';
+}
 
 function teamBarHtml(roster: Mon[], size: number): string {
-  const need = needs(roster);
   return `
     <span class="tbar-lbl">My team <b>${roster.length}/${size}</b></span>
-    <span class="tbar-slots ${size > 5 ? 'many' : ''}">${Array.from({ length: size }, (_, i) => roster[i]
+    ${size > 5 ? '' : `<span class="tbar-slots">${Array.from({ length: size }, (_, i) => roster[i]
       ? `<img src="${spriteUrl(roster[i].dex)}" alt="${esc(roster[i].name)}">`
-      : '<i></i>').join('')}</span>
-    <span class="tbar-need">${roster.length ? `${startersOvr(roster)} OVR` : ''}${need.length && roster.length < size ? ` · Need ${need.join(' ')}` : ''}</span>`;
+      : '<i></i>').join('')}</span>`}
+    ${posTrackHtml(roster, size, true)}
+    <span class="tbar-need"><span class="clock" hidden></span>${roster.length ? `${startersOvr(roster)} OVR` : ''}</span>`;
 }
 
 /**
@@ -150,13 +187,18 @@ export function draftScreen(
   const log: string[] = [`Draft order: ${order.map((i) => (teams[i].human ? 'You' : teams[i].abbr)).join(', ')}`];
   let cpuTimer = 0;
   let done = false;
+  /** Milliseconds left on your pick clock (counts only while the tab is visible). */
+  let clockLeft = PICK_SECONDS * 1000;
+  let clockPick = -1;
+  let lastTick = performance.now();
+  let lastBeep = 0;
   let teamOpen = false;
 
   root.innerHTML = `
     <div class="draft">
       <header class="draft-head">
         <button class="btn ghost small" data-a="back">Menu</button>
-        <div class="status"><span class="round"></span><span class="otc"></span></div>
+        <div class="status"><span class="round"></span><span class="otc"></span><span class="clock big" hidden></span></div>
         <div class="head-actions">
           <button class="btn small" data-a="auto">Auto-pick</button>
           <button class="btn small" data-a="sim">Sim rest</button>
@@ -165,7 +207,7 @@ export function draftScreen(
       <div class="draft-body">
         <section class="pool">
           <div class="filters" role="tablist">
-            ${(['ALL', ...POSITIONS] as const).map((p) => `<button data-f="${p}" class="${p === 'ALL' ? 'on' : ''}">${p}</button>`).join('')}
+            ${(['ALL', ...POSITIONS] as const).map((p) => `<button data-f="${p}" class="${p === 'ALL' ? 'on' : ''}">${p}${p === 'ALL' ? '' : '<small></small>'}</button>`).join('')}
             <select id="type-filter" aria-label="Filter by type">
               <option value="">All types</option>
               ${(Object.keys(TYPE_COLORS) as PokeType[]).map((t) => `<option value="${t}">${t}</option>`).join('')}
@@ -209,12 +251,20 @@ export function draftScreen(
     $('.rosters').innerHTML = rosterHtml(teams[me], rosters[me], size) + boardHtml(teams, rosters, size);
     $('.log').innerHTML = log.slice(-6).reverse().map((l) => `<li>${esc(l)}</li>`).join('');
     $('.tbar').innerHTML = teamBarHtml(rosters[me], size);
+    root.querySelectorAll<HTMLElement>('.filters [data-f]').forEach((b) => {
+      const p = b.dataset.f as Pos | 'ALL';
+      if (p === 'ALL') return;
+      const n = countAt(rosters[me], p);
+      b.querySelector('small')!.textContent = String(n);
+      b.classList.toggle('need', n === 0);
+      b.classList.toggle('thin', n > 0 && n < targetPer(size));
+    });
+    updateClock();
     const sheet = $('.team-sheet');
     sheet.hidden = !teamOpen;
     if (teamOpen) {
-      const need = needs(rosters[me]);
       $('.team-sheet-body').innerHTML = rosterHtml(teams[me], rosters[me], size)
-        + `<p class="note">${need.length ? `Still open: ${need.join(', ')}. Cover all five positions in your starting five for the +2 lineup bonus.` : 'All five positions covered.'}${size > 5 ? ' Picks 6-10 are your bench: they spell tired starters and grow with minutes.' : ''}</p>`
+        + `<p class="note">Cover all five positions in your starting five for the +2 lineup bonus.${size > 5 ? ' Picks 6-10 are your bench: a backup at every position keeps the rotation from playing out of position when starters tire.' : ''}</p>`
         + boardHtml(teams, rosters, size);
     }
     if (selected) {
@@ -224,12 +274,40 @@ export function draftScreen(
     root.querySelectorAll<HTMLButtonElement>('[data-a="auto"], [data-a="sim"]').forEach((b) => (b.disabled = done));
   };
 
-  const record = (m: Mon) => {
+  const clockEls = () => root.querySelectorAll<HTMLElement>('.clock');
+  function updateClock() {
+    const on = userTurn();
+    if (on && clockPick !== pick) { clockPick = pick; clockLeft = PICK_SECONDS * 1000; lastBeep = 0; }
+    const secs = Math.max(0, Math.ceil(clockLeft / 1000));
+    clockEls().forEach((el) => {
+      el.hidden = !on;
+      el.textContent = `0:${String(secs).padStart(2, '0')}`;
+      el.classList.toggle('low', secs <= 10);
+    });
+  }
+
+  const clock = window.setInterval(() => {
+    const now = performance.now();
+    const dt = now - lastTick;
+    lastTick = now;
+    if (!root.isConnected || done) { window.clearInterval(clock); return; }
+    if (!userTurn() || document.hidden) return;
+    clockLeft -= Math.min(dt, 1000);
+    const secs = Math.ceil(clockLeft / 1000);
+    if (secs <= 5 && secs > 0 && secs !== lastBeep) { lastBeep = secs; audio.blip(secs <= 3); }
+    if (clockLeft <= 0) {
+      take(cpuPick(pool, rosters[me]), "Time's up! Auto-picked");
+      return;
+    }
+    updateClock();
+  }, 200);
+
+  const record = (m: Mon, note?: string) => {
     const t = picks[pick];
     state.taken.push(m.dex);
     pool.splice(pool.indexOf(m), 1);
     rosters[t].push(m);
-    log.push(`${teams[t].human ? 'You' : teams[t].name} selected ${m.name} (${m.pos}, ${m.ovr})`);
+    log.push(`${note ?? `${teams[t].human ? 'You' : teams[t].name} selected`} ${m.name} (${m.pos}, ${m.ovr})`);
     pick++;
     if (selected === m) selected = null;
   };
@@ -243,9 +321,9 @@ export function draftScreen(
     window.setTimeout(() => onDone(rosters, pool), 900);
   };
 
-  const take = (m: Mon) => {
+  const take = (m: Mon, note?: string) => {
     const human = picks[pick] === me;
-    record(m);
+    record(m, note);
     audio.blip(human);
     if (pick >= picks.length) return finish();
     onProgress(state);
@@ -281,7 +359,7 @@ export function draftScreen(
     if (t.closest('.close')) { selected = null; render(); return; }
     if (t.closest('.pick') && selected && userTurn()) { take(selected); return; }
     const a = t.closest<HTMLElement>('[data-a]')?.dataset.a;
-    if (a === 'back') { window.clearTimeout(cpuTimer); done = true; onBack(); }
+    if (a === 'back') { window.clearTimeout(cpuTimer); window.clearInterval(clock); done = true; onBack(); }
     if (a === 'auto' && userTurn()) take(cpuPick(pool, rosters[me]));
     if (a === 'sim' && !done) {
       window.clearTimeout(cpuTimer);
