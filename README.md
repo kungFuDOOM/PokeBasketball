@@ -55,7 +55,7 @@ On phones the game shows a virtual stick and Xbox-style face buttons in the same
 
 ### Systems
 
-- **Jump ball.** The game (and every overtime) opens with a tip-off between each team's best leaper. The ref tosses the ball and a meter fills as it rises: hit Shoot when it reaches the green band at the top of the toss. Timing counts most, then blocking, rebounding and size. CPU jumpers time it better on higher difficulties. The winner of the opening tip gets the ball to start the 4th quarter, and the loser starts the 2nd and 3rd.
+- **Jump ball.** Each half opens with a tip-off between each team's best leaper. The ref tosses the ball and a meter fills as it rises: hit Shoot when it reaches the green band at the top of the toss. Timing counts most, then blocking, rebounding and size. CPU jumpers time it better on higher difficulties. Whoever loses a tip starts the next quarter with the ball (the 2nd after the opening tip, the 4th after the second-half tip). Overtime starts with a coin flip.
 - **Shot meter.** Release timing sets the grade, from Excellent through Slightly Early/Late to Very Early/Late. An Excellent release is close to automatic unless the shot is heavily contested. The green window widens with the Shooting rating and when the shooter is on fire.
 - **On fire.** Three straight baskets without the other team scoring sets a Pokémon on fire: unlimited turbo, a wider green window and longer dunk range.
 - **Special moves.** Each Pokémon's primary type sets its special. The bar fills from scoring, assists, steals, blocks and rebounds.

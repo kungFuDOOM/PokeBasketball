@@ -19,7 +19,7 @@ export const JUMP_TOP = 1.0;
 const JUMP_PRE = 1.3;
 
 /**
- * Opening tip (and overtime): the ref tosses the ball, each center times a jump. Timing is a meter that
+ * Jump ball to open each half: the ref tosses the ball, each center times a jump. Timing is a meter that
  * fills as the ball rises (1.0 = the peak); the better jump, plus leaping ability, wins the tip.
  */
 export interface JumpBall {
@@ -130,7 +130,8 @@ export class Game {
   rimShake: [number, number] = [0, 0];
   netT: [number, number] = [0, 0];
   paused = false;
-  private firstPossession: TeamId;
+  /** Who won the latest jump ball; the other team starts the following quarter. */
+  private tipWinner: TeamId;
   private dribblePh = 0;
 
   constructor(cfg: GameConfig) {
@@ -151,7 +152,7 @@ export class Game {
       });
     }
     this.clock = cfg.quarterLen;
-    this.firstPossession = Math.random() < 0.5 ? 0 : 1;
+    this.tipWinner = Math.random() < 0.5 ? 0 : 1;
     this.ball = {
       x: 47, y: 25, z: 4, vx: 0, vy: 0, vz: 0,
       mode: 'loose', owner: null, shot: null, pass: null,
@@ -213,9 +214,8 @@ export class Game {
 
   private startQuarter() {
     const q = this.quarter;
-    const start: TeamId = q > 4
-      ? (Math.random() < 0.5 ? 0 : 1)
-      : q === 1 || q === 4 ? this.firstPossession : ((1 - this.firstPossession) as TeamId);
+    // Jump balls open each half; the team that lost the tip starts the next quarter.
+    const start: TeamId = q > 4 ? (Math.random() < 0.5 ? 0 : 1) : ((1 - this.tipWinner) as TeamId);
     this.clock = q > 4 ? Math.max(30, Math.round(this.cfg.quarterLen / 2)) : this.cfg.quarterLen;
     this.shotClock = 24;
     if (this.cfg.stamina && q > 1) {
@@ -238,7 +238,7 @@ export class Game {
     }
     const label = q > 4 ? (q === 5 ? 'OVERTIME' : `${q - 4}OT`) : ['1ST', '2ND', '3RD', '4TH'][q - 1] + ' QUARTER';
     this.phase = 'tip';
-    if (q === 1 || q > 4) {
+    if (q === 1 || q === 3) {
       this.setupJump();
       this.events.push({ kind: 'quarter', label, sub: 'JUMP BALL' });
       return;
@@ -312,7 +312,7 @@ export class Game {
         const winner = j.to.team;
         this.tipoff = null;
         ball.noPickup = 0;
-        if (this.quarter === 1) this.firstPossession = winner;
+        this.tipWinner = winner;
         this.phase = 'live';
         this.offense = (1 - winner) as TeamId;
         this.giveBall(j.to);
