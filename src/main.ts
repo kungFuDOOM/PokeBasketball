@@ -1,16 +1,20 @@
 import './style.css';
-import type { Mon } from './data/pokemon';
+import { monByDex, spriteUrl, type Mon } from './data/pokemon';
+import {
+  CPU_TEAMS, USER_STYLE, advance, createFranchise, gameConfig, loadFranchise, nextSeason, recordGame, saveFranchise,
+  simulate, weekGames, weekLabel, type FGame, type Franchise, type Progress,
+} from './franchise/league';
 import { Audio } from './game/audio';
-import type { TeamDef } from './game/types';
-import { draftScreen, matchupHtml } from './screens/draft';
-import { bindSettings, menuScreen, type Settings } from './screens/menu';
+import type { Game } from './game/game';
+import { draftScreen } from './screens/draft';
+import { hubScreen } from './screens/hub';
+import { menuScreen, type Settings } from './screens/menu';
 import { playGame } from './screens/play';
 import { resultsScreen } from './screens/results';
+import { esc } from './util';
 
 const app = document.querySelector<HTMLElement>('#app')!;
 const audio = new Audio();
-const CPU = { name: 'Team Rocket', abbr: 'RKT', color: '#d8343b', color2: '#3a1218' };
-const HOME = { color: '#3b6fd8', color2: '#16224a' };
 
 const settings: Settings = { difficulty: 'pro', quarterLen: 120, teamName: 'Pallet Town' };
 try {
@@ -22,55 +26,140 @@ const save = () => {
   } catch { /* storage unavailable */ }
 };
 
+let franchise: Franchise | null = loadFranchise();
+
 // Browsers only allow audio after a gesture.
-window.addEventListener('pointerdown', () => audio.unlock(), { once: false, passive: true });
+window.addEventListener('pointerdown', () => audio.unlock(), { passive: true });
 window.addEventListener('keydown', () => audio.unlock(), { passive: true });
 
 const abbr = (name: string) => (name.replace(/[^a-z0-9]/gi, '').slice(0, 3) || 'YOU').toUpperCase();
+const shuffle = <T,>(a: T[]) => {
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+};
 
-function teams(user: Mon[], cpu: Mon[]): [TeamDef, TeamDef] {
-  const name = settings.teamName.trim() || 'Pallet Town';
-  return [
-    { name, abbr: abbr(name), ...HOME, roster: user, human: true },
-    { name: CPU.name, abbr: CPU.abbr, color: CPU.color, color2: CPU.color2, roster: cpu, human: false },
-  ];
+function overlay(text: string): () => void {
+  const el = document.createElement('div');
+  el.className = 'sim-overlay';
+  el.innerHTML = `<div class="ball-spin" aria-hidden="true"></div><p>${esc(text)}</p>`;
+  document.body.appendChild(el);
+  return () => el.remove();
 }
 
 function menu() {
   app.className = 'screen-menu';
-  menuScreen(app, settings, save, () => {
-    audio.unlock();
-    draft();
+  const f = franchise;
+  menuScreen(app, settings, save, {
+    saved: f ? `${f.teams[0].name} · Season ${f.season} · ${f.phase === 'done' ? 'Offseason' : weekLabel(f)} · ${f.teams[0].w}-${f.teams[0].l}` : null,
+    onContinue: hub,
+    onNew: () => {
+      audio.unlock();
+      draft();
+    },
   });
 }
 
 function draft() {
   app.className = 'screen-draft';
-  draftScreen(app, settings, audio, CPU.name, matchup, menu);
+  const name = settings.teamName.trim() || 'Pallet Town';
+  const teams = [
+    { name, abbr: abbr(name), ...USER_STYLE, human: true },
+    ...CPU_TEAMS.map((t) => ({ ...t, human: false })),
+  ];
+  draftScreen(app, teams, shuffle(teams.map((_, i) => i)), audio, (rosters, leftovers) => {
+    franchise = createFranchise(teams, rosters, leftovers);
+    saveFranchise(franchise);
+    hub();
+  }, menu);
 }
 
-/** After the draft: review both lineups, pick difficulty and quarter length, tip off. */
-function matchup(user: Mon[], cpu: Mon[]) {
-  app.className = 'screen-matchup';
-  const [h, a] = teams(user, cpu);
-  app.innerHTML = matchupHtml(h, a, settings);
-  bindSettings(app, settings, save);
-  app.querySelector('[data-a="tip"]')!.addEventListener('click', () => play(user, cpu));
-  app.querySelector('[data-a="back"]')!.addEventListener('click', draft);
+function hub() {
+  const f = franchise;
+  if (!f) return menu();
+  app.className = 'screen-hub';
+  window.scrollTo(0, 0);
+  hubScreen(app, f, settings, {
+    play: (g) => playUserGame(f, g),
+    simMine: (g) => void simUserGame(f, g),
+    simWeek: () => void finishWeek(f).then(hub),
+    nextSeason: () => {
+      nextSeason(f);
+      saveFranchise(f);
+      hub();
+    },
+    menu,
+    saved: () => {
+      save();
+      saveFranchise(f);
+    },
+  });
 }
 
-function play(user: Mon[], cpu: Mon[]) {
+/** Sims every game still open this week, then moves the league forward. */
+async function finishWeek(f: Franchise) {
+  const open = weekGames(f).filter((g) => !g.score);
+  const done = overlay(open.length ? 'Simulating around the league…' : 'Advancing…');
+  for (const g of open) {
+    const { cfg, sides, uidOf } = gameConfig(f, g, false, settings.quarterLen, settings.difficulty);
+    recordGame(f, g, await simulate(cfg), sides, uidOf);
+  }
+  advance(f);
+  saveFranchise(f);
+  done();
+}
+
+function playUserGame(f: Franchise, g: FGame) {
   app.className = 'screen-game';
   audio.unlock();
-  const [home, away] = teams(user, cpu);
-  playGame(app, { home, away, quarterLen: settings.quarterLen, difficulty: settings.difficulty }, audio, (g) => {
-    app.className = 'screen-results';
-    resultsScreen(app, g, (a) => {
-      if (a === 'rematch') play(user, cpu);
-      else if (a === 'redraft') draft();
-      else menu();
-    });
-  }, menu);
+  const { cfg, sides, uidOf } = gameConfig(f, g, true, settings.quarterLen, settings.difficulty);
+  playGame(app, cfg, audio, (game) => afterUserGame(f, g, game, sides, uidOf, false), hub);
+}
+
+async function simUserGame(f: Franchise, g: FGame) {
+  const { cfg, sides, uidOf } = gameConfig(f, g, false, settings.quarterLen, settings.difficulty);
+  const done = overlay('Simulating your game…');
+  const game = await simulate(cfg);
+  done();
+  afterUserGame(f, g, game, sides, uidOf, true);
+}
+
+function progressHtml(f: Franchise, progress: Progress[]): string {
+  const mine = progress.filter((p) => p.team === 0);
+  if (!mine.length) return '';
+  const evos = mine.filter((p) => p.evolvedTo).map((p) => {
+    const to = monByDex(p.evolvedTo!).name.toUpperCase();
+    const from = p.name.toUpperCase();
+    return `
+      <div class="evo">
+        <div class="evo-anim"><img class="from" src="${spriteUrl(p.evolvedFrom!)}" alt="${esc(p.name)}"><img class="to" src="${spriteUrl(p.evolvedTo!)}" alt="${esc(to)}"></div>
+        <p class="evo-1">What? ${esc(from)} is evolving!</p>
+        <p class="evo-2">Congratulations! Your ${esc(from)} evolved into ${esc(to)}!</p>
+      </div>`;
+  }).join('');
+  const levels = mine.map((p) => {
+    const dex = p.evolvedTo ?? f.players[p.uid].dex;
+    return `<li><img src="${spriteUrl(dex)}" alt=""><span><b>${esc(p.name)}</b> grew to Lv ${p.level}</span><small>${esc(p.gains.join(', ') || 'Ratings maxed')}</small></li>`;
+  }).join('');
+  return `<section class="progress"><h3>Level ups</h3>${evos}<ul class="levels">${levels}</ul></section>`;
+}
+
+function afterUserGame(f: Franchise, g: FGame, game: Game, sides: [number, number], uidOf: Map<Mon, string>, simmed: boolean) {
+  const progress = recordGame(f, g, game, sides, uidOf);
+  saveFranchise(f);
+  app.className = 'screen-results';
+  window.scrollTo(0, 0);
+  const won = game.score[0] > game.score[1];
+  const label = g.round === 'final' ? 'The Final' : g.round === 'semi' ? 'Semifinal' : weekLabel(f);
+  resultsScreen(app, game, {
+    tag: simmed ? `${label} · Simulated` : label,
+    headline: won ? (g.round === 'final' ? 'Champions!' : 'You win!') : `${f.teams[sides[1]].name} win`,
+    extraHtml: progressHtml(f, progress),
+    buttons: [{ id: 'continue', label: 'Continue', kind: 'primary' }],
+    onAction: () => void finishWeek(f).then(hub),
+  });
 }
 
 menu();

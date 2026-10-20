@@ -16,13 +16,14 @@ npm run build      # static site in dist/
 
 ## How it plays
 
-Every game starts with the draft.
+Poké Jam is a franchise game. Your team and its Pokémon carry over from season to season, and progress is saved in the browser.
 
-1. **Name your team** on the title screen.
-2. **Draft.** Snake draft against Team Rocket's CPU GM: 48 Pokémon, five rounds. Each card has an OVR, a position, an archetype (Floor General, Rim Protector, Stretch Big…) and eight ratings. Cover all five positions for a +2 lineup bonus. Auto-pick and Sim rest fill picks for you.
-3. **Matchup.** Compare both lineups, then choose difficulty (Rookie to Legend) and quarter length (1–5 minutes).
-4. **Play.** You control the ball handler on offense and any defender on defense. Overtime on a tie.
-5. **Box score.** Rematch with the same rosters, or start a new draft.
+1. **Name your team** on the title screen and start a franchise (or continue a saved one).
+2. **League draft.** You and five rival teams (Team Rocket, Aqua, Magma, Galactic and Plasma) snake-draft five Pokémon each from 48. Each card has an OVR, a position, an archetype (Floor General, Rim Protector, Stretch Big…) and eight ratings. Cover all five positions for a +2 lineup bonus. Undrafted Pokémon become free agents.
+3. **Season.** Ten weeks; every team plays every other team home and away. Each week you play your game or sim it, and the other games are simulated with the same engine, so league stats are real. Difficulty and quarter length are set on the hub before each game.
+4. **Hub.** Next opponent, standings, your roster's season stats, league leaders, last week's scores and league news. Once a week you can swap a player for a free agent.
+5. **Leveling and evolution.** Pokémon earn XP from every game. Each level adds rating points weighted toward their position. Some evolve at set levels: Magikarp → Gyarados, Squirtle → Wartortle → Blastoise, Eevee → Jolteon/Espeon/Umbreon, Psyduck → Golduck, Slowpoke → Slowbro, Jigglypuff → Wigglytuff, Onix → Steelix.
+6. **Playoffs.** The top four play semifinals (1 vs 4, 2 vs 3) and a final. Then a champion and season MVP are crowned, and the next season starts with the same rosters.
 
 | Action | Keyboard | Gamepad |
 | --- | --- | --- |
@@ -60,10 +61,11 @@ src/game/render.ts    pseudo-3D court, sprites, hoops, particles on a 480×270 p
 src/game/hud.ts       scorebug, player card, Pokémon-style battle text
 src/game/input.ts     keyboard, gamepad, touch
 src/game/audio.ts     synthesized sound effects (no audio files)
-src/screens/          menu, draft, matchup, game loop, box score
+src/franchise/league.ts  league state: schedule, standings, playoffs, XP, evolutions, free agency, save/load
+src/screens/          title, draft, franchise hub, game loop, box score
 ```
 
-Adding a Pokémon is one row in `ROWS` in `src/data/pokemon.ts`. OVR, archetype, size and special move are derived from that row.
+Adding a Pokémon is one row in `ROWS` in `src/data/pokemon.ts`. OVR, archetype, size and special move are derived from that row. Evolved forms go in `EVOLVED_ROWS`, with the level they're reached at in `EVOLUTIONS`.
 
 Add `?speed=4` to the URL to run the simulation faster when testing.
 

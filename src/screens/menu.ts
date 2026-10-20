@@ -60,8 +60,15 @@ export function bindSettings(root: HTMLElement, settings: Settings, onChange: ()
   seg('#qlen', (v) => (settings.quarterLen = Number(v)));
 }
 
-/** Title screen: name your team, then the only way in is the draft. */
-export function menuScreen(root: HTMLElement, settings: Settings, onChange: () => void, onDraft: () => void) {
+export interface TitleOptions {
+  /** One-line summary of the saved franchise, or null when there is none. */
+  saved: string | null;
+  onContinue: () => void;
+  onNew: () => void;
+}
+
+/** Title screen: continue the saved franchise, or name a team and start a new one with the draft. */
+export function menuScreen(root: HTMLElement, settings: Settings, onChange: () => void, opts: TitleOptions) {
   const parade = [...POKEMON].sort(() => Math.random() - 0.5).slice(0, 14);
   root.innerHTML = `
     <div class="menu">
@@ -74,12 +81,18 @@ export function menuScreen(root: HTMLElement, settings: Settings, onChange: () =
       </header>
       <div class="menu-grid">
         <section class="card setup">
-          <label class="field" for="team-name">Name your team
+          ${opts.saved ? `
+            <div class="continue">
+              <span class="lbl">Your franchise</span>
+              <strong>${esc(opts.saved)}</strong>
+              <button class="btn primary big" data-go="continue">Continue franchise</button>
+            </div>` : ''}
+          <label class="field" for="team-name">${opts.saved ? 'Or start over with a new team' : 'Name your team'}
             <input id="team-name" maxlength="20" autocomplete="off" value="${esc(settings.teamName)}">
           </label>
-          <p class="setup-note">Snake-draft five Pokémon against Team Rocket's front office, then take your squad onto the court.</p>
+          <p class="setup-note">Start a franchise: draft five Pokémon against five rival teams, then play a 10-week season and the playoffs. Your Pokémon level up, evolve and carry over to the next season.</p>
           <div class="actions">
-            <button class="btn primary big" data-go="draft">Draft your team</button>
+            <button class="btn ${opts.saved ? '' : 'primary big'}" data-go="new">${opts.saved ? 'New franchise' : 'Draft your team'}</button>
           </div>
         </section>
         <section class="card">${controlsHtml()}</section>
@@ -92,6 +105,16 @@ export function menuScreen(root: HTMLElement, settings: Settings, onChange: () =
     settings.teamName = name.value;
     onChange();
   });
-  name.addEventListener('keydown', (e) => { if (e.key === 'Enter') onDraft(); });
-  root.querySelector('[data-go="draft"]')!.addEventListener('click', onDraft);
+  const startNew = root.querySelector<HTMLButtonElement>('[data-go="new"]')!;
+  let armed = !opts.saved;
+  const tryNew = () => {
+    if (armed) return opts.onNew();
+    // Starting over erases the saved franchise, so ask for a second tap.
+    armed = true;
+    startNew.textContent = 'Tap again to replace your franchise';
+    startNew.classList.add('warn');
+  };
+  name.addEventListener('keydown', (e) => { if (e.key === 'Enter') tryNew(); });
+  startNew.addEventListener('click', tryNew);
+  root.querySelector('[data-go="continue"]')?.addEventListener('click', opts.onContinue);
 }

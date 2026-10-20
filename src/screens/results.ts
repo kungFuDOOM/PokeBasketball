@@ -8,12 +8,22 @@ const gameScore = (p: Player) => {
   return s.pts + s.reb * 1.2 + s.ast * 1.5 + s.stl * 2 + s.blk * 2 - (s.fga - s.fgm) * 0.4;
 };
 
-export function resultsScreen(root: HTMLElement, g: Game, act: (a: 'rematch' | 'redraft' | 'menu') => void) {
+export interface ResultsOptions {
+  /** Line above the headline, e.g. "Week 3 · Final". */
+  tag: string;
+  headline?: string;
+  /** Extra section between the player of the game and the box scores. */
+  extraHtml?: string;
+  buttons: { id: string; label: string; kind?: 'primary' | 'ghost' }[];
+  onAction: (id: string) => void;
+}
+
+export function resultsScreen(root: HTMLElement, g: Game, opts: ResultsOptions) {
   const [h, a] = g.teams;
   const winner: TeamId = g.score[0] > g.score[1] ? 0 : 1;
   const pog = [...g.teamPlayers(winner)].sort((x, y) => gameScore(y) - gameScore(x))[0];
   const userWon = h.human && winner === 0;
-  const headline = !h.human ? `${g.teams[winner].name} win` : userWon ? 'You win!' : `${a.name} win`;
+  const headline = opts.headline ?? (!h.human ? `${g.teams[winner].name} win` : userWon ? 'You win!' : `${a.name} win`);
 
   const table = (t: TeamId) => {
     const rows = g.teamPlayers(t).map((p) => {
@@ -43,7 +53,7 @@ export function resultsScreen(root: HTMLElement, g: Game, act: (a: 'rematch' | '
 
   root.innerHTML = `
     <div class="results">
-      <p class="final-tag">Final${g.quarter > 5 ? ` / ${g.quarter - 4}OT` : g.quarter === 5 ? ' / OT' : ''}</p>
+      <p class="final-tag">${esc(opts.tag)} · Final${g.quarter > 5 ? ` / ${g.quarter - 4}OT` : g.quarter === 5 ? ' / OT' : ''}</p>
       <h2>${esc(headline)}</h2>
       <div class="final-score">
         <span style="--tc:${h.color}">${esc(h.abbr)} <b>${g.score[0]}</b></span>
@@ -58,13 +68,12 @@ export function resultsScreen(root: HTMLElement, g: Game, act: (a: 'rematch' | '
           <span>${pog.stats.pts} PTS · ${pog.stats.reb} REB · ${pog.stats.ast} AST · ${pog.stats.stl} STL · ${pog.stats.blk} BLK</span>
         </div>
       </div>
+      ${opts.extraHtml ?? ''}
       <div class="boxes">${table(0)}${table(1)}</div>
       <div class="actions center">
-        <button class="btn primary big" data-a="rematch">Rematch</button>
-        <button class="btn" data-a="redraft">New draft</button>
-        <button class="btn ghost" data-a="menu">Main menu</button>
+        ${opts.buttons.map((b) => `<button class="btn ${b.kind ?? ''} ${b.kind === 'primary' ? 'big' : ''}" data-a="${b.id}">${esc(b.label)}</button>`).join('')}
       </div>
     </div>`;
   root.querySelectorAll<HTMLButtonElement>('[data-a]').forEach((b) =>
-    b.addEventListener('click', () => act(b.dataset.a as 'rematch' | 'redraft' | 'menu')));
+    b.addEventListener('click', () => opts.onAction(b.dataset.a!)));
 }

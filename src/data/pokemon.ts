@@ -163,7 +163,16 @@ const ROWS: Row[] = [
   [129, 'Magikarp', ['Water'], 'C', 40, 30, 30, 30, 30, 25, 30, 35],
 ];
 
-export const POKEMON: Mon[] = ROWS.map(([dex, name, types, pos, spd, sht, ins, pas, def, blk, reb, hnd]) => {
+// Evolved forms: not in the draft pool, reached only by leveling up in franchise mode.
+const EVOLVED_ROWS: Row[] = [
+  [55, 'Golduck', ['Water'], 'SG', 80, 82, 70, 72, 74, 55, 60, 78],
+  [80, 'Slowbro', ['Water', 'Psychic'], 'PF', 38, 84, 74, 80, 64, 78, 80, 62],
+  [8, 'Wartortle', ['Water'], 'PG', 84, 87, 64, 78, 74, 50, 56, 82],
+  [40, 'Wigglytuff', ['Normal', 'Fairy'], 'PG', 70, 80, 60, 86, 66, 50, 60, 78],
+  [208, 'Steelix', ['Steel', 'Ground'], 'C', 50, 44, 90, 48, 82, 98, 92, 50],
+];
+
+function buildMon([dex, name, types, pos, spd, sht, ins, pas, def, blk, reb, hnd]: Row): Mon {
   const r: Ratings = { spd, sht, ins, pas, def, blk, reb, hnd };
   const ovr = overall(pos, r);
   const [special, move] = TYPE_MOVE[types[0]];
@@ -179,7 +188,44 @@ export const POKEMON: Mon[] = ROWS.map(([dex, name, types, pos, spd, sht, ins, p
     special,
     move,
   };
-});
+}
+
+/** The draft pool. */
+export const POKEMON: Mon[] = ROWS.map(buildMon);
+
+const BY_DEX = new Map<number, Mon>([...POKEMON, ...EVOLVED_ROWS.map(buildMon)].map((m) => [m.dex, m]));
+
+export function monByDex(dex: number): Mon {
+  const m = BY_DEX.get(dex);
+  if (!m) throw new Error(`Unknown Pokémon #${dex}`);
+  return m;
+}
+
+/** A Pokémon's card with franchise level-up gains applied on top of its base ratings. */
+export function withBonus(dex: number, bonus: Partial<Ratings>): Mon {
+  const base = monByDex(dex);
+  const r = { ...base.r };
+  for (const k of Object.keys(bonus) as (keyof Ratings)[]) r[k] = Math.min(99, r[k] + (bonus[k] ?? 0));
+  const ovr = overall(base.pos, r);
+  return { ...base, r, ovr, archetype: archetype(base.pos, r, ovr), size: 0.8 + Math.max(0, (r.blk + r.reb) / 2 - 30) / 70 * 0.5 };
+}
+
+/** Evolutions by level. `to` lists candidates; Eevee picks one at random. */
+export const EVOLUTIONS: Record<number, { level: number; to: number[] }> = {
+  129: { level: 3, to: [130] }, // Magikarp -> Gyarados
+  54: { level: 4, to: [55] }, // Psyduck -> Golduck
+  79: { level: 4, to: [80] }, // Slowpoke -> Slowbro
+  7: { level: 3, to: [8] }, // Squirtle -> Wartortle
+  8: { level: 6, to: [9] }, // Wartortle -> Blastoise
+  133: { level: 4, to: [135, 196, 197] }, // Eevee -> Jolteon / Espeon / Umbreon
+  39: { level: 4, to: [40] }, // Jigglypuff -> Wigglytuff
+  95: { level: 5, to: [208] }, // Onix -> Steelix
+};
+
+/** How much each rating matters for a position; used to steer level-up gains. */
+export function positionWeights(pos: Pos): Partial<Ratings> {
+  return WEIGHTS[pos];
+}
 
 export const POSITIONS: Pos[] = ['PG', 'SG', 'SF', 'PF', 'C'];
 

@@ -1,9 +1,7 @@
 import { POKEMON, POSITIONS, RATING_LABELS, SPECIALS, TYPE_COLORS, spriteUrl, type Mon, type Pos, type Ratings } from '../data/pokemon';
 import type { Audio } from '../game/audio';
 import { chemistry, teamOvr } from '../game/game';
-import type { TeamDef } from '../game/types';
 import { esc, tier } from '../util';
-import { settingsHtml, type Settings } from './menu';
 
 /** CPU general manager: best available, nudged toward positions it hasn't filled. */
 export function cpuPick(pool: Mon[], roster: Mon[]): Mon {
@@ -17,7 +15,7 @@ export function cpuPick(pool: Mon[], roster: Mon[]): Mon {
   return best;
 }
 
-function typeChips(m: Mon): string {
+export function typeChips(m: Mon): string {
   return m.types.map((t) => `<i style="--tc:${TYPE_COLORS[t]}">${t}</i>`).join('');
 }
 
@@ -55,7 +53,14 @@ function detailHtml(m: Mon, canPick: boolean): string {
     <button class="btn primary big pick" ${canPick ? '' : 'disabled'}>${canPick ? `Draft ${esc(m.name)}` : 'Waiting for your pick'}</button>`;
 }
 
-function rosterHtml(title: string, picks: Mon[], cls: string): string {
+export interface DraftTeam {
+  name: string;
+  abbr: string;
+  color: string;
+  human: boolean;
+}
+
+function rosterHtml(t: DraftTeam, picks: Mon[]): string {
   const slots = Array.from({ length: 5 }, (_, i) => {
     const m = picks[i];
     return m
@@ -63,35 +68,30 @@ function rosterHtml(title: string, picks: Mon[], cls: string): string {
       : `<li class="empty"><span>Pick ${i + 1}</span></li>`;
   }).join('');
   const chem = picks.length === 5 && chemistry(picks) ? '<span class="chem">+2 Balanced lineup</span>' : '';
-  return `<div class="roster ${cls}"><h4>${esc(title)} <span class="tovr">${picks.length ? teamOvr(picks) : '--'}</span>${chem}</h4><ul>${slots}</ul></div>`;
+  return `<div class="roster you"><h4>${esc(t.name)} <span class="tovr">${picks.length ? teamOvr(picks) : '--'}</span>${chem}</h4><ul>${slots}</ul></div>`;
 }
 
-export function matchupHtml(home: TeamDef, away: TeamDef, settings: Settings): string {
-  const col = (t: TeamDef) => `
-    <div class="mu-team" style="--tc:${t.color}">
-      <h3>${esc(t.name)}<span class="tovr">${teamOvr(t.roster)}</span></h3>
-      ${chemistry(t.roster) ? '<p class="chem">+2 Balanced lineup: all five positions covered</p>' : '<p class="chem off">No lineup bonus: a position is doubled up</p>'}
-      <ul>${[...t.roster].sort((a, b) => POSITIONS.indexOf(a.pos) - POSITIONS.indexOf(b.pos)).map((m) =>
-        `<li><span class="pos">${m.pos}</span><img src="${spriteUrl(m.dex)}" alt=""><span class="nm">${esc(m.name)}<small>${m.archetype}</small></span><b class="t-${tier(m.ovr)}">${m.ovr}</b></li>`).join('')}</ul>
-    </div>`;
-  return `
-    <div class="matchup">
-      <h2>Tonight's matchup</h2>
-      <div class="mu-cols">${col(home)}<div class="vs">VS</div>${col(away)}</div>
-      ${settingsHtml(settings)}
-      <div class="actions center">
-        <button class="btn primary big" data-a="tip">Tip off</button>
-        <button class="btn ghost" data-a="back">Redraft</button>
-      </div>
-    </div>`;
+function boardHtml(teams: DraftTeam[], rosters: Mon[][]): string {
+  const rows = teams.map((t, i) => t.human ? '' : `
+    <li style="--tc:${t.color}">
+      <span class="abbr">${esc(t.abbr)}</span>
+      ${Array.from({ length: 5 }, (_, k) => rosters[i][k]
+        ? `<img src="${spriteUrl(rosters[i][k].dex)}" alt="${esc(rosters[i][k].name)}" title="${esc(rosters[i][k].name)} (${rosters[i][k].ovr})">`
+        : '<i></i>').join('')}
+    </li>`).join('');
+  return `<div class="board"><h4>League board</h4><ul>${rows}</ul></div>`;
 }
 
+/**
+ * Snake draft for any number of teams. `order` is the round-one pick order (team indexes);
+ * rounds alternate direction. Calls back with each team's five picks and the undrafted pool.
+ */
 export function draftScreen(
   root: HTMLElement,
-  settings: Settings,
+  teams: DraftTeam[],
+  order: number[],
   audio: Audio,
-  cpuName: string,
-  onDone: (user: Mon[], cpu: Mon[]) => void,
+  onDone: (rosters: Mon[][], leftovers: Mon[]) => void,
   onBack: () => void,
 ) {
   // Own container so listeners die with the screen.
@@ -99,19 +99,14 @@ export function draftScreen(
   root = document.createElement('div');
   host.replaceChildren(root);
   const pool = [...POKEMON].sort((a, b) => b.ovr - a.ovr);
-  const user: Mon[] = [];
-  const cpu: Mon[] = [];
-  const userFirst = Math.random() < 0.5;
-  // Snake draft: 1-2, 2-1, 1-2, 2-1, 1-2
-  const order: ('u' | 'c')[] = [];
-  for (let r = 0; r < 5; r++) {
-    const pair: ('u' | 'c')[] = userFirst ? ['u', 'c'] : ['c', 'u'];
-    order.push(...(r % 2 ? pair.reverse() : pair));
-  }
+  const rosters: Mon[][] = teams.map(() => []);
+  const picks: number[] = [];
+  for (let r = 0; r < 5; r++) picks.push(...(r % 2 ? [...order].reverse() : order));
+  const me = teams.findIndex((t) => t.human);
   let pick = 0;
   let filter: Pos | 'ALL' = 'ALL';
   let selected: Mon | null = null;
-  const log: string[] = [userFirst ? 'You won the coin toss and pick first.' : `${cpuName} won the coin toss and picks first.`];
+  const log: string[] = [`Draft order: ${order.map((i) => (teams[i].human ? 'You' : teams[i].abbr)).join(', ')}`];
   let cpuTimer = 0;
   let done = false;
 
@@ -143,17 +138,18 @@ export function draftScreen(
   const grid = $('.grid');
   const detail = $('.detail');
 
-  const userTurn = () => !done && order[pick] === 'u';
+  const userTurn = () => !done && picks[pick] === me;
 
   const render = () => {
-    const round = Math.floor(pick / 2) + 1;
-    $('.round').textContent = done ? 'DRAFT COMPLETE' : `ROUND ${round} · PICK ${pick + 1} OF 10`;
+    const round = Math.floor(pick / teams.length) + 1;
+    $('.round').textContent = done ? 'DRAFT COMPLETE' : `ROUND ${round} · PICK ${pick + 1} OF ${picks.length}`;
     const otc = $('.otc');
-    otc.textContent = done ? '' : userTurn() ? "You're on the clock" : `${cpuName} is picking…`;
+    const until = picks.indexOf(me, pick) - pick;
+    otc.textContent = done ? '' : userTurn() ? "You're on the clock" : `${teams[picks[pick]].name} is picking… (you're up in ${until})`;
     otc.classList.toggle('you', userTurn());
     const shown = pool.filter((m) => filter === 'ALL' || m.pos === filter);
     grid.innerHTML = shown.map((m) => monCard(m, selected === m ? 'sel' : '')).join('');
-    $('.rosters').innerHTML = rosterHtml(settings.teamName || 'You', user, 'you') + rosterHtml(cpuName, cpu, 'cpu');
+    $('.rosters').innerHTML = rosterHtml(teams[me], rosters[me]) + boardHtml(teams, rosters);
     $('.log').innerHTML = log.slice(-6).reverse().map((l) => `<li>${esc(l)}</li>`).join('');
     if (selected) {
       detail.hidden = false;
@@ -162,27 +158,35 @@ export function draftScreen(
     root.querySelectorAll<HTMLButtonElement>('[data-a="auto"], [data-a="sim"]').forEach((b) => (b.disabled = done));
   };
 
-  const take = (m: Mon, who: 'u' | 'c') => {
+  const record = (m: Mon) => {
+    const t = picks[pick];
     pool.splice(pool.indexOf(m), 1);
-    (who === 'u' ? user : cpu).push(m);
-    log.push(`${who === 'u' ? settings.teamName || 'You' : cpuName} selected ${m.name} (${m.pos}, ${m.ovr})`);
+    rosters[t].push(m);
+    log.push(`${teams[t].human ? 'You' : teams[t].name} selected ${m.name} (${m.pos}, ${m.ovr})`);
     pick++;
     if (selected === m) selected = null;
-    audio.blip(who === 'u');
-    if (pick >= order.length) {
-      done = true;
-      render();
-      window.setTimeout(() => onDone(user, cpu), 900);
-      return;
-    }
+  };
+
+  const finish = () => {
+    done = true;
+    selected = null;
+    render();
+    window.setTimeout(() => onDone(rosters, pool), 900);
+  };
+
+  const take = (m: Mon) => {
+    const human = picks[pick] === me;
+    record(m);
+    audio.blip(human);
+    if (pick >= picks.length) return finish();
     render();
     scheduleCpu();
   };
 
   const scheduleCpu = () => {
     window.clearTimeout(cpuTimer);
-    if (!done && order[pick] === 'c') {
-      cpuTimer = window.setTimeout(() => take(cpuPick(pool, cpu), 'c'), 750);
+    if (!done && picks[pick] !== me) {
+      cpuTimer = window.setTimeout(() => take(cpuPick(pool, rosters[picks[pick]])), 450);
     }
   };
 
@@ -203,24 +207,14 @@ export function draftScreen(
       return;
     }
     if (t.closest('.close')) { selected = null; render(); return; }
-    if (t.closest('.pick') && selected && userTurn()) { take(selected, 'u'); return; }
+    if (t.closest('.pick') && selected && userTurn()) { take(selected); return; }
     const a = t.closest<HTMLElement>('[data-a]')?.dataset.a;
     if (a === 'back') { window.clearTimeout(cpuTimer); done = true; onBack(); }
-    if (a === 'auto' && userTurn()) take(cpuPick(pool, user), 'u');
+    if (a === 'auto' && userTurn()) take(cpuPick(pool, rosters[me]));
     if (a === 'sim' && !done) {
       window.clearTimeout(cpuTimer);
-      while (pick < order.length) {
-        const who = order[pick];
-        const m = cpuPick(pool, who === 'u' ? user : cpu);
-        pool.splice(pool.indexOf(m), 1);
-        (who === 'u' ? user : cpu).push(m);
-        log.push(`${who === 'u' ? settings.teamName || 'You' : cpuName} selected ${m.name} (${m.pos}, ${m.ovr})`);
-        pick++;
-      }
-      done = true;
-      selected = null;
-      render();
-      window.setTimeout(() => onDone(user, cpu), 600);
+      while (pick < picks.length) record(cpuPick(pool, rosters[picks[pick]]));
+      finish();
     }
   });
 
