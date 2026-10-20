@@ -63,7 +63,10 @@ export function bindSettings(root: HTMLElement, settings: Settings, onChange: ()
 export interface TitleOptions {
   /** One-line summary of the saved franchise, or null when there is none. */
   saved: string | null;
+  /** One-line summary of a league draft in progress, or null. */
+  draft: string | null;
   onContinue: () => void;
+  onResumeDraft: () => void;
   onNew: () => void;
 }
 
@@ -81,18 +84,24 @@ export function menuScreen(root: HTMLElement, settings: Settings, onChange: () =
       </header>
       <div class="menu-grid">
         <section class="card setup">
+          ${opts.draft ? `
+            <div class="continue">
+              <span class="lbl">Draft in progress</span>
+              <strong>${esc(opts.draft)}</strong>
+              <button class="btn primary big" data-go="resume-draft">Continue draft</button>
+            </div>` : ''}
           ${opts.saved ? `
             <div class="continue">
               <span class="lbl">Your franchise</span>
               <strong>${esc(opts.saved)}</strong>
-              <button class="btn primary big" data-go="continue">Continue franchise</button>
+              <button class="btn ${opts.draft ? '' : 'primary big'}" data-go="continue">Continue franchise</button>
             </div>` : ''}
-          <label class="field" for="team-name">${opts.saved ? 'Or start over with a new team' : 'Name your team'}
+          <label class="field" for="team-name">${opts.saved || opts.draft ? 'Or start over with a new team' : 'Name your team'}
             <input id="team-name" maxlength="20" autocomplete="off" value="${esc(settings.teamName)}">
           </label>
           <p class="setup-note">Start a franchise: draft five Pokémon against five rival teams, then play a 10-week season and the playoffs. Your Pokémon level up, evolve and carry over to the next season.</p>
           <div class="actions">
-            <button class="btn ${opts.saved ? '' : 'primary big'}" data-go="new">${opts.saved ? 'New franchise' : 'Draft your team'}</button>
+            <button class="btn ${opts.saved || opts.draft ? '' : 'primary big'}" data-go="new">${opts.saved || opts.draft ? 'New franchise' : 'Draft your team'}</button>
           </div>
         </section>
         <section class="card">${controlsHtml()}</section>
@@ -106,15 +115,16 @@ export function menuScreen(root: HTMLElement, settings: Settings, onChange: () =
     onChange();
   });
   const startNew = root.querySelector<HTMLButtonElement>('[data-go="new"]')!;
-  let armed = !opts.saved;
+  let armed = !opts.saved && !opts.draft;
   const tryNew = () => {
     if (armed) return opts.onNew();
     // Starting over erases the saved franchise, so ask for a second tap.
     armed = true;
-    startNew.textContent = 'Tap again to replace your franchise';
+    startNew.textContent = opts.saved ? 'Tap again to replace your franchise' : 'Tap again to restart the draft';
     startNew.classList.add('warn');
   };
   name.addEventListener('keydown', (e) => { if (e.key === 'Enter') tryNew(); });
   startNew.addEventListener('click', tryNew);
   root.querySelector('[data-go="continue"]')?.addEventListener('click', opts.onContinue);
+  root.querySelector('[data-go="resume-draft"]')?.addEventListener('click', opts.onResumeDraft);
 }

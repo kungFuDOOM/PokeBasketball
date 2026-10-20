@@ -1,6 +1,7 @@
 import { EVOLUTIONS, RATING_LABELS, monByDex, positionWeights, withBonus, type Mon, type Ratings } from '../data/pokemon';
 import { Game } from '../game/game';
 import type { Difficulty, PStats, TeamDef } from '../game/types';
+import type { DraftState } from '../screens/draft';
 
 const SAVE_KEY = 'pokejam.franchise.v1';
 export const WEEKS = 10;
@@ -154,6 +155,25 @@ export function loadFranchise(): Franchise | null {
     if (!raw) return null;
     const f = JSON.parse(raw) as Franchise;
     return f.version === 1 ? f : null;
+  } catch {
+    return null;
+  }
+}
+
+const DRAFT_KEY = 'pokejam.draft.v1';
+
+/** A league draft still in progress, so leaving to the menu doesn't lose picks. */
+export function saveDraft(d: DraftState | null) {
+  try {
+    if (d) localStorage.setItem(DRAFT_KEY, JSON.stringify(d));
+    else localStorage.removeItem(DRAFT_KEY);
+  } catch { /* storage unavailable */ }
+}
+
+export function loadDraft(): DraftState | null {
+  try {
+    const raw = localStorage.getItem(DRAFT_KEY);
+    return raw ? (JSON.parse(raw) as DraftState) : null;
   } catch {
     return null;
   }

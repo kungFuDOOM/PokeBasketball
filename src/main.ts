@@ -1,12 +1,12 @@
 import './style.css';
 import { monByDex, spriteUrl, type Mon } from './data/pokemon';
 import {
-  CPU_TEAMS, USER_STYLE, advance, createFranchise, gameConfig, loadFranchise, nextSeason, recordGame, saveFranchise,
+  CPU_TEAMS, USER_STYLE, advance, createFranchise, gameConfig, loadDraft, loadFranchise, nextSeason, recordGame, saveDraft, saveFranchise,
   simulate, weekGames, weekLabel, type FGame, type Franchise, type Progress,
 } from './franchise/league';
 import { Audio } from './game/audio';
 import type { Game } from './game/game';
-import { draftScreen } from './screens/draft';
+import { draftScreen, type DraftState } from './screens/draft';
 import { hubScreen } from './screens/hub';
 import { menuScreen, type Settings } from './screens/menu';
 import { playGame } from './screens/play';
@@ -49,31 +49,51 @@ function overlay(text: string): () => void {
   return () => el.remove();
 }
 
+function draftSummary(d: DraftState): string {
+  const me = d.teams.findIndex((t) => t.human);
+  const n = d.taken.length;
+  const mine = Array.from({ length: n }, (_, i) => i).filter((i) => {
+    const round = Math.floor(i / d.order.length);
+    const order = round % 2 ? [...d.order].reverse() : d.order;
+    return order[i % d.order.length] === me;
+  }).length;
+  return `${d.teams[me].name} · Pick ${n + 1} of ${d.order.length * 5} · ${mine}/5 drafted`;
+}
+
 function menu() {
   app.className = 'screen-menu';
   const f = franchise;
+  const d = loadDraft();
   menuScreen(app, settings, save, {
     saved: f ? `${f.teams[0].name} · Season ${f.season} · ${f.phase === 'done' ? 'Offseason' : weekLabel(f)} · ${f.teams[0].w}-${f.teams[0].l}` : null,
+    draft: d ? draftSummary(d) : null,
     onContinue: hub,
+    onResumeDraft: () => {
+      const saved = loadDraft();
+      if (saved) draft(saved);
+    },
     onNew: () => {
       audio.unlock();
-      draft();
+      saveDraft(null);
+      const name = settings.teamName.trim() || 'Pallet Town';
+      const teams = [
+        { name, abbr: abbr(name), ...USER_STYLE, human: true },
+        ...CPU_TEAMS.map((t) => ({ ...t, human: false })),
+      ];
+      draft({ teams, order: shuffle(teams.map((_, i) => i)), taken: [] });
     },
   });
 }
 
-function draft() {
+function draft(state: DraftState) {
   app.className = 'screen-draft';
-  const name = settings.teamName.trim() || 'Pallet Town';
-  const teams = [
-    { name, abbr: abbr(name), ...USER_STYLE, human: true },
-    ...CPU_TEAMS.map((t) => ({ ...t, human: false })),
-  ];
-  draftScreen(app, teams, shuffle(teams.map((_, i) => i)), audio, (rosters, leftovers) => {
-    franchise = createFranchise(teams, rosters, leftovers);
+  window.scrollTo(0, 0);
+  draftScreen(app, state, audio, (rosters, leftovers) => {
+    franchise = createFranchise(state.teams, rosters, leftovers);
     saveFranchise(franchise);
+    saveDraft(null);
     hub();
-  }, menu);
+  }, menu, saveDraft);
 }
 
 function hub() {

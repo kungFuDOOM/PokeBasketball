@@ -57,6 +57,7 @@ export interface DraftTeam {
   name: string;
   abbr: string;
   color: string;
+  color2: string;
   human: boolean;
 }
 
@@ -82,18 +83,41 @@ function boardHtml(teams: DraftTeam[], rosters: Mon[][]): string {
   return `<div class="board"><h4>League board</h4><ul>${rows}</ul></div>`;
 }
 
+/** Everything needed to resume a draft: who is in it, the round-one order, and every pick so far (dex numbers). */
+export interface DraftState {
+  teams: DraftTeam[];
+  order: number[];
+  taken: number[];
+}
+
+/** Positions a roster doesn't have yet, in PG..C order. */
+const needs = (roster: Mon[]) => POSITIONS.filter((p) => !roster.some((m) => m.pos === p));
+
+function teamBarHtml(roster: Mon[]): string {
+  const need = needs(roster);
+  return `
+    <span class="tbar-lbl">My team <b>${roster.length}/5</b></span>
+    <span class="tbar-slots">${Array.from({ length: 5 }, (_, i) => roster[i]
+      ? `<img src="${spriteUrl(roster[i].dex)}" alt="${esc(roster[i].name)}">`
+      : '<i></i>').join('')}</span>
+    <span class="tbar-need">${roster.length ? `${teamOvr(roster)} OVR` : ''}${need.length && roster.length < 5 ? ` · Need ${need.join(' ')}` : ''}</span>`;
+}
+
 /**
- * Snake draft for any number of teams. `order` is the round-one pick order (team indexes);
- * rounds alternate direction. Calls back with each team's five picks and the undrafted pool.
+ * Snake draft for any number of teams. `state.order` is the round-one pick order (team indexes);
+ * rounds alternate direction. Picks already in `state.taken` are replayed, so a saved draft resumes
+ * where it left off. Calls `onProgress` after every pick and `onDone` with each team's five picks
+ * and the undrafted pool.
  */
 export function draftScreen(
   root: HTMLElement,
-  teams: DraftTeam[],
-  order: number[],
+  state: DraftState,
   audio: Audio,
   onDone: (rosters: Mon[][], leftovers: Mon[]) => void,
   onBack: () => void,
+  onProgress: (state: DraftState) => void,
 ) {
+  const { teams, order } = state;
   // Own container so listeners die with the screen.
   const host = root;
   root = document.createElement('div');
@@ -109,6 +133,7 @@ export function draftScreen(
   const log: string[] = [`Draft order: ${order.map((i) => (teams[i].human ? 'You' : teams[i].abbr)).join(', ')}`];
   let cpuTimer = 0;
   let done = false;
+  let teamOpen = false;
 
   root.innerHTML = `
     <div class="draft">
@@ -133,6 +158,13 @@ export function draftScreen(
           <ol class="log"></ol>
         </aside>
       </div>
+      <button class="tbar" data-a="team" aria-label="Show my team"></button>
+      <div class="sheet-bg team-sheet" hidden>
+        <div class="sheet" role="dialog" aria-label="My team">
+          <button class="close" data-a="team-close" aria-label="Close">×</button>
+          <div class="team-sheet-body"></div>
+        </div>
+      </div>
     </div>`;
   const $ = <T extends HTMLElement>(s: string) => root.querySelector<T>(s)!;
   const grid = $('.grid');
@@ -151,6 +183,15 @@ export function draftScreen(
     grid.innerHTML = shown.map((m) => monCard(m, selected === m ? 'sel' : '')).join('');
     $('.rosters').innerHTML = rosterHtml(teams[me], rosters[me]) + boardHtml(teams, rosters);
     $('.log').innerHTML = log.slice(-6).reverse().map((l) => `<li>${esc(l)}</li>`).join('');
+    $('.tbar').innerHTML = teamBarHtml(rosters[me]);
+    const sheet = $('.team-sheet');
+    sheet.hidden = !teamOpen;
+    if (teamOpen) {
+      const need = needs(rosters[me]);
+      $('.team-sheet-body').innerHTML = rosterHtml(teams[me], rosters[me])
+        + `<p class="note">${rosters[me].length >= 5 ? 'Your starting five is set.' : need.length ? `Still open: ${need.join(', ')}. Cover all five positions for the +2 lineup bonus.` : 'All five positions covered.'}</p>`
+        + boardHtml(teams, rosters);
+    }
     if (selected) {
       detail.hidden = false;
       detail.innerHTML = `<button class="close" aria-label="Close">×</button>` + detailHtml(selected, userTurn());
@@ -160,6 +201,7 @@ export function draftScreen(
 
   const record = (m: Mon) => {
     const t = picks[pick];
+    state.taken.push(m.dex);
     pool.splice(pool.indexOf(m), 1);
     rosters[t].push(m);
     log.push(`${teams[t].human ? 'You' : teams[t].name} selected ${m.name} (${m.pos}, ${m.ovr})`);
@@ -170,6 +212,8 @@ export function draftScreen(
   const finish = () => {
     done = true;
     selected = null;
+    teamOpen = false;
+    onProgress(state);
     render();
     window.setTimeout(() => onDone(rosters, pool), 900);
   };
@@ -179,6 +223,7 @@ export function draftScreen(
     record(m);
     audio.blip(human);
     if (pick >= picks.length) return finish();
+    onProgress(state);
     render();
     scheduleCpu();
   };
@@ -206,6 +251,8 @@ export function draftScreen(
       render();
       return;
     }
+    if (t.closest('[data-a="team"]')) { teamOpen = true; selected = null; render(); return; }
+    if (t.closest('[data-a="team-close"]') || t.classList.contains('team-sheet')) { teamOpen = false; render(); return; }
     if (t.closest('.close')) { selected = null; render(); return; }
     if (t.closest('.pick') && selected && userTurn()) { take(selected); return; }
     const a = t.closest<HTMLElement>('[data-a]')?.dataset.a;
@@ -218,6 +265,14 @@ export function draftScreen(
     }
   });
 
+  // Replay saved picks to resume a draft in progress.
+  const saved = state.taken.splice(0);
+  for (const dex of saved) {
+    const m = pool.find((x) => x.dex === dex);
+    if (m && pick < picks.length) record(m);
+  }
+  if (saved.length) log.push(`Draft resumed at pick ${pick + 1}.`);
+  if (pick >= picks.length) return finish();
   render();
   scheduleCpu();
 }

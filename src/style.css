@@ -392,6 +392,39 @@ li.empty { color: var(--muted); }
 .continue strong { font-size: 1.15rem; }
 .btn.warn { border-color: var(--red); color: #ffb3a1; }
 
+/* draft: my-team bar (phones) and sheet */
+.tbar {
+  display: none;
+  position: fixed;
+  left: 0; right: 0; bottom: 0;
+  z-index: 15;
+  align-items: center;
+  gap: 10px;
+  padding-block: 8px max(8px, env(safe-area-inset-bottom, 0px));
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  background: var(--panel-2);
+  border: 0;
+  border-top: 2px solid var(--accent);
+  box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.5);
+  text-align: left;
+}
+.tbar-lbl { display: flex; flex-direction: column; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; line-height: 1.1; font-size: 0.9rem; }
+.tbar-lbl b { color: var(--accent); font-size: 1.1rem; }
+.tbar-slots { display: flex; gap: 2px; }
+.tbar-slots img, .tbar-slots i { width: 38px; height: 38px; image-rendering: pixelated; }
+.tbar-slots i { border: 1px dashed var(--line); border-radius: 6px; width: 32px; height: 32px; margin: 3px; }
+.tbar-need { margin-left: auto; color: var(--muted); font-weight: 700; font-size: 0.85rem; text-align: right; }
+.team-sheet .roster, .team-sheet .board { border: 0; padding: 0; background: none; margin-top: 12px; }
+@media (max-width: 900px) {
+  .tbar { display: flex; }
+  .draft { padding-bottom: 90px; }
+  .side .rosters { display: none; }
+}
+@media (min-width: 901px) {
+  .side { max-height: calc(100vh - 24px); overflow-y: auto; }
+}
+
 /* draft league board */
 .board { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px; }
 .board h4 { margin: 0 0 8px; font-size: 0.85rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); }
