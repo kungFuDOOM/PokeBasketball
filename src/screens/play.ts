@@ -92,7 +92,8 @@ export function playGame(
 
   const frame = (now: number) => {
     if (!running) return;
-    const dt = Math.min(0.1, (now - last) / 1000);
+    // rAF timestamps can be a hair earlier than the performance.now() taken at start; never go negative.
+    const dt = Math.max(0, Math.min(0.1, (now - last) / 1000));
     last = now;
     if (ready) {
       const { intent, pause } = input.read();

@@ -2,6 +2,7 @@
 // Seeded CPU-vs-CPU games are scanned for highlights, then replayed frame by frame (with slow motion
 // on the big moments) under title cards and callouts. scripts/render-trailer.mjs captures the frames
 // and scores the result; open /trailer.html?play in the dev server to preview it in real time.
+import '../fonts.css';
 import { monByDex, TYPE_COLORS, type Mon } from '../data/pokemon';
 import { Game, type Sfx } from '../game/game';
 import { DUNK_MOVES } from '../game/hud';

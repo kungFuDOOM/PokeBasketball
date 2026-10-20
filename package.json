@@ -3,7 +3,10 @@
   "version": "0.1.0",
   "description": "Draft a squad of Pokémon and play arcade 5v5 basketball.",
   "scripts": {
+    "sprites": "node scripts/fetch-sprites.mjs",
+    "predev": "npm run sprites",
     "dev": "vite",
+    "prebuild": "npm run sprites",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",

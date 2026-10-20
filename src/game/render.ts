@@ -165,7 +165,7 @@ export class Renderer {
     ctx.fillStyle = '#0b0e22';
     ctx.fillRect(0, 0, VW, VH);
     const frame = this.hype > 0 ? Math.floor(this.t * 8) % 2 : Math.floor(this.t * 1.5) % 2;
-    const crowd = this.crowd[frame];
+    const crowd = this.crowd[Math.abs(frame) % 2];
     const off = -((this.camX * S_FAR * 0.85) % crowd.width) - 200;
     for (let x = off; x < VW; x += crowd.width) ctx.drawImage(crowd, Math.round(x), 0);
     // LED ad board along the far sideline

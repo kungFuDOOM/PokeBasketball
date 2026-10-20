@@ -10,7 +10,11 @@ npm run dev        # http://localhost:5173
 npm run build      # static site in dist/
 ```
 
-`dist/` is a plain static site (relative paths), so it can be hosted on GitHub Pages, Netlify or any file server. Sprites load from [PokeAPI/sprites](https://github.com/PokeAPI/sprites) at runtime.
+`dist/` is a plain static site (relative paths), so it can be hosted on GitHub Pages, Netlify or any file server. `npm run dev` and `npm run build` first download the sprites from [PokeAPI/sprites](https://github.com/PokeAPI/sprites) into `public/sprites/` (git-ignored), so the deployed site serves them itself.
+
+## Privacy
+
+The game makes no requests to third parties: code, fonts (self-hosted, OFL), sprites and sound all come from the site's own host. There are no accounts, payments, analytics or cookies. Saves live in the browser's local storage under `pokejam.*` keys and can be erased with **Delete saved data** on the title screen. `public/privacy.html` is the privacy policy and terms page. Fill in its contact address before launch, and update the Hosting section if you host somewhere other than GitHub Pages. If you ever add analytics, accounts or payments, update that page first.
 
 `npm run build:artifact` also writes `dist-artifact/`, the same game with every sprite inlined as a data URI, for hosts that block third-party images.
 

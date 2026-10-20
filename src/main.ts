@@ -1,3 +1,4 @@
+import './fonts.css';
 import './style.css';
 import { monByDex, spriteUrl, type Mon } from './data/pokemon';
 import {
@@ -68,6 +69,16 @@ function menu() {
     saved: f ? `${f.teams[0].name} · Season ${f.season} · ${f.phase === 'done' ? 'Offseason' : weekLabel(f)} · ${f.teams[0].w}-${f.teams[0].l}` : null,
     draft: d ? draftSummary(d) : null,
     onContinue: hub,
+    onDeleteData: () => {
+      try {
+        for (const k of Object.keys(localStorage)) if (k.startsWith('pokejam.')) localStorage.removeItem(k);
+      } catch { /* storage unavailable: nothing was saved */ }
+      franchise = null;
+      Object.assign(settings, { difficulty: 'pro', quarterLen: 120, teamName: 'Pallet Town' });
+      menu();
+      const status = app.querySelector('.foot-status');
+      if (status) status.textContent = 'All saved data on this device was deleted.';
+    },
     onResumeDraft: () => {
       const saved = loadDraft();
       if (saved) draft(saved);

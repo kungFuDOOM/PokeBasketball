@@ -276,7 +276,8 @@ export function bestEffectiveness(atk: PokeType[], def: PokeType[]): number {
   return Math.max(...atk.map((t) => effectiveness(t, def)));
 }
 
-const SPRITE_BASE = 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon';
+/** Sprites are served from the site itself (public/sprites, filled by scripts/fetch-sprites.mjs). */
+const SPRITE_BASE = `${import.meta.env.BASE_URL}sprites`;
 
 declare global {
   interface Window {

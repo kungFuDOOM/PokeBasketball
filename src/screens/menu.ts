@@ -67,6 +67,8 @@ export interface TitleOptions {
   draft: string | null;
   onContinue: () => void;
   onResumeDraft: () => void;
+  /** Erases every save and setting this game keeps in the browser. */
+  onDeleteData: () => void;
   onNew: () => void;
 }
 
@@ -106,7 +108,14 @@ export function menuScreen(root: HTMLElement, settings: Settings, onChange: () =
         </section>
         <section class="card">${controlsHtml()}</section>
       </div>
-      <footer class="foot">Fan-made game. Pokémon and its characters are trademarks of Nintendo, Game Freak and The Pokémon Company. Sprites from PokeAPI.</footer>
+      <footer class="foot">
+        <p>Fan-made game. Pokémon and its characters are trademarks of Nintendo, Game Freak and The Pokémon Company. Sprites from PokeAPI.</p>
+        <p class="foot-links">
+          <a href="privacy.html">Privacy and terms</a>
+          <button class="link-btn" data-go="delete">Delete saved data</button>
+        </p>
+        <p class="foot-status" role="status"></p>
+      </footer>
     </div>`;
 
   const name = root.querySelector<HTMLInputElement>('#team-name')!;
@@ -127,4 +136,15 @@ export function menuScreen(root: HTMLElement, settings: Settings, onChange: () =
   startNew.addEventListener('click', tryNew);
   root.querySelector('[data-go="continue"]')?.addEventListener('click', opts.onContinue);
   root.querySelector('[data-go="resume-draft"]')?.addEventListener('click', opts.onResumeDraft);
+  const del = root.querySelector<HTMLButtonElement>('[data-go="delete"]')!;
+  let delArmed = false;
+  del.addEventListener('click', () => {
+    if (!delArmed) {
+      delArmed = true;
+      del.textContent = 'Tap again to erase your franchise, draft and settings';
+      del.classList.add('warn');
+      return;
+    }
+    opts.onDeleteData();
+  });
 }
