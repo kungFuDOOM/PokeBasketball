@@ -16,8 +16,13 @@ npm run build      # static site in dist/
 
 ## How it plays
 
-1. **Draft.** Snake draft against Team Rocket's CPU GM: 48 Pokémon, five rounds. Each card has an OVR, a position, an archetype (Floor General, Rim Protector, Stretch Big…) and eight ratings. Cover all five positions for a +2 lineup bonus.
-2. **Play.** 2-minute quarters by default, four difficulty levels, overtime on a tie. You control the ball handler on offense and any defender on defense.
+Every game starts with the draft.
+
+1. **Name your team** on the title screen.
+2. **Draft.** Snake draft against Team Rocket's CPU GM: 48 Pokémon, five rounds. Each card has an OVR, a position, an archetype (Floor General, Rim Protector, Stretch Big…) and eight ratings. Cover all five positions for a +2 lineup bonus. Auto-pick and Sim rest fill picks for you.
+3. **Matchup.** Compare both lineups, then choose difficulty (Rookie to Legend) and quarter length (1–5 minutes).
+4. **Play.** You control the ball handler on offense and any defender on defense. Overtime on a tie.
+5. **Box score.** Rematch with the same rosters, or start a new draft.
 
 | Action | Keyboard | Gamepad |
 | --- | --- | --- |

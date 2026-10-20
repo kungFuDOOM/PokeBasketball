@@ -2,8 +2,8 @@ import './style.css';
 import type { Mon } from './data/pokemon';
 import { Audio } from './game/audio';
 import type { TeamDef } from './game/types';
-import { autoDraft, draftScreen, matchupHtml } from './screens/draft';
-import { menuScreen, type Settings } from './screens/menu';
+import { draftScreen, matchupHtml } from './screens/draft';
+import { bindSettings, menuScreen, type Settings } from './screens/menu';
 import { playGame } from './screens/play';
 import { resultsScreen } from './screens/results';
 
@@ -28,47 +28,45 @@ window.addEventListener('keydown', () => audio.unlock(), { passive: true });
 
 const abbr = (name: string) => (name.replace(/[^a-z0-9]/gi, '').slice(0, 3) || 'YOU').toUpperCase();
 
-function teams(user: Mon[], cpu: Mon[], humanHome: boolean): [TeamDef, TeamDef] {
+function teams(user: Mon[], cpu: Mon[]): [TeamDef, TeamDef] {
   const name = settings.teamName.trim() || 'Pallet Town';
   return [
-    { name: humanHome ? name : 'Pallet Town', abbr: humanHome ? abbr(name) : 'PAL', ...HOME, roster: user, human: humanHome },
+    { name, abbr: abbr(name), ...HOME, roster: user, human: true },
     { name: CPU.name, abbr: CPU.abbr, color: CPU.color, color2: CPU.color2, roster: cpu, human: false },
   ];
 }
 
 function menu() {
   app.className = 'screen-menu';
-  menuScreen(app, settings, save, (mode) => {
+  menuScreen(app, settings, save, () => {
     audio.unlock();
-    if (mode === 'draft') draft();
-    else {
-      const [a, b] = autoDraft();
-      matchup(a, b, mode === 'quick');
-    }
+    draft();
   });
 }
 
 function draft() {
   app.className = 'screen-draft';
-  draftScreen(app, settings, audio, CPU.name, (u, c) => matchup(u, c, true), menu);
+  draftScreen(app, settings, audio, CPU.name, matchup, menu);
 }
 
-function matchup(user: Mon[], cpu: Mon[], human: boolean) {
+/** After the draft: review both lineups, pick difficulty and quarter length, tip off. */
+function matchup(user: Mon[], cpu: Mon[]) {
   app.className = 'screen-matchup';
-  const [h, a] = teams(user, cpu, human);
+  const [h, a] = teams(user, cpu);
   app.innerHTML = matchupHtml(h, a, settings);
-  app.querySelector('[data-a="tip"]')!.addEventListener('click', () => play(user, cpu, human));
-  app.querySelector('[data-a="back"]')!.addEventListener('click', menu);
+  bindSettings(app, settings, save);
+  app.querySelector('[data-a="tip"]')!.addEventListener('click', () => play(user, cpu));
+  app.querySelector('[data-a="back"]')!.addEventListener('click', draft);
 }
 
-function play(user: Mon[], cpu: Mon[], human: boolean) {
+function play(user: Mon[], cpu: Mon[]) {
   app.className = 'screen-game';
   audio.unlock();
-  const [home, away] = teams(user, cpu, human);
+  const [home, away] = teams(user, cpu);
   playGame(app, { home, away, quarterLen: settings.quarterLen, difficulty: settings.difficulty }, audio, (g) => {
     app.className = 'screen-results';
     resultsScreen(app, g, (a) => {
-      if (a === 'rematch') play(user, cpu, human);
+      if (a === 'rematch') play(user, cpu);
       else if (a === 'redraft') draft();
       else menu();
     });

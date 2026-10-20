@@ -1,9 +1,9 @@
 import { POKEMON, POSITIONS, RATING_LABELS, SPECIALS, TYPE_COLORS, spriteUrl, type Mon, type Pos, type Ratings } from '../data/pokemon';
 import type { Audio } from '../game/audio';
 import { chemistry, teamOvr } from '../game/game';
-import { DIFFICULTIES, type TeamDef } from '../game/types';
+import type { TeamDef } from '../game/types';
 import { esc, tier } from '../util';
-import type { Settings } from './menu';
+import { settingsHtml, type Settings } from './menu';
 
 /** CPU general manager: best available, nudged toward positions it hasn't filled. */
 export function cpuPick(pool: Mon[], roster: Mon[]): Mon {
@@ -15,19 +15,6 @@ export function cpuPick(pool: Mon[], roster: Mon[]): Mon {
     if (s > bs) { bs = s; best = m; }
   }
   return best;
-}
-
-export function autoDraft(): [Mon[], Mon[]] {
-  const pool = [...POKEMON];
-  const a: Mon[] = [];
-  const b: Mon[] = [];
-  for (let i = 0; i < 10; i++) {
-    const side = Math.floor(i / 2) % 2 === 0 ? (i % 2 === 0 ? a : b) : (i % 2 === 0 ? b : a);
-    const m = cpuPick(pool, side);
-    side.push(m);
-    pool.splice(pool.indexOf(m), 1);
-  }
-  return [a, b];
 }
 
 function typeChips(m: Mon): string {
@@ -91,10 +78,10 @@ export function matchupHtml(home: TeamDef, away: TeamDef, settings: Settings): s
     <div class="matchup">
       <h2>Tonight's matchup</h2>
       <div class="mu-cols">${col(home)}<div class="vs">VS</div>${col(away)}</div>
-      <p class="mu-meta">${DIFFICULTIES[settings.difficulty].label} · ${settings.quarterLen / 60}-minute quarters</p>
+      ${settingsHtml(settings)}
       <div class="actions center">
         <button class="btn primary big" data-a="tip">Tip off</button>
-        <button class="btn ghost" data-a="back">Back to menu</button>
+        <button class="btn ghost" data-a="back">Redraft</button>
       </div>
     </div>`;
 }

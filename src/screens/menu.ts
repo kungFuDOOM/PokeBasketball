@@ -26,12 +26,42 @@ export function controlsHtml(): string {
     </div>`;
 }
 
-export function menuScreen(
-  root: HTMLElement,
-  settings: Settings,
-  onChange: (s: Settings) => void,
-  go: (mode: 'draft' | 'quick' | 'watch') => void,
-) {
+/** Difficulty and quarter-length pickers, shown on the matchup screen after the draft. */
+export function settingsHtml(settings: Settings): string {
+  return `
+    <div class="game-settings">
+      <div class="field">Difficulty
+        <div class="seg" id="difficulty">
+          ${(Object.keys(DIFFICULTIES) as Difficulty[]).map((d) =>
+            `<button data-v="${d}" class="${d === settings.difficulty ? 'on' : ''}">${DIFFICULTIES[d].label}</button>`).join('')}
+        </div>
+      </div>
+      <div class="field">Quarter length
+        <div class="seg" id="qlen">
+          ${[60, 120, 180, 300].map((s) =>
+            `<button data-v="${s}" class="${s === settings.quarterLen ? 'on' : ''}">${s / 60} min</button>`).join('')}
+        </div>
+      </div>
+    </div>`;
+}
+
+export function bindSettings(root: HTMLElement, settings: Settings, onChange: () => void) {
+  const seg = (id: string, apply: (v: string) => void) => {
+    const el = root.querySelector<HTMLElement>(id)!;
+    el.addEventListener('click', (e) => {
+      const b = (e.target as HTMLElement).closest<HTMLButtonElement>('button');
+      if (!b) return;
+      el.querySelectorAll('button').forEach((x) => x.classList.toggle('on', x === b));
+      apply(b.dataset.v!);
+      onChange();
+    });
+  };
+  seg('#difficulty', (v) => (settings.difficulty = v as Difficulty));
+  seg('#qlen', (v) => (settings.quarterLen = Number(v)));
+}
+
+/** Title screen: name your team, then the only way in is the draft. */
+export function menuScreen(root: HTMLElement, settings: Settings, onChange: () => void, onDraft: () => void) {
   const parade = [...POKEMON].sort(() => Math.random() - 0.5).slice(0, 14);
   root.innerHTML = `
     <div class="menu">
@@ -44,25 +74,12 @@ export function menuScreen(
       </header>
       <div class="menu-grid">
         <section class="card setup">
-          <label class="field" for="team-name">Your team
-            <input id="team-name" maxlength="14" autocomplete="off" value="${esc(settings.teamName)}">
+          <label class="field" for="team-name">Name your team
+            <input id="team-name" maxlength="20" autocomplete="off" value="${esc(settings.teamName)}">
           </label>
-          <div class="field">Difficulty
-            <div class="seg" id="difficulty">
-              ${(Object.keys(DIFFICULTIES) as Difficulty[]).map((d) =>
-                `<button data-v="${d}" class="${d === settings.difficulty ? 'on' : ''}">${DIFFICULTIES[d].label}</button>`).join('')}
-            </div>
-          </div>
-          <div class="field">Quarter length
-            <div class="seg" id="qlen">
-              ${[60, 120, 180, 300].map((s) =>
-                `<button data-v="${s}" class="${s === settings.quarterLen ? 'on' : ''}">${s / 60} min</button>`).join('')}
-            </div>
-          </div>
+          <p class="setup-note">Snake-draft five Pokémon against Team Rocket's front office, then take your squad onto the court.</p>
           <div class="actions">
-            <button class="btn primary big" data-go="draft">Start draft</button>
-            <button class="btn" data-go="quick">Quick game</button>
-            <button class="btn ghost" data-go="watch">Watch CPU vs CPU</button>
+            <button class="btn primary big" data-go="draft">Draft your team</button>
           </div>
         </section>
         <section class="card">${controlsHtml()}</section>
@@ -71,19 +88,10 @@ export function menuScreen(
     </div>`;
 
   const name = root.querySelector<HTMLInputElement>('#team-name')!;
-  name.addEventListener('input', () => onChange({ ...settings, teamName: (settings.teamName = name.value) }));
-  const seg = (id: string, apply: (v: string) => void) => {
-    const el = root.querySelector<HTMLElement>(id)!;
-    el.addEventListener('click', (e) => {
-      const b = (e.target as HTMLElement).closest<HTMLButtonElement>('button');
-      if (!b) return;
-      el.querySelectorAll('button').forEach((x) => x.classList.toggle('on', x === b));
-      apply(b.dataset.v!);
-      onChange(settings);
-    });
-  };
-  seg('#difficulty', (v) => (settings.difficulty = v as Difficulty));
-  seg('#qlen', (v) => (settings.quarterLen = Number(v)));
-  root.querySelectorAll<HTMLButtonElement>('[data-go]').forEach((b) =>
-    b.addEventListener('click', () => go(b.dataset.go as 'draft' | 'quick' | 'watch')));
+  name.addEventListener('input', () => {
+    settings.teamName = name.value;
+    onChange();
+  });
+  name.addEventListener('keydown', (e) => { if (e.key === 'Enter') onDraft(); });
+  root.querySelector('[data-go="draft"]')!.addEventListener('click', onDraft);
 }
