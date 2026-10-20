@@ -1,0 +1,26 @@
+{
+  "name": "poke-jam",
+  "version": "0.1.0",
+  "description": "Draft a squad of Pokémon and play arcade 5v5 basketball.",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "build:artifact": "npm run build && node scripts/build-artifact.mjs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kungFuDOOM/PokeBasketball.git"
+  },
+  "bugs": {
+    "url": "https://github.com/kungFuDOOM/PokeBasketball/issues"
+  },
+  "homepage": "https://github.com/kungFuDOOM/PokeBasketball#readme",
+  "devDependencies": {
+    "typescript": "^5.9.3",
+    "vite": "^5.4.21"
+  },
+  "private": true,
+  "type": "module"
+}

@@ -1,0 +1,207 @@
+import type { Mon, Ratings } from '../data/pokemon';
+
+export type TeamId = 0 | 1;
+
+// Court is measured in feet. x runs baseline to baseline (0..94), y runs far sideline to near sideline (0..50), z is height.
+export const COURT_L = 94;
+export const COURT_W = 50;
+export const HOOP_Y = 25;
+export const RIM_Z = 10;
+export const RIM_R = 0.75;
+export const GRAVITY = 32;
+export const BALL_R = 0.45;
+
+/** Team 0 (home) attacks the right hoop, team 1 attacks the left. */
+export function hoopX(attacking: TeamId): number {
+  return attacking === 0 ? 88.75 : 5.25;
+}
+/** Unit x-direction pointing from a team's attacking hoop back toward half court. */
+export function backDir(attacking: TeamId): number {
+  return attacking === 0 ? -1 : 1;
+}
+
+export function isThree(x: number, y: number, attacking: TeamId): boolean {
+  const dx = x - hoopX(attacking);
+  const dy = y - HOOP_Y;
+  const d = Math.hypot(dx, dy);
+  if (Math.abs(dy) >= 22 && Math.abs(dx) < 9) return true;
+  return d >= 23.75;
+}
+
+export type Difficulty = 'rookie' | 'pro' | 'allstar' | 'legend';
+
+export const DIFFICULTIES: Record<Difficulty, {
+  label: string;
+  cpuBoost: number; // added to every CPU rating
+  green: number; // multiplier on the user's perfect-release window
+  aggro: number; // CPU steal / shove frequency
+  react: number; // CPU block reaction delay, seconds
+  cpuShot: number; // lowers CPU release noise
+}> = {
+  rookie: { label: 'Rookie', cpuBoost: -8, green: 1.5, aggro: 0.55, react: 0.32, cpuShot: -0.03 },
+  pro: { label: 'Pro', cpuBoost: 0, green: 1.15, aggro: 0.85, react: 0.22, cpuShot: 0 },
+  allstar: { label: 'All-Star', cpuBoost: 4, green: 0.95, aggro: 1.05, react: 0.15, cpuShot: 0.02 },
+  legend: { label: 'Legend', cpuBoost: 8, green: 0.78, aggro: 1.25, react: 0.09, cpuShot: 0.04 },
+};
+
+export interface TeamDef {
+  name: string;
+  abbr: string;
+  color: string;
+  color2: string;
+  roster: Mon[]; // five, any order
+  human: boolean;
+}
+
+export interface GameConfig {
+  home: TeamDef;
+  away: TeamDef;
+  quarterLen: number; // seconds
+  difficulty: Difficulty;
+}
+
+export interface Intent {
+  mx: number;
+  my: number;
+  turbo: boolean;
+  shoot: boolean; // pressed this frame
+  shootHeld: boolean;
+  pass: boolean;
+  steal: boolean;
+  special: boolean;
+  swap: boolean;
+  passTo?: Player; // AI only
+}
+
+export function emptyIntent(): Intent {
+  return { mx: 0, my: 0, turbo: false, shoot: false, shootHeld: false, pass: false, steal: false, special: false, swap: false };
+}
+
+export interface PStats {
+  pts: number; fgm: number; fga: number; tpm: number; tpa: number;
+  reb: number; ast: number; stl: number; blk: number; dnk: number;
+}
+
+export type PState = 'free' | 'shoot' | 'layup' | 'dunk' | 'hang' | 'stun' | 'swipe';
+
+export interface DunkPath {
+  x0: number; y0: number; z0: number;
+  x1: number; y1: number;
+  t: number; T: number; peak: number;
+  spin: boolean;
+  make: boolean;
+  oop: boolean;
+  tested: Set<number>;
+}
+
+export interface AIState {
+  think: number;
+  tx: number; ty: number;
+  jitterT: number; jx: number; jy: number;
+  cutT: number;
+  jumpIn: number; // pending reaction jump countdown, -1 for none
+  plan: 'drive' | 'hold' | 'shoot' | 'jumper' | 'pass' | 'none';
+  planT: number;
+  dodge: number;
+  pullUp: boolean; // ball handler plans to stop at the arc and shoot
+}
+
+export interface Player {
+  id: number;
+  team: TeamId;
+  slot: number; // 0 PG … 4 C, used for matchups and floor spots
+  mon: Mon;
+  r: Ratings;
+  size: number;
+  heightFt: number;
+  x: number; y: number; z: number;
+  vx: number; vy: number; vz: number;
+  facing: 1 | -1;
+  back: boolean;
+  runPhase: number;
+  state: PState;
+  stateT: number;
+  turbo: number;
+  turboOn: boolean;
+  special: number;
+  fire: boolean;
+  fireMakes: number;
+  streak: number;
+  stealCd: number;
+  meter: number; // shot meter 0..1.25
+  releaseAt: number; // AI shot release target
+  dunk: DunkPath | null;
+  fx: { surge: number; phase: number; slow: number; lockin: boolean };
+  stats: PStats;
+  ai: AIState;
+  intent: Intent;
+  human: boolean; // currently driven by the user
+  lastCatch: number; // game time of last catch, for assists
+  lastPasser: Player | null;
+}
+
+export type BallMode = 'held' | 'pass' | 'shot' | 'loose' | 'net';
+
+export interface ShotInfo {
+  shooter: Player;
+  make: boolean;
+  airball: boolean;
+  points: 2 | 3;
+  t: number; T: number;
+  x0: number; y0: number; z0: number;
+  tx: number; ty: number; tz: number;
+  vx: number; vy: number; vz: number;
+  tested: Set<number>;
+  kind: 'jump' | 'layup';
+}
+
+export interface PassInfo {
+  from: Player;
+  to: Player;
+  oop: boolean;
+  t: number;
+  speed: number;
+  tested: Set<number>;
+  z0: number;
+  dist0: number;
+}
+
+export interface Ball {
+  x: number; y: number; z: number;
+  vx: number; vy: number; vz: number;
+  mode: BallMode;
+  owner: Player | null;
+  shot: ShotInfo | null;
+  pass: PassInfo | null;
+  fromShot: TeamId | -1; // a miss is live; the team that shot it, for off/def rebound
+  lastTouch: TeamId;
+  noPickup: number; // seconds during which nobody can grab
+  spin: number;
+}
+
+export type Grade = 'perfect' | 'good' | 'early' | 'late' | 'very-early' | 'very-late' | 'layup' | 'dunk';
+
+export type GameEvent =
+  | { kind: 'score'; player: Player; points: number; how: 'jump' | 'layup' | 'dunk' }
+  | { kind: 'miss'; player: Player; airball: boolean }
+  | { kind: 'release'; player: Player; grade: Grade }
+  | { kind: 'block'; player: Player; victim: Player }
+  | { kind: 'steal'; player: Player; victim: Player }
+  | { kind: 'shove'; player: Player; victim: Player; mult: number; ok: boolean }
+  | { kind: 'special'; player: Player; hits: { victim: Player; mult: number }[] }
+  | { kind: 'fire'; player: Player; on: boolean }
+  | { kind: 'oop'; player: Player }
+  | { kind: 'shotclock'; team: TeamId }
+  | { kind: 'quarter'; label: string; sub: string }
+  | { kind: 'final' };
+
+export const clamp = (v: number, a: number, b: number) => (v < a ? a : v > b ? b : v);
+export const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
+export const rand = (a: number, b: number) => a + Math.random() * (b - a);
+export function randn(): number {
+  // Box-Muller
+  const u = 1 - Math.random();
+  const v = Math.random();
+  return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+}
+export const dist = (ax: number, ay: number, bx: number, by: number) => Math.hypot(ax - bx, ay - by);
