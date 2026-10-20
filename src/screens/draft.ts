@@ -1,15 +1,16 @@
-import { POKEMON, POSITIONS, RATING_LABELS, SPECIALS, TYPE_COLORS, spriteUrl, type Mon, type Pos, type Ratings } from '../data/pokemon';
+import { POKEMON, POSITIONS, RATING_LABELS, SPECIALS, TYPE_COLORS, spriteUrl, type Mon, type PokeType, type Pos, type Ratings } from '../data/pokemon';
 import type { Audio } from '../game/audio';
 import { chemistry, teamOvr } from '../game/game';
 import { esc, tier } from '../util';
 
-/** CPU general manager: best available, nudged toward positions it hasn't filled. */
-export function cpuPick(pool: Mon[], roster: Mon[]): Mon {
+/** CPU general manager: best available, nudged toward open positions and the team's favorite types. */
+export function cpuPick(pool: Mon[], roster: Mon[], types: PokeType[] = []): Mon {
   const have = new Set(roster.map((m) => m.pos));
   let best = pool[0];
   let bs = -Infinity;
   for (const m of pool) {
-    const s = m.ovr + (have.has(m.pos) ? 0 : 5) + Math.random() * 5;
+    const onType = m.types.some((t) => types.includes(t));
+    const s = m.ovr + (have.has(m.pos) ? 0 : 5) + (onType ? 8 : 0) + Math.random() * 5;
     if (s > bs) { bs = s; best = m; }
   }
   return best;
@@ -59,6 +60,12 @@ export interface DraftTeam {
   color: string;
   color2: string;
   human: boolean;
+  leader?: string;
+  types?: PokeType[];
+  boost?: number;
+  gym?: number;
+  badge?: string;
+  elite?: boolean;
 }
 
 function rosterHtml(t: DraftTeam, picks: Mon[]): string {
@@ -74,7 +81,7 @@ function rosterHtml(t: DraftTeam, picks: Mon[]): string {
 
 function boardHtml(teams: DraftTeam[], rosters: Mon[][]): string {
   const rows = teams.map((t, i) => t.human ? '' : `
-    <li style="--tc:${t.color}">
+    <li style="--tc:${t.color}" title="${esc(t.name)}${t.leader ? ` (${esc(t.leader)})` : ''}">
       <span class="abbr">${esc(t.abbr)}</span>
       ${Array.from({ length: 5 }, (_, k) => rosters[i][k]
         ? `<img src="${spriteUrl(rosters[i][k].dex)}" alt="${esc(rosters[i][k].name)}" title="${esc(rosters[i][k].name)} (${rosters[i][k].ovr})">`
@@ -129,6 +136,7 @@ export function draftScreen(
   const me = teams.findIndex((t) => t.human);
   let pick = 0;
   let filter: Pos | 'ALL' = 'ALL';
+  let typeFilter = '';
   let selected: Mon | null = null;
   const log: string[] = [`Draft order: ${order.map((i) => (teams[i].human ? 'You' : teams[i].abbr)).join(', ')}`];
   let cpuTimer = 0;
@@ -149,6 +157,10 @@ export function draftScreen(
         <section class="pool">
           <div class="filters" role="tablist">
             ${(['ALL', ...POSITIONS] as const).map((p) => `<button data-f="${p}" class="${p === 'ALL' ? 'on' : ''}">${p}</button>`).join('')}
+            <select id="type-filter" aria-label="Filter by type">
+              <option value="">All types</option>
+              ${(Object.keys(TYPE_COLORS) as PokeType[]).map((t) => `<option value="${t}">${t}</option>`).join('')}
+            </select>
           </div>
           <div class="grid"></div>
         </section>
@@ -169,6 +181,10 @@ export function draftScreen(
   const $ = <T extends HTMLElement>(s: string) => root.querySelector<T>(s)!;
   const grid = $('.grid');
   const detail = $('.detail');
+  $<HTMLSelectElement>('#type-filter').addEventListener('change', (e) => {
+    typeFilter = (e.target as HTMLSelectElement).value;
+    render();
+  });
 
   const userTurn = () => !done && picks[pick] === me;
 
@@ -179,7 +195,7 @@ export function draftScreen(
     const until = picks.indexOf(me, pick) - pick;
     otc.textContent = done ? '' : userTurn() ? "You're on the clock" : `${teams[picks[pick]].name} is picking… (you're up in ${until})`;
     otc.classList.toggle('you', userTurn());
-    const shown = pool.filter((m) => filter === 'ALL' || m.pos === filter);
+    const shown = pool.filter((m) => (filter === 'ALL' || m.pos === filter) && (!typeFilter || m.types.includes(typeFilter as PokeType)));
     grid.innerHTML = shown.map((m) => monCard(m, selected === m ? 'sel' : '')).join('');
     $('.rosters').innerHTML = rosterHtml(teams[me], rosters[me]) + boardHtml(teams, rosters);
     $('.log').innerHTML = log.slice(-6).reverse().map((l) => `<li>${esc(l)}</li>`).join('');
@@ -231,7 +247,7 @@ export function draftScreen(
   const scheduleCpu = () => {
     window.clearTimeout(cpuTimer);
     if (!done && picks[pick] !== me) {
-      cpuTimer = window.setTimeout(() => take(cpuPick(pool, rosters[picks[pick]])), 450);
+      cpuTimer = window.setTimeout(() => take(cpuPick(pool, rosters[picks[pick]], teams[picks[pick]].types)), 280);
     }
   };
 
@@ -260,7 +276,7 @@ export function draftScreen(
     if (a === 'auto' && userTurn()) take(cpuPick(pool, rosters[me]));
     if (a === 'sim' && !done) {
       window.clearTimeout(cpuTimer);
-      while (pick < picks.length) record(cpuPick(pool, rosters[picks[pick]]));
+      while (pick < picks.length) record(cpuPick(pool, rosters[picks[pick]], teams[picks[pick]].types));
       finish();
     }
   });

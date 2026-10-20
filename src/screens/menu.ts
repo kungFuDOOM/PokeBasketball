@@ -101,7 +101,7 @@ export function menuScreen(root: HTMLElement, settings: Settings, onChange: () =
           <label class="field" for="team-name">${opts.saved || opts.draft ? 'Or start over with a new team' : 'Name your team'}
             <input id="team-name" maxlength="20" autocomplete="off" value="${esc(settings.teamName)}">
           </label>
-          <p class="setup-note">Start a franchise: draft five Pokémon against five rival teams, then play a 10-week season and the playoffs. Your Pokémon level up, evolve and carry over to the next season.</p>
+          <p class="setup-note">Start a franchise: draft five Pokémon against the eight Kanto Gym Leaders and the Elite Four, then play a 9-week season and the playoffs. Beat a gym to earn its badge. Your Pokémon level up, evolve and carry over to the next season.</p>
           <div class="actions">
             <button class="btn ${opts.saved || opts.draft ? '' : 'primary big'}" data-go="new">${opts.saved || opts.draft ? 'New franchise' : 'Draft your team'}</button>
           </div>

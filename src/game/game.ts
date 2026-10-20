@@ -86,7 +86,7 @@ export class Game {
       const def = this.teams[t];
       const roster = [...def.roster].sort((a, b) => POSITIONS.indexOf(a.pos) - POSITIONS.indexOf(b.pos));
       const cpuBoost = !def.human && cfg.home.human ? this.diff.cpuBoost : 0;
-      const boost = chemistry(def.roster) + cpuBoost;
+      const boost = chemistry(def.roster) + cpuBoost + (def.boost ?? 0);
       roster.forEach((mon, slot) => this.players.push(makePlayer(id++, t, slot, mon, boost)));
     }
     this.clock = cfg.quarterLen;

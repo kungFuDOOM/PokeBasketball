@@ -51,6 +51,10 @@ export interface TeamDef {
   color2: string;
   roster: Mon[]; // five, any order
   human: boolean;
+  /** Added to every rating (franchise gyms and the Elite Four). */
+  boost?: number;
+  /** Shown in the pre-game intro, e.g. "BROCK wants to ball!" */
+  coach?: string;
 }
 
 export interface GameConfig {

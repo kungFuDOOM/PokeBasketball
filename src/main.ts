@@ -2,7 +2,7 @@ import './fonts.css';
 import './style.css';
 import { monByDex, spriteUrl, type Mon } from './data/pokemon';
 import {
-  CPU_TEAMS, USER_STYLE, advance, createFranchise, gameConfig, loadDraft, loadFranchise, nextSeason, recordGame, saveDraft, saveFranchise,
+  LEAGUE, USER_STYLE, advance, badgesEarned, createFranchise, gameConfig, loadDraft, loadFranchise, nextSeason, recordGame, saveDraft, saveFranchise,
   simulate, weekGames, weekLabel, type FGame, type Franchise, type Progress,
 } from './franchise/league';
 import { Audio } from './game/audio';
@@ -12,6 +12,7 @@ import { hubScreen } from './screens/hub';
 import { menuScreen, type Settings } from './screens/menu';
 import { playGame } from './screens/play';
 import { resultsScreen } from './screens/results';
+import { badgeSvg } from './ui/badges';
 import { esc } from './util';
 
 const app = document.querySelector<HTMLElement>('#app')!;
@@ -89,7 +90,7 @@ function menu() {
       const name = settings.teamName.trim() || 'Pallet Town';
       const teams = [
         { name, abbr: abbr(name), ...USER_STYLE, human: true },
-        ...CPU_TEAMS.map((t) => ({ ...t, human: false })),
+        ...LEAGUE.map((t) => ({ ...t, human: false })),
       ];
       draft({ teams, order: shuffle(teams.map((_, i) => i)), taken: [] });
     },
@@ -177,8 +178,24 @@ function progressHtml(f: Franchise, progress: Progress[]): string {
   return `<section class="progress"><h3>Level ups</h3>${evos}<ul class="levels">${levels}</ul></section>`;
 }
 
+/** Pokémon-style announcement for a badge (or the Elite Four emblem) won in this game. */
+function badgeHtml(f: Franchise, teamId: number): string {
+  const t = f.teams[teamId];
+  const leader = (t.leader ?? t.name).toUpperCase();
+  const line = t.elite
+    ? `You defeated ${leader}!`
+    : `You beat GYM LEADER ${leader} and earned the ${t.badge!.toUpperCase()} BADGE!`;
+  return `
+    <section class="badge-won" style="--tc:${t.color}">
+      ${badgeSvg(t.elite ? 'Elite' : t.badge!, true, 96)}
+      <p>${esc(line)}</p>
+    </section>`;
+}
+
 function afterUserGame(f: Franchise, g: FGame, game: Game, sides: [number, number], uidOf: Map<Mon, string>, simmed: boolean) {
+  const before = badgesEarned(f);
   const progress = recordGame(f, g, game, sides, uidOf);
+  const newBadge = [...badgesEarned(f)].find((id) => !before.has(id));
   saveFranchise(f);
   app.className = 'screen-results';
   window.scrollTo(0, 0);
@@ -187,7 +204,7 @@ function afterUserGame(f: Franchise, g: FGame, game: Game, sides: [number, numbe
   resultsScreen(app, game, {
     tag: simmed ? `${label} · Simulated` : label,
     headline: won ? (g.round === 'final' ? 'Champions!' : 'You win!') : `${f.teams[sides[1]].name} win`,
-    extraHtml: progressHtml(f, progress),
+    extraHtml: (newBadge !== undefined ? badgeHtml(f, newBadge) : '') + progressHtml(f, progress),
     buttons: [{ id: 'continue', label: 'Continue', kind: 'primary' }],
     onAction: () => void finishWeek(f).then(hub),
   });

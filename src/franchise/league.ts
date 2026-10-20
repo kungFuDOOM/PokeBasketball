@@ -1,19 +1,38 @@
-import { EVOLUTIONS, RATING_LABELS, monByDex, positionWeights, withBonus, type Mon, type Ratings } from '../data/pokemon';
+import { EVOLUTIONS, RATING_LABELS, monByDex, positionWeights, withBonus, type Mon, type PokeType, type Ratings } from '../data/pokemon';
 import { Game } from '../game/game';
 import type { Difficulty, PStats, TeamDef } from '../game/types';
 import type { DraftState } from '../screens/draft';
 
 const SAVE_KEY = 'pokejam.franchise.v1';
-export const WEEKS = 10;
 /** XP needed to go from `level` to the next one; each level costs a bit more. */
 export const xpToNext = (level: number) => 60 + 25 * (level - 1);
 
-export const CPU_TEAMS = [
-  { name: 'Team Rocket', abbr: 'RKT', color: '#d8343b', color2: '#3a1218' },
-  { name: 'Team Aqua', abbr: 'AQA', color: '#19a7c4', color2: '#0b2f3a' },
-  { name: 'Team Magma', abbr: 'MAG', color: '#e2672a', color2: '#3d1a0b' },
-  { name: 'Team Galactic', abbr: 'GAL', color: '#a8b3c7', color2: '#262c3a' },
-  { name: 'Team Plasma', abbr: 'PLS', color: '#36b37e', color2: '#0d3324' },
+/** The rest of the league: the eight Kanto gyms in badge order, then the Elite Four. */
+export interface LeagueTeam {
+  name: string;
+  abbr: string;
+  color: string;
+  color2: string;
+  leader: string;
+  /** Types this team's GM favors in the draft. */
+  types: PokeType[];
+  /** Added to every rating in games: gyms get tougher in badge order and the Elite Four is the final boss. */
+  boost: number;
+  gym?: number;
+  badge?: string;
+  elite?: boolean;
+}
+
+export const LEAGUE: LeagueTeam[] = [
+  { name: 'Pewter Boulders', abbr: 'PEW', color: '#a38c63', color2: '#2e271b', leader: 'Brock', types: ['Rock'], boost: -3, gym: 1, badge: 'Boulder' },
+  { name: 'Cerulean Cascades', abbr: 'CER', color: '#2bb3d6', color2: '#0b2c38', leader: 'Misty', types: ['Water'], boost: -2, gym: 2, badge: 'Cascade' },
+  { name: 'Vermilion Thunder', abbr: 'VER', color: '#f2c522', color2: '#3a2f06', leader: 'Lt. Surge', types: ['Electric'], boost: -1, gym: 3, badge: 'Thunder' },
+  { name: 'Celadon Rainbows', abbr: 'CEL', color: '#5cb85c', color2: '#13301a', leader: 'Erika', types: ['Grass'], boost: 0, gym: 4, badge: 'Rainbow' },
+  { name: 'Fuchsia Ninjas', abbr: 'FCH', color: '#b04fc4', color2: '#2d1236', leader: 'Koga', types: ['Poison'], boost: 1, gym: 5, badge: 'Soul' },
+  { name: 'Saffron Psychics', abbr: 'SAF', color: '#f2668b', color2: '#3a1220', leader: 'Sabrina', types: ['Psychic'], boost: 2, gym: 6, badge: 'Marsh' },
+  { name: 'Cinnabar Volcanoes', abbr: 'CIN', color: '#e8622c', color2: '#3d160b', leader: 'Blaine', types: ['Fire'], boost: 2, gym: 7, badge: 'Volcano' },
+  { name: 'Viridian Quakes', abbr: 'VIR', color: '#7c9a3a', color2: '#1e2a0e', leader: 'Giovanni', types: ['Ground'], boost: 3, gym: 8, badge: 'Earth' },
+  { name: 'Indigo Elite', abbr: 'E4', color: '#d4a017', color2: '#2a2106', leader: 'The Elite Four', types: ['Ice', 'Fighting', 'Ghost', 'Dragon'], boost: 4, elite: true },
 ];
 export const USER_STYLE = { color: '#3b6fd8', color2: '#16224a' };
 
@@ -35,6 +54,12 @@ export interface FTeam {
   color: string;
   color2: string;
   human: boolean;
+  leader?: string;
+  types?: PokeType[];
+  boost?: number;
+  gym?: number;
+  badge?: string;
+  elite?: boolean;
   roster: string[];
   w: number;
   l: number;
@@ -65,8 +90,10 @@ export interface Progress {
 export interface Franchise {
   version: 1;
   season: number;
-  /** 1..WEEKS is the regular season; WEEKS+1 the semifinals, WEEKS+2 the final. */
+  /** 1..weeks is the regular season; weeks+1 the semifinals, weeks+2 the final. */
   week: number;
+  /** Regular-season weeks. Missing in early saves, which played a 10-week double round robin. */
+  weeks?: number;
   phase: 'season' | 'playoffs' | 'done';
   teams: FTeam[];
   players: Record<string, FPlayer>;
@@ -97,7 +124,8 @@ export function perGame(s: SeasonStats) {
 const gameScore = (s: PStats) => s.pts + s.reb * 1.2 + s.ast * 1.5 + s.stl * 2 + s.blk * 2 - (s.fga - s.fgm) * 0.4;
 
 /** Round robin twice (circle method): every team plays every other team home and away. */
-function schedule(n: number): FGame[] {
+/** Every team plays every other team once (`twice` adds the return games). */
+function schedule(n: number, twice: boolean): FGame[] {
   const ids = [...Array(n).keys()];
   const rounds: [number, number][][] = [];
   for (let r = 0; r < n - 1; r++) {
@@ -110,14 +138,19 @@ function schedule(n: number): FGame[] {
     rounds.push(pairs);
     ids.splice(1, 0, ids.pop()!);
   }
+  if (!twice) {
+    // The user's journey: gyms in badge order (team ids 1..8), then the Elite Four in the last week.
+    const userOpp = (pairs: [number, number][]) => pairs.flat().find((id, i, all) => all[i ^ 1] === 0 && id !== 0) ?? 0;
+    rounds.sort((a, b) => userOpp(a) - userOpp(b));
+  }
   const games: FGame[] = [];
   rounds.forEach((pairs, r) => pairs.forEach(([home, away]) => games.push({ week: r + 1, home, away, score: null })));
-  rounds.forEach((pairs, r) => pairs.forEach(([home, away]) => games.push({ week: r + n, home: away, away: home, score: null })));
+  if (twice) rounds.forEach((pairs, r) => pairs.forEach(([home, away]) => games.push({ week: r + n, home: away, away: home, score: null })));
   return games;
 }
 
 export function createFranchise(
-  teams: { name: string; abbr: string; color: string; color2: string; human: boolean }[],
+  teams: (Omit<FTeam, 'id' | 'roster' | 'w' | 'l' | 'pf' | 'pa' | 'streak'>)[],
   rosters: Mon[][],
   leftovers: Mon[],
 ): Franchise {
@@ -136,7 +169,8 @@ export function createFranchise(
     teams: teams.map((t, id) => ({ id, ...t, roster: rosters[id].map(add), w: 0, l: 0, pf: 0, pa: 0, streak: 0 })),
     players,
     freeAgents: leftovers.map(add),
-    games: schedule(teams.length),
+    weeks: teams.length - 1,
+    games: schedule(teams.length, false),
     signedWeek: 0,
     news: [],
     history: [],
@@ -194,9 +228,26 @@ export function standings(f: Franchise): FTeam[] {
 export const weekGames = (f: Franchise, week = f.week) => f.games.filter((g) => g.week === week);
 export const userGame = (f: Franchise) => weekGames(f).find((g) => !g.score && (g.home === 0 || g.away === 0)) ?? null;
 
+export const seasonWeeks = (f: Franchise) => f.weeks ?? 10;
+export const semisWeek = (f: Franchise) => seasonWeeks(f) + 1;
+export const finalWeek = (f: Franchise) => seasonWeeks(f) + 2;
+
 export function weekLabel(f: Franchise, week = f.week): string {
-  if (week <= WEEKS) return `Week ${week} of ${WEEKS}`;
-  return week === WEEKS + 1 ? 'Semifinals' : 'Final';
+  if (week <= seasonWeeks(f)) return `Week ${week} of ${seasonWeeks(f)}`;
+  return week === semisWeek(f) ? 'Semifinals' : 'Final';
+}
+
+/** Ids of the gym and Elite Four teams the user has beaten this season (one badge each). */
+export function badgesEarned(f: Franchise): Set<number> {
+  const won = new Set<number>();
+  for (const g of f.games) {
+    if (!g.score || (g.home !== 0 && g.away !== 0)) continue;
+    const opp = g.home === 0 ? g.away : g.home;
+    const t = f.teams[opp];
+    const userWon = (g.home === 0 ? g.score[0] > g.score[1] : g.score[1] > g.score[0]);
+    if (userWon && (t.gym || t.elite)) won.add(opp);
+  }
+  return won;
 }
 
 export function teamDef(f: Franchise, id: number, human: boolean): { def: TeamDef; uidOf: Map<Mon, string> } {
@@ -207,7 +258,7 @@ export function teamDef(f: Franchise, id: number, human: boolean): { def: TeamDe
     uidOf.set(m, u);
     return m;
   });
-  return { def: { name: t.name, abbr: t.abbr, color: t.color, color2: t.color2, roster, human }, uidOf };
+  return { def: { name: t.name, abbr: t.abbr, color: t.color, color2: t.color2, roster, human, boost: t.boost, coach: t.leader }, uidOf };
 }
 
 /** Teams as seen by the engine: the user's team is always engine team 0 so the controls stay the same. */
@@ -316,18 +367,18 @@ export function recordGame(f: Franchise, fg: FGame, g: Game, sides: [number, num
 /** Moves the league forward once every game this week is final: next week, playoffs, or a crowned champion. */
 export function advance(f: Franchise) {
   if (weekGames(f).some((g) => !g.score)) return;
-  if (f.phase === 'season' && f.week < WEEKS) {
+  if (f.phase === 'season' && f.week < seasonWeeks(f)) {
     f.week++;
   } else if (f.phase === 'season') {
     const seeds = standings(f).slice(0, 4).map((t) => t.id);
     f.phase = 'playoffs';
-    f.week = WEEKS + 1;
+    f.week = semisWeek(f);
     f.games.push(
       { week: f.week, home: seeds[0], away: seeds[3], score: null, round: 'semi' },
       { week: f.week, home: seeds[1], away: seeds[2], score: null, round: 'semi' },
     );
     f.news.unshift(`Playoffs set: ${seeds.map((id, i) => `${i + 1}. ${f.teams[id].name}`).join(', ')}`);
-  } else if (f.week === WEEKS + 1) {
+  } else if (f.week === semisWeek(f)) {
     const winners = weekGames(f).map((g) => (g.score![0] > g.score![1] ? g.home : g.away));
     f.week++;
     f.games.push({ week: f.week, home: winners[0], away: winners[1], score: null, round: 'final' });
@@ -355,7 +406,7 @@ export function nextSeason(f: Franchise) {
   f.champion = undefined;
   f.mvp = undefined;
   f.signedWeek = 0;
-  f.games = schedule(f.teams.length);
+  f.games = schedule(f.teams.length, !f.weeks);
   for (const t of f.teams) Object.assign(t, { w: 0, l: 0, pf: 0, pa: 0, streak: 0 });
   for (const p of Object.values(f.players)) p.stats = emptyStats();
   f.news = [`Season ${f.season} tips off.`];

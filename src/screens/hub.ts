@@ -1,8 +1,9 @@
 import { POSITIONS, monByDex, spriteUrl } from '../data/pokemon';
 import {
-  canSign, monOf, perGame, sign, standings, teamOvrOf, userGame, weekGames, weekLabel,
+  badgesEarned, canSign, finalWeek, monOf, perGame, sign, standings, teamOvrOf, userGame, weekGames, weekLabel,
   xpToNext, type FGame, type FTeam, type Franchise,
 } from '../franchise/league';
+import { badgeSvg } from '../ui/badges';
 import { esc, tier } from '../util';
 import { bindSettings, settingsHtml, type Settings } from './menu';
 import { typeChips } from './draft';
@@ -60,7 +61,7 @@ function nextCard(f: Franchise, settings: Settings): string {
       : f.phase === 'playoffs'
         ? (inPlayoffs ? 'You were knocked out. The final goes on without you.' : 'You missed the playoffs. The top four play on.')
         : 'Bye week';
-    const btn = played ? 'Finish the week' : f.week === 12 ? 'Sim the final' : f.phase === 'playoffs' ? 'Sim the semifinals' : 'Sim the week';
+    const btn = played ? 'Finish the week' : f.week === finalWeek(f) ? 'Sim the final' : f.phase === 'playoffs' ? 'Sim the semifinals' : 'Sim the week';
     return `
       <section class="card next">
         <p class="eyebrow">${weekLabel(f)}</p>
@@ -72,8 +73,9 @@ function nextCard(f: Franchise, settings: Settings): string {
   const away = f.teams[g.away];
   const side = (t: FTeam, where: string) => `
     <div class="nx-team" style="--tc:${t.color}">
-      <span class="where">${where}</span>
+      <span class="where">${where}${t.gym ? ` · Gym ${t.gym}` : t.elite ? ' · Final boss' : ''}</span>
       <h3>${esc(t.name)}</h3>
+      ${t.leader && !t.human ? `<p class="leader">${t.elite ? '' : 'Gym Leader '}${esc(t.leader)}${t.badge ? ` · ${esc(t.badge)} Badge on the line` : ''}</p>` : ''}
       <p>${g.round ? '' : `${rec(t)} · `}${teamOvrOf(f, t)} OVR</p>
       ${lineup(f, t)}
     </div>`;
@@ -90,11 +92,33 @@ function nextCard(f: Franchise, settings: Settings): string {
     </section>`;
 }
 
+function badgeCaseHtml(f: Franchise): string {
+  const gyms = f.teams.filter((t) => t.gym).sort((a, b) => a.gym! - b.gym!);
+  if (!gyms.length) return '';
+  const earned = badgesEarned(f);
+  const elite = f.teams.find((t) => t.elite);
+  const count = gyms.filter((t) => earned.has(t.id)).length;
+  const slot = (t: FTeam, name: string, label: string) => `
+    <li class="${earned.has(t.id) ? 'got' : ''}" title="${esc(label)}">
+      ${badgeSvg(name, earned.has(t.id), 44)}
+      <span>${esc(name)}</span>
+    </li>`;
+  return `
+    <section class="card badge-case">
+      <h3 class="sec">Badge case <b>${count}/8</b>${elite && earned.has(elite.id) ? ' · Elite Four defeated' : ''}</h3>
+      <ul>
+        ${gyms.map((t) => slot(t, t.badge!, `${t.badge} Badge: beat ${t.leader} (${t.name})`)).join('')}
+        ${elite ? slot(elite, 'Elite', `Beat ${elite.leader} (${elite.name})`) : ''}
+      </ul>
+      <p class="note">Beat a gym team this season to earn its badge. Badges reset each season.</p>
+    </section>`;
+}
+
 function standingsHtml(f: Franchise): string {
   const rows = standings(f).map((t, i) => `
     <tr class="${t.human ? 'me' : ''} ${i === 3 ? 'cut' : ''}" style="--tc:${t.color}">
       <td>${i + 1}</td>
-      <th><div><i></i>${esc(t.name)}</div></th>
+      <th><div><i></i><span>${esc(t.name)}${t.leader ? `<small>${esc(t.leader)}</small>` : ''}</span></div></th>
       <td>${t.w}</td><td>${t.l}</td>
       <td>${t.pf - t.pa > 0 ? '+' : ''}${t.pf - t.pa}</td>
       <td>${t.streak ? (t.streak > 0 ? `W${t.streak}` : `L${-t.streak}`) : '–'}</td>
@@ -208,6 +232,7 @@ export function hubScreen(root: HTMLElement, f: Franchise, settings: Settings, a
           </div>
         </header>
         ${nextCard(f, settings)}
+        ${badgeCaseHtml(f)}
         <div class="hub-grid">
           <div class="col">${rosterHtml(f)}${scoresHtml(f)}</div>
           <div class="col">${standingsHtml(f)}${leadersHtml(f)}</div>

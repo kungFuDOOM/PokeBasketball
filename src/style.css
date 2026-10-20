@@ -188,6 +188,14 @@ kbd {
   color: var(--muted);
 }
 .filters button.on { border-color: var(--accent); color: var(--fg); }
+.filters select {
+  background: var(--panel);
+  color: var(--fg);
+  border: 2px solid var(--line);
+  border-radius: 999px;
+  padding: 4px 12px;
+  font: 700 1rem var(--sport);
+}
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 10px; }
 
 /* 2K card tiers */
@@ -397,6 +405,21 @@ li.empty { color: var(--muted); }
 .continue { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; padding-bottom: 16px; border-bottom: 1px solid var(--line); }
 .continue strong { font-size: 1.15rem; }
 .btn.warn { border-color: var(--red); color: #ffb3a1; }
+
+/* badges */
+.badge-case ul { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(9, minmax(0, 1fr)); gap: 6px; }
+@media (max-width: 700px) { .badge-case ul { grid-template-columns: repeat(5, minmax(0, 1fr)); } }
+.badge-case li { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px 2px; border-radius: 8px; background: var(--bg); font-size: 0.78rem; font-weight: 700; color: var(--muted); }
+.badge-case li.got { color: var(--fg); background: color-mix(in srgb, var(--accent) 12%, var(--bg)); }
+.badge-case h3 b { color: var(--accent); }
+.badge-svg.locked { filter: grayscale(1) brightness(0.45); opacity: 0.6; }
+.leader { color: var(--fg) !important; font-weight: 700; margin: 0 0 4px !important; }
+.standings tbody th span { display: flex; flex-direction: column; line-height: 1.1; }
+.standings tbody th small { color: var(--muted); font-weight: 600; font-size: 0.78rem; }
+.badge-won { display: flex; flex-direction: column; align-items: center; gap: 10px; text-align: center; background: #f8f8f0; color: #1c1c28; border: 4px double var(--tc, #2a3170); border-radius: 8px; padding: 18px; margin: 0 auto 22px; max-width: 640px; }
+.badge-won .badge-svg { animation: badge-pop 0.6s cubic-bezier(0.2, 1.6, 0.4, 1) both; }
+.badge-won p { margin: 0; font: 0.7rem/1.7 var(--pixel); }
+@keyframes badge-pop { from { transform: scale(0) rotate(-30deg); } }
 
 /* draft: my-team bar (phones) and sheet */
 .tbar {

@@ -14,7 +14,11 @@ await Promise.all(dexes.flatMap((d) => [`${d}.png`, `back/${d}.png`].map(async (
   const dest = new URL(file, out);
   if (existsSync(dest)) return;
   const res = await fetch(`${BASE}/${file}`);
-  if (!res.ok) throw new Error(`${file}: HTTP ${res.status}`);
+  if (!res.ok) {
+    // A missing back sprite is fine: the game falls back to the front one.
+    if (file.startsWith('back/')) return console.warn(`sprites: no ${file}, using the front sprite`);
+    throw new Error(`${file}: HTTP ${res.status}`);
+  }
   await writeFile(dest, Buffer.from(await res.arrayBuffer()));
   fetched++;
 })));

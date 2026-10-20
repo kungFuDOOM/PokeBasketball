@@ -68,7 +68,7 @@ export class Hud {
     if (!g.isHumanTeam(0)) this.q('pcard').hidden = true;
     else {
       const starter = g.players.find((p) => p.team === 0 && p.slot === 0)!;
-      this.say(`Wild ${a.name.toUpperCase()} appeared!`, `Go! ${NAME(starter)} and crew!`, 'Hold SHOOT, release on green.');
+      this.say(a.coach ? `${a.coach.toUpperCase()} wants to ball!` : `Wild ${a.name.toUpperCase()} appeared!`, `Go! ${NAME(starter)} and crew!`, 'Hold SHOOT, release on green.');
     }
   }
 
