@@ -26,7 +26,7 @@ export function controlsHtml(): string {
         <tr><th>Special move</th><td><kbd>I</kbd> or <kbd>E</kbd> when the special bar is full</td></tr>
         <tr><th>Pause</th><td><kbd>P</kbd> or <kbd>Esc</kbd></td></tr>
       </table>
-      <p class="note">Gamepad: <span class="xbtn xa">A</span> shoot, <span class="xbtn xx">X</span> pass, <span class="xbtn xb">B</span> steal, <span class="xbtn xy">Y</span> special, any bumper or trigger for turbo. On phones, use the on-screen stick and buttons.</p>
+      <p class="note">Gamepad: <span class="xbtn xx">X</span> shoot, <span class="xbtn xa">A</span> pass, <span class="xbtn xb">B</span> steal, <span class="xbtn xy">Y</span> special, any bumper or trigger for turbo. On phones, use the on-screen stick and buttons.</p>
     </div>`;
 }
 

@@ -60,8 +60,9 @@ export class Input {
       if (b(13)) my += 1;
       if (b(14)) mx -= 1;
       if (b(15)) mx += 1;
-      if (b(0)) h.shoot = true;
-      if (b(2)) h.pass = true;
+      // 2K layout: A passes, X shoots.
+      if (b(0)) h.pass = true;
+      if (b(2)) h.shoot = true;
       if (b(1)) h.steal = true;
       if (b(3)) h.special = true;
       if (b(4) || b(5) || b(6) || b(7)) h.turbo = true;
@@ -108,9 +109,9 @@ export class Input {
       <div class="btns">
         <button class="tb turbo" data-b="turbo"><b>RB</b><span>TURBO</span></button>
         <button class="tb special xy" data-b="special"><b>Y</b><span>SPECIAL</span></button>
-        <button class="tb pass xx" data-b="pass"><b>X</b><span>PASS</span></button>
+        <button class="tb shoot xx" data-b="shoot"><b>X</b><span>SHOOT</span></button>
         <button class="tb steal xb" data-b="steal"><b>B</b><span>STEAL</span></button>
-        <button class="tb shoot xa" data-b="shoot"><b>A</b><span>SHOOT</span></button>
+        <button class="tb pass xa" data-b="pass"><b>A</b><span>PASS</span></button>
       </div>`;
     parent.appendChild(root);
     this.touchRoot = root;
