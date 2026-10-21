@@ -102,6 +102,18 @@ export function seasonMode(root: HTMLElement, settings: Settings, audio: Audio, 
     const url = shareUrl(shared);
     const pots = r.players[r.pots];
     const t = (i: number) => input.teams[i];
+    // The whole ten, starters (by position) then bench, right under the record.
+    const posOrder = ['PG', 'SG', 'SF', 'PF', 'C'];
+    const starters = r.players.filter((p) => p.starter).sort((a, b) => posOrder.indexOf(a.pos) - posOrder.indexOf(b.pos));
+    const bench = r.players.filter((p) => !p.starter);
+    const teamRow = (label: string, ps: typeof r.players) => `
+      <p class="ss-team-lbl">${label}</p>
+      <ul class="ss-team-grid ${label === 'Bench' ? 'bench' : ''}">${ps.map((p) => `
+        <li class="t-${tier(p.ovr)}" title="${esc(p.name)} · ${p.pos} · ${p.ovr} OVR · ${p.ppg} PPG">
+          <span class="tm-pos">${p.pos}</span><span class="tm-ovr">${p.ovr}</span>
+          <img src="${spriteUrl(p.dex)}" alt="">
+          <span class="tm-nm">${esc(p.name)}</span>
+        </li>`).join('')}</ul>`;
     const playoffGames = r.playoffs.map((g) => `<li><span>${g.round === 'final' ? 'Final' : 'Semi'}</span> ${esc(t(g.a).abbr)} ${g.sa} - ${g.sb} ${esc(t(g.b).abbr)} <b>${esc(t(g.winner).abbr)}</b></li>`).join('');
     root.innerHTML = `
       <div class="ss-wrap">
@@ -122,11 +134,20 @@ export function seasonMode(root: HTMLElement, settings: Settings, audio: Audio, 
             <li><b>${u.ovr}</b><span>Team OVR</span></li>
           </ul>
         </section>
+        <section class="ss-team" aria-label="Your team">
+          ${teamRow('Starters', starters)}
+          ${teamRow('Bench', bench)}
+        </section>
         <section class="ss-next" aria-label="What next">
           <div class="ss-next-btns">
             <button class="btn primary big" data-go="use-quick">Quick Play with this team</button>
             <button class="btn primary big" data-go="use-franchise">Franchise with this team</button>
-            <button class="btn primary big ss-share-btn" data-a="share">Share my team</button>
+            <div class="ss-share-cell">
+              <button class="ss-thumb" data-a="preview" aria-label="See the share card full size" title="What you'll share">
+                <span class="ss-thumb-ph">Drawing card…</span>
+              </button>
+              <button class="btn primary big ss-share-btn" data-a="share">Share my team</button>
+            </div>
           </div>
           <p class="note ss-next-note">Saved as My Drafted Team: your best five start, the other five come off the bench.${act.hasFranchise ? ' Franchise replaces your current save (you\'ll be asked first).' : ''}</p>
           <p class="note ss-status" role="status"></p>
@@ -166,11 +187,6 @@ export function seasonMode(root: HTMLElement, settings: Settings, audio: Audio, 
               </tr>`).join('')}</tbody>
           </table>
         </section>
-        <section class="card">
-          <p class="eyebrow">Your ten</p>
-          <ul class="ss-roster">${r.players.map((p) => `
-            <li class="${p.starter ? 'starter' : ''}" title="${esc(p.name)}"><img src="${spriteUrl(p.dex)}" alt=""><span>${esc(p.name)}</span><small>${p.pos} · ${p.ppg} PPG</small></li>`).join('')}</ul>
-        </section>
         <section class="card ss-share">
           <p class="eyebrow">Share link</p>
           <div class="ss-link-row">
@@ -190,13 +206,33 @@ export function seasonMode(root: HTMLElement, settings: Settings, audio: Audio, 
     // Draw the share card now, so tapping "Share my team" can open the share sheet straight away.
     const drawCard = async () => { const canvas = await renderShareCard(shared); return { canvas, blob: await toPngBlob(canvas) }; };
     let card: ReturnType<typeof drawCard> | null = drawCard();
-    card.catch(() => { card = null; });
+    let cardUrl = '';
+    const thumb = root.querySelector<HTMLElement>('.ss-thumb')!;
+    card.then(({ canvas }) => {
+      // A data: URL, because the site's CSP allows data: images but not blob: ones.
+      cardUrl = canvas.toDataURL('image/png');
+      thumb.innerHTML = `<img src="${cardUrl}" alt="Your share card">`;
+    }).catch(() => { card = null; thumb.hidden = true; });
+    const preview = () => {
+      if (!cardUrl) return;
+      const el = document.createElement('div');
+      el.className = 'ss-preview';
+      el.setAttribute('role', 'dialog');
+      el.setAttribute('aria-label', 'Share card');
+      el.innerHTML = `<img src="${cardUrl}" alt="Your share card"><p class="note">Tap anywhere to close</p>`;
+      const close = () => { el.remove(); window.removeEventListener('keydown', onKey); };
+      const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') close(); };
+      el.addEventListener('click', close);
+      window.addEventListener('keydown', onKey);
+      document.body.appendChild(el);
+    };
     root.querySelector('.ss-wrap')!.addEventListener('click', async (e) => {
       const el = (e.target as HTMLElement).closest<HTMLElement>('[data-a], [data-go]');
       if (!el) return;
       const a = el.dataset.a;
       const go = el.dataset.go;
-      if (a === 'share') {
+      if (a === 'preview') preview();
+      else if (a === 'share') {
         try {
           if (!card) say('Drawing your card…');
           const { canvas, blob } = await (card ?? (card = drawCard()));

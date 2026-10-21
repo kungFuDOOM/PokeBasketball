@@ -1231,3 +1231,43 @@ button.gl-row:hover { border-color: var(--muted); }
 .ss-link-row .ss-link { flex: 1; min-width: 0; }
 .nx-bench-lbl { margin: 8px 0 2px; }
 .nx-bench .lineup { opacity: 0.8; }
+
+/* Season Draft results: the whole ten under the record, starters then bench */
+.ss-team { margin: 6px 0 14px; }
+.ss-team-lbl { margin: 6px 0 4px; font: 0.6rem var(--pixel); letter-spacing: 0.08em; color: var(--accent); }
+.ss-team-grid { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; }
+.ss-team-grid li { position: relative; display: flex; flex-direction: column; align-items: center; min-width: 0; background: var(--panel-2); border: 1px solid var(--accent); border-radius: 8px; padding: 14px 2px 4px; }
+.ss-team-grid.bench li { border-color: var(--line); opacity: 0.92; }
+.ss-team-grid img { width: 64px; height: 64px; image-rendering: pixelated; }
+.ss-team-grid .tm-nm { font-weight: 800; font-size: 0.85rem; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ss-team-grid .tm-pos, .ss-team-grid .tm-ovr { position: absolute; top: 3px; font: 800 0.7rem/1 var(--sport); }
+.ss-team-grid .tm-pos { left: 5px; color: var(--muted); }
+.ss-team-grid .tm-ovr { right: 5px; color: var(--fg); }
+@media (max-width: 480px) {
+  .ss-team-grid { gap: 4px; }
+  .ss-team-grid li { padding: 12px 1px 3px; }
+  .ss-team-grid img { width: 44px; height: 44px; }
+  .ss-team-grid .tm-nm { font-size: 0.66rem; }
+  .ss-team-grid .tm-pos, .ss-team-grid .tm-ovr { font-size: 0.6rem; top: 2px; }
+  .ss-team-grid .tm-pos { left: 3px; } .ss-team-grid .tm-ovr { right: 3px; }
+}
+/* share card preview next to "Share my team" */
+.ss-next-btns { align-items: end; }
+.ss-share-cell { display: flex; flex-direction: column; align-items: center; gap: 6px; min-width: 0; }
+.ss-thumb { width: 88px; height: 88px; padding: 0; border: 2px solid var(--line); border-radius: 8px; background: var(--panel-2); overflow: hidden; cursor: zoom-in; display: grid; place-items: center; }
+.ss-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.ss-thumb-ph { font-size: 0.65rem; color: var(--muted); padding: 4px; }
+@media (max-width: 640px) { .ss-share-cell { flex-direction: row; } .ss-thumb { width: 64px; height: 64px; flex: none; } .ss-share-cell .btn { flex: 1; } }
+.ss-preview { position: fixed; inset: 0; z-index: 50; background: rgba(5, 7, 18, 0.9); display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 16px; cursor: zoom-out; }
+.ss-preview img { max-width: min(92vw, 720px); max-height: 80vh; border-radius: 10px; box-shadow: 0 10px 40px #000; }
+/* Phones: the four season stats on one row, so the team and the buttons fit above the fold */
+@media (max-width: 520px) {
+  .ss-stats { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; }
+  .ss-stats li { padding: 6px 2px; }
+  .ss-stats b { font-size: 0.78rem; }
+  .ss-stats span { font-size: 0.56rem; letter-spacing: 0.04em; }
+}
+/* Desktop too: the preview sits beside the share button, not above it */
+.ss-share-cell { flex-direction: row; align-items: stretch; }
+.ss-share-cell .btn { flex: 1; }
+@media (min-width: 641px) { .ss-thumb { width: 52px; height: auto; aspect-ratio: 1; flex: none; } .ss-next-btns { align-items: stretch; } }
