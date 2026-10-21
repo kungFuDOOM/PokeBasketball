@@ -87,6 +87,20 @@ for (const k of KEYS) {
   const a = Math.min(1.4, Math.max(0.7, sxy / sxx));
   fit[k] = { a, b: my - a * mx };
 }
+// The fit is pinned so that hand-tuning one card doesn't nudge every generated rating by rounding.
+// Run with --refit to recompute it from the hand-tuned cards and print new values to paste here.
+const PINNED = {
+  spd: { a: 1.0208423173235024, b: -3.123819456362 },
+  sht: { a: 0.7, b: 22.103930921052616 },
+  ins: { a: 0.8499281088186554, b: 12.300424237179243 },
+  pas: { a: 0.7839188935848124, b: 12.853083956301923 },
+  def: { a: 0.76968325706196, b: 21.236484505345203 },
+  blk: { a: 1.2304151841037085, b: -16.238079950360486 },
+  reb: { a: 0.9902352487860112, b: -0.8984569415672325 },
+  hnd: { a: 0.8140193861924382, b: 12.309045176508675 },
+};
+if (process.argv.includes('--refit')) console.log('fit', JSON.stringify(fit));
+else Object.assign(fit, PINNED);
 const clamp = (v) => Math.max(20, Math.min(99, Math.round(v)));
 const ratings = (id) => {
   const r = rawRatings(id);

@@ -196,6 +196,7 @@ const ROWS: Row[] = [
   [475, 'Gallade', ['Psychic', 'Fighting'], 'SF', 82, 72, 90, 68, 88, 70, 68, 74],
   [437, 'Bronzong', ['Steel', 'Psychic'], 'C', 36, 58, 72, 60, 86, 92, 86, 46],
   [381, 'Latios', ['Dragon', 'Psychic'], 'SG', 94, 90, 84, 82, 80, 64, 62, 86],
+  [380, 'Latias', ['Dragon', 'Psychic'], 'PG', 92, 82, 74, 90, 84, 66, 64, 88],
   [124, 'Jynx', ['Ice', 'Psychic'], 'PG', 70, 84, 56, 86, 64, 56, 54, 80],
   // Fire
   [126, 'Magmar', ['Fire'], 'SF', 78, 80, 82, 66, 72, 66, 62, 74],
@@ -210,6 +211,7 @@ const ROWS: Row[] = [
   [105, 'Marowak', ['Ground'], 'SG', 70, 82, 74, 64, 80, 62, 64, 72],
   [530, 'Excadrill', ['Ground', 'Steel'], 'SF', 84, 66, 92, 58, 80, 70, 70, 76],
   [383, 'Groudon', ['Ground'], 'PF', 70, 70, 96, 60, 84, 90, 92, 62],
+  [382, 'Kyogre', ['Water'], 'C', 68, 88, 88, 70, 76, 90, 92, 60],
   [553, 'Krookodile', ['Ground', 'Dark'], 'SF', 80, 72, 88, 64, 84, 66, 70, 74],
   [473, 'Mamoswine', ['Ice', 'Ground'], 'C', 52, 48, 90, 46, 74, 86, 92, 50],
   // Ice, Fighting, Ghost, Dragon (the Elite Four's types)
