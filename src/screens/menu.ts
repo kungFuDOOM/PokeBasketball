@@ -1,6 +1,8 @@
 import { POKEMON, spriteUrl } from '../data/pokemon';
 import { DIFFICULTIES, type Difficulty } from '../game/types';
+import type { TeamSource } from '../season/team';
 import { esc } from '../util';
+import { prefersStatic, startAttract, type Attract, type AttractState } from './attract';
 
 export interface Settings {
   difficulty: Difficulty;
@@ -85,38 +87,107 @@ export interface TitleOptions {
   saved: string | null;
   /** One-line summary of a league draft in progress, or null. */
   draft: string | null;
+  /** One-line summary of the saved "My Drafted Team", or null when there is none. */
+  drafted: string | null;
   onContinue: () => void;
   onResumeDraft: () => void;
   /** Erases every save and setting this game keeps in the browser. */
   onDeleteData: () => void;
-  onNew: () => void;
+  /** Starts a franchise with the chosen team source. */
+  onNew: (source: TeamSource) => void;
   onQuick: () => void;
+  onSeason: () => void;
   onRoster: () => void;
 }
 
-/** Title screen: name your team, then Quick Play or Franchise (continue, resume a draft, or start over). */
+const TIPS = [
+  'Hold shoot, release on green: a perfect release never misses',
+  'Shift + shoot near the rim to dunk',
+  'Cover all five positions in your starting five for a +2 lineup bonus',
+  'Type matchups apply when you shove: Fighting beats Rock, Water beats Fire',
+  'Fill the special bar, then hit I or E for your Pokémon\'s signature move',
+  'Draft a backup at every position: starters tire and the bench steps in',
+];
+const TEASERS = [
+  '<b>NEW</b> Season Draft: draft ten, sim a full season, share your team',
+  'Franchise: 9-week seasons, badges, level-ups and evolutions',
+  'Quick Play: draft five, pick a gym leader, tip off',
+];
+
+/** Bottom ticker: live score, tips and mode teasers. A static single line when motion is off. */
+function tickerHtml(isStatic: boolean): string {
+  if (isStatic) return `<div class="ticker static" aria-label="Game modes"><span class="tk-item">Season Draft</span><span class="tk-item">Franchise</span><span class="tk-item">Quick Play</span></div>`;
+  const item = (cls: string, html: string) => `<span class="tk-item ${cls}">${html}</span>`;
+  const run = [
+    item('tk-live-item', '<b class="tk-tag">LIVE</b><span class="tk-live">warming up…</span>'),
+    item('', `<b class="tk-tag">TIP</b>${TIPS[0]}`),
+    item('', TEASERS[0]),
+    item('', `<b class="tk-tag">TIP</b>${TIPS[1]}`),
+    item('', TEASERS[1]),
+    item('', `<b class="tk-tag">TIP</b>${TIPS[2]}`),
+    item('', TEASERS[2]),
+    item('', `<b class="tk-tag">TIP</b>${TIPS[3]}`),
+    item('', `<b class="tk-tag">TIP</b>${TIPS[4]}`),
+    item('', `<b class="tk-tag">TIP</b>${TIPS[5]}`),
+  ].join('');
+  // Two copies, so the loop has no seam; the second is hidden from screen readers.
+  return `<div class="ticker" role="marquee" aria-label="Live score, tips and game modes"><div class="tk-track"><div class="tk-run">${run}</div><div class="tk-run" aria-hidden="true">${run}</div></div></div>`;
+}
+
+/** Title screen: live attract game behind a big PLAY button and the four mode cards. */
 export function menuScreen(root: HTMLElement, settings: Settings, onChange: () => void, opts: TitleOptions) {
+  const isStatic = prefersStatic();
   const parade = [...POKEMON].sort(() => Math.random() - 0.5).slice(0, 14);
+  let attract: Attract | null = null;
+  const destroy = () => {
+    attract?.stop();
+    attract = null;
+  };
+  /** Every way out of the menu shuts the attract game down first. */
+  const leave = <A extends unknown[]>(fn: (...a: A) => void) => (...a: A) => {
+    destroy();
+    fn(...a);
+  };
+  let source: TeamSource = 'draft';
+
   root.innerHTML = `
     <div class="menu">
-      <div class="parade" aria-hidden="true">
-        ${parade.map((m, i) => `<img src="${spriteUrl(m.dex)}" alt="" style="--i:${i}">`).join('')}
+      <div class="attract" aria-hidden="true">
+        ${isStatic
+          ? `<div class="attract-static"><div class="parade">${parade.map((m, i) => `<img src="${spriteUrl(m.dex)}" alt="" style="--i:${i}">`).join('')}</div></div>`
+          : '<canvas class="attract-canvas"></canvas>'}
+        <div class="attract-dim"></div>
       </div>
-      <header class="title">
-        <h1 class="logo"><span class="logo-poke">POKé</span><span class="logo-jam">JAM</span></h1>
-        <p class="tag">Draft your Pokémon. Run the floor. Full-court 5-on-5 arcade hoops.</p>
-      </header>
-      <div class="menu-grid">
-        <section class="card setup">
-          <label class="field" for="team-name">Your team
+      ${isStatic ? '' : `
+      <div class="live-bar">
+        <span class="live-badge"><i></i>LIVE<span class="live-venue"></span></span>
+        <span class="scorebug" hidden><b class="sb-a"></b><em class="sb-sa">0</em><em class="sb-sb">0</em><b class="sb-b"></b><span class="sb-clock"></span></span>
+      </div>`}
+      <div class="menu-in">
+        <header class="title">
+          <h1 class="logo"><span class="logo-poke">POKé</span><span class="logo-jam">JAM</span></h1>
+          <p class="tag">Draft your Pokémon. Run the floor. Full-court 5-on-5 arcade hoops.</p>
+        </header>
+        <div class="play-row">
+          <button class="btn play-btn" data-go="play">PLAY<small>Quick Play · draft five, tip off</small></button>
+          <label class="field team-field" for="team-name">Your team
             <input id="team-name" maxlength="20" autocomplete="off" value="${esc(settings.teamName)}">
           </label>
-          <div class="mode">
+        </div>
+        <div class="mode-grid">
+          <section class="mode-card season">
+            <span class="new-tag">NEW</span>
+            <h2>Season Draft</h2>
+            <p class="setup-note">Draft ten Pokémon, then your team plays a full season and the playoffs in seconds. Get a grade, a Player of the Season and a card to share.</p>
+            ${opts.drafted ? `<p class="mode-saved"><span class="lbl">My drafted team</span> ${esc(opts.drafted)}</p>` : ''}
+            <div class="actions"><button class="btn primary big" data-go="season">Start Season Draft</button></div>
+          </section>
+          <section class="mode-card quick">
             <h2>Quick Play</h2>
             <p class="setup-note">Pick any Gym Leader or the Elite Four, draft five Pokémon against them and play on any court. Pure arcade.</p>
-            <div class="actions"><button class="btn primary big" data-go="quick">Quick Play</button></div>
-          </div>
-          <div class="mode">
+            <div class="actions"><button class="btn big" data-go="quick">Quick Play</button></div>
+          </section>
+          <section class="mode-card franchise">
             <h2>Franchise</h2>
           ${opts.draft ? `
             <div class="continue">
@@ -131,50 +202,92 @@ export function menuScreen(root: HTMLElement, settings: Settings, onChange: () =
               <button class="btn ${opts.draft ? '' : 'primary big'}" data-go="continue">Continue franchise</button>
             </div>` : ''}
             <p class="setup-note">Draft ten Pokémon against the eight Kanto Gym Leaders and the Elite Four, then play a 9-week season and the playoffs. Starters tire and the bench steps in. Earn badges, level up and evolve, season after season.</p>
+            <div class="field">Start with
+              <div class="seg" id="source">
+                <button data-v="draft" class="on">Draft</button>
+                <button data-v="mine" ${opts.drafted ? '' : 'disabled title="Finish a Season Draft first"'}>My Drafted Team</button>
+                <button data-v="random">Random</button>
+              </div>
+            </div>
             <div class="actions">
               <button class="btn" data-go="new">${opts.saved || opts.draft ? 'New franchise' : 'Start a franchise'}</button>
             </div>
-          </div>
-        </section>
-        <section class="card">
-          <div class="mode roster-mode">
+          </section>
+          <section class="mode-card roster-mode">
             <h2>Roster</h2>
             <p class="setup-note">Scout all ${POKEMON.length} Pokémon before you draft: every rating, position, size and evolution.</p>
             <div class="actions"><button class="btn" data-go="roster">Browse the full roster</button></div>
-          </div>
+          </section>
+        </div>
+        <details class="controls-fold">
+          <summary>Controls</summary>
           ${controlsHtml()}
-        </section>
+        </details>
+        <footer class="foot">
+          <p>Fan-made game. Pokémon and its characters are trademarks of Nintendo, Game Freak and The Pokémon Company. Sprites from PokeAPI.</p>
+          <p class="foot-links">
+            <a href="privacy.html">Privacy and terms</a>
+            <button class="link-btn" data-go="delete">Delete saved data</button>
+          </p>
+          <p class="foot-status" role="status"></p>
+        </footer>
       </div>
-      <footer class="foot">
-        <p>Fan-made game. Pokémon and its characters are trademarks of Nintendo, Game Freak and The Pokémon Company. Sprites from PokeAPI.</p>
-        <p class="foot-links">
-          <a href="privacy.html">Privacy and terms</a>
-          <button class="link-btn" data-go="delete">Delete saved data</button>
-        </p>
-        <p class="foot-status" role="status"></p>
-      </footer>
+      ${tickerHtml(isStatic)}
     </div>`;
 
-  const name = root.querySelector<HTMLInputElement>('#team-name')!;
+  const $ = <T extends HTMLElement>(sel: string) => root.querySelector<T>(sel);
+
+  // ---- attract game ----
+  const canvas = $<HTMLCanvasElement>('.attract-canvas');
+  if (canvas) {
+    const bug = $('.scorebug')!;
+    const venue = $('.live-venue')!;
+    const live = root.querySelectorAll<HTMLElement>('.tk-live');
+    const sa = $('.sb-sa')!, sb = $('.sb-sb')!, ta = $('.sb-a')!, tb = $('.sb-b')!, clock = $('.sb-clock')!;
+    const show = (s: AttractState) => {
+      bug.hidden = false;
+      venue.textContent = ` · ${s.venue}`;
+      ta.textContent = s.home;
+      tb.textContent = s.away;
+      sa.textContent = String(s.score[0]);
+      sb.textContent = String(s.score[1]);
+      clock.textContent = s.clock;
+      const line = `${s.home} ${s.score[0]} - ${s.score[1]} ${s.away} · ${s.clock}`;
+      live.forEach((el) => (el.textContent = line));
+    };
+    attract = startAttract(canvas, show);
+  }
+
+  const name = $<HTMLInputElement>('#team-name')!;
   name.addEventListener('input', () => {
     settings.teamName = name.value;
     onChange();
   });
-  const startNew = root.querySelector<HTMLButtonElement>('[data-go="new"]')!;
+  const startNew = $<HTMLButtonElement>('[data-go="new"]')!;
   let armed = !opts.saved && !opts.draft;
   const tryNew = () => {
-    if (armed) return opts.onNew();
+    if (armed) return leave(opts.onNew)(source);
     // Starting over erases the saved franchise, so ask for a second tap.
     armed = true;
     startNew.textContent = opts.saved ? 'Tap again to replace your franchise' : 'Tap again to restart the draft';
     startNew.classList.add('warn');
   };
-  root.querySelector('[data-go="quick"]')!.addEventListener('click', opts.onQuick);
-  root.querySelector('[data-go="roster"]')!.addEventListener('click', opts.onRoster);
+  const sourceSeg = $('#source')!;
+  sourceSeg.addEventListener('click', (e) => {
+    const b = (e.target as HTMLElement).closest<HTMLButtonElement>('button');
+    if (!b || b.disabled) return;
+    source = b.dataset.v as TeamSource;
+    sourceSeg.querySelectorAll('button').forEach((x) => x.classList.toggle('on', x === b));
+  });
+  const quick = leave(opts.onQuick);
+  $('[data-go="play"]')!.addEventListener('click', quick);
+  $('[data-go="quick"]')!.addEventListener('click', quick);
+  $('[data-go="season"]')!.addEventListener('click', leave(opts.onSeason));
+  $('[data-go="roster"]')!.addEventListener('click', leave(opts.onRoster));
   startNew.addEventListener('click', tryNew);
-  root.querySelector('[data-go="continue"]')?.addEventListener('click', opts.onContinue);
-  root.querySelector('[data-go="resume-draft"]')?.addEventListener('click', opts.onResumeDraft);
-  const del = root.querySelector<HTMLButtonElement>('[data-go="delete"]')!;
+  $('[data-go="continue"]')?.addEventListener('click', leave(opts.onContinue));
+  $('[data-go="resume-draft"]')?.addEventListener('click', leave(opts.onResumeDraft));
+  const del = $<HTMLButtonElement>('[data-go="delete"]')!;
   let delArmed = false;
   del.addEventListener('click', () => {
     if (!delArmed) {
@@ -183,6 +296,6 @@ export function menuScreen(root: HTMLElement, settings: Settings, onChange: () =
       del.classList.add('warn');
       return;
     }
-    opts.onDeleteData();
+    leave(opts.onDeleteData)();
   });
 }

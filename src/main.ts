@@ -16,6 +16,9 @@ import { quickPlay } from './screens/quick';
 import { resultsScreen } from './screens/results';
 import { rookieScreen } from './screens/rookies';
 import { rosterScreen } from './screens/roster';
+import { seasonMode, sharedScreen } from './screens/season';
+import { shareFromHash } from './season/share';
+import { autoDraft, draftedMons, loadDrafted, type TeamSource } from './season/team';
 import { gamesScreen } from './screens/games';
 import { badgeSvg } from './ui/badges';
 import { abbr, esc, shuffle } from './util';
@@ -70,9 +73,11 @@ function menu() {
   app.className = 'screen-menu';
   const f = franchise;
   const d = loadDraft();
+  const dt = loadDrafted();
   menuScreen(app, settings, save, {
     saved: f ? `${f.teams[0].name} · Season ${f.season} · ${f.phase === 'done' ? 'Offseason' : weekLabel(f)} · ${f.teams[0].w}-${f.teams[0].l}` : null,
     draft: d ? draftSummary(d) : null,
+    drafted: dt ? `${dt.name}${dt.record ? ` · ${dt.record.w}-${dt.record.l}` : ''}${dt.rank ? ` · #${dt.rank}` : ''}` : null,
     onContinue: hub,
     onDeleteData: () => {
       try {
@@ -89,16 +94,13 @@ function menu() {
       window.scrollTo(0, 0);
       rosterScreen(app, menu);
     },
-    onQuick: () => {
-      audio.unlock();
-      app.className = 'screen-quick';
-      quickPlay(app, settings, audio, { menu, saved: save });
-    },
+    onQuick: () => quick('draft'),
+    onSeason: season,
     onResumeDraft: () => {
       const saved = loadDraft();
       if (saved) draft(saved);
     },
-    onNew: () => {
+    onNew: (source) => {
       audio.unlock();
       saveDraft(null);
       const name = settings.teamName.trim() || 'Pallet Town';
@@ -106,7 +108,43 @@ function menu() {
         { name, abbr: abbr(name), ...USER_STYLE, human: true },
         ...LEAGUE.map((t) => ({ ...t, human: false })),
       ];
-      draft({ teams, order: shuffle(teams.map((_, i) => i)), taken: [], rounds: 10 });
+      const mine = source === 'mine' ? loadDrafted() : null;
+      if (source === 'draft' || (source === 'mine' && !mine)) {
+        return draft({ teams, order: shuffle(teams.map((_, i) => i)), taken: [], rounds: 10 });
+      }
+      // My Drafted Team or Random: no draft screen. The CPU teams fill their rosters from what's left.
+      const { rosters, leftovers } = autoDraft(teams, 10, mine ? draftedMons(mine) : undefined);
+      franchise = createFranchise(teams, rosters, leftovers);
+      saveFranchise(franchise);
+      hub();
+    },
+  });
+}
+
+function quick(source: TeamSource) {
+  audio.unlock();
+  app.className = 'screen-quick';
+  quickPlay(app, settings, audio, { menu, saved: save }, source);
+}
+
+function season() {
+  audio.unlock();
+  seasonMode(app, settings, audio, {
+    menu,
+    hasFranchise: !!franchise,
+    useTeam: (mode) => {
+      if (mode === 'quick') return quick('mine');
+      const mine = loadDrafted();
+      const name = settings.teamName.trim() || 'Pallet Town';
+      const teams = [
+        { name, abbr: abbr(name), ...USER_STYLE, human: true },
+        ...LEAGUE.map((t) => ({ ...t, human: false })),
+      ];
+      saveDraft(null);
+      const { rosters, leftovers } = autoDraft(teams, 10, mine ? draftedMons(mine) : undefined);
+      franchise = createFranchise(teams, rosters, leftovers);
+      saveFranchise(franchise);
+      hub();
     },
   });
 }
@@ -255,4 +293,12 @@ async function afterUserGame(f: Franchise, g: FGame, game: Game, sides: [number,
   show();
 }
 
-menu();
+// A share link (#s=...) opens the shared team's card first.
+const shared = shareFromHash(location.hash);
+const clearHash = () => history.replaceState(null, '', location.pathname + location.search);
+if (shared) {
+  sharedScreen(app, shared, {
+    menu: () => { clearHash(); menu(); },
+    draftOwn: () => { clearHash(); season(); },
+  });
+} else menu();

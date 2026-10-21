@@ -1,11 +1,12 @@
 // Quick Play: pick any gym or the Elite Four, snake-draft five Pokémon against them, pick a floor, play.
 // Pure arcade: no stamina, no bench, nothing saved.
 import { COURTS, courtFor, userCourt, type CourtStyle } from '../data/courts';
-import { POSITIONS, TYPE_COLORS, spriteUrl, type Mon } from '../data/pokemon';
+import { POKEMON, POSITIONS, TYPE_COLORS, spriteUrl, type Mon } from '../data/pokemon';
 import { LEAGUE, USER_STYLE, contrastAway, type LeagueTeam } from '../franchise/league';
 import type { Audio } from '../game/audio';
 import { teamOvr } from '../game/game';
 import type { TeamDef } from '../game/types';
+import { cpuRoster, draftedStarters, loadDrafted, type TeamSource } from '../season/team';
 import { badgeSvg } from '../ui/badges';
 import { abbr, esc, shuffle, tier } from '../util';
 import { draftScreen } from './draft';
@@ -27,7 +28,8 @@ function lineupHtml(mons: Mon[]): string {
     `<li title="${esc(m.name)}"><img src="${spriteUrl(m.dex)}" alt=""><span>${m.pos}</span><b class="t-${tier(m.ovr)}">${m.ovr}</b></li>`).join('')}</ul>`;
 }
 
-export function quickPlay(root: HTMLElement, settings: Settings, audio: Audio, act: QuickActions) {
+export function quickPlay(root: HTMLElement, settings: Settings, audio: Audio, act: QuickActions, initial: TeamSource = 'draft') {
+  let source: TeamSource = loadDrafted() || initial !== 'mine' ? initial : 'draft';
   const userName = () => settings.teamName.trim() || 'Pallet Town';
   const user = () => ({ name: userName(), abbr: abbr(userName()), ...USER_STYLE, human: true });
 
@@ -55,9 +57,22 @@ export function quickPlay(root: HTMLElement, settings: Settings, audio: Audio, a
             <strong>Random opponent</strong>
           </button></li>
         </ul>
+        <div class="field source-pick">Your team
+          <div class="seg" id="source">
+            <button data-v="draft" class="${source === 'draft' ? 'on' : ''}">Draft</button>
+            <button data-v="mine" class="${source === 'mine' ? 'on' : ''}" ${loadDrafted() ? '' : 'disabled title="Finish a Season Draft first"'}>My Drafted Team</button>
+            <button data-v="random" class="${source === 'random' ? 'on' : ''}">Random</button>
+          </div>
+        </div>
         <p class="note center">You and your opponent snake-draft five Pokémon each. Gym teams favor their type; the Elite Four are the toughest.</p>
       </div>`;
     root.querySelector('[data-a="menu"]')!.addEventListener('click', act.menu);
+    root.querySelector('#source')!.addEventListener('click', (e) => {
+      const b = (e.target as HTMLElement).closest<HTMLButtonElement>('button');
+      if (!b || b.disabled) return;
+      source = b.dataset.v as TeamSource;
+      root.querySelectorAll('#source button').forEach((x) => x.classList.toggle('on', x === b));
+    });
     root.querySelectorAll<HTMLButtonElement>('.opp').forEach((b) => b.addEventListener('click', () => {
       const i = b.dataset.i === 'random' ? Math.floor(Math.random() * LEAGUE.length) : Number(b.dataset.i);
       audio.blip(true);
@@ -66,12 +81,20 @@ export function quickPlay(root: HTMLElement, settings: Settings, audio: Audio, a
   }
 
   function draft(opp: LeagueTeam) {
+    const saved = source === 'mine' ? loadDrafted() : null;
+    if (source === 'random' || saved) {
+      // No draft screen: your five (best starters of the drafted ten, or random) against a CPU-drafted opponent.
+      const mine = saved ? draftedStarters(saved) : null;
+      const pool = POKEMON.filter((m) => !mine?.includes(m));
+      const picks = mine ?? cpuRoster(pool, 5);
+      return matchup(opp, picks, cpuRoster(pool, 5, opp.types), courtFor(opp));
+    }
     root.className = 'screen-draft';
     window.scrollTo(0, 0);
     const teams = [user(), { ...opp, human: false }];
     draftScreen(root, { teams, order: shuffle([0, 1]), taken: [], rounds: 5 }, audio,
       (rosters) => matchup(opp, rosters[0], rosters[1], courtFor(opp)),
-      pickOpponent, () => {});
+      pickOpponent, () => {}, { customize: false });
   }
 
   function matchup(opp: LeagueTeam, mine: Mon[], theirs: Mon[], court: CourtStyle) {
