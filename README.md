@@ -89,6 +89,11 @@ Adding or hand-tuning a Pokémon is one row in `ROWS` in `src/data/pokemon.ts`; 
 
 Add `?speed=4` to the URL to run the simulation faster when testing.
 
+## Saved for later
+
+- **Legendary DLC:** Dialga, Palkia and Giratina; Reshiram, Zekrom and Kyurem; the Regis; Jirachi; Deoxys; Darkrai; Arceus.
+- **Multiplayer:** head-to-head and ranked Quick Play.
+
 ## Trailer
 
 `trailer.html` + `src/trailer/trailer.ts` build an NBA Jam-style trailer from the real engine. Seeded CPU-vs-CPU games are scanned for highlights (alley-oops, spin dunks, blocks, players catching fire). The best ones are replayed frame by frame with slow-motion punch-ins and callouts, between title cards for the draft, type matchups, evolution and franchise mode.
