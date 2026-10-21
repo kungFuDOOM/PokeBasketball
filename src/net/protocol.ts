@@ -1,6 +1,6 @@
 // Messages and shapes shared by the game client and the Pack Battles server.
 
-import type { PackTier } from '../battles/service';
+import type { PackTier, Pull } from '../battles/service';
 import type { Snapshot, WireInput } from '../game/sync';
 
 /** USDC has 6 decimals; every server amount is an integer number of these base units. */
@@ -39,6 +39,14 @@ export interface PlayerRef {
   teamName: string;
 }
 
+/** The card a battle is played for: bought and opened before tip-off, so both players see it. */
+export type PullView = Omit<Pull, 'vrf'> & {
+  /** Collector Crypt's own page proving how this card was selected. */
+  verifyUrl: string;
+  /** Collector Crypt's VRF record for the pull, as JSON. */
+  vrfUrl: string;
+};
+
 export interface BattleView {
   id: string;
   tier: PackTier;
@@ -55,6 +63,8 @@ export interface BattleView {
   createdAt: number;
   /** Your side in this battle, when you're in it. */
   side: 0 | 1 | null;
+  /** The card, once the pot has bought it. */
+  pull: PullView | null;
 }
 
 export type PrizeState = 'pending' | 'sending' | 'sent' | 'failed';
@@ -64,10 +74,9 @@ export interface PrizeView {
   battleId: string;
   tier: PackTier;
   state: PrizeState;
-  mode: 'gift' | 'open' | null;
-  memo: string | null;
-  rarity: string | null;
-  nftAddress: string | null;
+  pull: PullView | null;
+  /** The transfer of the card to your wallet, once sent. */
+  transferSignature: string | null;
   createdAt: number;
 }
 
@@ -100,6 +109,12 @@ export interface Proof {
   score: [number, number];
   winner: 0 | 1;
   forfeit: boolean;
+  /** The pull the game was played for; its VRF output is mixed into `seed`. */
+  pull: { memo: string; nftAddress: string; entropy: string; roll: number | null; vrf: unknown } | null;
+  /** How `seed` was derived, so anyone can redo it. */
+  seedRecipe: string;
+  /** The draft: who picked at each turn (0 host, 1 guest) and what (dex numbers). */
+  draft: { order: (0 | 1)[]; picks: number[] } | null;
 }
 
 export interface TeamSpec {
@@ -131,6 +146,10 @@ export type ServerMsg =
   | { t: 'hello'; side: 0 | 1; battle: BattleView }
   | { t: 'wait'; who: (0 | 1)[] }
   | { t: 'draft'; draft: DraftView }
+  /** The draft is done; the server is buying and opening the pull with both entries. */
+  | { t: 'buying' }
+  /** The card both players are playing for. The game starts at `startsAt` (ms epoch). */
+  | { t: 'pull'; pull: PullView; startsAt: number }
   | { t: 'start'; start: MatchStart; tick: number; snap: Snapshot | null }
   | { t: 'ticks'; from: number; inputs: [WireInput, WireInput][] }
   | { t: 'hash'; tick: number; h: number }

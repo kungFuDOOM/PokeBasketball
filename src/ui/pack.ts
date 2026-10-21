@@ -37,3 +37,19 @@ export function packSvg(tier: PackTier, width = 96, cls = ''): string {
       <text x="50" y="119.5" text-anchor="middle" font-family="'Press Start 2P', monospace" font-size="8" fill="#fff">${t.short}</text>
     </svg>`;
 }
+
+const RARITY_COLORS: Record<string, string> = { Epic: '#ffcb05', Rare: '#e3350d', Uncommon: '#3b6fd8', Common: '#9aa0c8' };
+
+/** A pulled card, shown like a graded slab: label with grade and insured value over the card image. */
+export function cardHtml(p: { name: string; image: string | null; grade: string | null; rarity: string | null; insuredValue: number | null }, size: 'small' | 'big' = 'big'): string {
+  const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
+  const rc = RARITY_COLORS[p.rarity ?? ''] ?? '#9aa0c8';
+  return `
+    <figure class="slab ${size}" style="--rc:${rc}">
+      <figcaption class="slab-label">
+        <span class="slab-name">${esc(p.name)}</span>
+        <span class="slab-meta">${p.grade ? `<b>${esc(p.grade)}</b>` : ''}${p.rarity ? `<i>${esc(p.rarity)}</i>` : ''}${p.insuredValue !== null ? `<em>$${Math.round(p.insuredValue)}</em>` : ''}</span>
+      </figcaption>
+      <div class="slab-window">${p.image ? `<img src="${esc(p.image)}" alt="${esc(p.name)}" loading="lazy" referrerpolicy="no-referrer">` : '<span class="slab-none">Card image unavailable</span>'}</div>
+    </figure>`;
+}

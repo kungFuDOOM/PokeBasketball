@@ -64,22 +64,27 @@ create table if not exists battles (
   score_g integer,
   forfeit integer not null default 0,
   void_reason text,
+  cc_memo text,
+  cc_pull text,
   proof text,
   created_at integer not null,
   accepted_at integer,
   finished_at integer
 );
 create index if not exists battles_state on battles (state);
+-- One row per battle's pull. buying (paid, not opened) -> held (card in the house wallet, game on) ->
+-- pending (winner known) -> sending -> sent. A voided battle's card stays with the house: house -> bought_back.
 create table if not exists prizes (
   id text primary key,
   battle_id text not null unique,
-  wallet text not null,
+  wallet text,
   tier text not null,
   state text not null,
-  mode text,
   memo text,
   rarity text,
   nft_address text,
+  pull text,
+  transfer_sig text,
   attempts integer not null default 0,
   last_error text,
   next_try_at integer not null default 0,

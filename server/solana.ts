@@ -47,6 +47,34 @@ export class Rpc {
     return this.call<ParsedTransaction | null>('getTransaction', [signature, { encoding: 'jsonParsed', commitment, maxSupportedTransactionVersion: 0 }]);
   }
 
+  async latestBlockhash(): Promise<string> {
+    const r = await this.call<{ value: { blockhash: string } }>('getLatestBlockhash', [{ commitment: 'confirmed' }]);
+    return r.value.blockhash;
+  }
+
+  /** Raw account data (base64), or null when the account doesn't exist. */
+  async accountData(address: string): Promise<string | null> {
+    const r = await this.call<{ value: { data: [string, string] } | null }>('getAccountInfo', [address, { encoding: 'base64', commitment: 'confirmed' }]);
+    return r.value ? r.value.data[0] : null;
+  }
+
+  send(base64Tx: string): Promise<string> {
+    return this.call<string>('sendTransaction', [base64Tx, { encoding: 'base64', preflightCommitment: 'confirmed' }]);
+  }
+
+  /** Wait until `signature` is confirmed (true) or failed (throws), up to `timeoutMs`. */
+  async confirm(signature: string, timeoutMs = 60_000): Promise<boolean> {
+    const end = Date.now() + timeoutMs;
+    while (Date.now() < end) {
+      const r = await this.call<{ value: ({ err: unknown; confirmationStatus?: string } | null)[] }>('getSignatureStatuses', [[signature], { searchTransactionHistory: true }]);
+      const s = r.value[0];
+      if (s?.err) throw new Error(`transaction ${signature} failed: ${JSON.stringify(s.err)}`);
+      if (s && (s.confirmationStatus === 'confirmed' || s.confirmationStatus === 'finalized')) return true;
+      await new Promise((res) => setTimeout(res, 1500));
+    }
+    return false;
+  }
+
   /** Token account balance in base units. */
   async tokenBalance(account: string): Promise<number> {
     const r = await this.call<{ value: { amount: string } }>('getTokenAccountBalance', [account, { commitment: 'confirmed' }]);

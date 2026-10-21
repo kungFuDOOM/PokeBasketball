@@ -13,8 +13,8 @@ import { TICK, packInput } from '../game/sync';
 import type { Game } from '../game/game';
 import type { HttpBackend } from '../net/http';
 import { LockstepClient } from '../net/lockstep';
-import type { BattleView, DraftView, ServerMsg } from '../net/protocol';
-import { packSvg } from '../ui/pack';
+import type { BattleView, DraftView, PullView, ServerMsg } from '../net/protocol';
+import { cardHtml, packSvg } from '../ui/pack';
 import { esc, tier } from '../util';
 import { monCard } from './draft';
 import { controlsHtml } from './menu';
@@ -40,12 +40,15 @@ export function onlineMatch(root: HTMLElement, api: HttpBackend, battle: BattleV
   let lastDraft: DraftView | null = null;
   let draftFilter = 'ALL';
   let selected: number | null = null;
+  let pull: PullView | null = battle.pull;
+  let revealTimer = 0;
 
   const send = (m: object) => { if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify(m)); };
 
   function leave(flash?: string) {
     closed = true;
     window.clearInterval(draftTimer);
+    window.clearInterval(revealTimer);
     window.clearInterval(presenceTimer);
     view?.stop();
     ws?.close();
@@ -75,6 +78,11 @@ export function onlineMatch(root: HTMLElement, api: HttpBackend, battle: BattleV
     } else if (m.t === 'draft') {
       lastDraft = m.draft;
       draft();
+    } else if (m.t === 'buying') {
+      buying();
+    } else if (m.t === 'pull') {
+      pull = m.pull;
+      reveal(m.pull, m.startsAt);
     } else if (m.t === 'presence') {
       presence = { connected: m.connected, forfeitAt: m.forfeitAt };
       presenceBanner();
@@ -177,10 +185,57 @@ export function onlineMatch(root: HTMLElement, api: HttpBackend, battle: BattleV
 
   const confirmLeave = () => window.confirm('Leaving forfeits the battle and your entry. Leave anyway?');
 
+  // ------------------------------------------------------------ the pull
+
+  function buying() {
+    window.clearInterval(draftTimer);
+    root.className = 'screen-quick';
+    const t = PACK_TIERS[battle.tier];
+    root.innerHTML = `
+      <div class="quick">
+        <section class="card next battle-next room" style="--tc:${t.color}">
+          <p class="eyebrow">Pack Battle · Draft complete</p>
+          <div class="stake">${packSvg(battle.tier, 96, 'float')}</div>
+          <p class="waiting big"><i class="ball-spin" aria-hidden="true"></i>Buying your ${esc(t.ccName)} from Collector Crypt…</p>
+          <p class="note center">Both entries pay for one pull, opened now so you both see the card before tip-off. Collector Crypt's VRF picks the card, and the same VRF result seeds this game.</p>
+        </section>
+        <p class="net-banner" role="status" hidden></p>
+      </div>`;
+    presenceBanner();
+  }
+
+  function reveal(p: PullView, startsAt: number) {
+    window.clearInterval(draftTimer);
+    window.clearInterval(revealTimer);
+    root.className = 'screen-quick';
+    const t = PACK_TIERS[battle.tier];
+    root.innerHTML = `
+      <div class="quick">
+        <section class="card next battle-next room reveal" style="--tc:${t.color}">
+          <p class="eyebrow">Pack Battle · ${esc(t.ccName)}</p>
+          <h2>You're playing for</h2>
+          ${cardHtml(p)}
+          <p class="tip-clock" data-k="tip">Tip-off in 0:08</p>
+          <p class="fair">Picked by <b>Collector Crypt's VRF</b> when the pull was paid, and recorded on Solana (memo <b>${esc(p.memo)}</b>). <a href="${esc(p.verifyUrl)}" target="_blank" rel="noopener">See how this card was picked</a> · <a href="${esc(p.vrfUrl)}" target="_blank" rel="noopener">VRF record</a>. The game's random rolls come from the same VRF result, mixed with the seed the server committed to (${esc(battle.commit.slice(0, 12))}…) and a seed from each of you, so nobody could choose them. Winner takes the card.</p>
+        </section>
+        <p class="net-banner" role="status" hidden></p>
+      </div>`;
+    const clock = root.querySelector<HTMLElement>('[data-k="tip"]')!;
+    const tick = () => {
+      const s = Math.max(0, Math.ceil((startsAt - Date.now()) / 1000));
+      clock.textContent = s ? `Tip-off in 0:${String(s).padStart(2, '0')}` : 'Tip-off!';
+    };
+    tick();
+    revealTimer = window.setInterval(tick, 250);
+    audio.blip(true);
+    presenceBanner();
+  }
+
   // ------------------------------------------------------------ game
 
   function mountGame(g: Game) {
     window.clearInterval(draftTimer);
+    window.clearInterval(revealTimer);
     view?.stop();
     root.className = 'screen-game';
     audio.unlock();
@@ -197,12 +252,14 @@ export function onlineMatch(root: HTMLElement, api: HttpBackend, battle: BattleV
   function final(b: BattleView) {
     closed = true;
     window.clearInterval(draftTimer);
+    window.clearInterval(revealTimer);
     window.clearInterval(presenceTimer);
     view?.stop();
     ws?.close();
     const t = PACK_TIERS[b.tier];
     const won = b.winner === side;
     const g = client?.game;
+    const card = b.pull ?? pull;
     if (b.state === 'void') {
       root.className = 'screen-quick';
       root.innerHTML = `
@@ -215,18 +272,19 @@ export function onlineMatch(root: HTMLElement, api: HttpBackend, battle: BattleV
       root.querySelector('[data-a="lobby"]')!.addEventListener('click', () => act.lobby());
       return;
     }
+    const prize = card ? `the ${esc(card.name)}` : `the ${t.short} pack`;
     const outcome = won
       ? `<section class="pack-won" style="--tc:${t.color}">
-          <div class="pack-rip">${packSvg(b.tier, 116)}<i class="burst" aria-hidden="true"></i></div>
-          <p>YOU WON THE ${t.short} PACK${b.forfeit ? ' BY FORFEIT' : ''}!</p>
-          <p class="pw-2">Your ${esc(t.ccName)} is on its way to your wallet from Collector Crypt.</p>
+          <div class="pack-rip">${card ? cardHtml(card) : packSvg(b.tier, 116)}<i class="burst" aria-hidden="true"></i></div>
+          <p>YOU WON ${prize.toUpperCase()}${b.forfeit ? ' BY FORFEIT' : ''}!</p>
+          <p class="pw-2">${card ? "It's being sent to your wallet now." : `Your ${esc(t.ccName)} is being bought and sent to your wallet.`}</p>
         </section>`
       : `<section class="pack-won lost" style="--tc:${t.color}">
-          <div class="pack-gone">${packSvg(b.tier, 84)}</div>
-          <p>${esc((them?.teamName ?? 'They').toUpperCase())} TOOK THE ${t.short} PACK${b.forfeit ? ' BY FORFEIT' : ''}.</p>
+          <div class="pack-gone">${card ? cardHtml(card, 'small') : packSvg(b.tier, 84)}</div>
+          <p>${esc((them?.teamName ?? 'They').toUpperCase())} TOOK ${prize.toUpperCase()}${b.forfeit ? ' BY FORFEIT' : ''}.</p>
           <p class="pw-2">Run it back: there are more battles in the lobby.</p>
         </section>`;
-    const proof = `<p class="note center proof-link"><a href="${esc(api.proofUrl(b.id))}" target="_blank" rel="noopener">Check this result</a>: the seeds and every input, replayable with <code>bun verify.ts ${esc(b.id)}</code>.</p>`;
+    const proof = `<p class="note center proof-link"><a href="${esc(api.proofUrl(b.id))}" target="_blank" rel="noopener">Check this result</a>: every seed, the Collector Crypt VRF record and every input, replayable with <code>bun verify.ts ${esc(b.id)}</code>.${card ? ` <a href="${esc(card.verifyUrl)}" target="_blank" rel="noopener">How the card was picked</a>.` : ''}</p>`;
     const buttons = won
       ? [{ id: 'prizes', label: 'See your prizes', kind: 'primary' as const }, { id: 'lobby', label: 'Back to battles' }]
       : [{ id: 'lobby', label: 'Find another battle', kind: 'primary' as const }, { id: 'menu', label: 'Main menu', kind: 'ghost' as const }];

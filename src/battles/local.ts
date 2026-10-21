@@ -53,7 +53,7 @@ function seed(): Store {
 function openBattle(s: Store, r: Rival, tier: PackTier, quarterLen: number, createdAt = Date.now()): BattleView {
   return {
     id: uid(s), tier, quarterLen, state: 'open', host: { wallet: r.wallet, teamName: r.teamName }, guest: null,
-    winner: null, score: null, forfeit: false, commit: '', createdAt, side: null,
+    winner: null, score: null, forfeit: false, commit: '', createdAt, side: null, pull: null,
   };
 }
 
@@ -196,7 +196,7 @@ export class LocalBackend implements Backend {
     b.score = mySide === 0 ? score : [score[1], score[0]];
     b.winner = (won ? mySide : 1 - mySide) as 0 | 1;
     if (won) {
-      this.s.prizes.push({ id: uid(this.s), battleId: b.id, tier: b.tier, state: 'sent', mode: 'gift', memo: null, rarity: null, nftAddress: null, createdAt: Date.now() });
+      this.s.prizes.push({ id: uid(this.s), battleId: b.id, tier: b.tier, state: 'sent', pull: null, transferSignature: null, createdAt: Date.now() });
     }
     this.save();
   }

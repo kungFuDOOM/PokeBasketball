@@ -32,7 +32,6 @@ export function loadConfig() {
     houseUsdcAccount: env('HOUSE_USDC_ACCOUNT', '')!,
     ccBaseUrl: env('CC_BASE_URL', CC[cluster])!,
     ccApiKey: env('CC_API_KEY'),
-    payoutMode: (env('PAYOUT_MODE', 'gift') === 'open' ? 'open' : 'gift') as 'gift' | 'open',
     /** Comma-separated US state codes where paid battles are off. Empty by default. */
     restrictedRegions: list('RESTRICTED_REGIONS'),
     minDepositUsd: num('MIN_DEPOSIT_USD', 5),

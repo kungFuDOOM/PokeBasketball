@@ -14,7 +14,7 @@ import { BATTLE_QUARTERS, PACK_TIERS, TIER_ORDER, US_REGIONS, regionName, type P
 import { HttpBackend } from '../net/http';
 import { MICRO, usd, type BattleView, type Me, type PrizeView, type PublicConfig } from '../net/protocol';
 import { detectWallets, openInWalletLinks, solanaPayLink } from '../net/wallet';
-import { packSvg } from '../ui/pack';
+import { cardHtml, packSvg } from '../ui/pack';
 import { abbr, esc, shuffle } from '../util';
 import { draftScreen } from './draft';
 import type { Settings } from './menu';
@@ -250,16 +250,16 @@ export function battleScreen(root: HTMLElement, backend: Backend, settings: Sett
     if (!me) return `<p class="empty">Connect a wallet to see your prizes.</p>`;
     if (!list.length) return `<p class="empty">No pulls yet. Win a battle and it lands here.</p>`;
     const status = (p: PrizeView) =>
-      local ? 'Preview prize: in a real battle this is sent to your wallet.'
-      : p.state === 'sent' ? (p.mode === 'open' ? `Opened: <b>${esc(p.rarity ?? 'card')}</b>, sent to your wallet.` : 'Unopened pack sent to your wallet. Rip it on Collector Crypt.')
+      local ? 'Preview prize: in a real battle the card is sent to your wallet.'
+      : p.state === 'sent' ? 'In your wallet.'
       : p.state === 'failed' ? "Delayed. We're on it; nothing to do on your side."
-      : 'Buying your pull…';
+      : 'Sending to your wallet…';
     return `<ul class="prize-grid">${list.map((p) => `
       <li style="--tc:${PACK_TIERS[p.tier].color}">
-        ${packSvg(p.tier, 76, p.state === 'sent' ? '' : 'float')}
-        <strong>${PACK_TIERS[p.tier].label}</strong>
+        ${p.pull ? cardHtml(p.pull, 'small') : packSvg(p.tier, 76, p.state === 'sent' ? '' : 'float')}
+        <strong>${esc(p.pull?.name ?? PACK_TIERS[p.tier].label)}</strong>
         <small>${status(p)}</small>
-        ${p.memo ? `<small class="memo" title="Collector Crypt memo">${esc(p.memo)}</small>` : ''}
+        ${p.pull ? `<a class="verify-link" href="${esc(p.pull.verifyUrl)}" target="_blank" rel="noopener">How this card was picked</a>` : ''}
       </li>`).join('')}</ul>`;
   }
 

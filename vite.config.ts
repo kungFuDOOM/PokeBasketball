@@ -13,7 +13,8 @@ const CSP = [
   "default-src 'none'",
   "script-src 'self'",
   "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data:",
+  // Collector Crypt card images (the card a battle is played for).
+  "img-src 'self' data: https://nft.collectorcrypt.com https://d1xpxki1g4htqu.cloudfront.net https://cdn.helius-rpc.com https://arweave.net",
   "font-src 'self'",
   `connect-src 'self'${apiOrigins}`,
   "manifest-src 'self'",

@@ -4,7 +4,7 @@ import type { Server, ServerWebSocket } from 'bun';
 import { PACK_TIERS, TIER_ORDER, US_REGIONS, type PackTier } from '../src/battles/service';
 import { MICRO, type DepositView, type Me, type PrizeView, type PublicConfig, type WithdrawalView } from '../src/net/protocol';
 import { HttpError, issueNonce, login, logout, sessionWallet } from './auth';
-import { acceptBattle, blockedReason, cancelBattle, createBattle, entryOf, getBattle, priceOf, view, type BattleRow } from './battles';
+import { acceptBattle, blockedReason, cancelBattle, createBattle, entryOf, getBattle, priceOf, pullView, view, type BattleRow } from './battles';
 import type { Config } from './config';
 import { InsufficientFunds, balanceOf, now, post, type Db } from './db';
 import type { DepositScanner } from './deposits';
@@ -78,9 +78,9 @@ export function createApp(d: AppDeps) {
   };
 
   const prizeView = (r: Record<string, unknown>): PrizeView => ({
-    id: r.id as string, battleId: r.battle_id as string, tier: r.tier as PackTier, state: r.state as PrizeView['state'],
-    mode: (r.mode as PrizeView['mode']) ?? null, memo: (r.memo as string) ?? null, rarity: (r.rarity as string) ?? null,
-    nftAddress: (r.nft_address as string) ?? null, createdAt: r.created_at as number,
+    id: r.id as string, battleId: r.battle_id as string, tier: r.tier as PackTier,
+    state: (['pending', 'sending', 'sent', 'failed'].includes(r.state as string) ? r.state : 'pending') as PrizeView['state'],
+    pull: pullView((r.pull as string) ?? null), transferSignature: (r.transfer_sig as string) ?? null, createdAt: r.created_at as number,
   });
 
   async function route(req: Request, url: URL): Promise<Response> {
@@ -190,7 +190,7 @@ export function createApp(d: AppDeps) {
     }
     if (p === '/api/prizes' && m === 'GET') {
       const w = authed(req);
-      return json((db.query('select * from prizes where wallet = ? order by created_at desc limit 50').all(w) as Record<string, unknown>[]).map(prizeView));
+      return json((db.query("select * from prizes where wallet = ? and state in ('pending', 'sending', 'sent', 'failed') order by created_at desc limit 50").all(w) as Record<string, unknown>[]).map(prizeView));
     }
 
     // ---- admin
@@ -202,7 +202,8 @@ export function createApp(d: AppDeps) {
           liabilities: (db.query('select coalesce(sum(delta), 0) as s from ledger').get() as { s: number }).s,
           battles: q('select state, count(*) as n from battles group by state'),
           prizes: q('select state, count(*) as n from prizes group by state'),
-          failedPrizes: q("select id, battle_id, wallet, tier, memo, attempts, last_error from prizes where state = 'failed'"),
+          failedPrizes: q("select id, battle_id, wallet, tier, memo, nft_address, attempts, last_error from prizes where state = 'failed'"),
+          houseCards: q("select id, battle_id, tier, memo, nft_address, last_error, updated_at from prizes where state = 'house'"),
           withdrawals: q("select * from withdrawals where state = 'requested' order by created_at"),
           tiers: Object.fromEntries(TIER_ORDER.map((t) => [t, PACK_TIERS[t].price])),
         });
@@ -234,6 +235,12 @@ export function createApp(d: AppDeps) {
       }
       const pr = /^\/api\/admin\/prizes\/(\w+)\/retry$/.exec(p);
       if (pr && m === 'POST') return json({ ok: d.payouts?.retry(pr[1]) ?? false });
+      const bb = /^\/api\/admin\/prizes\/(\w+)\/buyback$/.exec(p);
+      if (bb && m === 'POST') {
+        const r = await d.payouts?.buyback(bb[1]);
+        if (!r) throw new HttpError(404, 'No card held by the house for that prize');
+        return json({ ok: true, ...r });
+      }
     }
     throw new HttpError(404, 'Not found');
   }

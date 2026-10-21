@@ -1,6 +1,12 @@
 // Pack Battles: two players split the cost of a Collector Crypt gacha pull, snake-draft five Pokémon
 // each, play one game, and the winner gets the pull.
 //
+// Pull first, then play: after the draft, the house wallet buys and opens the pull with both players'
+// entries, so they see the exact card they're playing for. Collector Crypt's VRF picks that card, and
+// its output also seeds the game (mixed with the server's committed seed and both players' seeds), so
+// nobody, the server included, can choose the game's random rolls. After the game the card is
+// transferred to the winner.
+//
 // Shared constants and types for the game client and the server. The server (server/) holds the money,
 // runs the draft and the game, decides the winner and buys the pull; the screens only show what it says.
 // Without a server configured, the game falls back to LocalBackend (battles/local.ts): play money and CPU
@@ -25,21 +31,38 @@ export const PACK_TIERS: Record<PackTier, {
 export const TIER_ORDER: PackTier[] = ['pokemon_25', 'pokemon_50', 'pokemon_100'];
 export const BATTLE_QUARTERS = [60, 120, 180] as const;
 
+/** A pull the house bought for a battle: the card, and Collector Crypt's VRF record for it. */
+export interface Pull {
+  /** Collector Crypt's memo for the purchase; it names the pack in every CC verification tool. */
+  memo: string;
+  nftAddress: string;
+  name: string;
+  image: string | null;
+  /** Collector Crypt's insured value for the card, in dollars. */
+  insuredValue: number | null;
+  grade: string | null;
+  rarity: string | null;
+  /** The tier roll CC's VRF produced (1..100,000,000). */
+  roll: number | null;
+  /** The VRF output this game is seeded from: CC's beta (hex) when published, else the roll. */
+  entropy: string;
+  /** CC's VRF verification record for the memo, exactly as returned (null if it wasn't available). */
+  vrf: unknown;
+}
+
 /** Where prize pulls come from. Server-side only; server/collector-crypt.ts implements it. */
 export interface PackSource {
-  award(machine: PackTier, winnerWallet: string, battleId: string, hooks?: AwardHooks): Promise<AwardResult>;
+  /** House buys and opens one pull from `machine`; the card lands in the house wallet. */
+  buy(machine: PackTier, battleId: string, hooks?: BuyHooks): Promise<Pull>;
+  /** Send a card the house holds to `to`. Returns the transaction signature. */
+  deliver(nftAddress: string, to: string): Promise<string>;
+  /** Who owns a card right now (for safe retries after a crash). */
+  ownerOf(nftAddress: string): Promise<string | null>;
 }
 
-export interface AwardResult {
-  memo: string;
-  mode: 'gift' | 'open';
-  rarity?: string;
-  nftAddress?: string;
-}
-
-export interface AwardHooks {
+export interface BuyHooks {
   /** Called as soon as the purchase is paid, before anything can fail after it. Save the memo then. */
-  onPaid?(memo: string, mode: 'gift' | 'open'): void;
+  onPaid?(memo: string): void;
   /** Finish a purchase that was already paid (from onPaid) instead of buying again. */
   resumeMemo?: string;
 }

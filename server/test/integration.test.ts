@@ -5,34 +5,40 @@ import { POKEMON } from '../../src/data/pokemon';
 import { packInput } from '../../src/game/sync';
 import { seededRng } from '../../src/game/types';
 import { LockstepClient } from '../../src/net/lockstep';
-import type { BattleView, Me, PrizeView, Proof, ServerMsg } from '../../src/net/protocol';
+import type { BattleView, Me, PrizeView, Proof, PullView, ServerMsg } from '../../src/net/protocol';
 import { createApp } from '../app';
-import { CollectorCryptPackSource, keypairWallet } from '../collector-crypt';
+import { CollectorCryptPackSource } from '../collector-crypt';
+import { Rpc } from '../solana';
 import { openDb } from '../db';
 import { generateKeypair } from '../lib/ed25519';
 import { MatchManager } from '../match';
 import { PayoutWorker } from '../payouts';
 import { verifyProof } from '../verify';
-import { fakeCollectorCrypt, signIn, testConfig } from './helpers';
+import { fakeCollectorCrypt, fakeRpc, signIn, testConfig, type FakeChain } from './helpers';
 
 const ADMIN = 'admin-secret';
 let base = '';
 let stop: () => void = () => {};
 let cc: Awaited<ReturnType<typeof fakeCollectorCrypt>>;
+let chain: FakeChain;
 let payouts: PayoutWorker;
+let houseAddress = '';
 
 beforeAll(async () => {
   const house = (await generateKeypair()).keypair;
-  cc = await fakeCollectorCrypt(house.address);
+  houseAddress = house.address;
+  chain = fakeRpc();
+  cc = await fakeCollectorCrypt(house.address, chain);
   const cfg = testConfig({ adminToken: ADMIN, simSpeed: 40, pickSeconds: 1, forfeitSeconds: 1, acceptTimeoutSeconds: 3 });
   const db = openDb(':memory:');
-  const matches = new MatchManager(db, cfg);
   const quiet = { ...console, info: () => {}, warn: () => {} };
-  payouts = new PayoutWorker(db, new CollectorCryptPackSource({ wallet: keypairWallet(house), baseUrl: cc.url, mode: 'gift' }), { rpc: null, houseUsdcAccount: '', pollSeconds: 60 }, quiet);
+  const source = new CollectorCryptPackSource({ house, rpc: new Rpc(chain.url), baseUrl: cc.url, openTimeoutMs: 5000 });
+  const matches = new MatchManager(db, cfg, source);
+  payouts = new PayoutWorker(db, source, { rpc: null, houseUsdcAccount: '', pollSeconds: 60 }, quiet);
   const app = createApp({ db, cfg, matches, deposits: null, payouts, houseWallet: house.address });
   const server = Bun.serve({ port: 0, fetch: app.fetch, websocket: app.websocket });
   base = `http://localhost:${server.port}`;
-  stop = () => { server.stop(true); cc.stop(); };
+  stop = () => { server.stop(true); cc.stop(); chain.stop(); };
 });
 afterAll(() => stop());
 
@@ -46,11 +52,14 @@ async function player(name: string) {
 
 /** Connect, draft greedily, play with scripted inputs; resolves with the final battle view. */
 function play(token: string, battleId: string, opts: { quitAtTick?: number; seed: number }) {
-  return new Promise<{ final: BattleView; client: LockstepClient; picks: number }>((resolve, reject) => {
+  return new Promise<{ final: BattleView; client: LockstepClient; picks: number; pull: PullView | null; sawBuying: boolean; pullBeforeStart: boolean }>((resolve, reject) => {
     const ws = new WebSocket(`${base.replace('http', 'ws')}/ws?token=${token}&battle=${battleId}`);
     let side: 0 | 1 = 0;
     let client: LockstepClient | null = null;
     let picks = 0;
+    let pull: PullView | null = null;
+    let sawBuying = false;
+    let pullBeforeStart = false;
     const r = seededRng(opts.seed);
     let timer: ReturnType<typeof setInterval> | null = null;
     ws.onmessage = (e) => {
@@ -65,18 +74,23 @@ function play(token: string, battleId: string, opts: { quitAtTick?: number; seed
           ws.send(JSON.stringify({ t: 'pick', dex: best.dex }));
           picks++;
         }
+      } else if (m.t === 'buying') {
+        sawBuying = true;
+      } else if (m.t === 'pull') {
+        pull = m.pull;
       } else if (m.t === 'final') {
         if (timer) clearInterval(timer);
         ws.close();
-        resolve({ final: m.battle, client: client!, picks });
+        resolve({ final: m.battle, client: client!, picks, pull, sawBuying, pullBeforeStart });
       } else if (m.t === 'error') {
         reject(new Error(m.message));
       }
       client?.handle(m);
       if (m.t === 'start' && !timer) {
+        pullBeforeStart = !!pull;
         timer = setInterval(() => {
           client!.advance();
-          if (opts.quitAtTick && client!.tick >= opts.quitAtTick) { clearInterval(timer!); ws.onmessage = null; ws.close(); resolve({ final: null as unknown as BattleView, client: client!, picks }); return; }
+          if (opts.quitAtTick && client!.tick >= opts.quitAtTick) { clearInterval(timer!); ws.onmessage = null; ws.close(); resolve({ final: null as unknown as BattleView, client: client!, picks, pull, sawBuying, pullBeforeStart }); return; }
           const held = r() < 0.5;
           ws.send(JSON.stringify({ t: 'in', ...packInput({ mx: r() * 2 - 1, my: r() * 2 - 1, turbo: r() < 0.3, shoot: r() < 0.03, shootHeld: held, pass: r() < 0.02, steal: r() < 0.02, special: r() < 0.01, swap: false }) }));
         }, 4);
@@ -112,25 +126,34 @@ describe('a full paid battle', () => {
     }
     expect(a.client.desyncs + b.client.desyncs).toBe(0);
 
+    // Both players were shown the same card, bought before tip-off, while the server was buying it.
+    expect(a.sawBuying && b.sawBuying).toBe(true);
+    expect(a.pullBeforeStart && b.pullBeforeStart).toBe(true);
+    expect(a.pull).toEqual(b.pull);
+    expect(a.pull!.name).toBe('1999 Base Set Charizard PSA 10');
+    expect(a.final.pull!.memo).toBe(a.pull!.memo);
+
     const winner = a.final.winner === 0 ? host : guest;
     await payouts.runOnce();
     const prizes = await winner.api<PrizeView[]>('/api/prizes');
     expect(prizes.data).toHaveLength(1);
     expect(prizes.data[0].state).toBe('sent');
-    expect(prizes.data[0].tier).toBe('pokemon_50');
-    expect([...cc.memos.values()].at(-1)!.recipient).toBe(winner.wallet);
+    expect(prizes.data[0].pull!.nftAddress).toBe(a.pull!.nftAddress);
+    expect(chain.assets.get(a.pull!.nftAddress)!.owner).toBe(winner.wallet);
     const loser = winner === host ? guest : host;
     expect((await loser.api<PrizeView[]>('/api/prizes')).data).toHaveLength(0);
 
     const proof = (await (await fetch(`${base}/api/battles/${created.data.id}/proof`)).json()) as Proof;
-    const verdict = await verifyProof(proof);
+    expect(proof.pull!.entropy).toBe(cc.memos.get(proof.pull!.memo)!.beta);
+    const verdict = await verifyProof(proof, { ccBase: cc.url });
     expect(verdict.checks.filter((c) => !c.ok)).toEqual([]);
+    expect(verdict.checks.some((c) => /live/.test(c.name))).toBe(true);
     expect(verdict.ok).toBe(true);
-    // Tampering with one tick of input breaks the proof.
+    // Changing any source breaks it: the server seed, the VRF output, or a tick of input.
+    expect((await verifyProof({ ...proof, serverSeed: 'cd'.repeat(32) }, { offline: true })).ok).toBe(false);
+    expect((await verifyProof({ ...proof, pull: { ...proof.pull!, entropy: 'ee'.repeat(64) } }, { ccBase: cc.url })).ok).toBe(false);
     const tampered = { ...proof, inputs: proof.inputs.map((x, i) => (i === 900 ? [x[1], x[0]] : x)) as Proof['inputs'] };
-    const forged = { ...proof, serverSeed: 'cd'.repeat(32) };
-    expect((await verifyProof(forged)).ok).toBe(false);
-    expect((await verifyProof(tampered)).replayScore).toBeDefined();
+    expect((await verifyProof(tampered, { offline: true })).replayScore).toBeDefined();
   }, 120_000);
 
   test('leaving mid-game forfeits to the player still there', async () => {
@@ -142,6 +165,24 @@ describe('a full paid battle', () => {
     expect(stayed.final.state).toBe('done');
     expect(stayed.final.forfeit).toBe(true);
     expect(stayed.final.winner).toBe(0);
+  }, 60_000);
+
+  test('if both players leave after the pull, both are refunded and the card stays with the house', async () => {
+    const host = await player('Gone One');
+    const guest = await player('Gone Two');
+    const b = (await host.api<BattleView>('/api/battles', { body: { tier: 'pokemon_25', quarterLen: 180 } })).data;
+    await guest.api(`/api/battles/${b.id}/accept`, { body: {} });
+    await Promise.all([play(host.token, b.id, { seed: 5, quitAtTick: 300 }), play(guest.token, b.id, { seed: 6, quitAtTick: 300 })]);
+    await new Promise((r) => setTimeout(r, 2500));
+    const after = (await host.api<BattleView>(`/api/battles/${b.id}`)).data;
+    expect(after.state).toBe('void');
+    expect(after.pull).not.toBeNull();
+    expect(chain.assets.get(after.pull!.nftAddress)!.owner).toBe(houseAddress);
+    expect((await host.api<Me>('/api/me')).data.balance).toBe(100_000_000);
+    expect((await guest.api<Me>('/api/me')).data.balance).toBe(100_000_000);
+    const summary = (await host.api<{ houseCards: { id: string }[] }>('/api/admin/summary', { token: ADMIN })).data;
+    const card = summary.houseCards.at(-1)!;
+    expect((await host.api<{ ok: boolean }>(`/api/admin/prizes/${card.id}/buyback`, { body: {}, token: ADMIN })).data.ok).toBe(true);
   }, 60_000);
 
   test('a no-show voids the battle and refunds both players', async () => {

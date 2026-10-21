@@ -1,4 +1,8 @@
-// Live match rooms: snake draft, then a lockstep game the server referees.
+// Live match rooms: snake draft, then the pull, then a lockstep game the server referees.
+//
+// After the draft the server buys and opens the battle's pull with both entries (Collector Crypt's VRF
+// picks the card) and shows it to both players before tip-off. That VRF output is mixed into the game
+// seed (see battles.ts), so the game's random rolls are fixed by a source nobody here controls.
 //
 // The server owns the clock. Each tick it takes both players' latest stick and held buttons, plus any
 // button presses since the last tick, steps its own copy of the game, and streams that tick's inputs to
@@ -13,7 +17,9 @@ import { configFromStart, snakeOrder } from '../src/net/match';
 import type { ClientMsg, DraftView, MatchStart, Proof, ServerMsg, TeamSpec } from '../src/net/protocol';
 import { cpuPick } from '../src/screens/draft';
 import { abbr } from '../src/util';
-import { finishBattle, getBattle, setState, view, voidBattle, type BattleRow } from './battles';
+import type { PackSource } from '../src/battles/service';
+import type { PullView } from '../src/net/protocol';
+import { DRAFT_RECIPE, SEED_RECIPE, finishBattle, firstPick, getBattle, pullView, recordPaid, recordPull, setState, view, voidBattle, type BattleRow } from './battles';
 import type { Config } from './config';
 import type { Db } from './db';
 
@@ -29,7 +35,12 @@ const BATCH = 2;
 const MAX_TICKS = 60 * 60 * 45; // a 45-minute hard stop, whatever happens in overtime
 const READY_WAIT_MS = 10_000;
 
-type Phase = 'waiting' | 'draft' | 'starting' | 'game' | 'over';
+type Phase = 'waiting' | 'draft' | 'buying' | 'reveal' | 'starting' | 'game' | 'over';
+
+/** How long both players see the card before tip-off. */
+const REVEAL_MS = 8000;
+/** Give up on the purchase (and refund) if Collector Crypt takes longer than this. */
+const BUY_TIMEOUT_MS = 120_000;
 
 class Room {
   phase: Phase = 'waiting';
@@ -56,6 +67,7 @@ class Room {
   private forfeitTimer: ReturnType<typeof setTimeout> | null = null;
   private forfeitAt: number | null = null;
   private acceptTimer: ReturnType<typeof setTimeout> | null = null;
+  private pull: { view: PullView; startsAt: number } | null = null;
 
   constructor(readonly id: string, private mgr: MatchManager) {
     const b = this.battle();
@@ -87,10 +99,14 @@ class Room {
     this.peers[side] = peer;
     this.send(side, { t: 'hello', side, battle: view(this.battle()) });
     if (this.phase === 'waiting') {
-      if (this.peers[0] && this.peers[1]) this.startDraft();
+      if (this.peers[0] && this.peers[1]) void this.startDraft();
       else this.both({ t: 'wait', who: ([0, 1] as const).filter((s) => !this.peers[s]) });
     } else if (this.phase === 'draft') {
       this.send(side, { t: 'draft', draft: this.draftView() });
+    } else if (this.phase === 'buying') {
+      this.send(side, { t: 'buying' });
+    } else if (this.phase === 'reveal' && this.pull) {
+      this.send(side, { t: 'pull', pull: this.pull.view, startsAt: this.pull.startsAt });
     } else if (this.phase === 'starting' || this.phase === 'game') {
       this.flush();
       this.send(side, { t: 'start', start: this.start!, tick: this.tick, snap: this.tick ? snapshot(this.game!) : null });
@@ -110,7 +126,7 @@ class Room {
   private presence() {
     const [a, b] = this.connected();
     const missing = !a || !b;
-    if (this.phase === 'game' || this.phase === 'starting' || this.phase === 'draft') {
+    if (this.phase === 'game' || this.phase === 'starting' || this.phase === 'draft' || this.phase === 'buying' || this.phase === 'reveal') {
       if (missing && !this.forfeitTimer) {
         this.forfeitAt = Date.now() + this.mgr.cfg.forfeitSeconds * 1000;
         this.forfeitTimer = setTimeout(() => this.forfeitCheck(), this.mgr.cfg.forfeitSeconds * 1000);
@@ -127,6 +143,11 @@ class Room {
     this.forfeitTimer = null;
     const [a, b] = this.connected();
     if (a && b) return;
+    // Mid-purchase: wait for the card before ruling, so the prize is settled one way or the other.
+    if (this.phase === 'buying') {
+      this.forfeitTimer = setTimeout(() => this.forfeitCheck(), 1000);
+      return;
+    }
     if (!a && !b) return this.void('both players left');
     this.finish(a ? 0 : 1, true);
   }
@@ -151,13 +172,17 @@ class Room {
 
   // ------------------------------------------------------------ draft
 
-  private startDraft() {
+  private draftStarting = false;
+
+  private async startDraft() {
+    if (this.draftStarting) return;
+    this.draftStarting = true;
     clearTimeout(this.acceptTimer!);
     const b = this.battle();
     setState(this.mgr.db, this.id, 'drafting');
-    this.phase = 'draft';
-    this.order = snakeOrder((b.seed! & 1) as 0 | 1);
+    this.order = snakeOrder(await firstPick(b.server_seed, b.host_seed, b.guest_seed!, b.id));
     this.picks = [];
+    this.phase = 'draft';
     this.nextPick();
   }
 
@@ -168,7 +193,7 @@ class Room {
 
   private nextPick() {
     if (this.draftTimer) clearTimeout(this.draftTimer);
-    if (this.picks.length >= this.order.length) return this.startGame();
+    if (this.picks.length >= this.order.length) return void this.buyPull();
     this.deadline = Date.now() + this.mgr.cfg.pickSeconds * 1000;
     const turn = this.picks.length;
     this.draftTimer = setTimeout(() => {
@@ -189,6 +214,33 @@ class Room {
     mon ??= cpuPick(pool, this.rosterOf(side).map(monByDex));
     this.picks.push(mon.dex);
     this.nextPick();
+  }
+
+  // ------------------------------------------------------------ the pull
+
+  private async buyPull() {
+    if (this.draftTimer) clearTimeout(this.draftTimer);
+    const src = this.mgr.source;
+    if (!src) return this.void('prize payouts are not set up on this server');
+    this.phase = 'buying';
+    this.both({ t: 'buying' });
+    const b = this.battle();
+    try {
+      const pull = await Promise.race([
+        src.buy(b.tier, b.id, { onPaid: (memo) => recordPaid(this.mgr.db, this.id, memo) }),
+        new Promise<never>((_, rej) => setTimeout(() => rej(new Error('Collector Crypt took too long')), BUY_TIMEOUT_MS)),
+      ]);
+      if (this.phase !== 'buying') return; // voided meanwhile
+      await recordPull(this.mgr.db, this.id, pull, { verifyUrl: src.verifyUrl(pull.memo), vrfUrl: src.vrfUrl(pull.memo) });
+      const view = pullView(this.battle().cc_pull)!;
+      this.pull = { view, startsAt: Date.now() + REVEAL_MS };
+      this.phase = 'reveal';
+      this.both({ t: 'pull', pull: view, startsAt: this.pull.startsAt });
+      setTimeout(() => { if (this.phase === 'reveal') this.startGame(); }, REVEAL_MS);
+    } catch (e) {
+      console.error(`battle ${this.id}: pull failed:`, (e as Error).message);
+      this.void(`Collector Crypt couldn't sell the pull (${(e as Error).message})`);
+    }
   }
 
   // ------------------------------------------------------------ game
@@ -281,9 +333,13 @@ class Room {
     this.stopTimers();
     const b = this.battle();
     const score: [number, number] = this.game ? [this.game.score[0], this.game.score[1]] : [0, 0];
+    const stored = b.cc_pull ? (JSON.parse(b.cc_pull) as { memo: string; nftAddress: string; entropy: string; roll: number | null; vrf: unknown }) : null;
     const proof: Proof | null = this.start ? {
       battleId: b.id, commit: b.commit_hash, serverSeed: b.server_seed, hostSeed: b.host_seed, guestSeed: b.guest_seed!,
       seed: b.seed!, start: this.start, inputs: this.log, score, winner, forfeit,
+      pull: stored ? { memo: stored.memo, nftAddress: stored.nftAddress, entropy: stored.entropy, roll: stored.roll, vrf: stored.vrf } : null,
+      draft: this.order.length ? { order: this.order, picks: this.picks } : null,
+      seedRecipe: `first 4 bytes (big-endian) of sha256("${SEED_RECIPE}:" + serverSeed + ":" + hostSeed + ":" + guestSeed + ":" + battleId + ":" + pull.entropy); first pick = lowest bit of sha256("${DRAFT_RECIPE}:" + serverSeed + ":" + hostSeed + ":" + guestSeed + ":" + battleId)[0]`,
     } : null;
     finishBattle(this.mgr.db, this.id, winner, score, forfeit, proof);
     this.both({ t: 'final', battle: view(this.battle()) });
@@ -305,7 +361,7 @@ export class MatchManager {
   private rooms = new Map<string, Room>();
   onFinish?: (battleId: string) => void;
 
-  constructor(readonly db: Db, readonly cfg: Config) {}
+  constructor(readonly db: Db, readonly cfg: Config, readonly source: (PackSource & { verifyUrl(memo: string): string; vrfUrl(memo: string): string }) | null = null) {}
 
   /** The room for a battle that's been accepted, created on first use. */
   room(id: string): Room | null {

@@ -1178,3 +1178,29 @@ button.gl-row:hover { border-color: var(--muted); }
 .od-pickbar img { width: 44px; height: 44px; image-rendering: pixelated; }
 .od-pickbar span { flex: 1; min-width: 0; }
 .online-draft .filters { margin-bottom: 10px; }
+
+/* pulled card, as a graded slab */
+.slab { margin: 0; display: flex; flex-direction: column; width: 220px; max-width: 100%; background: linear-gradient(160deg, #e9ecf5, #c9cfe0); border-radius: 10px; padding: 8px; box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45), inset 0 0 0 2px rgba(255, 255, 255, 0.6); color: #141a3a; }
+.slab.small { width: 120px; padding: 5px; border-radius: 7px; }
+.slab-label { display: flex; flex-direction: column; gap: 3px; background: #fff; border: 2px solid var(--rc); border-radius: 5px; padding: 5px 7px; margin-bottom: 6px; }
+.slab-name { font: 700 0.9rem/1.15 var(--sport); text-wrap: balance; }
+.slab.small .slab-name { font-size: 0.72rem; }
+.slab-meta { display: flex; gap: 5px; flex-wrap: wrap; align-items: center; font-size: 0.72rem; }
+.slab-meta b { font-weight: 800; letter-spacing: 0.03em; }
+.slab-meta i { font: normal 0.48rem/1 var(--pixel); background: var(--rc); color: #fff; padding: 3px 4px 2px; border-radius: 3px; }
+.slab-meta em { font-style: normal; font-weight: 800; color: #1f7a45; }
+.slab.small .slab-meta { font-size: 0.62rem; }
+.slab-window { aspect-ratio: 5 / 7; max-width: 100%; background: #0f1430; border-radius: 4px; overflow: hidden; display: grid; place-items: center; }
+.slab-window img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.slab-none { color: #9aa0c8; font-size: 0.8rem; text-align: center; padding: 8px; }
+.verify-link { color: var(--accent); font-size: 0.82rem; font-weight: 700; }
+.reveal { display: flex; flex-direction: column; align-items: center; gap: 14px; text-align: center; }
+.reveal .slab { animation: slab-in 0.7s cubic-bezier(0.2, 1.4, 0.4, 1) both; }
+@keyframes slab-in { from { transform: translateY(24px) scale(0.85) rotate(-4deg); opacity: 0; } }
+.reveal h2 { margin: 0; font: 1.1rem/1.4 var(--pixel); }
+.reveal .tip-clock { font: 800 1.6rem var(--sport); color: var(--accent); font-variant-numeric: tabular-nums; }
+.fair { max-width: 560px; margin: 0; padding: 10px 14px; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; color: var(--muted); font-size: 0.9rem; text-align: left; }
+.fair b { color: var(--fg); }
+.fair a { color: var(--accent); }
+.prize-grid .slab.small { margin-bottom: 2px; }
+@media (prefers-reduced-motion: reduce) { .reveal .slab { animation: none; } }

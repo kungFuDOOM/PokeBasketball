@@ -4,7 +4,7 @@ import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { createApp } from './app';
 import { voidInterrupted } from './battles';
-import { CollectorCryptPackSource, keypairWallet } from './collector-crypt';
+import { CollectorCryptPackSource } from './collector-crypt';
 import { loadConfig } from './config';
 import { openDb } from './db';
 import { DepositScanner } from './deposits';
@@ -25,12 +25,12 @@ const house = cfg.houseSecret ? await keypairFromSecret(cfg.houseSecret) : null;
 if (!house) console.warn('HOUSE_SECRET_KEY not set: prizes will queue but not be sent');
 if (!cfg.houseUsdcAccount) console.warn('HOUSE_USDC_ACCOUNT not set: deposits will not be detected');
 
-const source = house ? new CollectorCryptPackSource({ wallet: keypairWallet(house), baseUrl: cfg.ccBaseUrl, apiKey: cfg.ccApiKey, mode: cfg.payoutMode }) : null;
+const source = house ? new CollectorCryptPackSource({ house, rpc, baseUrl: cfg.ccBaseUrl, apiKey: cfg.ccApiKey }) : null;
 const payouts = new PayoutWorker(db, source, { rpc, houseUsdcAccount: cfg.houseUsdcAccount, pollSeconds: cfg.payoutPollSeconds });
 payouts.recover();
 const deposits = cfg.houseUsdcAccount ? new DepositScanner(db, rpc, cfg) : null;
 
-const matches = new MatchManager(db, cfg);
+const matches = new MatchManager(db, cfg, source);
 matches.onFinish = () => void payouts.runOnce();
 matches.resume();
 
@@ -38,7 +38,7 @@ const app = createApp({ db, cfg, matches, deposits, payouts, houseWallet: house?
 const server = Bun.serve({ port: cfg.port, fetch: app.fetch, websocket: app.websocket });
 deposits?.start();
 payouts.start();
-console.log(`Pack Battles server on :${server.port} (${cfg.cluster}, payouts ${cfg.payoutMode}, house ${house?.address ?? 'unset'})`);
+console.log(`Pack Battles server on :${server.port} (${cfg.cluster}, house ${house?.address ?? 'unset'})`);
 
 const shutdown = () => {
   console.log('shutting down: voiding live battles and refunding');
