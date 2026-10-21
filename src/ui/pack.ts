@@ -11,7 +11,7 @@ const BODY = `M0 3${xs.slice(1).map((x) => `L${x} ${x % 10 ? 8 : 3}`).join('')}`
 export function packSvg(tier: PackTier, width = 96, cls = ''): string {
   const t = PACK_TIERS[tier];
   const id = `pk${++n}`;
-  const ink = tier === 'elite' ? '#1a1400' : '#f2f0e6';
+  const ink = tier === 'pokemon_100' ? '#1a1400' : '#f2f0e6';
   const body = BODY;
   return `
     <svg class="pack-svg ${cls}" viewBox="0 0 100 150" width="${width}" height="${Math.round(width * 1.5)}" role="img" aria-label="${t.label}">

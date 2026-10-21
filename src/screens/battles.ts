@@ -30,6 +30,8 @@ const ago = (t: number) => {
   return m < 1 ? 'just now' : m < 60 ? `${m} min ago` : `${Math.round(m / 60)} hr ago`;
 };
 const qLabel = (s: number) => `${s / 60}-min quarters`;
+/** The machine's published odds, e.g. "75% Common · 20% Uncommon · 4% Rare · 1% Epic". */
+const oddsLine = (t: PackTier) => Object.entries(PACK_TIERS[t].odds).map(([k, v]) => `${Math.round(v * 100)}% ${k}`).join(' · ');
 const typeChips = (r: Challenger) => r.types.map((t) => `<i style="--tc:${TYPE_COLORS[t]}">${t}</i>`).join('');
 
 export function battleScreen(root: HTMLElement, settings: Settings, audio: Audio, act: BattleActions) {
@@ -245,6 +247,7 @@ export function battleScreen(root: HTMLElement, settings: Settings, audio: Audio
           <li>Pulls are random: the card can be worth more or less than ${money(t.price)}.</li>
         </ul>
       </div>
+      <p class="odds">${esc(t.ccName)} odds: ${oddsLine(b.tier)}</p>
       <p class="note">Balance after: ${money(battles.balance() - entryOf(b.tier))}</p>
       <div class="actions center"><button class="btn primary big" data-a="go">Pay ${money(entryOf(b.tier))} and draft</button></div>`,
     (el, close) => el.querySelector('[data-a="go"]')!.addEventListener('click', () => {
@@ -260,11 +263,12 @@ export function battleScreen(root: HTMLElement, settings: Settings, audio: Audio
   }
 
   function createSheet(from: Tab) {
-    let tier: PackTier = 'starter';
+    let tier: PackTier = 'pokemon_25';
     let qlen = 120;
     const render = (el: HTMLElement) => {
       el.querySelector('.create-pack')!.innerHTML = packSvg(tier, 92, 'float');
       el.querySelector('.create-sum')!.textContent = `You pay ${money(entryOf(tier))} now · winner gets a ${money(PACK_TIERS[tier].price)} pull`;
+      el.querySelector('.create-odds')!.textContent = `${PACK_TIERS[tier].ccName} odds: ${oddsLine(tier)}`;
     };
     sheet(`
       <h3>Create a battle</h3>
@@ -281,6 +285,7 @@ export function battleScreen(root: HTMLElement, settings: Settings, audio: Audio
         </div>
       </div>
       <p class="create-sum"></p>
+      <p class="odds create-odds"></p>
       <p class="note">Your half sits in escrow until someone accepts. Cancel before then for a full refund.</p>
       <div class="actions center"><button class="btn primary big" data-a="post">Pay and post</button></div>`,
     (el, close) => {
@@ -314,8 +319,9 @@ export function battleScreen(root: HTMLElement, settings: Settings, audio: Audio
       <div class="claim">${packSvg(p.tier, 84, 'float')}
         <ol>
           <li>Sign in to your Poké Jam account.</li>
-          <li>Connect the Solana wallet the card should go to.</li>
-          <li>We buy your pull from the Collector Crypt machine and send the card there.</li>
+          <li>Connect the Solana wallet the pack should go to.</li>
+          <li>We buy a ${esc(PACK_TIERS[p.tier].ccName)} from Collector Crypt and gift it to that wallet.</li>
+          <li>Open it on Collector Crypt whenever you like.</li>
         </ol>
       </div>
       <div class="actions center"><button class="btn primary big" data-a="claim">Request claim</button></div>`,
@@ -407,7 +413,7 @@ export function battleScreen(root: HTMLElement, settings: Settings, audio: Audio
       ? `<section class="pack-won" style="--tc:${t.color}">
           <div class="pack-rip">${packSvg(b.tier, 116)}<i class="burst" aria-hidden="true"></i></div>
           <p>${esc(who.toUpperCase())} won the ${t.short} PACK!</p>
-          <p class="pw-2">Your ${money(t.price)} pull is in your prizes. Claim it and we open it from the Collector Crypt machine and send you the card.</p>
+          <p class="pw-2">Your ${esc(t.ccName)} is in your prizes. Claim it and it's gifted to your wallet, ready to rip.</p>
         </section>`
       : `<section class="pack-won lost" style="--tc:${t.color}">
           <div class="pack-gone">${packSvg(b.tier, 84)}</div>

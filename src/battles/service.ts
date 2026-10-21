@@ -22,32 +22,33 @@
 
 import type { PokeType } from '../data/pokemon';
 
-export type PackTier = 'starter' | 'rare' | 'elite';
+/** Collector Crypt machine codes (`packType` in their Gacha Machine API). */
+export type PackTier = 'pokemon_25' | 'pokemon_50' | 'pokemon_100';
 
 /**
- * One tier per Collector Crypt gacha machine. `price` (cents) must match the machine's current price, and
- * `machine` is its id in CC's system; both are placeholders until you have their real values. Each
- * player's entry is half the price.
+ * One tier per public Collector Crypt Pokémon machine. Prices (cents) and odds were read from
+ * GET https://gacha.collectorcrypt.com/api/machines on 2026-10-21. The server should refresh both from that
+ * endpoint and refuse a battle if a machine's price changed, so players always pay what the pull costs.
  */
-export const PACK_TIERS: Record<PackTier, { label: string; short: string; color: string; color2: string; price: number; machine: string }> = {
-  starter: { label: 'Starter Pack', short: 'STARTER', color: '#3b6fd8', color2: '#0f1a45', price: 2500, machine: 'cc-machine-25' },
-  rare: { label: 'Rare Pack', short: 'RARE', color: '#e3350d', color2: '#3d0a03', price: 5000, machine: 'cc-machine-50' },
-  elite: { label: 'Elite Pack', short: 'ELITE', color: '#ffcb05', color2: '#5c3d00', price: 10000, machine: 'cc-machine-100' },
+export const PACK_TIERS: Record<PackTier, {
+  label: string; ccName: string; short: string; color: string; color2: string; price: number;
+  odds: { Common: number; Uncommon: number; Rare: number; Epic: number };
+}> = {
+  pokemon_25: { label: 'Starter Pack', ccName: 'Starter Pokémon Gacha Pack', short: 'STARTER', color: '#3b6fd8', color2: '#0f1a45', price: 2500, odds: { Common: 0.75, Uncommon: 0.2, Rare: 0.04, Epic: 0.01 } },
+  pokemon_50: { label: 'Elite Pack', ccName: 'Elite Pokémon Gacha Pack', short: 'ELITE', color: '#e3350d', color2: '#3d0a03', price: 5000, odds: { Common: 0.8, Uncommon: 0.15, Rare: 0.04, Epic: 0.01 } },
+  pokemon_100: { label: 'Bronze Pack', ccName: 'Bronze Pokémon Gacha Pack', short: 'BRONZE', color: '#ffcb05', color2: '#5c3d00', price: 10000, odds: { Common: 0.8, Uncommon: 0.15, Rare: 0.04, Epic: 0.01 } },
 };
 
 /**
- * Where prize pulls come from. Server-side only: it holds the escrowed pot and a funded wallet.
- * Implement it with Collector Crypt's partner API (or their on-chain program, with their written OK),
- * never by replaying calls from their website or One Arena's. Get the odds and drop-rate disclosure
- * from CC and show them before players pay: a pull can be worth less than the pot.
+ * Where prize pulls come from. Server-side only: it holds the escrowed pot in a USDC wallet.
+ * server/collector-crypt.ts implements it with Collector Crypt's public Gacha Machine API
+ * (https://docs.collectorcrypt.com/gacha/api). Called once, after the result is final.
  */
 export interface PackSource {
-  /** Spend the battle's pot on one pull from `machine`. Called once, after the result is final. */
-  buyPull(machine: string, battleId: string): Promise<{ pullId: string }>;
-  /** Send the pulled card to the winner's wallet. */
-  deliver(pullId: string, wallet: string): Promise<void>;
+  award(machine: PackTier, winnerWallet: string, battleId: string): Promise<{ memo: string; mode: 'gift' | 'open'; rarity?: string; nftAddress?: string }>;
 }
-export const TIER_ORDER: PackTier[] = ['starter', 'rare', 'elite'];
+
+export const TIER_ORDER: PackTier[] = ['pokemon_25', 'pokemon_50', 'pokemon_100'];
 export const BATTLE_QUARTERS = [60, 120, 180] as const;
 export const entryOf = (t: PackTier) => PACK_TIERS[t].price / 2;
 export const money = (cents: number) => `$${(cents / 100).toFixed(cents % 100 ? 2 : 0)}`;
@@ -162,7 +163,7 @@ const uid = (s: Store) => `b${Date.now().toString(36)}${(++s.seq).toString(36)}`
 
 function seed(): Store {
   const s: Store = { battles: [], prizes: [], balance: START_BALANCE, eligibility: null, seq: 0 };
-  const tiers: PackTier[] = ['starter', 'rare', 'starter', 'elite', 'rare', 'starter'];
+  const tiers: PackTier[] = ['pokemon_25', 'pokemon_50', 'pokemon_25', 'pokemon_100', 'pokemon_50', 'pokemon_25'];
   RIVALS.forEach((r, i) => s.battles.push({
     id: uid(s), tier: tiers[i], quarterLen: BATTLE_QUARTERS[i % 3], rival: r, mine: false, status: 'open',
     createdAt: Date.now() - i * 97_000,
