@@ -993,16 +993,10 @@ button.gl-row:hover { border-color: var(--muted); }
 .attract-static .parade { inset: auto 0 12% 0; top: auto; height: 160px; opacity: 0.35; }
 .menu-in { position: relative; z-index: 1; }
 .menu-in .title { margin-bottom: 22px; }
-.live-bar { position: fixed; z-index: 2; top: max(10px, env(safe-area-inset-top, 0px)); left: max(12px, env(safe-area-inset-left, 0px)); right: max(12px, env(safe-area-inset-right, 0px)); display: flex; gap: 10px; align-items: center; justify-content: space-between; flex-wrap: wrap; pointer-events: none; }
-.live-badge { display: inline-flex; align-items: center; gap: 6px; background: rgba(227, 53, 13, 0.92); color: #fff; font: 800 0.8rem var(--sport); letter-spacing: 0.12em; padding: 3px 10px; border-radius: 4px; text-transform: uppercase; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.live-badge i { width: 8px; height: 8px; border-radius: 50%; background: #fff; animation: pulse 0.9s ease-in-out infinite alternate; flex: none; }
-.live-venue { font-weight: 600; opacity: 0.9; overflow: hidden; text-overflow: ellipsis; }
-.scorebug { display: inline-flex; align-items: center; gap: 8px; background: rgba(10, 13, 31, 0.88); border: 1px solid var(--line); border-radius: 4px; padding: 3px 10px; font: 800 0.95rem var(--sport); letter-spacing: 0.06em; }
-.scorebug em { font: 400 0.8rem var(--pixel); font-style: normal; color: var(--accent); }
-.scorebug .sb-clock { color: var(--muted); font-size: 0.85rem; }
 .play-row { display: flex; gap: 14px; align-items: stretch; justify-content: center; flex-wrap: wrap; margin-bottom: 20px; }
 .play-btn { background: var(--red); border-color: #ff6a45; color: #fff; font: 400 clamp(1.4rem, 5vw, 2rem) var(--pixel); padding: 18px 44px; display: flex; flex-direction: column; align-items: center; gap: 8px; border-radius: 10px; box-shadow: 0 6px 0 #7a1b06; min-width: min(100%, 340px); text-transform: none; }
 .play-btn small { font: 700 0.9rem var(--sport); letter-spacing: 0.08em; text-transform: uppercase; opacity: 0.9; }
+@media (max-width: 480px) { .play-btn { padding: 16px 18px; font-size: 1.35rem; line-height: 1.25; } .play-btn small { font-size: 0.78rem; letter-spacing: 0.04em; } }
 .play-btn:hover:not(:disabled) { background: #f4471d; }
 .play-btn:active:not(:disabled) { transform: translateY(4px); box-shadow: 0 2px 0 #7a1b06; }
 .team-field { min-width: min(100%, 220px); justify-content: center; background: rgba(18, 23, 54, 0.85); border: 1px solid var(--line); border-radius: 10px; padding: 10px 14px; }
@@ -1011,9 +1005,10 @@ button.gl-row:hover { border-color: var(--muted); }
 .mode-card { position: relative; display: flex; flex-direction: column; gap: 12px; background: rgba(18, 23, 54, 0.9); border: 1px solid var(--line); border-radius: 12px; padding: 20px; min-width: 0; }
 .mode-card h2 { margin: 0; font: 1rem var(--pixel); color: var(--accent); }
 .mode-card .actions { margin-top: auto; }
-.mode-card.season { grid-column: 1 / -1; border-color: var(--accent); background: linear-gradient(135deg, rgba(255, 203, 5, 0.14), rgba(18, 23, 54, 0.92) 55%); }
 .new-tag { position: absolute; top: 14px; right: 14px; background: var(--accent); color: #1a1400; font: 0.6rem var(--pixel); padding: 5px 7px; border-radius: 4px; }
 .mode-saved { margin: 0; font-weight: 700; }
+.hero-saved { text-align: center; margin: -8px 0 16px; text-shadow: 0 1px 4px #000; }
+.mode-card.roster-mode { grid-column: 1 / -1; }
 .mode-saved .lbl { font: 0.56rem var(--pixel); color: var(--accent); margin-right: 6px; }
 .seg button:disabled { opacity: 0.4; cursor: default; }
 .controls-fold { margin-top: 16px; background: rgba(18, 23, 54, 0.9); border: 1px solid var(--line); border-radius: 12px; padding: 4px 18px; }
@@ -1030,7 +1025,7 @@ button.gl-row:hover { border-color: var(--muted); }
 .tk-live-item .tk-live { color: #fff; }
 .ticker.static { justify-content: center; gap: 0; }
 @keyframes tk-scroll { to { transform: translateX(-50%); } }
-@media (prefers-reduced-motion: reduce) { .tk-track { animation: none; } .live-badge i { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .tk-track { animation: none; } }
 
 /* Quick Play: team source picker */
 .source-pick { align-items: center; margin: 14px 0 0; }
