@@ -96,7 +96,7 @@ function archetype(pos: Pos, r: Ratings, ovr: number): string {
   if (ovr < 50) return 'Developmental Project';
   if (big && r.blk >= 90) return 'Rim Protector';
   if (big && r.sht >= 85) return 'Stretch Big';
-  if (big && r.pas >= 82) return 'Point Center';
+  if (big && r.pas >= 82) return pos === 'PF' ? 'Point Forward' : 'Point Center';
   if (big && r.reb >= 90) return 'Glass Cleaner';
   if (big && r.ins >= 90) return 'Post Scorer';
   if (r.sht >= 90 && r.ins >= 88) return 'Three-Level Scorer';
@@ -169,7 +169,7 @@ const ROWS: Row[] = [
   [260, 'Swampert', ['Water', 'Ground'], 'PF', 66, 60, 92, 60, 78, 84, 88, 62],
   [160, 'Feraligatr', ['Water'], 'SF', 76, 70, 90, 58, 84, 74, 80, 70],
   [230, 'Kingdra', ['Water', 'Dragon'], 'SG', 82, 90, 72, 74, 72, 62, 62, 80],
-  [350, 'Milotic', ['Water'], 'C', 60, 72, 78, 84, 72, 86, 88, 62],
+  [350, 'Milotic', ['Water'], 'PF', 66, 72, 84, 84, 78, 86, 88, 62],
   [91, 'Cloyster', ['Water', 'Ice'], 'C', 52, 58, 78, 52, 88, 94, 84, 50],
   [62, 'Poliwrath', ['Water', 'Fighting'], 'PF', 64, 64, 88, 60, 82, 78, 82, 62],
   // Electric
