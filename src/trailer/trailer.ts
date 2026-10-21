@@ -1,14 +1,18 @@
-// NBA Jam-style trailer, rendered from the real game engine.
-// Seeded CPU-vs-CPU games are scanned for highlights, then replayed frame by frame (with slow motion
-// on the big moments) under title cards and callouts. scripts/render-trailer.mjs captures the frames
-// and scores the result; open /trailer.html?play in the dev server to preview it in real time.
+// Poké Jam trailer #2, rendered from the real game engine.
+// Seeded CPU-vs-CPU games on the Indigo Plateau court are scanned for highlights, then replayed frame by
+// frame (slow motion on the big moments) between title scenes: the opening jump ball, the 287-Pokémon
+// wall, the draft clock, Kyogre vs Groudon, the badge case, evolution and a $PJAM end card.
+// scripts/render-trailer.mjs captures the frames and scores the result; open /trailer.html?play in the
+// dev server to preview it in real time.
 import '../fonts.css';
-import { monByDex, TYPE_COLORS, type Mon } from '../data/pokemon';
+import { COURTS } from '../data/courts';
+import { POKEMON, monByDex, TYPE_COLORS, type Mon } from '../data/pokemon';
 import { Game, type Sfx } from '../game/game';
 import { DUNK_MOVES } from '../game/hud';
 import { Renderer, VH, VW } from '../game/render';
 import { getSprite, preload } from '../game/sprites';
 import type { GameEvent, TeamDef } from '../game/types';
+import { badgeSvg } from '../ui/badges';
 import { tier } from '../util';
 
 export const FPS = 30;
@@ -37,7 +41,7 @@ class SeededGame {
 
   constructor(seed: number) {
     this.rng = mulberry32(seed);
-    this.g = this.seeded(() => new Game({ home: HOME, away: AWAY, quarterLen: 120, difficulty: 'pro' }));
+    this.g = this.seeded(() => new Game({ home: HOME, away: AWAY, quarterLen: 120, difficulty: 'pro', court: COURTS['Indigo Elite'] }));
   }
 
   private seeded<T>(fn: () => T): T {
@@ -63,11 +67,11 @@ class SeededGame {
 const mons = (dexes: number[]) => dexes.map(monByDex);
 const HOME: TeamDef = {
   name: 'Pallet Town', abbr: 'PAL', color: '#3b6fd8', color2: '#16224a', human: false,
-  roster: mons([25, 448, 6, 445, 143]),
+  roster: mons([25, 381, 6, 445, 382]),
 };
 const AWAY: TeamDef = {
-  name: 'Team Rocket', abbr: 'RKT', color: '#d8343b', color2: '#3a1218', human: false,
-  roster: mons([65, 381, 94, 150, 149]),
+  name: 'Indigo Elite', abbr: 'E4', color: '#d4a017', color2: '#2a2106', human: false,
+  roster: mons([151, 94, 150, 383, 149]),
 };
 
 // ---------- highlight scan ----------
@@ -135,8 +139,9 @@ interface ClipPlan {
   eventFrame: number;
 }
 
+type Scene = 'tipoff' | 'logo' | 'wall' | 'clock' | 'legends' | 'badges' | 'evolve' | 'outro';
 type Segment =
-  | { kind: 'intro' | 'logo' | 'draft' | 'types' | 'evolve' | 'franchise' | 'outro'; t0: number; t1: number }
+  | { kind: Scene; t0: number; t1: number }
   | { kind: 'clip'; t0: number; t1: number; plan: ClipPlan; style: 'hero' | 'montage' };
 
 /** Builds the per-frame step schedule so the highlight lands on `eventAt` seconds into the slot. */
@@ -467,7 +472,7 @@ function replayTag(t: number) {
 // ---------- segment renderers ----------
 
 const nameOf = (g: Game, id: number) => g.players.find((p) => p.id === id)!.mon;
-const MONTAGE_WORDS = ['SLAM!', 'BOOM!', 'JAM!', 'POSTERIZED!'];
+const MONTAGE_WORDS = ['KABOOM!', 'SLAM!', 'FACIALIZED!', 'JAM!'];
 const montageIndex = (seg: Segment) => segments.filter((s) => s.kind === 'clip' && s.style === 'montage').indexOf(seg);
 
 function renderClip(seg: Segment & { kind: 'clip' }, t: number, first: boolean) {
@@ -527,7 +532,7 @@ function renderClip(seg: Segment & { kind: 'clip' }, t: number, first: boolean) 
 
 function renderBackground(t: number, dim = 0.6) {
   if (!bg) {
-    const sg = new SeededGame(4242);
+    const sg = new SeededGame(5151);
     sg.advance(900);
     const r = new Renderer(bgCanvas);
     r.snap(sg.g);
@@ -573,117 +578,263 @@ function once(key: string, t: number, at: number, fn: () => void) {
   }
 }
 
-const DRAFT_CARDS = [25, 94, 6, 150, 143];
+
+// ---------- new scenes ----------
+
+const images = new Map<string, HTMLImageElement>();
+function loadImage(key: string, src: string): Promise<void> {
+  const img = new Image();
+  images.set(key, img);
+  img.src = src;
+  return img.decode().catch(() => undefined);
+}
+const BADGES = ['Boulder', 'Cascade', 'Thunder', 'Rainbow', 'Soul', 'Marsh', 'Volcano', 'Earth'];
+
+let tip: { sg: SeededGame; r: Renderer } | null = null;
+const tipCanvas = document.createElement('canvas');
+
+/** Cold open: the real opening jump ball, close up. */
+function renderTipoff(seg: Segment, t: number, a: number) {
+  if (!tip) {
+    const sg = new SeededGame(77);
+    const r = new Renderer(tipCanvas);
+    r.snap(sg.g);
+    crop.x = VW / 2;
+    crop.y = VH / 2;
+    tip = { sg, r };
+  }
+  drawGame(tip.r, tip.sg, tipCanvas, 2, t, (events, tt) => {
+    for (const e of events) {
+      if (e.kind === 'jumpball') {
+        callouts.push({ text: `${e.winner.mon.name.toUpperCase()} WINS THE TIP!`, t0: tt, dur: 1.2, y: H - 150, size: 70, fill: '#f8f8f0' });
+        cue(tt, 'crowd');
+      }
+    }
+  }, true, 6);
+  once('tip-open', t, seg.t0, () => { cue(t, 'crowd_low'); });
+  once('tip-call', t, seg.t0 + 0.5, () => callouts.push({ text: 'JUMP BALL!', t0: t, dur: 1.4, y: 190, size: 130 }));
+  if (a < 0.4) {
+    ctx.fillStyle = `rgba(0,0,0,${1 - a / 0.4})`;
+    ctx.fillRect(0, 0, W, H);
+  }
+}
+
+/** The icon spins in and slams, then the wordmark. */
+function renderLogo(seg: Segment, t: number, a: number) {
+  renderBackground(t, 0.62);
+  const icon = images.get('icon');
+  const k = clamp01(a / 0.3);
+  once('logo-hit', t, seg.t0 + 0.3, () => { flash = 0.25; cue(t, 'slam'); cue(t, 'crowd'); });
+  if (icon) {
+    ctx.save();
+    ctx.translate(W / 2, H / 2 - 230);
+    ctx.rotate((1 - k) * Math.PI * 3);
+    const s = (a < 0.3 ? 0.2 + 0.8 * k : 1 + Math.max(0, 0.08 - (a - 0.3) * 0.3)) * 240;
+    ctx.drawImage(icon, -s / 2, -s / 2, s, s);
+    ctx.restore();
+  }
+  const shake = a > 0.3 && a < 0.65 ? (Math.random() - 0.5) * 22 : 0;
+  if (a > 0.3) logo(W / 2 + shake, H / 2 + 40 + shake, 150, 1 + Math.max(0, 0.25 - (a - 0.3)) );
+  if (a > 0.75) plainText('DRAFT POKéMON. PLAY ARCADE HOOPS.', W / 2, H / 2 + 200, 64, '#f2f0e6');
+}
+
+/** Every Pokémon in the game scrolling past, a counter running to 287, then the number one. */
+function renderWall(seg: Segment, t: number, a: number) {
+  ctx.fillStyle = '#070a1c';
+  ctx.fillRect(0, 0, W, H);
+  const cell = 150;
+  const cols = Math.ceil(W / cell) + 2;
+  const rows = Math.ceil(H / cell) + 1;
+  const speed = 900 * (1 - clamp01((a - 2.0) / 0.6) * 0.9);
+  const off = (a * speed) % cell;
+  const dim = clamp01((a - 2.0) / 0.5);
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const idx = (r * 17 + c * 5 + Math.floor((a * speed) / cell) * 3) % POKEMON.length;
+      const m = POKEMON[idx];
+      const x = c * cell - off + (r % 2 ? cell / 2 : 0) - cell;
+      const y = r * cell + 30;
+      ctx.globalAlpha = 0.85 - dim * 0.6;
+      ctx.fillStyle = TIER_COLORS[tier(m.ovr)][0] + '33';
+      ctx.fillRect(x + 6, y + 6, cell - 12, cell - 12);
+      ctx.globalAlpha = 1 - dim * 0.7;
+      sprite(m.dex, x + cell / 2, y + cell - 18, 120);
+    }
+  }
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = 'rgba(5,6,15,0.45)';
+  ctx.fillRect(0, 0, W, H);
+  const n = Math.min(POKEMON.length, Math.round(POKEMON.length * clamp01(a / 1.6) ** 0.7));
+  if (a < 2.1) {
+    jamText(`${n} POKéMON`, W / 2, H / 2 - 40, 150, { scale: a < 0.2 ? easeOutBack(a / 0.2) : 1 });
+    if (a > 0.6) plainText('EVERY ONE OF GEN 1 & 2 · FAN FAVORITES FROM GEN 3-5', W / 2, H / 2 + 110, 56, '#ffcb05');
+  } else {
+    const ca = a - 2.1;
+    once('wall-card', t, seg.t0 + 2.1, () => { flash = 0.2; cue(t, 'slam'); cue(t, 'crowd'); });
+    card(monByDex(150), W / 2, H / 2 + 40, 0, ca < 0.15 ? 1.6 - ca * 4 : 1);
+    jamText('#1 OVERALL', W / 2, 140, 96, { scale: ca < 0.2 ? easeOutBack(ca / 0.2) : 1 });
+  }
+}
+
+/** The draft clock runs down, then the pick is in. */
+function renderClock(seg: Segment, t: number, a: number) {
+  renderBackground(t, 0.8);
+  jamText('60 SECONDS ON THE CLOCK', W / 2, 130, 84, { scale: a < 0.2 ? easeOutBack(a / 0.2) : 1 });
+  const left = Math.max(0, 5 - Math.floor(a / 0.38));
+  const picked = a > 0.38 * 5 + 0.1;
+  for (let s = 1; s <= 5; s++) once(`tick${s}`, t, seg.t0 + 0.38 * (5 - s), () => cue(t, 'tick'));
+  ctx.save();
+  ctx.translate(W / 2 - 430, 560);
+  const r = 170;
+  ctx.fillStyle = picked ? '#21a366' : left <= 3 ? '#c0281b' : '#1a2050';
+  ctx.beginPath();
+  ctx.arc(0, 0, r, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.lineWidth = 12;
+  ctx.strokeStyle = '#f8f8f0';
+  ctx.stroke();
+  ctx.font = `110px ${PIXEL}`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = '#fff';
+  ctx.fillText(picked ? '✓' : `:0${left}`, 0, 8);
+  ctx.restore();
+  const m = monByDex(6);
+  if (picked) {
+    const pa = a - (0.38 * 5 + 0.1);
+    once('pick-in', t, seg.t0 + 0.38 * 5 + 0.1, () => { flash = 0.15; cue(t, 'card'); cue(t, 'crowd'); });
+    card(m, W / 2 + 330, 600, 0, pa < 0.15 ? 1.4 - pa * 2.6 : 1);
+    plainText('THE PICK IS IN', W / 2 + 330, 140 + 110, 60, '#ffcb05');
+  } else {
+    // The board flips through candidates while the clock runs.
+    const pool = [9, 3, 149, 248, 143, 25, 6];
+    const cand = monByDex(pool[Math.floor(a * 7) % pool.length]);
+    card(cand, W / 2 + 330, 600, Math.sin(a * 20) * 0.02, 1);
+  }
+}
+
+/** Kyogre vs Groudon, with a real type matchup. */
+function renderLegends(seg: Segment, t: number, a: number) {
+  ctx.fillStyle = '#05060f';
+  ctx.fillRect(0, 0, W, H);
+  const split = W / 2 + Math.sin(a * 3) * 10;
+  ctx.fillStyle = '#123b8c';
+  ctx.beginPath();
+  ctx.moveTo(0, 0); ctx.lineTo(split + 120, 0); ctx.lineTo(split - 120, H); ctx.lineTo(0, H);
+  ctx.fill();
+  ctx.fillStyle = '#7a1a0e';
+  ctx.beginPath();
+  ctx.moveTo(split + 120, 0); ctx.lineTo(W, 0); ctx.lineTo(W, H); ctx.lineTo(split - 120, H);
+  ctx.fill();
+  const inL = easeOutBack(clamp01(a / 0.35));
+  const surf = a > 1.1;
+  const hit = surf && a < 1.6;
+  sprite(382, -300 + inL * 780, 760, 520);
+  sprite(383, W + 300 - inL * 780, 760, 520, { flip: true, white: hit && Math.floor(a * 16) % 2 ? 0.9 : 0 });
+  once('legends-in', t, seg.t0 + 0.3, () => { flash = 0.15; cue(t, 'slam'); });
+  jamText('VS', W / 2, 330, 160, { scale: a < 0.45 ? easeOutBack(clamp01((a - 0.25) / 0.2)) : 1 });
+  plainText('KYOGRE 92', 470, 150, 70, '#7aa2ff');
+  plainText('GROUDON 92', W - 470, 150, 70, '#ff7a59');
+  once('surf', t, seg.t0 + 1.1, () => { cue(t, 'block'); cue(t, 'crowd'); });
+  battleBox(surf ? ['KYOGRE used SURF!', "It's super effective!"] : ['KYOGRE used SURF!'], surf ? 0.6 + (a - 1.1) : a - 0.5, surf ? 1.2 : 0.6);
+}
+
+/** The badge case fills, then the Elite Four crown. */
+function renderBadges(seg: Segment, t: number, a: number) {
+  renderBackground(t, 0.82);
+  jamText('WIN ALL 8 BADGES', W / 2, 140, 96, { scale: a < 0.2 ? easeOutBack(a / 0.2) : 1 });
+  const size = 150;
+  BADGES.forEach((name, i) => {
+    const at = 0.25 + i * 0.16;
+    const x = W / 2 + (i - 3.5) * 200;
+    const y = 470;
+    ctx.fillStyle = 'rgba(255,255,255,0.08)';
+    ctx.fillRect(x - 85, y - 85, 170, 170);
+    if (a < at) return;
+    once(`badge${i}`, t, seg.t0 + at, () => cue(t, 'badge'));
+    const k = easeOutBack(clamp01((a - at) / 0.18));
+    const img = images.get(`badge-${name}`);
+    if (img) ctx.drawImage(img, x - (size / 2) * k, y - (size / 2) * k, size * k, size * k);
+  });
+  const crownAt = 0.25 + 8 * 0.16 + 0.15;
+  if (a > crownAt) {
+    once('crown', t, seg.t0 + crownAt, () => { flash = 0.2; cue(t, 'slam'); cue(t, 'crowd_big'); });
+    const k = easeOutBack(clamp01((a - crownAt) / 0.25));
+    const img = images.get('badge-Elite');
+    if (img) ctx.drawImage(img, W / 2 - 110 * k, 640 - 110 * k, 220 * k, 220 * k);
+    jamText('THEN BEAT THE ELITE FOUR', W / 2, 930, 72, { fill: '#f8f8f0' });
+  }
+}
+
+/** Dragonair evolving into Dragonite. */
+function renderEvolve(seg: Segment, t: number, a: number) {
+  ctx.fillStyle = '#05060f';
+  ctx.fillRect(0, 0, W, H);
+  const glow = ctx.createRadialGradient(W / 2, 520, 50, W / 2, 520, 700);
+  glow.addColorStop(0, 'rgba(122,162,255,0.35)');
+  glow.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = glow;
+  ctx.fillRect(0, 0, W, H);
+  jamText('LEVEL UP. EVOLVE.', W / 2, 120, 92);
+  const evolved = a > 1.3;
+  const flick = !evolved && a > 0.2 && Math.floor(Math.pow(a, 2.2) * 14) % 2 === 1;
+  sprite(evolved ? 149 : 148, W / 2, 760, evolved ? 500 : 420, { white: flick ? 1 : 0 });
+  once('evo-start', t, seg.t0 + 0.2, () => cue(t, 'evolve'));
+  once('evo-done', t, seg.t0 + 1.3, () => { flash = 0.3; cue(t, 'slam'); cue(t, 'crowd'); });
+  battleBox(evolved ? ['DRAGONAIR evolved', 'into DRAGONITE!'] : ['What? DRAGONAIR', 'is evolving!'], evolved ? a - 1.3 : a, 0.6);
+}
+
+/** Logo, where to play, then $PJAM. */
+function renderOutro(seg: Segment, t: number, a: number) {
+  renderBackground(t, 0.66);
+  const k = clamp01(a / 0.25);
+  once('outro-hit', t, seg.t0 + 0.25, () => { flash = 0.3; cue(t, 'slam'); cue(t, 'crowd_big'); });
+  const pj = a - 2.2;
+  if (pj < 0) {
+    logo(W / 2, H / 2 - 150, 170, a < 0.25 ? 3 - 2 * k * k : 1);
+    if (a > 0.6) jamText('PLAY FREE IN YOUR BROWSER', W / 2, H / 2 + 40, 64, { fill: '#f8f8f0' });
+    if (a > 1.0) plainText('kungfudoom.github.io/PokeBasketball', W / 2, H / 2 + 170, 64, '#ffcb05');
+  } else {
+    // $PJAM: gold, glinting, center stage.
+    once('pjam', t, seg.t0 + 2.2, () => { flash = 0.35; cue(t, 'slam'); cue(t, 'coin'); cue(t, 'crowd_big'); });
+    const s = pj < 0.25 ? 3.2 - 2.2 * easeOutBack(pj / 0.25) : 1 + 0.03 * Math.sin(pj * 6);
+    const gold = ctx.createLinearGradient(0, -110, 0, 110);
+    gold.addColorStop(0, '#fff7c2');
+    gold.addColorStop(0.45, '#ffcb05');
+    gold.addColorStop(1, '#b37400');
+    const shake = pj > 0.25 && pj < 0.55 ? (Math.random() - 0.5) * 26 : 0;
+    jamText('$PJAM', W / 2 + shake, H / 2 - 20 + shake, 230, { scale: s, fill: gold });
+    // A glint sweeping across.
+    const gx = ((pj * 900) % 2600) - 400;
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    const g = ctx.createLinearGradient(gx - 120, 0, gx + 120, 0);
+    g.addColorStop(0, 'rgba(255,255,255,0)');
+    g.addColorStop(0.5, 'rgba(255,255,255,0.35)');
+    g.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(gx - 120, H / 2 - 200, 240, 360);
+    ctx.restore();
+    if (pj > 0.5) logo(W / 2, H - 170, 70);
+  }
+  if (seg.t1 - t < 0.5) {
+    ctx.fillStyle = `rgba(0,0,0,${clamp01(1 - (seg.t1 - t) / 0.5)})`;
+    ctx.fillRect(0, 0, W, H);
+  }
+}
 
 function renderSegment(seg: Segment, t: number, first: boolean) {
   const a = t - seg.t0;
   switch (seg.kind) {
-    case 'intro': {
-      ctx.fillStyle = '#000';
-      ctx.fillRect(0, 0, W, H);
-      once('intro', t, 0, () => { cue(0, 'crowd_low'); cue(0.15, 'whistle'); });
-      if (a > 0.25) battleBox(['Wild TEAM ROCKET', 'wants to ball!'], a - 0.25, 1.1);
-      break;
-    }
-    case 'logo': {
-      renderBackground(t, 0.55);
-      const k = clamp01(a / 0.22);
-      const scale = a < 0.22 ? 3.2 - 2.2 * k * k : 1 + Math.max(0, 0.05 - (a - 0.22) * 0.2);
-      once('logo-hit', t, seg.t0 + 0.22, () => { flash = 0.25; cue(t, 'slam'); cue(t, 'crowd'); });
-      const shake = a > 0.22 && a < 0.6 ? (Math.random() - 0.5) * 24 : 0;
-      logo(W / 2 + shake, H / 2 - 60 + shake, 170, scale);
-      if (a > 0.6) plainText('FULL-COURT 5-ON-5 ARCADE HOOPS', W / 2, H / 2 + 140, 62, '#f2f0e6');
-      break;
-    }
-    case 'draft': {
-      renderBackground(t, 0.72);
-      jamText('DRAFT YOUR SQUAD', W / 2, 130, 92, { scale: a < 0.2 ? easeOutBack(a / 0.2) : 1 });
-      DRAFT_CARDS.forEach((dex, i) => {
-        const land = 0.3 + i * 0.5;
-        const ca = a - land;
-        if (ca < -0.25) return;
-        const k = clamp01((ca + 0.25) / 0.25);
-        const x = W / 2 + (i - 2) * 340;
-        const y = 600 + (1 - k) * 700;
-        once(`card${i}`, t, seg.t0 + land, () => cue(t, 'card'));
-        card(monByDex(dex), x, y, (1 - k) * (i % 2 ? 0.5 : -0.5) + (i - 2) * 0.03, 1 + (ca > 0 && ca < 0.12 ? 0.08 : 0));
-      });
-      if (a > 3) plainText('48 POKÉMON · 2K-STYLE RATINGS · SNAKE DRAFT', W / 2, H - 70, 52, '#ffcb05');
-      break;
-    }
-    case 'types': {
-      renderBackground(t, 0.8);
-      jamText('TYPE MATCHUPS MATTER', W / 2, 140, 84);
-      const lunge = clamp01((a - 0.5) / 0.25);
-      const back = clamp01((a - 1.0) / 0.3);
-      const sx = 560 + lunge * 600 - back * 600;
-      sprite(143, sx, 720, 380, { flip: true });
-      sprite(94, 1360, 720, 360, { alpha: a > 0.6 && a < 1.2 ? 0.35 : 1 });
-      once('tackle', t, seg.t0 + 0.6, () => cue(t, 'whoosh'));
-      battleBox(a < 1.0 ? ['SNORLAX used TACKLE!'] : ['SNORLAX used TACKLE!', "It doesn't affect GENGAR..."], a < 1.0 ? a : 0.9 + (a - 1.0), a < 1.0 ? 0.6 : 1.4);
-      break;
-    }
-    case 'evolve': {
-      ctx.fillStyle = '#05060f';
-      ctx.fillRect(0, 0, W, H);
-      const glow = ctx.createRadialGradient(W / 2, 520, 50, W / 2, 520, 700);
-      glow.addColorStop(0, 'rgba(255,203,5,0.35)');
-      glow.addColorStop(1, 'rgba(0,0,0,0)');
-      ctx.fillStyle = glow;
-      ctx.fillRect(0, 0, W, H);
-      jamText('LEVEL UP. EVOLVE.', W / 2, 120, 92);
-      const evolved = a > 1.25;
-      // Flash faster and faster, then the reveal.
-      const flick = !evolved && a > 0.2 && Math.floor(Math.pow(a, 2.2) * 14) % 2 === 1;
-      sprite(evolved ? 130 : 129, W / 2, 760, evolved ? 520 : 360, { white: flick ? 1 : 0 });
-      once('evo-start', t, seg.t0 + 0.2, () => cue(t, 'evolve'));
-      once('evo-done', t, seg.t0 + 1.25, () => { flash = 0.3; cue(t, 'slam'); cue(t, 'crowd'); });
-      battleBox(evolved ? ['MAGIKARP evolved', 'into GYARADOS!'] : ['What? MAGIKARP', 'is evolving!'], evolved ? a - 1.25 : a, 0.6);
-      break;
-    }
-    case 'franchise': {
-      renderBackground(t, 0.8);
-      jamText('RUN A FRANCHISE', W / 2, 150, 100);
-      const steps = ['DRAFT', 'SEASON', 'PLAYOFFS', 'TITLE'];
-      steps.forEach((s, i) => {
-        const at = 0.2 + i * 0.4;
-        if (a < at) return;
-        once(`fr${i}`, t, seg.t0 + at, () => cue(t, 'card'));
-        const k = easeOutBack(clamp01((a - at) / 0.2));
-        ctx.save();
-        ctx.translate(W / 2 + (i - 1.5) * 430, 540);
-        ctx.scale(k, k);
-        ctx.fillStyle = i === 3 ? '#ffcb05' : '#1a2050';
-        ctx.fillRect(-190, -90, 380, 180);
-        ctx.strokeStyle = i === 3 ? '#fff7a8' : '#3b6fd8';
-        ctx.lineWidth = 6;
-        ctx.strokeRect(-190, -90, 380, 180);
-        ctx.font = `44px ${PIXEL}`;
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillStyle = i === 3 ? '#1a1400' : '#f2f0e6';
-        ctx.fillText(s, 0, 0);
-        ctx.restore();
-      });
-      if (a > 1.1) plainText('LEVEL UP · EVOLVE · DEFEND YOUR CROWN', W / 2, 820, 58, '#ffcb05');
-      break;
-    }
-    case 'outro': {
-      renderBackground(t, 0.6);
-      const k = clamp01(a / 0.25);
-      once('outro-hit', t, seg.t0 + 0.25, () => { flash = 0.3; cue(t, 'slam'); cue(t, 'crowd_big'); });
-      logo(W / 2, H / 2 - 110, 190, a < 0.25 ? 3 - 2 * k * k : 1);
-      if (a > 0.6) jamText('PLAY FREE IN YOUR BROWSER', W / 2, H / 2 + 120, 64, { fill: '#f8f8f0' });
-      if (a > 1.2 && Math.floor(a * 4) % 2 === 0) plainText('DRAFT · DUNK · SHOVE · EVOLVE', W / 2, H / 2 + 250, 60, '#ffcb05');
-      if (seg.t1 - t < 0.6) {
-        ctx.fillStyle = `rgba(0,0,0,${clamp01(1 - (seg.t1 - t) / 0.6)})`;
-        ctx.fillRect(0, 0, W, H);
-      }
-      break;
-    }
-    case 'clip':
-      renderClip(seg, t, first);
-      break;
+    case 'tipoff': renderTipoff(seg, t, a); break;
+    case 'logo': renderLogo(seg, t, a); break;
+    case 'wall': renderWall(seg, t, a); break;
+    case 'clock': renderClock(seg, t, a); break;
+    case 'legends': renderLegends(seg, t, a); break;
+    case 'badges': renderBadges(seg, t, a); break;
+    case 'evolve': renderEvolve(seg, t, a); break;
+    case 'outro': renderOutro(seg, t, a); break;
+    case 'clip': renderClip(seg, t, first); break;
   }
 }
 
@@ -695,7 +846,7 @@ export function renderFrame(i: number) {
   const t = i / fps;
   const seg = segments.find((s) => t >= s.t0 && t < s.t1) ?? segments[segments.length - 1];
   const first = seg !== lastSeg;
-  if (first && seg.kind !== 'clip') cue(t, 'whoosh');
+  if (first && seg.kind !== 'clip' && seg.kind !== 'tipoff') cue(t, 'whoosh');
   lastSeg = seg;
   ctx.save();
   renderSegment(seg, t, first);
@@ -710,7 +861,11 @@ export function renderFrame(i: number) {
 }
 
 export async function prepare(): Promise<{ frames: number; fps: number }> {
-  await preload([...HOME.roster, ...AWAY.roster, ...[129, 130, 143, 94, ...DRAFT_CARDS].map(monByDex)]);
+  await preload(POKEMON);
+  await Promise.all([
+    loadImage('icon', `${import.meta.env.BASE_URL}icon.svg`),
+    ...[...BADGES, 'Elite'].map((b) => loadImage(`badge-${b}`, `data:image/svg+xml;charset=utf-8,${encodeURIComponent(badgeSvg(b, true, 200))}`)),
+  ]);
   await document.fonts.load(`40px ${PIXEL}`);
   await document.fonts.load(`800 40px ${SPORT}`);
 
@@ -734,21 +889,22 @@ export async function prepare(): Promise<{ frames: number; fps: number }> {
   const s: Segment[] = [];
   let t = 0;
   const add = (seg: Segment) => { s.push(seg); t = seg.t1; };
-  add({ kind: 'intro', t0: t, t1: t + 2 });
-  add({ kind: 'logo', t0: t, t1: t + 2 });
-  add({ kind: 'draft', t0: t, t1: t + 4 });
-  add({ kind: 'clip', t0: t, t1: t + 6, plan: pick(['dunk'], 6, 3.6, true), style: 'hero' });
-  add({ kind: 'types', t0: t, t1: t + 2.5 });
+  add({ kind: 'tipoff', t0: t, t1: t + 3.6 });
+  add({ kind: 'logo', t0: t, t1: t + 2.2 });
+  add({ kind: 'clip', t0: t, t1: t + 5.5, plan: pick(['dunk'], 5.5, 3.3, true), style: 'hero' });
+  add({ kind: 'wall', t0: t, t1: t + 3.6 });
+  add({ kind: 'clock', t0: t, t1: t + 3.0 });
   add({ kind: 'clip', t0: t, t1: t + 4, plan: pick(['block'], 4, 2.2, true), style: 'hero' });
+  add({ kind: 'legends', t0: t, t1: t + 2.8 });
   add({ kind: 'clip', t0: t, t1: t + 4.5, plan: pick(['fire'], 4.5, 1.8, true), style: 'hero' });
-  add({ kind: 'evolve', t0: t, t1: t + 2.5 });
-  add({ kind: 'franchise', t0: t, t1: t + 2.5 });
-  for (let i = 0; i < 4; i++) add({ kind: 'clip', t0: t, t1: t + 1, plan: pick(i === 2 ? ['three', 'dunk'] : ['dunk'], 1, 0.7, false), style: 'montage' });
-  add({ kind: 'outro', t0: t, t1: t + 4 });
+  add({ kind: 'badges', t0: t, t1: t + 3.2 });
+  add({ kind: 'evolve', t0: t, t1: t + 2.6 });
+  for (let i = 0; i < 4; i++) add({ kind: 'clip', t0: t, t1: t + 1, plan: pick(i === 1 ? ['three', 'dunk'] : ['dunk'], 1, 0.7, false), style: 'montage' });
+  add({ kind: 'outro', t0: t, t1: t + 5.4 });
   segments = s;
   total = t;
-  cue(segments.find((x) => x.kind === 'logo')!.t0 + 0.22, 'music_start');
-  cue(segments.find((x) => x.kind === 'outro')!.t0 + 0.25, 'music_end');
+  cue(segments.find((x) => x.kind === 'logo')!.t0 + 0.3, 'music_start');
+  cue(segments.find((x) => x.kind === 'outro')!.t0 + 2.2, 'music_end');
   return { frames: Math.round(total * fps), fps };
 }
 

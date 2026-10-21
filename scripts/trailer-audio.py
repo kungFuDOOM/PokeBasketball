@@ -1,5 +1,5 @@
-"""Scores the Poké Jam trailer: a 120 BPM chiptune track plus sound effects on the cue times
-the trailer exported. Usage: python3 scripts/trailer-audio.py cues.json out.wav  (needs numpy)."""
+"""Scores the Poké Jam trailer: a 128 BPM chiptune track in D minor plus sound effects on the cue
+times the trailer exported. Usage: python3 scripts/trailer-audio.py cues.json out.wav  (needs numpy)."""
 import json
 import sys
 import wave
@@ -7,7 +7,7 @@ import wave
 import numpy as np
 
 SR = 44100
-BPM = 120
+BPM = 128
 BEAT = 60 / BPM
 STEP16 = BEAT / 4
 rng = np.random.default_rng(7)
@@ -133,6 +133,15 @@ def sfx(name):
         return sine_sweep(140, 60, 0.08, 0.03) * env(0.08, 0.001, 0.03) * 0.35
     if name in ('bounce', 'catch', 'pass', 'shot'):
         return onepole(noise(0.06), 2000) * env(0.06, 0.001, 0.02) * 0.2
+    if name == 'tick':
+        return (square(1800, 0.03, 0.5) * env(0.03, 0.001, 0.01) * 0.35 + sine_sweep(900, 600, 0.06, 0.02) * env(0.06, 0.001, 0.02) * 0.3)
+    if name == 'badge':
+        return np.concatenate([lead_note(note('E6'), 0.06, 0.5), lead_note(note('B6'), 0.14, 0.5)]) * 0.35
+    if name == 'coin':
+        # The classic two-note coin, then a shimmer.
+        ding = np.concatenate([lead_note(note('B5'), 0.08, 0.5), lead_note(note('E6'), 0.5, 0.5)]) * 0.45
+        shimmer = highpass(noise(0.9), 7000) * env(0.9, 0.05, 0.3) * 0.25
+        return ding + np.pad(shimmer, (0, max(0, len(ding) - len(shimmer))))[: len(ding)]
     if name == 'buzzer':
         return (saw(165, 0.9) * 0.5 + saw(220, 0.9) * 0.3) * env(0.9, 0.01, 0.6) * 0.3
     return None
@@ -164,13 +173,13 @@ def main():
     put(music, start - riser_len, r)
 
     # ---------- the groove ----------
-    prog = [('A', ['A4', 'C5', 'E5', 'A5']), ('F', ['F4', 'A4', 'C5', 'F5']), ('G', ['G4', 'B4', 'D5', 'G5']), ('E', ['E4', 'G#4', 'B4', 'E5'])]
-    roots = {'A': 'A1', 'F': 'F1', 'G': 'G1', 'E': 'E1'}
-    hook = {  # (16th step, note, length in 16ths) per bar
-        'A': [(0, 'A5', 3), (3, 'C6', 3), (6, 'E6', 2), (8, 'D6', 2), (10, 'C6', 2), (12, 'B5', 4)],
-        'F': [(0, 'A5', 3), (3, 'C6', 3), (6, 'F6', 2), (8, 'E6', 2), (10, 'C6', 2), (12, 'A5', 4)],
-        'G': [(0, 'B5', 3), (3, 'D6', 3), (6, 'G6', 2), (8, 'F6', 2), (10, 'D6', 2), (12, 'B5', 4)],
-        'E': [(0, 'G#5', 3), (3, 'B5', 3), (6, 'E6', 3), (9, 'D6', 2), (11, 'B5', 2), (13, 'G#5', 3)],
+    prog = [('Dm', ['D4', 'F4', 'A4', 'D5']), ('Bb', ['D4', 'F4', 'A#4', 'D5']), ('C', ['E4', 'G4', 'C5', 'E5']), ('A', ['E4', 'A4', 'C#5', 'E5'])]
+    roots = {'Dm': 'D2', 'Bb': 'A#1', 'C': 'C2', 'A': 'A1'}
+    hook = {  # (16th step, note, length in 16ths) per bar: a call-and-response with a pickup into each bar
+        'Dm': [(0, 'D6', 2), (2, 'D6', 1), (3, 'F6', 3), (6, 'A6', 2), (8, 'G6', 2), (10, 'F6', 2), (12, 'E6', 2), (14, 'F6', 2)],
+        'Bb': [(0, 'D6', 3), (3, 'A#5', 3), (6, 'D6', 2), (8, 'F6', 4), (12, 'D6', 2), (14, 'C6', 2)],
+        'C': [(0, 'E6', 2), (2, 'E6', 1), (3, 'G6', 3), (6, 'C7', 2), (8, 'A#6', 2), (10, 'G6', 2), (12, 'E6', 4)],
+        'A': [(0, 'C#6', 3), (3, 'E6', 3), (6, 'A6', 4), (10, 'G6', 2), (12, 'E6', 2), (14, 'C#6', 2)],
     }
     bar_len = 4 * BEAT
     bars = int(np.ceil((end - start) / bar_len))
@@ -184,14 +193,15 @@ def main():
             t = t0 + s16 * STEP16
             if t >= end:
                 break
-            if s16 in (0, 6, 8, 11):
+            if s16 in (0, 4, 8, 12) or (b % 2 == 1 and s16 == 14):
                 put(music, t, KICK, 0.9)
             if s16 in (4, 12):
                 put(music, t, SNARE, 0.55)
             if s16 % 2 == 0:
                 put(music, t, OPEN_HAT if s16 == 14 else HAT, 0.25)
             if s16 % 2 == 0:
-                f = note(roots[chord]) * (2 if s16 in (4, 12) else 1)
+                # Octave-jumping bass, offbeats up an octave.
+                f = note(roots[chord]) * (2 if s16 % 4 == 2 else 1)
                 put(music, t, bass_note(f, STEP16 * 2), 0.32)
             put(music, t, lead_note(note(arp[s16 % 4]), STEP16 * 0.9), 0.07)
         if b >= 2:  # hook comes in after the intro bars
@@ -200,8 +210,8 @@ def main():
                 if t < end:
                     put(music, t, hook_note(note(nm), STEP16 * length), 0.12)
 
-    # Final hit: A minor stab ringing out under the logo.
-    stab = sum(saw(note(x), 2.4) for x in ['A2', 'A3', 'C4', 'E4', 'A4']) / 5
+    # Final hit: D minor stab ringing out under $PJAM.
+    stab = sum(saw(note(x), 2.4) for x in ['D2', 'D3', 'F3', 'A3', 'D4']) / 5
     put(music, end, onepole(stab, 2500) * env(2.4, 0.003, 0.9), 0.5)
     put(music, end, KICK, 1.0)
     put(music, end, CRASH, 0.6)
