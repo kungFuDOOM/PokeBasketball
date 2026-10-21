@@ -4,6 +4,11 @@ import { IDEAL_RELEASE, type Game } from './game';
 import { getSprite } from './sprites';
 import { BALL_R, COURT_L, COURT_W, HOOP_Y, RIM_R, RIM_Z, clamp, rand, type GameEvent, type Player } from './types';
 
+/** The user's marker color (the game's accent yellow). */
+const USER_YELLOW = '#ffcb05';
+/** "P1" in a 3x5 pixel font. */
+const P1_GLYPH = ['###..#.', '#.#.##.', '###..#.', '#....#.', '#...###'];
+
 export const VW = 480;
 export const VH = 270;
 // Broadcast-style camera from the near sideline: the far sideline is higher and smaller on screen.
@@ -348,8 +353,17 @@ export class Renderer {
     ctx.fillStyle = team.color + (p.human ? 'cc' : '88');
     ctx.fill();
     ctx.lineWidth = 2;
-    ctx.strokeStyle = p.human ? '#ffffff' : team.color;
+    ctx.strokeStyle = p.human ? USER_YELLOW : team.color;
     ctx.stroke();
+    if (p.human) {
+      // A pulsing yellow halo around the user's ring so they stand out in a crowded paint.
+      const k = 1.25 + 0.15 * Math.sin(this.t * 8);
+      ctx.beginPath();
+      ctx.ellipse(foot.x, foot.y, rx * k + 1, ry * k + 1, 0, 0, Math.PI * 2);
+      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = 'rgba(255,203,5,0.75)';
+      ctx.stroke();
+    }
 
     const pos = this.proj(p.x, p.y, p.z);
     const spr = getSprite(p.mon.dex, p.back);
@@ -611,26 +625,35 @@ export class Renderer {
     ctx.globalAlpha = 1;
   }
 
+  /** A yellow "P1" tag with a pointer over the user's player, drawn above everything else. */
   private drawUserMarker(ctx: CanvasRenderingContext2D, g: Game) {
     const u = g.user;
     if (!u) return;
     const head = this.proj(u.x, u.y, u.z + spriteFt(u) + 1.2);
-    const x = clamp(Math.round(head.x), 8, VW - 8);
-    const y = Math.max(10, Math.round(head.y - 4 + Math.sin(this.t * 6)));
-    ctx.fillStyle = '#ffffff';
+    const x = clamp(Math.round(head.x), 11, VW - 11);
+    const y = Math.max(16, Math.round(head.y - 3 + Math.sin(this.t * 6)));
+    // Pointer
+    ctx.fillStyle = '#05060f';
     ctx.beginPath();
-    ctx.moveTo(x - 4, y - 4);
-    ctx.lineTo(x + 4, y - 4);
-    ctx.lineTo(x, y + 1);
+    ctx.moveTo(x - 5, y - 4);
+    ctx.lineTo(x + 5, y - 4);
+    ctx.lineTo(x, y + 2);
     ctx.closePath();
     ctx.fill();
-    ctx.fillStyle = g.teams[0].color;
+    ctx.fillStyle = USER_YELLOW;
     ctx.beginPath();
-    ctx.moveTo(x - 2.5, y - 3.2);
-    ctx.lineTo(x + 2.5, y - 3.2);
-    ctx.lineTo(x, y - 0.2);
+    ctx.moveTo(x - 3.5, y - 4);
+    ctx.lineTo(x + 3.5, y - 4);
+    ctx.lineTo(x, y);
     ctx.closePath();
     ctx.fill();
+    // "P1" tag, lettered pixel by pixel so it stays crisp at this size
+    ctx.fillStyle = '#05060f';
+    ctx.fillRect(x - 7, y - 13, 15, 9);
+    ctx.fillStyle = USER_YELLOW;
+    ctx.fillRect(x - 6, y - 12, 13, 7);
+    ctx.fillStyle = '#05060f';
+    P1_GLYPH.forEach((row, j) => [...row].forEach((c, i) => { if (c === '#') ctx.fillRect(x - 4 + i, y - 11 + j, 1, 1); }));
     if (head.x < 0 || head.x > VW) {
       ctx.fillStyle = '#ffffff';
       ctx.font = '6px "Press Start 2P", monospace';

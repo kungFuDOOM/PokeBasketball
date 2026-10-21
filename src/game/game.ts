@@ -120,6 +120,8 @@ export class Game {
   shotClock = 24;
   phase: Phase = 'tip';
   tipoff: JumpBall | null = null;
+  /** Who each player on the floor guards, matched by position (rebuilt after every substitution). */
+  private matchups = new Map<Player, Player>();
   phaseT = 0;
   time = 0;
   user: Player | null = null;
@@ -151,6 +153,7 @@ export class Game {
         this.bench.push(p);
       });
     }
+    this.assignMatchups();
     this.clock = cfg.quarterLen;
     this.tipWinner = Math.random() < 0.5 ? 0 : 1;
     this.ball = {
@@ -194,8 +197,53 @@ export class Game {
     }
     return best;
   }
+  /**
+   * 0..1: how far ahead the CPU is beyond a comfortable margin, scaled by the difficulty's catch-up.
+   * On Rookie and Pro the CPU eases off a blowout (shoots worse, gambles less) like NBA Jam's comeback rule.
+   */
+  catchup(): number {
+    if (!this.teams[0].human || !this.diff.catchup) return 0;
+    return clamp((this.score[1] - this.score[0] - 6) / 10, 0, 1) * this.diff.catchup;
+  }
+
+  /** The opponent this player guards. */
+  manOf(p: Player): Player {
+    return this.matchups.get(p) ?? this.players.find((q) => q.team !== p.team && q.slot === p.slot) ?? this.players.find((q) => q.team !== p.team)!;
+  }
+
+  /**
+   * Floor spots go by position (PG up top … C on the block) and so do matchups: each defender takes the
+   * opponent closest to their own position, the best overall pairing of the five.
+   */
+  private assignMatchups() {
+    const posIdx = (p: Player) => POSITIONS.indexOf(p.mon.pos);
+    for (const t of [0, 1] as TeamId[]) {
+      this.teamPlayers(t).sort((a, b) => posIdx(a) - posIdx(b) || a.slot - b.slot).forEach((p, i) => (p.slot = i));
+    }
+    const a = this.teamPlayers(0).sort((x, y) => x.slot - y.slot);
+    const b = this.teamPlayers(1).sort((x, y) => x.slot - y.slot);
+    const cost = (x: Player, y: Player) => Math.abs(posIdx(x) - posIdx(y)) ** 2 * 10 + Math.abs(x.slot - y.slot);
+    let best: number[] = [0, 1, 2, 3, 4];
+    let bestCost = Infinity;
+    const perm = (rest: number[], acc: number[]) => {
+      if (!rest.length) {
+        const c = acc.reduce((s, j, i) => s + cost(a[i], b[j]), 0);
+        if (c < bestCost) { bestCost = c; best = acc; }
+        return;
+      }
+      rest.forEach((j, k) => perm([...rest.slice(0, k), ...rest.slice(k + 1)], [...acc, j]));
+    };
+    perm([0, 1, 2, 3, 4].slice(0, b.length), []);
+    this.matchups.clear();
+    best.forEach((j, i) => {
+      if (!a[i] || !b[j]) return;
+      this.matchups.set(a[i], b[j]);
+      this.matchups.set(b[j], a[i]);
+    });
+  }
+
   greenWindow(p: Player): number {
-    const userMult = p.human ? this.diff.green : 1;
+    const userMult = p.human ? this.diff.green * (1 + 0.3 * this.catchup()) : 1;
     return (0.022 + (p.r.sht / 100) * 0.034) * userMult * (p.fire ? 1.7 : 1);
   }
   isHumanTeam(t: TeamId): boolean {
@@ -207,7 +255,7 @@ export class Game {
     return base + ((100 - p.r.def) / 100) * 0.25 + rand(0, 0.08);
   }
   aggro(p: Player): number {
-    return this.cfg.home.human && p.team === 1 ? this.diff.aggro : 0.85;
+    return this.cfg.home.human && p.team === 1 ? this.diff.aggro * (1 - 0.5 * this.catchup()) : 0.85;
   }
 
   // ---------- flow ----------
@@ -432,12 +480,25 @@ export class Game {
     const ours = this.teamPlayers(0).filter(ok);
     if (!ours.length) return;
     const d = (p: Player) => dist(p.x, p.y, handler.x, handler.y);
-    const man = ours.find((p) => p.slot === handler.slot);
+    const man = ours.find((p) => this.manOf(p) === handler);
     const near = ours.reduce((a, b) => (d(b) < d(a) ? b : a));
     const pick = man && d(man) < d(near) + 8 ? man : near;
     if (pick === u) return;
     for (const p of this.players) p.human = p === pick;
     this.user = pick;
+  }
+
+  /**
+   * The user's buttons, plus a defensive assist on Rookie and Pro: while the stick is idle and the other
+   * team has the ball (or it's loose), the user's player keeps guarding their man and crashes the boards.
+   */
+  private userIntent(p: Player, dt: number): Intent {
+    const u = this.userInput;
+    const b = this.ball;
+    const defending = b.owner ? b.owner.team !== p.team : b.mode !== 'held';
+    if (!this.diff.assist || !defending || Math.hypot(u.mx, u.my) > 0.15 || p.state !== 'free') return u;
+    const ai = think(this, p, dt);
+    return { ...u, mx: ai.mx, my: ai.my, turbo: u.turbo || ai.turbo };
   }
 
   // ---------- main tick ----------
@@ -483,7 +544,7 @@ export class Game {
     else if (b.owner?.team === 0 && this.user !== b.owner) this.updateUser();
 
     for (const p of this.players) {
-      p.intent = p.human ? this.userInput : think(this, p, dt);
+      p.intent = p.human ? this.userIntent(p, dt) : think(this, p, dt);
     }
     for (const p of this.players) {
       if (this.phase === 'live') this.act(p, dt);
@@ -637,6 +698,7 @@ export class Game {
       out.human = false;
       sub.human = true;
     }
+    this.assignMatchups();
     this.events.push({ kind: 'sub', out, in: sub });
   }
 
@@ -704,7 +766,8 @@ export class Game {
     p.vx *= 0.25;
     p.vy *= 0.25;
     if (!p.human) {
-      const sigma = Math.max(0.05, 0.09 + (100 - p.r.sht) * 0.0018 - this.diff.cpuShot * (p.team === 1 ? 1 : 0));
+      const vsUser = p.team === 1 && this.teams[0].human;
+      const sigma = Math.max(0.05, 0.09 + (100 - p.r.sht) * 0.0018 - (vsUser ? this.diff.cpuShot - 0.06 * this.catchup() : 0));
       p.releaseAt = clamp(IDEAL_RELEASE + randn() * sigma, 0.3, 1.2);
     }
   }
@@ -724,6 +787,8 @@ export class Game {
       if (dot < 0.3) c *= 0.6;
       worst = Math.max(worst, c);
     }
+    // Easier settings: defenders bother the user's jumpers less.
+    if (p.human) worst *= this.diff.contest;
     return clamp(1 - worst, 0.35, 1);
   }
 

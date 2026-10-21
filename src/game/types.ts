@@ -38,11 +38,14 @@ export const DIFFICULTIES: Record<Difficulty, {
   aggro: number; // CPU steal / shove frequency
   react: number; // CPU block reaction delay, seconds
   cpuShot: number; // lowers CPU release noise
+  contest: number; // how much defenders bother the user's jumpers (1 = full)
+  assist: boolean; // user's player keeps guarding their man while the stick is idle
+  catchup: number; // how much the CPU eases off when it builds a big lead (0 = never)
 }> = {
-  rookie: { label: 'Rookie', cpuBoost: -8, green: 1.5, aggro: 0.55, react: 0.32, cpuShot: -0.03 },
-  pro: { label: 'Pro', cpuBoost: 0, green: 1.15, aggro: 0.85, react: 0.22, cpuShot: 0 },
-  allstar: { label: 'All-Star', cpuBoost: 4, green: 0.95, aggro: 1.05, react: 0.15, cpuShot: 0.02 },
-  legend: { label: 'Legend', cpuBoost: 8, green: 0.78, aggro: 1.25, react: 0.09, cpuShot: 0.04 },
+  rookie: { label: 'Rookie', cpuBoost: -14, green: 1.9, aggro: 0.3, react: 0.5, cpuShot: -0.1, contest: 0.5, assist: true, catchup: 1 },
+  pro: { label: 'Pro', cpuBoost: -5, green: 1.35, aggro: 0.6, react: 0.3, cpuShot: -0.04, contest: 0.8, assist: true, catchup: 0.5 },
+  allstar: { label: 'All-Star', cpuBoost: 0, green: 1.1, aggro: 0.9, react: 0.2, cpuShot: 0, contest: 0.9, assist: false, catchup: 0 },
+  legend: { label: 'Legend', cpuBoost: 4, green: 0.85, aggro: 1.15, react: 0.12, cpuShot: 0.03, contest: 1, assist: false, catchup: 0 },
 };
 
 export interface TeamDef {

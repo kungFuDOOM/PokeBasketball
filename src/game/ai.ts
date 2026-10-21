@@ -227,7 +227,7 @@ function offBall(g: Game, p: Player, it: Intent) {
 
 function defend(g: Game, p: Player, it: Intent, dt: number) {
   const opp = (1 - p.team) as TeamId;
-  const man = g.players.find((q) => q.team === opp && q.slot === p.slot)!;
+  const man = g.manOf(p);
   const hx = hoopX(opp);
   const b = g.ball;
   const owner = b.owner && b.owner.team === opp ? b.owner : null;
