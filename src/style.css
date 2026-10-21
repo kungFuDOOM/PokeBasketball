@@ -983,3 +983,139 @@ button.gl-row:hover { border-color: var(--muted); }
 .gl-team b { font: 800 1.3rem/1 var(--sport); font-variant-numeric: tabular-nums; }
 .gl-team.win { color: var(--fg); }
 .gl-at { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.08em; }
+
+/* ---------- pack battles ---------- */
+/* Same arena-at-night palette; each prize tier brings one loud color (--tc) the way gym teams do. */
+.new-chip, .free-chip {
+  font: 0.5rem/1 var(--pixel);
+  letter-spacing: 0.04em;
+  padding: 4px 6px 3px;
+  border-radius: 4px;
+  vertical-align: middle;
+}
+.new-chip { background: var(--red); color: #fff; margin-left: 6px; }
+.free-chip { background: var(--good); color: #04210f; }
+.battle-mode { padding-top: 0; border-top: 0; padding-bottom: 16px; margin-bottom: 16px; border-bottom: 1px solid var(--line); }
+.battle-mode .btn { align-self: flex-start; }
+
+.pack-svg { display: block; flex: none; filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.45)); overflow: visible; }
+.pack-shine { animation: shine 3.2s ease-in-out infinite; }
+@keyframes shine { 0%, 55% { transform: rotate(20deg) translateX(0); } 100% { transform: rotate(20deg) translateX(190px); } }
+.pack-svg.float { animation: float 2.4s ease-in-out infinite alternate; }
+
+.prize-pool { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; margin-bottom: 14px; }
+.pool-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.pool-head .eyebrow { margin: 0; }
+.pool-list { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.pool-list li { display: flex; align-items: center; gap: 10px; min-width: 0; background: var(--bg); border-left: 4px solid var(--tc); border-radius: 6px; padding: 6px 10px; }
+.pool-list span { display: flex; flex-direction: column; min-width: 0; }
+.pool-list b { font-weight: 800; text-transform: uppercase; letter-spacing: 0.03em; line-height: 1.1; }
+.pool-list small { color: var(--muted); font-weight: 700; }
+.pool-list li.out { opacity: 0.45; }
+@media (max-width: 560px) {
+  .pool-list { gap: 6px; }
+  .pool-list li { flex-direction: column; gap: 4px; padding: 8px 4px 6px; border-left: 0; border-top: 3px solid var(--tc); text-align: center; }
+  .pool-list span { align-items: center; }
+  .pool-list b { font-size: 0.85rem; }
+  .pool-list small { font-size: 0.8rem; }
+  .pool-list .pack-svg { width: 30px; height: 45px; }
+  .battles .draft-head > .btn.primary { margin-left: auto; }
+}
+
+.tabs { margin-bottom: 14px; }
+.tabs button { font-size: 1rem; text-transform: uppercase; letter-spacing: 0.06em; }
+.tabs em { font: normal 0.55rem/1 var(--pixel); background: var(--red); color: #fff; border-radius: 9px; padding: 3px 5px 2px; margin-left: 4px; vertical-align: 2px; }
+.flash { background: color-mix(in srgb, var(--good) 14%, var(--panel)); border: 1px solid color-mix(in srgb, var(--good) 50%, var(--line)); color: var(--fg); border-radius: 8px; padding: 8px 12px; margin: 0 0 14px; font-weight: 700; }
+.empty { text-align: center; color: var(--muted); background: var(--panel); border: 1px dashed var(--line); border-radius: 10px; padding: 28px 16px; margin: 0; }
+.preview-note { text-align: center; font: 0.55rem/1.6 var(--pixel); color: var(--muted); opacity: 0.8; margin: 8px 0 0; }
+
+.battle-grid { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; }
+.battle-card {
+  height: 100%;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-areas: 'pack info' 'pack go';
+  gap: 8px 14px;
+  align-items: center;
+  padding: 12px 14px;
+  background: linear-gradient(170deg, color-mix(in srgb, var(--tc) 26%, var(--panel)), var(--panel) 62%);
+  border: 2px solid color-mix(in srgb, var(--tc) 55%, var(--line));
+  border-radius: 10px;
+  transition: transform 0.1s, border-color 0.15s;
+}
+.battle-card:hover { transform: translateY(-2px); border-color: var(--accent); }
+.bc-pack { grid-area: pack; }
+.bc-info { grid-area: info; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-width: 0; }
+.bc-info strong { font-size: 1.25rem; line-height: 1.1; text-transform: uppercase; letter-spacing: 0.02em; border-left: 4px solid var(--rc); padding-left: 7px; }
+.bc-handle { color: var(--muted); font-weight: 600; font-size: 0.92rem; }
+.bc-info .types { justify-content: flex-start; margin-top: 2px; }
+.battle-card .btn { grid-area: go; justify-self: start; }
+
+.my-battles { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.my-battles li { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 12px; align-items: center; background: var(--panel); border: 1px solid var(--line); border-left: 4px solid var(--tc); border-radius: 8px; padding: 8px 12px; }
+.mb-main { display: flex; flex-direction: column; min-width: 0; }
+.mb-tier { font-size: 0.75rem; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
+.mb-line { font-size: 1.1rem; overflow-wrap: anywhere; }
+.mb-line small { color: var(--muted); }
+.mb-ready { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+.mb-won, .mb-lost { opacity: 0.85; }
+.waiting { display: inline-flex; align-items: center; gap: 8px; color: var(--muted); font-weight: 700; }
+.waiting .ball-spin { width: 16px; height: 16px; border-width: 2px; }
+.res { font: 0.72rem var(--pixel); padding: 6px 8px; border-radius: 4px; white-space: nowrap; }
+.res.win { background: color-mix(in srgb, var(--good) 22%, var(--bg)); color: var(--good); }
+.res.loss { background: color-mix(in srgb, var(--red) 22%, var(--bg)); color: #ff9b85; }
+
+.prize-grid { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; }
+.prize-grid li { display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; padding: 16px 10px 14px; border-radius: 10px; background: radial-gradient(circle at 50% 30%, color-mix(in srgb, var(--tc) 28%, var(--panel)), var(--panel) 70%); border: 1px solid var(--line); }
+.prize-grid strong { font-size: 1.15rem; text-transform: uppercase; letter-spacing: 0.03em; margin-top: 4px; }
+.prize-grid small { color: var(--muted); font-weight: 600; }
+.claimed { font: 0.5rem/1.4 var(--pixel); color: var(--good); padding: 6px 0; }
+
+/* create + claim sheets */
+.create { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 18px; align-items: center; margin-top: 14px; }
+.create-pack { width: 92px; display: grid; place-items: center; }
+.create-fields { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+#tier button { display: flex; flex-direction: column; align-items: center; font: 0.6rem/1.4 var(--pixel); padding: 9px 6px 7px; }
+#tier small { font: 600 0.82rem var(--sport); letter-spacing: 0; text-transform: none; color: var(--muted); }
+#tier button:disabled { opacity: 0.4; cursor: default; }
+.create-sum { text-align: center; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; margin: 16px 0 0; }
+.sheet .note { text-align: center; }
+.sheet .actions { margin-top: 14px; }
+@media (max-width: 460px) { .create { grid-template-columns: minmax(0, 1fr); justify-items: center; } }
+.claim { display: flex; gap: 16px; align-items: center; margin-top: 14px; }
+.claim ol { margin: 0; padding-left: 20px; display: grid; gap: 6px; font-weight: 600; }
+
+/* matchup: the prize sits where VS usually does */
+.battle-next { border-top: 5px solid var(--tc); }
+.stake { display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; }
+.stake span { font: 0.55rem var(--pixel); color: var(--muted); margin-top: 6px; }
+.stake b { font: 800 1.2rem/1 var(--sport); text-transform: uppercase; letter-spacing: 0.04em; color: var(--tc); }
+.rules { list-style: none; display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; margin: 18px 0; padding: 0; }
+.rules li { background: var(--bg); border: 1px solid var(--line); border-radius: 999px; padding: 4px 12px; font-weight: 700; font-size: 0.9rem; color: var(--muted); letter-spacing: 0.03em; }
+
+/* results: Pokémon-style text box, like the badge announcement */
+.pack-won { display: flex; flex-direction: column; align-items: center; gap: 10px; text-align: center; background: #f8f8f0; color: #1c1c28; border: 4px double var(--tc); border-radius: 8px; padding: 18px 18px 16px; margin: 0 auto 22px; max-width: 640px; overflow: hidden; }
+.pack-won p { margin: 0; font: 0.72rem/1.7 var(--pixel); }
+.pack-won .pw-2 { font: 600 1rem/1.3 var(--sport); color: #4a4a5e; opacity: 0; animation: fade-in 0.4s 1.5s forwards; }
+.pack-rip { position: relative; display: grid; place-items: center; padding: 8px; animation: rip-shake 1.1s cubic-bezier(0.36, 0.07, 0.19, 0.97) both; }
+.pack-rip .pack-svg { position: relative; z-index: 1; animation: rip-pop 0.5s 1.1s cubic-bezier(0.2, 1.6, 0.4, 1) both; }
+.pack-rip .burst {
+  position: absolute; inset: -30px; border-radius: 50%;
+  background: repeating-conic-gradient(from 0deg, color-mix(in srgb, var(--tc) 55%, transparent) 0 10deg, transparent 10deg 24deg);
+  opacity: 0; animation: burst 0.6s 1.1s ease-out forwards, spin 14s 1.1s linear infinite;
+}
+@keyframes rip-shake {
+  0%, 100% { transform: rotate(0); }
+  10%, 50% { transform: rotate(-6deg); } 30%, 70% { transform: rotate(6deg); } 85% { transform: rotate(-3deg) scale(1.05); }
+}
+@keyframes rip-pop { from { transform: scale(1); } to { transform: scale(1.12); } }
+@keyframes burst { to { opacity: 1; } }
+.pack-won.lost { background: #e9e8e2; }
+.pack-gone { padding: 4px 0; }
+.pack-gone .pack-svg { filter: grayscale(1) brightness(0.9); animation: gone 0.9s 0.4s ease-in-out forwards; }
+@keyframes gone { to { transform: translateX(46px) rotate(10deg); opacity: 0.45; } }
+@media (prefers-reduced-motion: reduce) {
+  .pack-shine, .pack-svg.float, .pack-rip, .pack-rip .pack-svg, .pack-rip .burst, .pack-gone .pack-svg { animation: none; }
+  .pack-rip .burst { opacity: 1; }
+  .pack-won .pw-2 { opacity: 1; animation: none; }
+}

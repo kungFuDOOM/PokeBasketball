@@ -91,6 +91,7 @@ export interface TitleOptions {
   onDeleteData: () => void;
   onNew: () => void;
   onQuick: () => void;
+  onBattles: () => void;
   onRoster: () => void;
 }
 
@@ -137,6 +138,11 @@ export function menuScreen(root: HTMLElement, settings: Settings, onChange: () =
           </div>
         </section>
         <section class="card">
+          <div class="mode battle-mode">
+            <h2>Pack Battles <span class="new-chip">New</span></h2>
+            <p class="setup-note">Take on another player in one Quick Play game. Winner takes a prize pack. Free to enter.</p>
+            <div class="actions"><button class="btn primary" data-go="battles">Pack Battles</button></div>
+          </div>
           <div class="mode roster-mode">
             <h2>Roster</h2>
             <p class="setup-note">Scout all ${POKEMON.length} Pokémon before you draft: every rating, position, size and evolution.</p>
@@ -171,6 +177,7 @@ export function menuScreen(root: HTMLElement, settings: Settings, onChange: () =
   };
   root.querySelector('[data-go="quick"]')!.addEventListener('click', opts.onQuick);
   root.querySelector('[data-go="roster"]')!.addEventListener('click', opts.onRoster);
+  root.querySelector('[data-go="battles"]')!.addEventListener('click', opts.onBattles);
   startNew.addEventListener('click', tryNew);
   root.querySelector('[data-go="continue"]')?.addEventListener('click', opts.onContinue);
   root.querySelector('[data-go="resume-draft"]')?.addEventListener('click', opts.onResumeDraft);

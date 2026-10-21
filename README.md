@@ -26,11 +26,15 @@ See [SECURITY.md](SECURITY.md): a Content Security Policy on every page, escaped
 
 ## How it plays
 
-Poké Jam has two modes.
+Poké Jam has three modes.
 
 **Quick Play:** pick any Gym Leader or the Elite Four, snake-draft five Pokémon against them (60 seconds a pick), choose the venue, and play. Pure arcade: no stamina, nothing saved. Rematch, redraft or pick a new opponent afterwards.
 
 **Roster:** browse every Pokémon from the title screen: sort by any rating, filter by position or type, search, and tap one for its full card with special move, stamina, size and evolution.
+
+**Pack Battles:** accept an open battle or post your own, snake-draft five Pokémon against your challenger, and play one Quick Play game (All-Star difficulty, no stamina, overtime until someone wins). The winner takes a prize pack. Entry is free: every pack comes from the house prize pool, never from the players. Won packs land in **Prizes**, where players request a claim (18+).
+
+The screens are in `src/screens/battles.ts` and the pack art in `src/ui/pack.ts`. All battle data goes through the `BattleService` interface in `src/battles/service.ts`; `LocalBattleService` fakes a server in local storage (challengers are CPU stand-ins) so the flow works today. Before real prizes go out, implement that interface against a backend that runs or replays the game and decides the winner itself: never award a pack on a score the browser reports.
 
 **Franchise:** your team and its Pokémon carry over from season to season, and progress is saved in the browser.
 

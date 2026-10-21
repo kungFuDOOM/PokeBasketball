@@ -11,6 +11,7 @@ import type { Game } from './game/game';
 import { draftScreen, type DraftState } from './screens/draft';
 import { hubScreen } from './screens/hub';
 import { menuScreen, type Settings } from './screens/menu';
+import { battleScreen } from './screens/battles';
 import { playGame } from './screens/play';
 import { quickPlay } from './screens/quick';
 import { resultsScreen } from './screens/results';
@@ -93,6 +94,11 @@ function menu() {
       audio.unlock();
       app.className = 'screen-quick';
       quickPlay(app, settings, audio, { menu, saved: save });
+    },
+    onBattles: () => {
+      audio.unlock();
+      window.scrollTo(0, 0);
+      battleScreen(app, settings, audio, { menu });
     },
     onResumeDraft: () => {
       const saved = loadDraft();
