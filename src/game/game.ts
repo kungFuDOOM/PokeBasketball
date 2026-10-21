@@ -120,6 +120,8 @@ export class Game {
   shotClock = 24;
   phase: Phase = 'tip';
   tipoff: JumpBall | null = null;
+  /** Seconds the buzzer waits after a buzzer beater so the moment lands. */
+  private celebrateT = 0;
   /** Who each player on the floor guards, matched by position (rebuilt after every substitution). */
   private matchups = new Map<Player, Player>();
   phaseT = 0;
@@ -554,7 +556,9 @@ export class Game {
     this.updateBall(dt);
 
     if (this.phase === 'live' || this.phase === 'dead') {
-      const busy = b.mode === 'shot' || this.players.some((p) => p.state === 'dunk');
+      // A shot in the air (or a layup or dunk already on its way up) at 0:00 plays out before the buzzer ends it.
+      this.celebrateT = Math.max(0, this.celebrateT - dt);
+      const busy = b.mode === 'shot' || this.celebrateT > 0 || this.players.some((p) => p.state === 'dunk' || p.state === 'layup');
       if (this.clock <= 0 && !busy) {
         this.clock = 0;
         this.endQuarter();
@@ -710,6 +714,13 @@ export class Game {
     const hasBall = b.owner === p && b.mode === 'held';
     if (it.special && p.special >= 1 && p.state !== 'stun') this.useSpecial(p);
     if (p.state === 'stun' || p.state === 'dunk' || p.state === 'hang') return;
+
+    // Time's up: shots already released (and layups and dunks already in motion) play out and count;
+    // a jump shot still in the shooter's hands doesn't get off, and nobody starts anything new.
+    if (this.clock <= 0 && this.phase === 'live') {
+      if (p.state === 'shoot') { p.state = 'free'; p.meter = 0; }
+      if (p.state !== 'layup') return;
+    }
 
     if (p.state === 'shoot') {
       if (!hasBall) { p.state = 'free'; return; }
@@ -1180,6 +1191,11 @@ export class Game {
     } else if (p.streak >= 3) this.setFire(p);
 
     this.events.push({ kind: 'score', player: p, points: pts, how });
+    if (this.clock <= 0) {
+      this.events.push({ kind: 'buzzerbeater', player: p, points: pts });
+      this.sfx.push('fire');
+      this.celebrateT = 1.8;
+    }
     this.phase = 'dead';
     this.phaseT = 1.1;
     this.setOffense((1 - p.team) as TeamId);

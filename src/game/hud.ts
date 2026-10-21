@@ -172,6 +172,10 @@ export class Hud {
         case 'quarter':
           this.banner(e.label, e.sub, 2.2);
           break;
+        case 'buzzerbeater':
+          this.banner('BUZZER BEATER!', `${NAME(e.player)} AT THE HORN`, 2.4);
+          this.say(`${NAME(e.player)} beats the buzzer!`, `It's super effective!`);
+          break;
         case 'jumpball':
           this.say(`${NAME(e.winner)} wins the tip over ${NAME(e.loser)}!`, `${this.g.teams[e.winner.team].abbr} ball.`);
           break;

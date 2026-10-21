@@ -229,6 +229,7 @@ export type GameEvent =
   | { kind: 'injury'; player: Player; weeks: number }
   | { kind: 'shotclock'; team: TeamId }
   | { kind: 'jumpball'; winner: Player; loser: Player }
+  | { kind: 'buzzerbeater'; player: Player; points: number }
   | { kind: 'quarter'; label: string; sub: string }
   | { kind: 'final' };
 
