@@ -1,0 +1,17 @@
+{
+  "name": "poke-jam-server",
+  "private": true,
+  "type": "module",
+  "description": "Pack Battles server: wallet sign-in, USDC escrow, live draft, lockstep games, Collector Crypt payouts.",
+  "scripts": {
+    "start": "bun main.ts",
+    "dev": "bun --watch main.ts",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit -p .",
+    "verify": "bun verify.ts"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.2.0",
+    "typescript": "^5.9.3"
+  }
+}

@@ -5,13 +5,17 @@ import { defineConfig, type Plugin } from 'vite';
  * ships as a <meta> tag (build only: the dev server needs inline scripts and websockets for hot reload).
  * Everything the game uses comes from its own origin; inline style attributes carry team colors.
  */
+// The Pack Battles server, when the build targets one (VITE_API_URL=https://api.example.com npm run build).
+const API = process.env.VITE_API_URL ? new URL(process.env.VITE_API_URL) : null;
+const apiOrigins = API ? ` ${API.origin} ${API.protocol === 'https:' ? 'wss' : 'ws'}://${API.host}` : '';
+
 const CSP = [
   "default-src 'none'",
   "script-src 'self'",
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data:",
   "font-src 'self'",
-  "connect-src 'self'",
+  `connect-src 'self'${apiOrigins}`,
   "manifest-src 'self'",
   "base-uri 'none'",
   "form-action 'none'",

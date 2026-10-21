@@ -16,7 +16,9 @@
 // can't be attributed to you. Ask Collector Crypt for a key (and, if you want a per-pack fee, their
 // can_adopt partner capability) before launch.
 
-import type { PackSource, PackTier } from '../src/battles/service';
+import type { AwardHooks, AwardResult, PackSource, PackTier } from '../src/battles/service';
+import { signTransactionBase64 } from './lib/solana-tx';
+import type { Keypair } from './lib/ed25519';
 
 export const CC_PROD = 'https://gacha.collectorcrypt.com';
 export const CC_DEVNET = 'https://dev-gacha.collectorcrypt.com';
@@ -46,6 +48,9 @@ export interface HouseWallet {
    */
   sign(base64Tx: string): Promise<string>;
 }
+
+/** A HouseWallet backed by a keypair, with no Solana SDK (see lib/solana-tx.ts). */
+export const keypairWallet = (kp: Keypair): HouseWallet => ({ address: kp.address, sign: (tx) => signTransactionBase64(tx, kp) });
 
 export interface CollectorCryptOptions {
   wallet: HouseWallet;
@@ -112,21 +117,26 @@ export class CollectorCryptPackSource implements PackSource {
     return r.signature;
   }
 
-  async award(machine: PackTier, winnerWallet: string, battleId: string) {
+  async award(machine: PackTier, winnerWallet: string, battleId: string, hooks: AwardHooks = {}): Promise<AwardResult> {
     if (!winnerWallet) throw new Error(`Battle ${battleId}: winner has no wallet on file`);
-    return this.mode === 'gift' ? this.gift(machine, winnerWallet) : this.open(machine, winnerWallet);
+    if (hooks.resumeMemo) {
+      // Already paid: a gift is complete once submitted; an open pull just needs openPack.
+      return this.mode === 'gift' ? { memo: hooks.resumeMemo, mode: 'gift' } : this.openMemo(hooks.resumeMemo);
+    }
+    return this.mode === 'gift' ? this.gift(machine, winnerWallet, hooks) : this.open(machine, winnerWallet, hooks);
   }
 
   /** House buys one pack and gifts it to the winner, unopened. */
-  private async gift(packType: PackTier, receiver: string) {
+  private async gift(packType: PackTier, receiver: string, hooks: AwardHooks): Promise<AwardResult> {
     const g = await this.call<{ giftId: string; memo: string; transaction: string; totalCost: number }>(
       'POST', '/api/generateGift', { sender: this.opts.wallet.address, receiver, packType, count: 1 });
     await this.signAndSubmit(g.transaction);
-    return { memo: g.memo, mode: 'gift' as const };
+    hooks.onPaid?.(g.memo, 'gift');
+    return { memo: g.memo, mode: 'gift' };
   }
 
   /** House buys and opens one pack; the card goes straight to the winner. */
-  private async open(packType: PackTier, winner: string) {
+  private async open(packType: PackTier, winner: string, hooks: AwardHooks): Promise<AwardResult> {
     const p = await this.call<{ memo: string; transaction: string }>('POST', '/api/generatePack', {
       playerAddress: this.opts.wallet.address,
       altPlayerAddress: winner,
@@ -134,19 +144,26 @@ export class CollectorCryptPackSource implements PackSource {
       turbo: false,
     });
     await this.signAndSubmit(p.transaction);
-    // CC answers WAITING_FOR_WEBHOOK (or 404) until it sees the payment on chain; poll the same memo.
-    // Packs must be opened within 2 hours of generatePack, so don't give up silently: if this times
-    // out, retry openPack with the memo from a job queue before then.
+    hooks.onPaid?.(p.memo, 'open');
+    return this.openMemo(p.memo);
+  }
+
+  /**
+   * CC answers WAITING_FOR_WEBHOOK (or 404) until it sees the payment on chain; poll the same memo.
+   * Packs must be opened within 2 hours of generatePack (CC refunds unopened ones after that), so a
+   * timeout here is retried with the same memo, never with a new purchase.
+   */
+  private async openMemo(memo: string): Promise<AwardResult> {
     const deadline = Date.now() + this.openTimeoutMs;
     for (;;) {
       try {
         const o = await this.call<{ success?: boolean; code?: string; rarity?: string; nft_address?: string }>(
-          'POST', '/api/openPack', { memo: p.memo });
-        if (o.code !== 'WAITING_FOR_WEBHOOK') return { memo: p.memo, mode: 'open' as const, rarity: o.rarity, nftAddress: o.nft_address };
+          'POST', '/api/openPack', { memo });
+        if (o.code !== 'WAITING_FOR_WEBHOOK') return { memo, mode: 'open', rarity: o.rarity, nftAddress: o.nft_address };
       } catch (e) {
         if (!(e instanceof CollectorCryptError && e.status === 404)) throw e;
       }
-      if (Date.now() > deadline) throw new Error(`openPack still waiting for payment on ${p.memo}; retry with this memo`);
+      if (Date.now() > deadline) throw new Error(`openPack still waiting for payment on ${memo}`);
       await sleep(1200);
     }
   }

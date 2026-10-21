@@ -11,6 +11,9 @@ import type { Game } from './game/game';
 import { draftScreen, type DraftState } from './screens/draft';
 import { hubScreen } from './screens/hub';
 import { menuScreen, type Settings } from './screens/menu';
+import { LocalBackend } from './battles/local';
+import type { Backend } from './battles/backend';
+import { HttpBackend, apiBase } from './net/http';
 import { battleScreen } from './screens/battles';
 import { playGame } from './screens/play';
 import { quickPlay } from './screens/quick';
@@ -41,6 +44,10 @@ const save = () => {
 };
 
 let franchise: Franchise | null = loadFranchise();
+
+// Pack Battles talk to the real server when one is configured (VITE_API_URL or ?api=), else the offline preview.
+const api = apiBase();
+const battles: Backend = api ? new HttpBackend(api) : new LocalBackend();
 
 // Browsers only allow audio after a gesture.
 window.addEventListener('pointerdown', () => audio.unlock(), { passive: true });
@@ -98,7 +105,7 @@ function menu() {
     onBattles: () => {
       audio.unlock();
       window.scrollTo(0, 0);
-      battleScreen(app, settings, audio, { menu });
+      battleScreen(app, battles, settings, audio, { menu });
     },
     onResumeDraft: () => {
       const saved = loadDraft();

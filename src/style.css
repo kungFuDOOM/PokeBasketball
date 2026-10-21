@@ -1143,3 +1143,38 @@ button.gl-row:hover { border-color: var(--muted); }
 .terms { margin: 0; padding-left: 18px; display: grid; gap: 6px; font-weight: 600; }
 .terms b { color: var(--accent); }
 .odds { text-align: center; font-size: 0.85rem; font-weight: 600; color: var(--muted); margin: 10px 0 0; }
+
+/* pack battles: wallet, deposits, online room and draft */
+.wallet.connect { justify-content: space-between; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
+.connect-copy { display: flex; flex-direction: column; gap: 2px; border: 0 !important; background: none !important; padding: 0 !important; }
+.connect-copy strong { font-size: 1.15rem; }
+.connect-copy small { color: var(--muted); font-weight: 600; }
+.connect-btns { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.wallet .acct { margin-left: auto; display: flex; gap: 14px; flex-wrap: wrap; align-items: center; color: var(--muted); font-size: 0.9rem; }
+.wallet .addr { font: 0.6rem var(--pixel); color: var(--accent); }
+.dep-addr { display: grid; gap: 6px; justify-items: center; text-align: center; margin-top: 14px; padding: 12px; background: var(--bg); border-radius: 8px; }
+.dep-addr .lbl { font: 0.55rem var(--pixel); color: var(--accent); }
+.dep-addr code { font-size: 0.78rem; overflow-wrap: anywhere; color: var(--fg); }
+.dep-addr small { color: var(--muted); font-weight: 600; }
+.prize-grid .memo { font: 0.5rem/1.4 var(--pixel); opacity: 0.7; overflow-wrap: anywhere; }
+.room { display: flex; flex-direction: column; align-items: center; gap: 12px; text-align: center; }
+.room h2 { margin: 0; font: 1.2rem var(--pixel); }
+.waiting.big { font-size: 1.2rem; }
+.waiting.big .ball-spin { width: 22px; height: 22px; }
+.net-banner { position: fixed; left: 50%; bottom: 16px; transform: translateX(-50%); z-index: 40; max-width: min(560px, calc(100% - 32px)); background: #3a0f08; border: 2px solid var(--red); color: #fff; border-radius: 8px; padding: 10px 14px; font-weight: 700; text-align: center; }
+.proof-link a { color: var(--accent); }
+.proof-link code { font-size: 0.8rem; }
+.online-draft .od-teams { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-bottom: 12px; }
+.od-team { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; min-width: 0; }
+.od-team.you { border-color: var(--accent); }
+.od-team h4 { margin: 0 0 6px; font-size: 0.95rem; text-transform: uppercase; letter-spacing: 0.04em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.od-team h4 small { color: var(--accent); font: 0.5rem var(--pixel); margin-left: 4px; }
+.od-slots { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 4px; }
+.od-slots li { display: flex; flex-direction: column; align-items: center; background: var(--bg); border-radius: 6px; padding: 2px 0; min-height: 64px; font-size: 0.75rem; font-weight: 700; color: var(--muted); }
+.od-slots li.empty { border: 1px dashed var(--line); background: transparent; }
+.od-slots img { width: 40px; height: 40px; image-rendering: pixelated; }
+.od-pickbar { position: sticky; bottom: 0; z-index: 5; display: flex; align-items: center; gap: 10px; margin-top: 12px; padding: 10px 14px; background: var(--panel-2); border: 2px solid var(--accent); border-radius: 10px; }
+.od-pickbar.idle { border-color: var(--line); color: var(--muted); }
+.od-pickbar img { width: 44px; height: 44px; image-rendering: pixelated; }
+.od-pickbar span { flex: 1; min-width: 0; }
+.online-draft .filters { margin-bottom: 10px; }

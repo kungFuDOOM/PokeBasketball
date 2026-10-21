@@ -26,19 +26,13 @@ See [SECURITY.md](SECURITY.md): a Content Security Policy on every page, escaped
 
 ## How it plays
 
-Poké Jam has three modes.
+Poké Jam has four modes.
 
 **Quick Play:** pick any Gym Leader or the Elite Four, snake-draft five Pokémon against them (60 seconds a pick), choose the venue, and play. Pure arcade: no stamina, nothing saved. Rematch, redraft or pick a new opponent afterwards.
 
 **Roster:** browse every Pokémon from the title screen: sort by any rating, filter by position or type, search, and tap one for its full card with special move, stamina, size and evolution.
 
-**Pack Battles:** two players split the price of a Collector Crypt gacha pull, snake-draft five Pokémon each and play one Quick Play game (All-Star difficulty, no stamina, overtime until someone wins). Each player's half goes into escrow when they post or accept; cancelling before anyone accepts refunds it, and leaving a game in progress forfeits. When the game ends, the pot buys one pull from the matching CC machine and the card goes to the winner. Players confirm they're 18+ and which state they're in first; `RESTRICTED_REGIONS` in `src/battles/service.ts` blocks Washington by default.
-
-The screens are in `src/screens/battles.ts` and the pack art in `src/ui/pack.ts`. Tiers map to Collector Crypt's public Pokémon machines (`pokemon_25`, `pokemon_50`, `pokemon_100`) with their published odds. Everything goes through `BattleService` and `PackSource` in `src/battles/service.ts`. `LocalBattleService` fakes the server with play money and CPU challengers so the flow works today.
-
-`server/collector-crypt.ts` is the real `PackSource`, built on Collector Crypt's public [Gacha Machine API](https://docs.collectorcrypt.com/gacha/api). After a battle is decided it spends the pot from your house USDC wallet on one pull for the winner: by default it gifts an unopened pack to the winner's wallet (`generateGift`), or with `mode: 'open'` it opens the pack and sends the card straight to them (`generatePack` with `altPlayerAddress`, then `openPack`). It's dependency-free; you pass in the house wallet's signer (the `@solana/web3.js` version is in the file). It runs on your server only, never in the browser.
-
-Before real money moves you still need: a server that runs or replays the game and decides the winner (never trust a score from the browser), player wallets and USDC payments into escrow, real age and location checks, a Collector Crypt API key so pulls are attributed to you, and a gaming lawyer's sign-off on the region list. Paid entry for a prize decided by a game is gambling in some states, Washington included.
+**Pack Battles:** play another person for a real Collector Crypt gacha pull. You both pay half the machine's price into escrow, snake-draft five Pokémon each live against each other, and play one online game. The server referees the game and buys the winner's pull, which Collector Crypt sends to their Solana wallet. Sign in with Phantom, Solflare or Backpack, and deposit USDC from that wallet. Every result comes with a proof anyone can replay. Without a server configured, Pack Battles runs as an offline preview with play money and CPU challengers. Setup is in [server/README.md](server/README.md), and what's left before launch is in [IMPLEMENTATION.md](IMPLEMENTATION.md).
 
 **Franchise:** your team and its Pokémon carry over from season to season, and progress is saved in the browser.
 
@@ -96,7 +90,11 @@ src/game/hud.ts       scorebug, player card, Pokémon-style battle text
 src/game/input.ts     keyboard, gamepad, touch
 src/game/audio.ts     synthesized sound effects (no audio files)
 src/franchise/league.ts  league state: schedule, standings, playoffs, XP, evolutions, injuries, awards, trades, rookie draft, free agency, save/load
-src/screens/          title, draft, rookie draft, franchise hub, game loop, box score
+src/screens/          title, draft, rookie draft, franchise hub, game loop, box score, Pack Battles lobby and online room
+src/game/sync.ts      online play: input packing, fixed tick, state hash, snapshot/restore
+src/net/              Pack Battles client: protocol, lockstep client, wallet sign-in, HTTP backend
+src/battles/          Pack Battles tiers (Collector Crypt machines), backend interface, offline preview
+server/               Pack Battles server (Bun + SQLite): money, draft, lockstep games, payouts. See server/README.md
 ```
 
 Gen 1 and Gen 2 ratings are generated: `node scripts/gen-pokemon-data.mjs` reads PokeAPI's open data (base stats, height, weight, evolution chains), maps it to basketball ratings calibrated against the hand-tuned cards, picks positions from the stat profile with a small nudge for body size (Pokémon with Speed under 45 never play guard; featherweights rarely play center), and writes `src/data/generated.ts` along with every Pokémon's real height and weight. On-court size (sprite scale, reach, rebounding and shove strength) is half real body size, half inside ratings, so Steelix and Onix tower over Pichu. Court designs live in `src/data/courts.ts`.

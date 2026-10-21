@@ -67,11 +67,12 @@ export class Hud {
     parent.appendChild(el);
     this.el = el;
     this.q = (k: string) => el.querySelector<HTMLElement>(`[data-k="${k}"]`)!;
-    if (!g.isHumanTeam(0)) this.q('pcard').hidden = true;
+    if (!g.isHumanTeam(g.viewTeam)) this.q('pcard').hidden = true;
     else {
-      const starter = g.players.find((p) => p.team === 0 && p.slot === 0)!;
-      const jumper = g.tipoff?.jumpers[0];
-      this.say(a.coach ? `${a.coach.toUpperCase()} wants to ball!` : `Wild ${a.name.toUpperCase()} appeared!`,
+      const starter = g.players.find((p) => p.team === g.viewTeam && p.slot === 0)!;
+      const jumper = g.tipoff?.jumpers[g.viewTeam];
+      const opp = g.teams[1 - g.viewTeam];
+      this.say(opp.coach ? `${opp.coach.toUpperCase()} wants to ball!` : `Wild ${opp.name.toUpperCase()} appeared!`,
         jumper ? `Go! ${NAME(jumper)}! Hit SHOOT when the toss peaks!` : `Go! ${NAME(starter)} and crew!`);
     }
   }
@@ -114,7 +115,7 @@ export class Hud {
           if (e.airball) this.say(`AIRBALL! ${NAME(e.player)} hurt itself in its confusion!`);
           break;
         case 'release':
-          if (e.player.human) {
+          if (e.player.human && e.player.team === this.g.viewTeam) {
             const [txt, col] = GRADE_TEXT[e.grade];
             const g = this.q('grade');
             g.textContent = txt;

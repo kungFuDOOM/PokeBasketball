@@ -350,12 +350,14 @@ export class Renderer {
     ctx.fill();
     ctx.beginPath();
     ctx.ellipse(foot.x, foot.y, rx, ry, 0, 0, Math.PI * 2);
-    ctx.fillStyle = team.color + (p.human ? 'cc' : '88');
+    // Only the player this screen controls gets the yellow ring (an online opponent's pick stays plain).
+    const mine = p.human && p.team === g.viewTeam;
+    ctx.fillStyle = team.color + (mine ? 'cc' : '88');
     ctx.fill();
     ctx.lineWidth = 2;
-    ctx.strokeStyle = p.human ? USER_YELLOW : team.color;
+    ctx.strokeStyle = mine ? USER_YELLOW : team.color;
     ctx.stroke();
-    if (p.human) {
+    if (mine) {
       // A pulsing yellow halo around the user's ring so they stand out in a crowded paint.
       const k = 1.25 + 0.15 * Math.sin(this.t * 8);
       ctx.beginPath();
@@ -586,15 +588,16 @@ export class Renderer {
   private drawJumpMeter(ctx: CanvasRenderingContext2D, g: Game, dt: number) {
     const j = g.tipoff;
     const m = this.jumpGhost;
-    const p = j?.jumpers[0];
+    const vt = g.viewTeam;
+    const p = j?.jumpers[vt];
     if (j && p?.human && j.t >= -0.4) {
-      m.v = j.at[0] ?? g.jumpMeter();
+      m.v = j.at[vt] ?? g.jumpMeter();
       m.w = j.window;
-      m.t = j.at[0] === null ? 0.7 : m.t - dt;
+      m.t = j.at[vt] === null ? 0.7 : m.t - dt;
     } else m.t -= dt;
     if (m.t <= 0) return;
     const top = 1.5;
-    const who = j?.jumpers[0] ?? g.user;
+    const who = j?.jumpers[vt] ?? g.user;
     if (!who) return;
     const at = this.proj(who.x, who.y, who.z + spriteFt(who));
     const x = Math.round(at.x - 18);
