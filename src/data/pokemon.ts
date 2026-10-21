@@ -197,8 +197,8 @@ const ROWS: Row[] = [
   [97, 'Hypno', ['Psychic'], 'PF', 56, 72, 70, 82, 80, 80, 78, 62],
   [475, 'Gallade', ['Psychic', 'Fighting'], 'SF', 82, 72, 90, 68, 88, 70, 68, 74],
   [437, 'Bronzong', ['Steel', 'Psychic'], 'C', 36, 58, 72, 60, 86, 92, 86, 46],
-  [381, 'Latios', ['Dragon', 'Psychic'], 'SG', 94, 90, 84, 82, 80, 64, 62, 86],
-  [380, 'Latias', ['Dragon', 'Psychic'], 'PG', 92, 82, 74, 90, 84, 66, 64, 88],
+  [381, 'Latios', ['Dragon', 'Psychic'], 'SF', 94, 92, 90, 82, 88, 76, 74, 86],
+  [380, 'Latias', ['Dragon', 'Psychic'], 'SF', 92, 86, 84, 90, 92, 78, 76, 82],
   [124, 'Jynx', ['Ice', 'Psychic'], 'PG', 70, 84, 56, 86, 64, 56, 54, 80],
   // Fire
   [126, 'Magmar', ['Fire'], 'SF', 78, 80, 82, 66, 72, 66, 62, 74],
