@@ -6,6 +6,7 @@ import {
   simulate, weekGames, weekLabel, type FGame, type Franchise, type Progress,
 } from './franchise/league';
 import { Audio } from './game/audio';
+import { DIFFICULTIES, type Difficulty } from './game/types';
 import type { Game } from './game/game';
 import { draftScreen, type DraftState } from './screens/draft';
 import { hubScreen } from './screens/hub';
@@ -24,7 +25,13 @@ const audio = new Audio();
 
 const settings: Settings = { difficulty: 'pro', quarterLen: 120, teamName: 'Pallet Town' };
 try {
-  Object.assign(settings, JSON.parse(localStorage.getItem('pokejam.settings') ?? '{}'));
+  // Only known settings with the right types are read back from storage.
+  const saved = JSON.parse(localStorage.getItem('pokejam.settings') ?? '{}') as Partial<Record<keyof Settings, unknown>>;
+  if (typeof saved.difficulty === 'string' && saved.difficulty in DIFFICULTIES) settings.difficulty = saved.difficulty as Difficulty;
+  if (typeof saved.quarterLen === 'number' && [60, 120, 180, 300].includes(saved.quarterLen)) settings.quarterLen = saved.quarterLen;
+  if (typeof saved.teamName === 'string') settings.teamName = saved.teamName.slice(0, 20);
+  if (typeof saved.autoSubs === 'boolean') settings.autoSubs = saved.autoSubs;
+  if (typeof saved.autoSwitch === 'boolean') settings.autoSwitch = saved.autoSwitch;
 } catch { /* storage unavailable */ }
 const save = () => {
   try {

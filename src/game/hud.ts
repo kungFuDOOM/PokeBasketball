@@ -1,4 +1,5 @@
 import { spriteUrl, type PokeType } from '../data/pokemon';
+import { esc } from '../util';
 import type { Game } from './game';
 import type { GameEvent, Grade, Player } from './types';
 
@@ -46,8 +47,8 @@ export class Hud {
     el.className = 'hud';
     el.innerHTML = `
       <div class="bug">
-        <div class="bug-team" style="--tc:${h.color}"><span class="abbr">${h.abbr}</span><span class="pts" data-k="s0">0</span></div>
-        <div class="bug-team" style="--tc:${a.color}"><span class="abbr">${a.abbr}</span><span class="pts" data-k="s1">0</span></div>
+        <div class="bug-team" style="--tc:${h.color}"><span class="abbr">${esc(h.abbr)}</span><span class="pts" data-k="s0">0</span></div>
+        <div class="bug-team" style="--tc:${a.color}"><span class="abbr">${esc(a.abbr)}</span><span class="pts" data-k="s1">0</span></div>
         <div class="bug-clock"><span data-k="q">1ST</span><span data-k="clock">0:00</span></div>
         <div class="bug-shot" data-k="shot">24</div>
       </div>

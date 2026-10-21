@@ -20,6 +20,10 @@ The app icon is `public/icon.svg` (PNG sizes and `apple-touch-icon.png` are rend
 
 `npm run build:artifact` also writes `dist-artifact/`, the same game with every sprite inlined as a data URI, for hosts that block third-party images.
 
+## Security
+
+See [SECURITY.md](SECURITY.md): a Content Security Policy on every page, escaped output, saves checked on load, a locked-down deploy pipeline with `npm audit` and Dependabot, and how to put Cloudflare in front for DDoS protection and full security headers once the site has its own domain.
+
 ## How it plays
 
 Poké Jam has two modes.

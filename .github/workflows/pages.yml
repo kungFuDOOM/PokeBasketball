@@ -19,13 +19,18 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
-      - run: npm ci
+      # --ignore-scripts: dependencies can't run install scripts on the build machine.
+      - run: npm ci --ignore-scripts
+      - run: npm audit --audit-level=high
       # Also downloads the sprites into public/sprites so the site serves them itself.
       - run: npm run build
       - uses: actions/configure-pages@v5
@@ -36,6 +41,7 @@ jobs:
   deploy:
     needs: build
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}

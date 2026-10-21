@@ -288,12 +288,30 @@ function retireLegacy(f: Franchise) {
   f.news = f.news.slice(0, 8);
 }
 
+const HEX = /^#[0-9a-f]{3,8}$/i;
+
+/**
+ * Saves come back from browser storage, where they could have been edited by hand: keep team names plain
+ * and short, abbreviations alphanumeric and colors real hex colors before any of it reaches the page.
+ */
+function cleanTeams(teams: unknown): boolean {
+  if (!Array.isArray(teams) || !teams.length) return false;
+  for (const t of teams as { name: unknown; abbr: unknown; color: unknown; color2: unknown }[]) {
+    if (!t || typeof t !== 'object') return false;
+    t.name = String(t.name ?? '').slice(0, 24) || 'Team';
+    t.abbr = String(t.abbr ?? '').replace(/[^a-z0-9]/gi, '').slice(0, 4).toUpperCase() || 'TM';
+    if (typeof t.color !== 'string' || !HEX.test(t.color)) t.color = USER_STYLE.color;
+    if (typeof t.color2 !== 'string' || !HEX.test(t.color2)) t.color2 = USER_STYLE.color2;
+  }
+  return true;
+}
+
 export function loadFranchise(): Franchise | null {
   try {
     const raw = localStorage.getItem(SAVE_KEY);
     if (!raw) return null;
     const f = JSON.parse(raw) as Franchise;
-    if (f.version !== 1) return null;
+    if (f?.version !== 1 || !cleanTeams(f.teams) || typeof f.players !== 'object' || !Array.isArray(f.games)) return null;
     retireLegacy(f);
     return f;
   } catch {
@@ -314,7 +332,9 @@ export function saveDraft(d: DraftState | null) {
 export function loadDraft(): DraftState | null {
   try {
     const raw = localStorage.getItem(DRAFT_KEY);
-    return raw ? (JSON.parse(raw) as DraftState) : null;
+    if (!raw) return null;
+    const d = JSON.parse(raw) as DraftState;
+    return cleanTeams(d?.teams) && Array.isArray(d.order) && Array.isArray(d.taken) ? d : null;
   } catch {
     return null;
   }
