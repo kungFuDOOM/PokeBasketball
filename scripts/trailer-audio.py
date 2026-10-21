@@ -134,7 +134,9 @@ def sfx(name):
     if name in ('bounce', 'catch', 'pass', 'shot'):
         return onepole(noise(0.06), 2000) * env(0.06, 0.001, 0.02) * 0.2
     if name == 'tick':
-        return (square(1800, 0.03, 0.5) * env(0.03, 0.001, 0.01) * 0.35 + sine_sweep(900, 600, 0.06, 0.02) * env(0.06, 0.001, 0.02) * 0.3)
+        click = square(1800, 0.03, 0.5) * env(0.03, 0.001, 0.01) * 0.35
+        body = sine_sweep(900, 600, 0.06, 0.02) * env(0.06, 0.001, 0.02) * 0.3
+        return body + np.pad(click, (0, len(body) - len(click)))
     if name == 'badge':
         return np.concatenate([lead_note(note('E6'), 0.06, 0.5), lead_note(note('B6'), 0.14, 0.5)]) * 0.35
     if name == 'coin':
