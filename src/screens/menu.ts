@@ -134,7 +134,7 @@ function tickerHtml(isStatic: boolean): string {
   return `<div class="ticker" role="marquee" aria-label="Live score, tips and game modes"><div class="tk-track"><div class="tk-run">${run}</div><div class="tk-run" aria-hidden="true">${run}</div></div></div>`;
 }
 
-/** Title screen: live attract game behind a big PLAY button and the four mode cards. */
+/** Title screen: a silent CPU game behind the menu, Season Draft as the big call to action, then the other modes. */
 export function menuScreen(root: HTMLElement, settings: Settings, onChange: () => void, opts: TitleOptions) {
   const isStatic = prefersStatic();
   const parade = [...POKEMON].sort(() => Math.random() - 0.5).slice(0, 14);
@@ -158,30 +158,19 @@ export function menuScreen(root: HTMLElement, settings: Settings, onChange: () =
           : '<canvas class="attract-canvas"></canvas>'}
         <div class="attract-dim"></div>
       </div>
-      ${isStatic ? '' : `
-      <div class="live-bar">
-        <span class="live-badge"><i></i>LIVE<span class="live-venue"></span></span>
-        <span class="scorebug" hidden><b class="sb-a"></b><em class="sb-sa">0</em><em class="sb-sb">0</em><b class="sb-b"></b><span class="sb-clock"></span></span>
-      </div>`}
       <div class="menu-in">
         <header class="title">
           <h1 class="logo"><span class="logo-poke">POKé</span><span class="logo-jam">JAM</span></h1>
           <p class="tag">Draft your Pokémon. Run the floor. Full-court 5-on-5 arcade hoops.</p>
         </header>
         <div class="play-row">
-          <button class="btn play-btn" data-go="play">PLAY<small>Quick Play · draft five, tip off</small></button>
+          <button class="btn play-btn" data-go="season" aria-label="Season Draft: draft 10, sim a season, get your grade">DRAFT &amp; GET GRADED<small>Draft 10 · sim a season · get your grade</small></button>
           <label class="field team-field" for="team-name">Your team
             <input id="team-name" maxlength="20" autocomplete="off" value="${esc(settings.teamName)}">
           </label>
         </div>
+        ${opts.drafted ? `<p class="mode-saved hero-saved"><span class="lbl">My drafted team</span> ${esc(opts.drafted)}</p>` : ''}
         <div class="mode-grid">
-          <section class="mode-card season">
-            <span class="new-tag">NEW</span>
-            <h2>Season Draft</h2>
-            <p class="setup-note">Draft ten Pokémon, then your team plays a full season and the playoffs in seconds. Get a grade, a Player of the Season and a card to share.</p>
-            ${opts.drafted ? `<p class="mode-saved"><span class="lbl">My drafted team</span> ${esc(opts.drafted)}</p>` : ''}
-            <div class="actions"><button class="btn primary big" data-go="season">Start Season Draft</button></div>
-          </section>
           <section class="mode-card quick">
             <h2>Quick Play</h2>
             <p class="setup-note">Pick any Gym Leader or the Elite Four, draft five Pokémon against them and play on any court. Pure arcade.</p>
@@ -240,18 +229,9 @@ export function menuScreen(root: HTMLElement, settings: Settings, onChange: () =
   // ---- attract game ----
   const canvas = $<HTMLCanvasElement>('.attract-canvas');
   if (canvas) {
-    const bug = $('.scorebug')!;
-    const venue = $('.live-venue')!;
+    // The game plays silently behind the menu; its score only feeds the bottom ticker.
     const live = root.querySelectorAll<HTMLElement>('.tk-live');
-    const sa = $('.sb-sa')!, sb = $('.sb-sb')!, ta = $('.sb-a')!, tb = $('.sb-b')!, clock = $('.sb-clock')!;
     const show = (s: AttractState) => {
-      bug.hidden = false;
-      venue.textContent = ` · ${s.venue}`;
-      ta.textContent = s.home;
-      tb.textContent = s.away;
-      sa.textContent = String(s.score[0]);
-      sb.textContent = String(s.score[1]);
-      clock.textContent = s.clock;
       const line = `${s.home} ${s.score[0]} - ${s.score[1]} ${s.away} · ${s.clock}`;
       live.forEach((el) => (el.textContent = line));
     };
@@ -280,7 +260,6 @@ export function menuScreen(root: HTMLElement, settings: Settings, onChange: () =
     sourceSeg.querySelectorAll('button').forEach((x) => x.classList.toggle('on', x === b));
   });
   const quick = leave(opts.onQuick);
-  $('[data-go="play"]')!.addEventListener('click', quick);
   $('[data-go="quick"]')!.addEventListener('click', quick);
   $('[data-go="season"]')!.addEventListener('click', leave(opts.onSeason));
   $('[data-go="roster"]')!.addEventListener('click', leave(opts.onRoster));

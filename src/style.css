@@ -993,16 +993,10 @@ button.gl-row:hover { border-color: var(--muted); }
 .attract-static .parade { inset: auto 0 12% 0; top: auto; height: 160px; opacity: 0.35; }
 .menu-in { position: relative; z-index: 1; }
 .menu-in .title { margin-bottom: 22px; }
-.live-bar { position: fixed; z-index: 2; top: max(10px, env(safe-area-inset-top, 0px)); left: max(12px, env(safe-area-inset-left, 0px)); right: max(12px, env(safe-area-inset-right, 0px)); display: flex; gap: 10px; align-items: center; justify-content: space-between; flex-wrap: wrap; pointer-events: none; }
-.live-badge { display: inline-flex; align-items: center; gap: 6px; background: rgba(227, 53, 13, 0.92); color: #fff; font: 800 0.8rem var(--sport); letter-spacing: 0.12em; padding: 3px 10px; border-radius: 4px; text-transform: uppercase; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.live-badge i { width: 8px; height: 8px; border-radius: 50%; background: #fff; animation: pulse 0.9s ease-in-out infinite alternate; flex: none; }
-.live-venue { font-weight: 600; opacity: 0.9; overflow: hidden; text-overflow: ellipsis; }
-.scorebug { display: inline-flex; align-items: center; gap: 8px; background: rgba(10, 13, 31, 0.88); border: 1px solid var(--line); border-radius: 4px; padding: 3px 10px; font: 800 0.95rem var(--sport); letter-spacing: 0.06em; }
-.scorebug em { font: 400 0.8rem var(--pixel); font-style: normal; color: var(--accent); }
-.scorebug .sb-clock { color: var(--muted); font-size: 0.85rem; }
 .play-row { display: flex; gap: 14px; align-items: stretch; justify-content: center; flex-wrap: wrap; margin-bottom: 20px; }
 .play-btn { background: var(--red); border-color: #ff6a45; color: #fff; font: 400 clamp(1.4rem, 5vw, 2rem) var(--pixel); padding: 18px 44px; display: flex; flex-direction: column; align-items: center; gap: 8px; border-radius: 10px; box-shadow: 0 6px 0 #7a1b06; min-width: min(100%, 340px); text-transform: none; }
 .play-btn small { font: 700 0.9rem var(--sport); letter-spacing: 0.08em; text-transform: uppercase; opacity: 0.9; }
+@media (max-width: 480px) { .play-btn { padding: 16px 18px; font-size: 1.35rem; line-height: 1.25; } .play-btn small { font-size: 0.78rem; letter-spacing: 0.04em; } }
 .play-btn:hover:not(:disabled) { background: #f4471d; }
 .play-btn:active:not(:disabled) { transform: translateY(4px); box-shadow: 0 2px 0 #7a1b06; }
 .team-field { min-width: min(100%, 220px); justify-content: center; background: rgba(18, 23, 54, 0.85); border: 1px solid var(--line); border-radius: 10px; padding: 10px 14px; }
@@ -1011,9 +1005,10 @@ button.gl-row:hover { border-color: var(--muted); }
 .mode-card { position: relative; display: flex; flex-direction: column; gap: 12px; background: rgba(18, 23, 54, 0.9); border: 1px solid var(--line); border-radius: 12px; padding: 20px; min-width: 0; }
 .mode-card h2 { margin: 0; font: 1rem var(--pixel); color: var(--accent); }
 .mode-card .actions { margin-top: auto; }
-.mode-card.season { grid-column: 1 / -1; border-color: var(--accent); background: linear-gradient(135deg, rgba(255, 203, 5, 0.14), rgba(18, 23, 54, 0.92) 55%); }
 .new-tag { position: absolute; top: 14px; right: 14px; background: var(--accent); color: #1a1400; font: 0.6rem var(--pixel); padding: 5px 7px; border-radius: 4px; }
 .mode-saved { margin: 0; font-weight: 700; }
+.hero-saved { text-align: center; margin: -8px 0 16px; text-shadow: 0 1px 4px #000; }
+.mode-card.roster-mode { grid-column: 1 / -1; }
 .mode-saved .lbl { font: 0.56rem var(--pixel); color: var(--accent); margin-right: 6px; }
 .seg button:disabled { opacity: 0.4; cursor: default; }
 .controls-fold { margin-top: 16px; background: rgba(18, 23, 54, 0.9); border: 1px solid var(--line); border-radius: 12px; padding: 4px 18px; }
@@ -1030,7 +1025,7 @@ button.gl-row:hover { border-color: var(--muted); }
 .tk-live-item .tk-live { color: #fff; }
 .ticker.static { justify-content: center; gap: 0; }
 @keyframes tk-scroll { to { transform: translateX(-50%); } }
-@media (prefers-reduced-motion: reduce) { .tk-track { animation: none; } .live-badge i { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .tk-track { animation: none; } }
 
 /* Quick Play: team source picker */
 .source-pick { align-items: center; margin: 14px 0 0; }
@@ -1223,3 +1218,56 @@ button.gl-row:hover { border-color: var(--muted); }
 .ss-confirm { margin: 12px auto 0; max-width: 560px; padding: 14px 16px; border: 2px solid var(--red); border-radius: 12px; background: color-mix(in srgb, var(--red) 12%, #0a0d1f); text-align: center; }
 .ss-confirm p { margin: 0 0 10px; line-height: 1.35; }
 .ss-confirm[hidden] { display: none; }
+
+/* Season Draft results: what to do next, right under the record */
+.ss-next { margin: 4px 0 18px; text-align: center; }
+.ss-next-btns { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.ss-next-btns .btn { width: 100%; justify-content: center; }
+.ss-next-note { margin: 10px 0 0; }
+.ss-next .ss-status:empty { display: none; }
+.ss-next .ss-status { margin: 6px 0 0; color: var(--good); font-weight: 700; }
+@media (max-width: 640px) { .ss-next-btns { grid-template-columns: minmax(0, 1fr); } }
+.ss-link-row { display: flex; gap: 8px; align-items: center; }
+.ss-link-row .ss-link { flex: 1; min-width: 0; }
+.nx-bench-lbl { margin: 8px 0 2px; }
+.nx-bench .lineup { opacity: 0.8; }
+
+/* Season Draft results: the whole ten under the record, starters then bench */
+.ss-team { margin: 6px 0 14px; }
+.ss-team-lbl { margin: 6px 0 4px; font: 0.6rem var(--pixel); letter-spacing: 0.08em; color: var(--accent); }
+.ss-team-grid { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; }
+.ss-team-grid li { position: relative; display: flex; flex-direction: column; align-items: center; min-width: 0; background: var(--panel-2); border: 1px solid var(--accent); border-radius: 8px; padding: 14px 2px 4px; }
+.ss-team-grid.bench li { border-color: var(--line); opacity: 0.92; }
+.ss-team-grid img { width: 64px; height: 64px; image-rendering: pixelated; }
+.ss-team-grid .tm-nm { font-weight: 800; font-size: 0.85rem; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ss-team-grid .tm-pos, .ss-team-grid .tm-ovr { position: absolute; top: 3px; font: 800 0.7rem/1 var(--sport); }
+.ss-team-grid .tm-pos { left: 5px; color: var(--muted); }
+.ss-team-grid .tm-ovr { right: 5px; color: var(--fg); }
+@media (max-width: 480px) {
+  .ss-team-grid { gap: 4px; }
+  .ss-team-grid li { padding: 12px 1px 3px; }
+  .ss-team-grid img { width: 44px; height: 44px; }
+  .ss-team-grid .tm-nm { font-size: 0.66rem; }
+  .ss-team-grid .tm-pos, .ss-team-grid .tm-ovr { font-size: 0.6rem; top: 2px; }
+  .ss-team-grid .tm-pos { left: 3px; } .ss-team-grid .tm-ovr { right: 3px; }
+}
+/* share card preview next to "Share my team" */
+.ss-next-btns { align-items: end; }
+.ss-share-cell { display: flex; flex-direction: column; align-items: center; gap: 6px; min-width: 0; }
+.ss-thumb { width: 88px; height: 88px; padding: 0; border: 2px solid var(--line); border-radius: 8px; background: var(--panel-2); overflow: hidden; cursor: zoom-in; display: grid; place-items: center; }
+.ss-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.ss-thumb-ph { font-size: 0.65rem; color: var(--muted); padding: 4px; }
+@media (max-width: 640px) { .ss-share-cell { flex-direction: row; } .ss-thumb { width: 64px; height: 64px; flex: none; } .ss-share-cell .btn { flex: 1; } }
+.ss-preview { position: fixed; inset: 0; z-index: 50; background: rgba(5, 7, 18, 0.9); display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 16px; cursor: zoom-out; }
+.ss-preview img { max-width: min(92vw, 720px); max-height: 80vh; border-radius: 10px; box-shadow: 0 10px 40px #000; }
+/* Phones: the four season stats on one row, so the team and the buttons fit above the fold */
+@media (max-width: 520px) {
+  .ss-stats { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; }
+  .ss-stats li { padding: 6px 2px; }
+  .ss-stats b { font-size: 0.78rem; }
+  .ss-stats span { font-size: 0.56rem; letter-spacing: 0.04em; }
+}
+/* Desktop too: the preview sits beside the share button, not above it */
+.ss-share-cell { flex-direction: row; align-items: stretch; }
+.ss-share-cell .btn { flex: 1; }
+@media (min-width: 641px) { .ss-thumb { width: 52px; height: auto; aspect-ratio: 1; flex: none; } .ss-next-btns { align-items: stretch; } }

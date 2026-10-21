@@ -4,7 +4,7 @@ import { LEAGUE, USER_STYLE } from '../franchise/league';
 import type { Audio } from '../game/audio';
 import { saveDrafted } from '../season/team';
 import { shareUrl, type SharedTeam } from '../season/share';
-import { renderShareCard, shareOrDownload, download, fileName } from '../season/shareImage';
+import { renderShareCard, shareTeam, toPngBlob, download, fileName } from '../season/shareImage';
 import { PLAYOFF_TEXT, simulateSeason, type SeasonResult, type SimInput } from '../season/sim';
 import { abbr, esc, shuffle, tier } from '../util';
 import { draftScreen, type DraftTeam } from './draft';
@@ -102,6 +102,18 @@ export function seasonMode(root: HTMLElement, settings: Settings, audio: Audio, 
     const url = shareUrl(shared);
     const pots = r.players[r.pots];
     const t = (i: number) => input.teams[i];
+    // The whole ten, starters (by position) then bench, right under the record.
+    const posOrder = ['PG', 'SG', 'SF', 'PF', 'C'];
+    const starters = r.players.filter((p) => p.starter).sort((a, b) => posOrder.indexOf(a.pos) - posOrder.indexOf(b.pos));
+    const bench = r.players.filter((p) => !p.starter);
+    const teamRow = (label: string, ps: typeof r.players) => `
+      <p class="ss-team-lbl">${label}</p>
+      <ul class="ss-team-grid ${label === 'Bench' ? 'bench' : ''}">${ps.map((p) => `
+        <li class="t-${tier(p.ovr)}" title="${esc(p.name)} · ${p.pos} · ${p.ovr} OVR · ${p.ppg} PPG">
+          <span class="tm-pos">${p.pos}</span><span class="tm-ovr">${p.ovr}</span>
+          <img src="${spriteUrl(p.dex)}" alt="">
+          <span class="tm-nm">${esc(p.name)}</span>
+        </li>`).join('')}</ul>`;
     const playoffGames = r.playoffs.map((g) => `<li><span>${g.round === 'final' ? 'Final' : 'Semi'}</span> ${esc(t(g.a).abbr)} ${g.sa} - ${g.sb} ${esc(t(g.b).abbr)} <b>${esc(t(g.winner).abbr)}</b></li>`).join('');
     root.innerHTML = `
       <div class="ss-wrap">
@@ -121,6 +133,31 @@ export function seasonMode(root: HTMLElement, settings: Settings, audio: Audio, 
             <li><b>${u.ppg - u.oppg >= 0 ? '+' : ''}${Math.round((u.ppg - u.oppg) * 10) / 10}</b><span>Margin</span></li>
             <li><b>${u.ovr}</b><span>Team OVR</span></li>
           </ul>
+        </section>
+        <section class="ss-team" aria-label="Your team">
+          ${teamRow('Starters', starters)}
+          ${teamRow('Bench', bench)}
+        </section>
+        <section class="ss-next" aria-label="What next">
+          <div class="ss-next-btns">
+            <button class="btn primary big" data-go="use-quick">Quick Play with this team</button>
+            <button class="btn primary big" data-go="use-franchise">Franchise with this team</button>
+            <div class="ss-share-cell">
+              <button class="ss-thumb" data-a="preview" aria-label="See the share card full size" title="What you'll share">
+                <span class="ss-thumb-ph">Drawing card…</span>
+              </button>
+              <button class="btn primary big ss-share-btn" data-a="share">Share my team</button>
+            </div>
+          </div>
+          <p class="note ss-next-note">Saved as My Drafted Team: your best five start, the other five come off the bench.${act.hasFranchise ? ' Franchise replaces your current save (you\'ll be asked first).' : ''}</p>
+          <p class="note ss-status" role="status"></p>
+          <div class="ss-confirm" role="alertdialog" aria-labelledby="ss-confirm-t" hidden>
+            <p id="ss-confirm-t"><b>Replace your saved franchise?</b> Your current franchise, its season and its roster will be erased and replaced by this team. This can't be undone.</p>
+            <div class="actions center">
+              <button class="btn warn" data-go="confirm-replace">Replace my franchise</button>
+              <button class="btn primary" data-go="confirm-cancel">Cancel</button>
+            </div>
+          </div>
         </section>
         <div class="ss-cols">
           <section class="card ss-pots t-${tier(pots.ovr)}">
@@ -150,51 +187,57 @@ export function seasonMode(root: HTMLElement, settings: Settings, audio: Audio, 
               </tr>`).join('')}</tbody>
           </table>
         </section>
-        <section class="card">
-          <p class="eyebrow">Your ten</p>
-          <ul class="ss-roster">${r.players.map((p) => `
-            <li class="${p.starter ? 'starter' : ''}" title="${esc(p.name)}"><img src="${spriteUrl(p.dex)}" alt=""><span>${esc(p.name)}</span><small>${p.pos} · ${p.ppg} PPG</small></li>`).join('')}</ul>
-        </section>
         <section class="card ss-share">
-          <p class="eyebrow">Share</p>
-          <div class="actions">
-            <button class="btn primary" data-a="image">Share image</button>
-            <button class="btn" data-a="copy">Copy link</button>
+          <p class="eyebrow">Share link</p>
+          <div class="ss-link-row">
+            <input class="ss-link" readonly value="${esc(url)}" aria-label="Share link">
+            <button class="btn" data-a="copy">Copy</button>
           </div>
-          <input class="ss-link" readonly value="${esc(url)}" aria-label="Share link">
-          <p class="note ss-status" role="status"></p>
         </section>
         <div class="actions center ss-actions">
           <button class="btn primary big" data-go="season-again">Play again</button>
-          <button class="btn big" data-go="season-use">Use this team</button>
           <button class="btn ghost big" data-go="menu">Back to menu</button>
-        </div>
-        <div class="actions center ss-use" hidden>
-          <button class="btn" data-go="use-quick">Quick Play with this team</button>
-          <button class="btn" data-go="use-franchise">${act.hasFranchise ? 'Franchise (replaces your save)' : 'Start a franchise'}</button>
-        </div>
-        <div class="ss-confirm" role="alertdialog" aria-labelledby="ss-confirm-t" hidden>
-          <p id="ss-confirm-t"><b>Replace your saved franchise?</b> Your current franchise, its season and its roster will be erased and replaced by this team. This can't be undone.</p>
-          <div class="actions center">
-            <button class="btn warn" data-go="confirm-replace">Replace my franchise</button>
-            <button class="btn primary" data-go="confirm-cancel">Cancel</button>
-          </div>
         </div>
       </div>`;
     const status = root.querySelector<HTMLElement>('.ss-status')!;
     const link = root.querySelector<HTMLInputElement>('.ss-link')!;
     const say = (s: string) => (status.textContent = s);
     link.addEventListener('focus', () => link.select());
+    // Draw the share card now, so tapping "Share my team" can open the share sheet straight away.
+    const drawCard = async () => { const canvas = await renderShareCard(shared); return { canvas, blob: await toPngBlob(canvas) }; };
+    let card: ReturnType<typeof drawCard> | null = drawCard();
+    let cardUrl = '';
+    const thumb = root.querySelector<HTMLElement>('.ss-thumb')!;
+    card.then(({ canvas }) => {
+      // A data: URL, because the site's CSP allows data: images but not blob: ones.
+      cardUrl = canvas.toDataURL('image/png');
+      thumb.innerHTML = `<img src="${cardUrl}" alt="Your share card">`;
+    }).catch(() => { card = null; thumb.hidden = true; });
+    const preview = () => {
+      if (!cardUrl) return;
+      const el = document.createElement('div');
+      el.className = 'ss-preview';
+      el.setAttribute('role', 'dialog');
+      el.setAttribute('aria-label', 'Share card');
+      el.innerHTML = `<img src="${cardUrl}" alt="Your share card"><p class="note">Tap anywhere to close</p>`;
+      const close = () => { el.remove(); window.removeEventListener('keydown', onKey); };
+      const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') close(); };
+      el.addEventListener('click', close);
+      window.addEventListener('keydown', onKey);
+      document.body.appendChild(el);
+    };
     root.querySelector('.ss-wrap')!.addEventListener('click', async (e) => {
       const el = (e.target as HTMLElement).closest<HTMLElement>('[data-a], [data-go]');
       if (!el) return;
       const a = el.dataset.a;
       const go = el.dataset.go;
-      if (a === 'image') {
-        say('Drawing your card…');
+      if (a === 'preview') preview();
+      else if (a === 'share') {
         try {
-          const done = await shareOrDownload(await renderShareCard(shared), shared);
-          say(done === 'shared' ? 'Shared!' : done === 'downloaded' ? `Saved ${fileName(shared)}` : '');
+          if (!card) say('Drawing your card…');
+          const { canvas, blob } = await (card ?? (card = drawCard()));
+          const done = await shareTeam(canvas, blob, shared, url);
+          say(done === 'shared' ? 'Shared!' : done === 'saved+copied' ? 'Link copied, image saved' : done === 'saved' ? 'Image saved. Copy the link below.' : '');
         } catch { say('Could not make the image on this browser.'); }
       } else if (a === 'copy') {
         try {
@@ -207,10 +250,7 @@ export function seasonMode(root: HTMLElement, settings: Settings, audio: Audio, 
         }
       } else if (go === 'season-again') draft();
       else if (go === 'menu') act.menu();
-      else if (go === 'season-use') {
-        root.querySelector<HTMLElement>('.ss-use')!.hidden = false;
-        say('Saved as My Drafted Team. Pick where to use it.');
-      } else if (go === 'use-quick') act.useTeam('quick');
+      else if (go === 'use-quick') act.useTeam('quick');
       else if (go === 'use-franchise') {
         // Replacing a saved franchise needs an explicit OK; Cancel leaves everything as it is.
         if (act.hasFranchise) {

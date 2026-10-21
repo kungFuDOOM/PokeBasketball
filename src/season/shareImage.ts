@@ -121,14 +121,26 @@ export function fileName(t: SharedTeam): string {
 }
 
 /** Native share sheet with the image when the device supports it; otherwise a download. Returns what happened. */
-export async function shareOrDownload(c: HTMLCanvasElement, t: SharedTeam): Promise<'shared' | 'downloaded' | 'cancelled'> {
-  const blob = await toBlob(c);
+/** The message that goes with a shared team: record, grade and the #s= link. */
+export function shareText(t: SharedTeam, url: string): string {
+  return `My PokeJam team went ${t.w}-${t.l}, grade ${teamGrade(t.dex.map((d) => monByDex(d))).grade} ${url}`;
+}
+
+export const toPngBlob = (c: HTMLCanvasElement) => toBlob(c);
+
+/**
+ * "Share my team": the phone share sheet with the image and the link together. Where the share sheet can't take
+ * files (most desktops), the image downloads and the link goes to the clipboard instead.
+ * Pass a pre-rendered blob so the share call stays inside the tap (Safari drops it otherwise).
+ */
+export async function shareTeam(c: HTMLCanvasElement, blob: Blob | null, t: SharedTeam, url: string): Promise<'shared' | 'cancelled' | 'saved+copied' | 'saved'> {
   const name = fileName(t);
+  const text = shareText(t, url);
   if (blob && typeof File !== 'undefined' && navigator.canShare && navigator.share) {
     const file = new File([blob], name, { type: 'image/png' });
-    if (navigator.canShare({ files: [file] })) {
+    if (navigator.canShare({ files: [file], text })) {
       try {
-        await navigator.share({ files: [file], title: 'Poké Jam', text: `${t.name} went ${t.w}-${t.l} in Poké Jam` });
+        await navigator.share({ files: [file], title: 'Poké Jam', text });
         return 'shared';
       } catch (e) {
         if ((e as DOMException).name === 'AbortError') return 'cancelled';
@@ -136,7 +148,12 @@ export async function shareOrDownload(c: HTMLCanvasElement, t: SharedTeam): Prom
     }
   }
   await download(c, name, blob);
-  return 'downloaded';
+  try {
+    await navigator.clipboard.writeText(url);
+    return 'saved+copied';
+  } catch {
+    return 'saved';
+  }
 }
 
 export async function download(c: HTMLCanvasElement, name: string, blob?: Blob | null) {

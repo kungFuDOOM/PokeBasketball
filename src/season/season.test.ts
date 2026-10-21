@@ -4,6 +4,7 @@ import { LEAGUE } from '../franchise/league';
 import { decodeShare, encodeShare, shareFromHash, type SharedTeam } from './share';
 import { simulateSeason, type SimInput } from './sim';
 import { gradeOfOvr, teamGrade } from './grade';
+import { shareText } from './shareImage';
 import { gradeOfOvr as draftGrade } from '../screens/draftView';
 import { bestLineup, teamOvr } from '../game/game';
 import { monByDex } from '../data/pokemon';
@@ -150,6 +151,12 @@ describe('share links', () => {
     expect(tweak((b) => (b[29] = 11))).toBeNull(); // rank above team count
     expect(tweak((b) => (b[31] = 7))).toBeNull(); // playoff code
     expect(tweak((b) => { b[27] = 0; b[28] = 0; })).toBeNull(); // no games
+  });
+
+  it('share text has the record, the shared grade and the link', () => {
+    const url = 'https://pokejam.xyz/#s=abc';
+    const g = teamGrade(team.dex.map((d) => monByDex(d))).grade;
+    expect(shareText(team, url)).toBe(`My PokeJam team went 12-6, grade ${g} ${url}`);
   });
 
   it('strips markup and control characters from names', () => {
