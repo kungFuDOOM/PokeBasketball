@@ -115,7 +115,7 @@ function archetype(pos: Pos, r: Ratings, ovr: number): string {
 export type Row = [number, string, PokeType[], Pos, number, number, number, number, number, number, number, number];
 
 const ROWS: Row[] = [
-  [150, 'Mewtwo', ['Psychic'], 'SF', 88, 96, 95, 88, 88, 86, 84, 86],
+  [150, 'Mewtwo', ['Psychic'], 'SF', 92, 96, 95, 88, 90, 86, 84, 86],
   [249, 'Lugia', ['Psychic', 'Flying'], 'C', 88, 75, 84, 87, 89, 99, 92, 84],
   [250, 'Ho-Oh', ['Fire', 'Flying'], 'C', 77, 81, 97, 88, 82, 93, 89, 80],
   [25, 'Pikachu', ['Electric'], 'PG', 94, 72, 62, 72, 66, 36, 42, 86],
