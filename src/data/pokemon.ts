@@ -155,7 +155,7 @@ const ROWS: Row[] = [
   [7, 'Squirtle', ['Water'], 'PG', 66, 70, 52, 64, 60, 40, 46, 66],
   [54, 'Psyduck', ['Water'], 'PG', 60, 64, 52, 62, 50, 40, 46, 60],
   [79, 'Slowpoke', ['Water', 'Psychic'], 'PF', 30, 72, 56, 70, 54, 62, 64, 58],
-  [129, 'Magikarp', ['Water'], 'C', 40, 30, 30, 30, 30, 25, 30, 35],
+  [129, 'Magikarp', ['Water'], 'PG', 40, 30, 30, 30, 30, 25, 30, 35],
   // Rock
   [142, 'Aerodactyl', ['Rock', 'Flying'], 'SG', 95, 70, 86, 64, 80, 62, 60, 80],
   [112, 'Rhydon', ['Ground', 'Rock'], 'PF', 50, 48, 90, 46, 74, 88, 90, 52],
@@ -165,7 +165,7 @@ const ROWS: Row[] = [
   [185, 'Sudowoodo', ['Rock'], 'PF', 50, 54, 78, 54, 78, 76, 76, 54],
   // Water
   [121, 'Starmie', ['Water', 'Psychic'], 'PG', 92, 84, 62, 84, 70, 50, 50, 86],
-  [134, 'Vaporeon', ['Water'], 'PF', 62, 72, 82, 74, 70, 82, 88, 62],
+  [134, 'Vaporeon', ['Water'], 'SF', 68, 76, 82, 74, 78, 82, 88, 62],
   [260, 'Swampert', ['Water', 'Ground'], 'PF', 66, 60, 92, 60, 78, 84, 88, 62],
   [160, 'Feraligatr', ['Water'], 'SF', 76, 70, 90, 58, 84, 74, 80, 70],
   [230, 'Kingdra', ['Water', 'Dragon'], 'SG', 82, 90, 72, 74, 72, 62, 62, 80],
@@ -175,7 +175,7 @@ const ROWS: Row[] = [
   // Electric
   [181, 'Ampharos', ['Electric'], 'PF', 58, 80, 82, 70, 66, 78, 80, 60],
   [405, 'Luxray', ['Electric'], 'SF', 84, 74, 86, 62, 86, 66, 66, 76],
-  [462, 'Magnezone', ['Electric', 'Steel'], 'C', 40, 70, 82, 60, 76, 90, 86, 48],
+  [462, 'Magnezone', ['Electric', 'Steel'], 'PF', 50, 70, 86, 60, 76, 90, 86, 48],
   [243, 'Raikou', ['Electric'], 'SG', 94, 86, 82, 72, 80, 60, 58, 86],
   [310, 'Manectric', ['Electric'], 'PG', 90, 76, 70, 70, 70, 44, 48, 84],
   // Grass
@@ -183,7 +183,7 @@ const ROWS: Row[] = [
   [45, 'Vileplume', ['Grass', 'Poison'], 'PF', 46, 64, 76, 72, 70, 82, 82, 54],
   [71, 'Victreebel', ['Grass', 'Poison'], 'SF', 70, 70, 82, 64, 82, 74, 70, 66],
   [154, 'Meganium', ['Grass'], 'C', 52, 60, 80, 80, 72, 84, 88, 58],
-  [465, 'Tangrowth', ['Grass'], 'PF', 48, 68, 90, 58, 76, 86, 92, 50],
+  [465, 'Tangrowth', ['Grass'], 'C', 48, 68, 90, 58, 76, 86, 92, 50],
   [470, 'Leafeon', ['Grass'], 'SF', 86, 78, 80, 70, 80, 62, 62, 78],
   // Poison
   [110, 'Weezing', ['Poison'], 'C', 40, 52, 70, 60, 78, 90, 86, 48],
@@ -214,7 +214,7 @@ const ROWS: Row[] = [
   [530, 'Excadrill', ['Ground', 'Steel'], 'SF', 84, 66, 92, 58, 80, 70, 70, 76],
   [383, 'Groudon', ['Ground'], 'PF', 74, 70, 96, 60, 84, 94, 96, 62],
   [382, 'Kyogre', ['Water'], 'C', 68, 88, 88, 70, 76, 93, 96, 60],
-  [553, 'Krookodile', ['Ground', 'Dark'], 'SF', 80, 72, 88, 64, 84, 66, 70, 74],
+  [553, 'Krookodile', ['Ground', 'Dark'], 'C', 80, 72, 88, 64, 84, 72, 78, 74],
   [473, 'Mamoswine', ['Ice', 'Ground'], 'C', 52, 48, 90, 46, 74, 86, 92, 50],
   // Ice, Fighting, Ghost, Dragon (the Elite Four's types)
   [144, 'Articuno', ['Ice', 'Flying'], 'SF', 80, 82, 80, 74, 82, 84, 74, 72],
@@ -233,6 +233,9 @@ const ROWS: Row[] = [
   [123, 'Scyther', ['Bug', 'Flying'], 'SG', 92, 74, 80, 62, 90, 58, 56, 82],
   [214, 'Heracross', ['Bug', 'Fighting'], 'PF', 74, 56, 92, 54, 82, 80, 84, 62],
   [127, 'Pinsir', ['Bug'], 'PF', 70, 52, 86, 50, 84, 76, 78, 58],
+  // Position calls: same ratings as the formula, played where they fit
+  [17, 'Pidgeotto', ['Normal', 'Flying'], 'SF', 66, 60, 65, 56, 67, 52, 58, 61],
+  [162, 'Furret', ['Normal'], 'SF', 77, 60, 75, 58, 72, 63, 68, 66],
   // Cocoons: slow, but sturdier than the caterpillars they come from
   [11, 'Metapod', ['Bug'], 'C', 40, 50, 52, 48, 62, 56, 58, 48],
   [14, 'Kakuna', ['Bug', 'Poison'], 'C', 44, 50, 54, 48, 64, 58, 58, 50],
