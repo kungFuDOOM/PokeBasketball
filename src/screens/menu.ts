@@ -91,6 +91,7 @@ export interface TitleOptions {
   onDeleteData: () => void;
   onNew: () => void;
   onQuick: () => void;
+  onRoster: () => void;
 }
 
 /** Title screen: name your team, then Quick Play or Franchise (continue, resume a draft, or start over). */
@@ -135,7 +136,14 @@ export function menuScreen(root: HTMLElement, settings: Settings, onChange: () =
             </div>
           </div>
         </section>
-        <section class="card">${controlsHtml()}</section>
+        <section class="card">
+          <div class="mode roster-mode">
+            <h2>Roster</h2>
+            <p class="setup-note">Scout all ${POKEMON.length} Pokémon before you draft: every rating, position, size and evolution.</p>
+            <div class="actions"><button class="btn" data-go="roster">Browse the full roster</button></div>
+          </div>
+          ${controlsHtml()}
+        </section>
       </div>
       <footer class="foot">
         <p>Fan-made game. Pokémon and its characters are trademarks of Nintendo, Game Freak and The Pokémon Company. Sprites from PokeAPI.</p>
@@ -162,6 +170,7 @@ export function menuScreen(root: HTMLElement, settings: Settings, onChange: () =
     startNew.classList.add('warn');
   };
   root.querySelector('[data-go="quick"]')!.addEventListener('click', opts.onQuick);
+  root.querySelector('[data-go="roster"]')!.addEventListener('click', opts.onRoster);
   startNew.addEventListener('click', tryNew);
   root.querySelector('[data-go="continue"]')?.addEventListener('click', opts.onContinue);
   root.querySelector('[data-go="resume-draft"]')?.addEventListener('click', opts.onResumeDraft);

@@ -32,7 +32,8 @@ export function monCard(m: Mon, extra = ''): string {
     </button>`;
 }
 
-function detailHtml(m: Mon, canPick: boolean): string {
+/** A Pokémon's scouting card. `canPick` null leaves off the draft button (roster browser). */
+export function detailHtml(m: Mon, canPick: boolean | null): string {
   const bars = (Object.keys(RATING_LABELS) as (keyof Ratings)[]).map((k) => {
     const v = m.r[k];
     return `<div class="rt"><span>${RATING_LABELS[k]}</span><b class="t-${tier(v)}">${v}</b><i style="--v:${v}%"></i></div>`;
@@ -52,7 +53,7 @@ function detailHtml(m: Mon, canPick: boolean): string {
       <span class="lbl">Special: ${m.move}</span>
       <p>${SPECIALS[m.special].label}. ${SPECIALS[m.special].desc}</p>
     </div>
-    <button class="btn primary big pick" ${canPick ? '' : 'disabled'}>${canPick ? `Draft ${esc(m.name)}` : 'Waiting for your pick'}</button>`;
+    ${canPick === null ? '' : `<button class="btn primary big pick" ${canPick ? '' : 'disabled'}>${canPick ? `Draft ${esc(m.name)}` : 'Waiting for your pick'}</button>`}`;
 }
 
 export interface DraftTeam {

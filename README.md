@@ -26,6 +26,8 @@ Poké Jam has two modes.
 
 **Quick Play:** pick any Gym Leader or the Elite Four, snake-draft five Pokémon against them (60 seconds a pick), choose the venue, and play. Pure arcade: no stamina, nothing saved. Rematch, redraft or pick a new opponent afterwards.
 
+**Roster:** browse every Pokémon from the title screen: sort by any rating, filter by position or type, search, and tap one for its full card with special move, stamina, size and evolution.
+
 **Franchise:** your team and its Pokémon carry over from season to season, and progress is saved in the browser.
 
 1. **Name your team** on the title screen and start a franchise (or continue a saved one).

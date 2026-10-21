@@ -14,6 +14,7 @@ import { playGame } from './screens/play';
 import { quickPlay } from './screens/quick';
 import { resultsScreen } from './screens/results';
 import { rookieScreen } from './screens/rookies';
+import { rosterScreen } from './screens/roster';
 import { badgeSvg } from './ui/badges';
 import { abbr, esc, shuffle } from './util';
 
@@ -74,6 +75,11 @@ function menu() {
       menu();
       const status = app.querySelector('.foot-status');
       if (status) status.textContent = 'All saved data on this device was deleted.';
+    },
+    onRoster: () => {
+      app.className = 'screen-roster';
+      window.scrollTo(0, 0);
+      rosterScreen(app, menu);
     },
     onQuick: () => {
       audio.unlock();
