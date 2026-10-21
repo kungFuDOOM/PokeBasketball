@@ -7,7 +7,7 @@ import { shareUrl, type SharedTeam } from '../season/share';
 import { renderShareCard, shareOrDownload, download, fileName } from '../season/shareImage';
 import { PLAYOFF_TEXT, simulateSeason, type SeasonResult, type SimInput } from '../season/sim';
 import { abbr, esc, shuffle, tier } from '../util';
-import { draftScreen } from './draft';
+import { draftScreen, type DraftTeam } from './draft';
 import type { Settings } from './menu';
 import type { Mon } from '../data/pokemon';
 
@@ -29,13 +29,16 @@ export function toShared(name: string, color: string, color2: string, mons: Mon[
 
 /** Starts the draft. Never saved mid-way, so it can't touch the franchise draft save. */
 export function seasonMode(root: HTMLElement, settings: Settings, audio: Audio, act: SeasonActions) {
-  const name = settings.teamName.trim() || 'Pallet Town';
+  const defaultName = settings.teamName.trim() || 'Pallet Town';
+  /** The human team. The draft summary can rename and recolor it, so everything after the draft reads from here. */
+  let user: DraftTeam = { name: defaultName, abbr: abbr(defaultName), ...USER_STYLE, human: true };
 
   function draft() {
     root.className = 'screen-draft';
     window.scrollTo(0, 0);
-    const teams = [
-      { name, abbr: abbr(name), ...USER_STYLE, human: true },
+    user = { name: defaultName, abbr: abbr(defaultName), ...USER_STYLE, human: true };
+    const teams: DraftTeam[] = [
+      user,
       ...LEAGUE.map((t) => ({ ...t, human: false })),
     ];
     draftScreen(root, { teams, order: shuffle(teams.map((_, i) => i)), taken: [], rounds: 10 }, audio,
@@ -46,12 +49,12 @@ export function seasonMode(root: HTMLElement, settings: Settings, audio: Audio, 
     const input: SimInput = {
       seed: seedOf(),
       teams: [
-        { name, abbr: abbr(name), ...USER_STYLE, roster: rosters[0] },
+        { name: user.name, abbr: user.abbr, color: user.color, color2: user.color2, roster: rosters[0] },
         ...LEAGUE.map((t, i) => ({ name: t.name, abbr: t.abbr, color: t.color, color2: t.color2, boost: t.boost, roster: rosters[i + 1] })),
       ],
     };
     const result = simulateSeason(input);
-    saveDrafted({ name, abbr: abbr(name), colors: { color: USER_STYLE.color, color2: USER_STYLE.color2 }, mons: rosters[0], record: { w: result.user.w, l: result.user.l }, rank: result.user.rank });
+    saveDrafted({ name: user.name, abbr: user.abbr, colors: { color: user.color, color2: user.color2 }, mons: rosters[0], record: { w: result.user.w, l: result.user.l }, rank: result.user.rank });
     ticker(input, rosters[0], result);
   }
 
@@ -95,17 +98,17 @@ export function seasonMode(root: HTMLElement, settings: Settings, audio: Audio, 
     root.className = 'screen-season';
     window.scrollTo(0, 0);
     const u = r.user;
-    const shared = toShared(name, USER_STYLE.color, USER_STYLE.color2, mons, r);
+    const shared = toShared(user.name, user.color, user.color2, mons, r);
     const url = shareUrl(shared);
     const pots = r.players[r.pots];
     const t = (i: number) => input.teams[i];
     const playoffGames = r.playoffs.map((g) => `<li><span>${g.round === 'final' ? 'Final' : 'Semi'}</span> ${esc(t(g.a).abbr)} ${g.sa} - ${g.sb} ${esc(t(g.b).abbr)} <b>${esc(t(g.winner).abbr)}</b></li>`).join('');
     root.innerHTML = `
       <div class="ss-wrap">
-        <header class="ss-head" style="--tc:${USER_STYLE.color}">
+        <header class="ss-head" style="--tc:${user.color}">
           <div>
             <p class="eyebrow">Season Draft · Final</p>
-            <h2>${esc(name)}</h2>
+            <h2>${esc(user.name)}</h2>
             <p class="ss-po ${u.playoff}">${PLAYOFF_TEXT[u.playoff]}</p>
           </div>
           <div class="ss-grade" aria-label="Grade ${u.grade}"><small>Grade</small><b>${u.grade}</b></div>

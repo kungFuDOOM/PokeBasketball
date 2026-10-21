@@ -94,7 +94,7 @@ export function quickPlay(root: HTMLElement, settings: Settings, audio: Audio, a
     const teams = [user(), { ...opp, human: false }];
     draftScreen(root, { teams, order: shuffle([0, 1]), taken: [], rounds: 5 }, audio,
       (rosters) => matchup(opp, rosters[0], rosters[1], courtFor(opp)),
-      pickOpponent, () => {});
+      pickOpponent, () => {}, { customize: false });
   }
 
   function matchup(opp: LeagueTeam, mine: Mon[], theirs: Mon[], court: CourtStyle) {
