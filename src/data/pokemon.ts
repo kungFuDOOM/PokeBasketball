@@ -116,6 +116,8 @@ export type Row = [number, string, PokeType[], Pos, number, number, number, numb
 
 const ROWS: Row[] = [
   [150, 'Mewtwo', ['Psychic'], 'SF', 88, 96, 95, 88, 88, 86, 84, 86],
+  [249, 'Lugia', ['Psychic', 'Flying'], 'C', 88, 75, 84, 87, 89, 99, 92, 84],
+  [250, 'Ho-Oh', ['Fire', 'Flying'], 'C', 77, 81, 97, 88, 82, 93, 89, 80],
   [25, 'Pikachu', ['Electric'], 'PG', 94, 72, 62, 72, 66, 36, 42, 86],
   [65, 'Alakazam', ['Psychic'], 'PG', 86, 96, 55, 95, 60, 50, 50, 85],
   [94, 'Gengar', ['Ghost', 'Poison'], 'SF', 86, 84, 80, 72, 88, 70, 62, 86],

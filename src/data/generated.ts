@@ -176,8 +176,6 @@ export const GENERATED_ROWS: Row[] = [
   [245, 'Suicune', ['Water'], 'C', 74, 74, 76, 76, 81, 91, 83, 74],
   [246, 'Larvitar', ['Rock', 'Ground'], 'SG', 50, 57, 64, 53, 61, 46, 55, 52],
   [247, 'Pupitar', ['Rock', 'Ground'], 'PF', 55, 64, 75, 60, 68, 61, 69, 58],
-  [249, 'Lugia', ['Psychic', 'Flying'], 'C', 88, 75, 82, 87, 89, 99, 90, 84],
-  [250, 'Ho-Oh', ['Fire', 'Flying'], 'C', 77, 81, 97, 88, 82, 95, 89, 80],
   [251, 'Celebi', ['Psychic', 'Grass'], 'PG', 83, 78, 82, 76, 83, 73, 78, 77],
 ];
 
