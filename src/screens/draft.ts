@@ -371,8 +371,9 @@ export function draftScreen(
   // Replay saved picks to resume a draft in progress.
   const saved = state.taken.splice(0);
   for (const dex of saved) {
-    const m = pool.find((x) => x.dex === dex);
-    if (m && pick < picks.length) record(m);
+    if (pick >= picks.length) break;
+    // A Pokémon no longer in the game (older save): that pick becomes the team's best available.
+    record(pool.find((x) => x.dex === dex) ?? cpuPick(pool, rosters[picks[pick]], teams[picks[pick]].types));
   }
   if (saved.length) log.push(`Draft resumed at pick ${pick + 1}.`);
   if (pick >= picks.length) return finish();

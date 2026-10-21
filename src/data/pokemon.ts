@@ -120,34 +120,29 @@ const ROWS: Row[] = [
   [65, 'Alakazam', ['Psychic'], 'PG', 72, 96, 55, 97, 60, 50, 50, 85],
   [94, 'Gengar', ['Ghost', 'Poison'], 'SF', 86, 82, 80, 72, 96, 70, 62, 86],
   [6, 'Charizard', ['Fire', 'Flying'], 'SF', 86, 82, 95, 70, 76, 76, 74, 76],
-  [658, 'Greninja', ['Water', 'Dark'], 'SG', 94, 88, 78, 80, 82, 55, 58, 88],
   [448, 'Lucario', ['Fighting', 'Steel'], 'SG', 86, 88, 82, 80, 84, 60, 62, 86],
   [445, 'Garchomp', ['Dragon', 'Ground'], 'PF', 92, 66, 96, 60, 84, 84, 82, 70],
   [149, 'Dragonite', ['Dragon', 'Flying'], 'C', 74, 70, 92, 72, 76, 88, 92, 66],
   [384, 'Rayquaza', ['Dragon', 'Flying'], 'PF', 84, 76, 96, 66, 78, 88, 90, 70],
   [151, 'Mew', ['Psychic'], 'PG', 88, 88, 80, 90, 78, 70, 68, 88],
-  [887, 'Dragapult', ['Dragon', 'Ghost'], 'SG', 98, 90, 80, 76, 80, 60, 56, 86],
   [257, 'Blaziken', ['Fire', 'Fighting'], 'SF', 88, 76, 95, 68, 78, 74, 70, 80],
   [248, 'Tyranitar', ['Rock', 'Dark'], 'C', 60, 58, 94, 56, 82, 92, 92, 58],
   [143, 'Snorlax', ['Normal'], 'C', 38, 56, 90, 68, 70, 94, 98, 48],
-  [9, 'Blastoise', ['Water'], 'PF', 58, 90, 82, 66, 72, 84, 86, 60],
+  [9, 'Blastoise', ['Water'], 'PF', 62, 92, 88, 72, 80, 88, 90, 64],
   [131, 'Lapras', ['Water', 'Ice'], 'C', 52, 70, 78, 86, 68, 86, 90, 58],
   [376, 'Metagross', ['Steel', 'Psychic'], 'C', 58, 64, 90, 70, 84, 94, 90, 60],
   [145, 'Zapdos', ['Electric', 'Flying'], 'SF', 86, 78, 92, 68, 80, 82, 76, 74],
-  [807, 'Zeraora', ['Electric'], 'SG', 98, 76, 86, 70, 80, 50, 55, 87],
-  [815, 'Cinderace', ['Fire'], 'SG', 93, 86, 84, 74, 72, 52, 56, 89],
   [392, 'Infernape', ['Fire', 'Fighting'], 'SG', 92, 82, 88, 72, 74, 55, 58, 86],
   [461, 'Weavile', ['Dark', 'Ice'], 'PG', 94, 74, 64, 75, 93, 50, 52, 90],
   [196, 'Espeon', ['Psychic'], 'SG', 85, 93, 62, 86, 66, 48, 52, 84],
   [197, 'Umbreon', ['Dark'], 'SF', 78, 72, 66, 74, 93, 72, 70, 76],
   [282, 'Gardevoir', ['Psychic', 'Fairy'], 'PG', 74, 90, 66, 88, 70, 72, 66, 78],
-  [212, 'Scizor', ['Bug', 'Steel'], 'SF', 80, 74, 80, 64, 92, 78, 72, 74],
+  [212, 'Scizor', ['Bug', 'Steel'], 'SF', 82, 78, 86, 66, 94, 80, 74, 76],
   [130, 'Gyarados', ['Water', 'Flying'], 'C', 70, 54, 92, 52, 76, 90, 92, 60],
   [68, 'Machamp', ['Fighting'], 'PF', 66, 52, 93, 60, 80, 82, 90, 62],
   [59, 'Arcanine', ['Fire'], 'SF', 94, 72, 88, 66, 76, 64, 68, 78],
-  [701, 'Hawlucha', ['Fighting', 'Flying'], 'SG', 90, 70, 90, 66, 76, 60, 58, 82],
   [466, 'Electivire', ['Electric'], 'PF', 72, 62, 92, 58, 78, 84, 86, 66],
-  [26, 'Raichu', ['Electric'], 'PG', 93, 80, 72, 80, 70, 44, 48, 88],
+  [26, 'Raichu', ['Electric'], 'PG', 94, 87, 78, 86, 76, 48, 52, 93],
   [135, 'Jolteon', ['Electric'], 'PG', 97, 80, 68, 78, 76, 42, 48, 90],
   [95, 'Onix', ['Rock', 'Ground'], 'C', 48, 40, 84, 44, 66, 96, 88, 46],
   [76, 'Golem', ['Rock', 'Ground'], 'PF', 45, 48, 88, 50, 72, 88, 86, 50],
@@ -155,8 +150,8 @@ const ROWS: Row[] = [
   [106, 'Hitmonlee', ['Fighting'], 'SF', 84, 68, 90, 56, 78, 72, 60, 70],
   [107, 'Hitmonchan', ['Fighting'], 'SG', 82, 74, 72, 60, 88, 60, 58, 78],
   [122, 'Mr. Mime', ['Psychic', 'Fairy'], 'PF', 64, 66, 60, 78, 90, 86, 70, 70],
-  [133, 'Eevee', ['Normal'], 'PG', 82, 76, 64, 80, 68, 40, 44, 82],
-  [7, 'Squirtle', ['Water'], 'PG', 80, 84, 58, 76, 70, 44, 50, 80],
+  [133, 'Eevee', ['Normal'], 'PG', 76, 64, 56, 68, 58, 36, 42, 70],
+  [7, 'Squirtle', ['Water'], 'PG', 66, 70, 52, 64, 60, 40, 46, 66],
   [53, 'Persian', ['Normal'], 'PG', 90, 78, 58, 76, 80, 40, 45, 86],
   [39, 'Jigglypuff', ['Normal', 'Fairy'], 'PG', 66, 74, 50, 80, 60, 30, 36, 72],
   [132, 'Ditto', ['Normal'], 'PG', 70, 70, 70, 70, 70, 70, 70, 70],
@@ -170,7 +165,6 @@ const ROWS: Row[] = [
   [141, 'Kabutops', ['Rock', 'Water'], 'SF', 82, 72, 84, 62, 84, 64, 62, 76],
   [139, 'Omastar', ['Rock', 'Water'], 'PF', 48, 76, 72, 70, 74, 84, 84, 56],
   [185, 'Sudowoodo', ['Rock'], 'PF', 56, 60, 80, 58, 82, 80, 80, 58],
-  [745, 'Lycanroc', ['Rock'], 'SG', 92, 82, 82, 66, 78, 54, 56, 84],
   // Water
   [121, 'Starmie', ['Water', 'Psychic'], 'PG', 92, 86, 64, 86, 72, 52, 52, 88],
   [134, 'Vaporeon', ['Water'], 'PF', 62, 72, 82, 74, 70, 82, 88, 62],
@@ -178,7 +172,6 @@ const ROWS: Row[] = [
   [160, 'Feraligatr', ['Water'], 'SF', 76, 70, 90, 58, 84, 74, 80, 70],
   [230, 'Kingdra', ['Water', 'Dragon'], 'SG', 82, 90, 72, 74, 72, 62, 62, 80],
   [350, 'Milotic', ['Water'], 'C', 60, 72, 78, 84, 72, 86, 88, 62],
-  [730, 'Primarina', ['Water', 'Fairy'], 'SG', 72, 88, 70, 86, 70, 70, 66, 78],
   [91, 'Cloyster', ['Water', 'Ice'], 'C', 52, 58, 78, 52, 88, 94, 84, 50],
   [62, 'Poliwrath', ['Water', 'Fighting'], 'PF', 64, 64, 88, 60, 82, 78, 82, 62],
   // Electric
@@ -193,9 +186,7 @@ const ROWS: Row[] = [
   [71, 'Victreebel', ['Grass', 'Poison'], 'SF', 70, 70, 82, 64, 82, 74, 70, 66],
   [154, 'Meganium', ['Grass'], 'C', 52, 60, 80, 80, 72, 84, 88, 58],
   [465, 'Tangrowth', ['Grass'], 'PF', 48, 54, 90, 58, 76, 86, 92, 50],
-  [724, 'Decidueye', ['Grass', 'Ghost'], 'SG', 80, 92, 70, 72, 80, 56, 58, 80],
   [470, 'Leafeon', ['Grass'], 'SF', 86, 78, 80, 70, 80, 62, 62, 78],
-  [812, 'Rillaboom', ['Grass'], 'PF', 66, 62, 92, 66, 80, 80, 84, 62],
   // Poison
   [110, 'Weezing', ['Poison'], 'C', 40, 52, 70, 60, 78, 90, 86, 48],
   [89, 'Muk', ['Poison'], 'C', 36, 50, 84, 52, 76, 88, 94, 46],
@@ -230,31 +221,52 @@ const ROWS: Row[] = [
   [144, 'Articuno', ['Ice', 'Flying'], 'SF', 80, 82, 80, 74, 82, 84, 74, 72],
   [87, 'Dewgong', ['Water', 'Ice'], 'C', 56, 62, 74, 70, 74, 82, 86, 54],
   [534, 'Conkeldurr', ['Fighting'], 'PF', 50, 48, 94, 56, 80, 82, 88, 56],
-  [778, 'Mimikyu', ['Ghost', 'Fairy'], 'PG', 84, 82, 70, 84, 90, 52, 52, 86],
   [609, 'Chandelure', ['Ghost', 'Fire'], 'SF', 66, 92, 76, 70, 64, 70, 62, 70],
-  [681, 'Aegislash', ['Steel', 'Ghost'], 'PF', 58, 76, 82, 66, 92, 88, 76, 66],
   [373, 'Salamence', ['Dragon', 'Flying'], 'PF', 86, 72, 94, 62, 80, 82, 84, 68],
   [612, 'Haxorus', ['Dragon'], 'SF', 84, 70, 96, 60, 82, 72, 72, 70],
   [635, 'Hydreigon', ['Dark', 'Dragon'], 'SF', 84, 86, 88, 70, 80, 74, 72, 76],
-  [706, 'Goodra', ['Dragon'], 'C', 52, 66, 84, 72, 80, 90, 90, 56],
   // Everyone else
   [128, 'Tauros', ['Normal'], 'SF', 92, 62, 88, 54, 78, 66, 62, 72],
   [115, 'Kangaskhan', ['Normal'], 'PF', 70, 64, 86, 72, 80, 76, 84, 70],
   [242, 'Blissey', ['Normal'], 'C', 30, 60, 60, 90, 50, 70, 99, 50],
   [468, 'Togekiss', ['Fairy', 'Flying'], 'PG', 80, 84, 62, 92, 64, 62, 62, 80],
-  [700, 'Sylveon', ['Fairy'], 'SF', 70, 86, 66, 84, 72, 70, 68, 76],
   [571, 'Zoroark', ['Dark'], 'PG', 92, 84, 74, 82, 82, 48, 52, 92],
   [123, 'Scyther', ['Bug', 'Flying'], 'SG', 92, 74, 80, 62, 90, 58, 56, 82],
   [214, 'Heracross', ['Bug', 'Fighting'], 'PF', 74, 56, 92, 54, 82, 80, 84, 62],
   [127, 'Pinsir', ['Bug'], 'PF', 70, 52, 86, 50, 84, 76, 78, 58],
+  // Cocoons: slow, but sturdier than the caterpillars they come from
+  [11, 'Metapod', ['Bug'], 'C', 40, 50, 52, 48, 62, 56, 58, 48],
+  [14, 'Kakuna', ['Bug', 'Poison'], 'C', 44, 50, 54, 48, 64, 58, 58, 50],
   // Evolved forms with hand-tuned ratings
   [55, 'Golduck', ['Water'], 'SG', 80, 82, 70, 72, 74, 55, 60, 78],
   [80, 'Slowbro', ['Water', 'Psychic'], 'PF', 38, 84, 74, 80, 64, 78, 80, 62],
-  [8, 'Wartortle', ['Water'], 'PG', 84, 87, 64, 78, 74, 50, 56, 82],
+  [8, 'Wartortle', ['Water'], 'PG', 74, 78, 60, 72, 68, 46, 52, 74],
   [40, 'Wigglytuff', ['Normal', 'Fairy'], 'PG', 70, 80, 60, 86, 66, 50, 60, 78],
   [208, 'Steelix', ['Steel', 'Ground'], 'C', 50, 44, 90, 48, 82, 98, 92, 50],
 ];
 
+/**
+ * Gen 6+ Pokémon that used to be in the game. Poké Jam is Gen 1-5 now: these are not draftable and never
+ * appear in a new league, but stay here so older franchise saves (box scores, awards) still load.
+ */
+const RETIRED_ROWS: Row[] = [
+  [658, 'Greninja', ['Water', 'Dark'], 'SG', 94, 88, 78, 80, 82, 55, 58, 88],
+  [887, 'Dragapult', ['Dragon', 'Ghost'], 'SG', 98, 90, 80, 76, 80, 60, 56, 86],
+  [807, 'Zeraora', ['Electric'], 'SG', 98, 76, 86, 70, 80, 50, 55, 87],
+  [815, 'Cinderace', ['Fire'], 'SG', 93, 86, 84, 74, 72, 52, 56, 89],
+  [701, 'Hawlucha', ['Fighting', 'Flying'], 'SG', 90, 70, 90, 66, 76, 60, 58, 82],
+  [745, 'Lycanroc', ['Rock'], 'SG', 92, 82, 82, 66, 78, 54, 56, 84],
+  [730, 'Primarina', ['Water', 'Fairy'], 'SG', 72, 88, 70, 86, 70, 70, 66, 78],
+  [724, 'Decidueye', ['Grass', 'Ghost'], 'SG', 80, 92, 70, 72, 80, 56, 58, 80],
+  [812, 'Rillaboom', ['Grass'], 'PF', 66, 62, 92, 66, 80, 80, 84, 62],
+  [778, 'Mimikyu', ['Ghost', 'Fairy'], 'PG', 84, 82, 70, 84, 90, 52, 52, 86],
+  [681, 'Aegislash', ['Steel', 'Ghost'], 'PF', 58, 76, 82, 66, 92, 88, 76, 66],
+  [706, 'Goodra', ['Dragon'], 'C', 52, 66, 84, 72, 80, 90, 90, 56],
+  [700, 'Sylveon', ['Fairy'], 'SF', 70, 86, 66, 84, 72, 70, 68, 76],
+];
+
+/** Highest dex number in the draft pool (end of Gen 5). */
+export const LAST_DEX = 649;
 
 const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
 
@@ -296,12 +308,12 @@ function buildMon([dex, name, types, pos, spd, sht, ins, pas, def, blk, reb, hnd
 /** The draft pool. */
 const HAND = new Set(ROWS.map((r) => r[0]));
 
-/** The draft pool: every Gen 1 and Gen 2 Pokémon plus later favorites. Hand-tuned rows win over generated ones. */
+/** The draft pool: every Gen 1 and Gen 2 Pokémon plus favorites from Gens 3-5. Hand-tuned rows win over generated ones. */
 export const POKEMON: Mon[] = [...ROWS, ...GENERATED_ROWS.filter((r) => !HAND.has(r[0]))]
   .sort((a, b) => a[0] - b[0])
   .map(buildMon);
 
-const BY_DEX = new Map<number, Mon>(POKEMON.map((m) => [m.dex, m]));
+const BY_DEX = new Map<number, Mon>([...POKEMON, ...RETIRED_ROWS.map(buildMon)].map((m) => [m.dex, m]));
 
 export function monByDex(dex: number): Mon {
   const m = BY_DEX.get(dex);

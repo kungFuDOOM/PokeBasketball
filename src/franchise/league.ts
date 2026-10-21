@@ -1,4 +1,4 @@
-import { EVOLUTIONS, RATING_LABELS, monByDex, positionWeights, withBonus, type Mon, type PokeType, type Ratings } from '../data/pokemon';
+import { EVOLUTIONS, LAST_DEX, RATING_LABELS, monByDex, positionWeights, withBonus, type Mon, type PokeType, type Ratings } from '../data/pokemon';
 import { Game, bestLineup } from '../game/game';
 import { courtFor, userCourt } from '../data/courts';
 import type { Difficulty, GameConfig, PStats, TeamDef } from '../game/types';
@@ -255,12 +255,37 @@ export function saveFranchise(f: Franchise) {
   } catch { /* storage unavailable: the franchise lives for this visit only */ }
 }
 
+/**
+ * Older saves can hold Gen 6+ Pokémon, which are no longer in the game: drop them from free agency and the
+ * rookie class, and replace any on a roster with the best free agent at the same position.
+ */
+function retireLegacy(f: Franchise) {
+  const gone = (u: string) => f.players[u].dex > LAST_DEX;
+  f.freeAgents = f.freeAgents.filter((u) => !gone(u));
+  if (f.rookies) f.rookies.pool = f.rookies.pool.filter((u) => !gone(u) || f.rookies!.picks.includes(u));
+  for (const t of f.teams) {
+    for (const u of t.roster.filter(gone)) {
+      const old = monOf(f, u);
+      const fas = [...f.freeAgents].sort((a, b) => monOf(f, b).ovr - monOf(f, a).ovr);
+      const add = fas.find((x) => monOf(f, x).pos === old.pos) ?? fas[0];
+      if (!add) continue;
+      t.roster = t.roster.map((x) => (x === u ? add : x));
+      if (t.lineup) t.lineup = t.lineup.map((x) => (x === u ? add : x));
+      f.freeAgents.splice(f.freeAgents.indexOf(add), 1);
+      f.news.unshift(`${old.name} left the league (Poké Jam is Gen 1-5 now). ${t.name} signed ${monOf(f, add).name}.`);
+    }
+  }
+  f.news = f.news.slice(0, 8);
+}
+
 export function loadFranchise(): Franchise | null {
   try {
     const raw = localStorage.getItem(SAVE_KEY);
     if (!raw) return null;
     const f = JSON.parse(raw) as Franchise;
-    return f.version === 1 ? f : null;
+    if (f.version !== 1) return null;
+    retireLegacy(f);
+    return f;
   } catch {
     return null;
   }

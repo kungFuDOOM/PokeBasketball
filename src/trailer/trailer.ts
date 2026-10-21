@@ -63,11 +63,11 @@ class SeededGame {
 const mons = (dexes: number[]) => dexes.map(monByDex);
 const HOME: TeamDef = {
   name: 'Pallet Town', abbr: 'PAL', color: '#3b6fd8', color2: '#16224a', human: false,
-  roster: mons([25, 658, 6, 445, 143]),
+  roster: mons([25, 448, 6, 445, 143]),
 };
 const AWAY: TeamDef = {
   name: 'Team Rocket', abbr: 'RKT', color: '#d8343b', color2: '#3a1218', human: false,
-  roster: mons([65, 887, 94, 150, 149]),
+  roster: mons([65, 381, 94, 150, 149]),
 };
 
 // ---------- highlight scan ----------

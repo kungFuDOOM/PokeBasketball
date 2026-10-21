@@ -6,6 +6,8 @@ import { readFile, writeFile } from 'node:fs/promises';
 
 const CSV = 'https://raw.githubusercontent.com/PokeAPI/pokeapi/master/data/v2/csv';
 const MAX_DEX = 251;
+/** Gen 1-5 only; must match LAST_DEX in pokemon.ts. */
+const LAST_DEX = 649;
 
 function parseCsv(text) {
   const rows = [];
@@ -49,6 +51,7 @@ const handSrc = await readFile(new URL('../src/data/pokemon.ts', import.meta.url
 const KEYS = ['spd', 'sht', 'ins', 'pas', 'def', 'blk', 'reb', 'hnd'];
 const hand = {};
 for (const m of handSrc.matchAll(/^\s*\[(\d+), '[^']*', \[[^\]]*\], '\w+', ([\d, ]+)\],/gm)) {
+  if (Number(m[1]) > LAST_DEX) continue; // retired Gen 6+ rows
   const v = m[2].split(',').map((x) => Number(x.trim()));
   hand[m[1]] = Object.fromEntries(KEYS.map((k, i) => [k, v[i]]));
 }
