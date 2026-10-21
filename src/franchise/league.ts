@@ -82,7 +82,17 @@ export interface FGame {
   score: [number, number] | null; // [home, away]
   round?: 'semi' | 'final';
   pog?: string;
+  /** Box score, kept for the current season. Missing for games played before box scores were saved. */
+  box?: BoxLine[];
+  /** Periods played (5+ means overtime). */
+  q?: number;
 }
+
+/**
+ * One player's line in a stored box score: uid, dex at the time (they may evolve later), side (0 home,
+ * 1 away), starter flag, then seconds played, PTS, FGM, FGA, 3PM, 3PA, REB, AST, STL, BLK, DNK.
+ */
+export type BoxLine = [string, number, 0 | 1, 0 | 1, number, number, number, number, number, number, number, number, number, number, number];
 
 export interface Progress {
   uid: string;
@@ -489,6 +499,13 @@ export function recordGame(f: Franchise, fg: FGame, g: Game, sides: [number, num
       progress.push(entry);
     }
   }
+  fg.q = g.quarter;
+  fg.box = [...g.rosterOf(0), ...g.rosterOf(1)].flatMap((gp): BoxLine[] => {
+    const uid = uidOf.get(gp.mon);
+    if (!uid) return [];
+    const s = gp.stats;
+    return [[uid, gp.mon.dex, sides[gp.team] === fg.home ? 0 : 1, gp.starter ? 1 : 0, Math.round(s.sec), s.pts, s.fgm, s.fga, s.tpm, s.tpa, s.reb, s.ast, s.stl, s.blk, s.dnk]];
+  });
   f.news = f.news.slice(0, 8);
   return progress;
 }

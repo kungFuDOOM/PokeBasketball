@@ -15,6 +15,8 @@ export interface HubActions {
   simWeek(): void;
   /** Start or resume the offseason rookie draft. */
   rookies(): void;
+  /** Every game this season, with box scores. */
+  games(): void;
   menu(): void;
   /** Franchise or settings changed and should be saved. */
   saved(): void;
@@ -237,6 +239,7 @@ function scoresHtml(f: Franchise): string {
     <section class="card">
       <h3 class="sec">${wk ? `${weekLabel(f, wk)} scores` : 'Scores'}</h3>
       <ul class="scores">${games.map(line).join('') || '<li class="empty">No games played yet</li>'}</ul>
+      <div class="actions"><button class="btn small" data-a="games">All games &amp; box scores</button></div>
       <h3 class="sec">League news</h3>
       <ul class="news">${f.news.map((n) => `<li>${esc(n)}</li>`).join('') || '<li class="empty">Quiet so far.</li>'}</ul>
     </section>`;
@@ -399,6 +402,7 @@ export function hubScreen(root: HTMLElement, f: Franchise, settings: Settings, a
     else if (a === 'sim-mine' && g) act.simMine(g);
     else if (a === 'sim-week') act.simWeek();
     else if (a === 'rookies') act.rookies();
+    else if (a === 'games') act.games();
   });
 
   render();

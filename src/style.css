@@ -823,14 +823,18 @@ li.empty { color: var(--muted); }
 .box th, .box td { padding: 5px 6px; text-align: right; white-space: nowrap; }
 .box thead th { color: var(--muted); font-size: 0.8rem; letter-spacing: 0.08em; }
 .box tbody th, .box tfoot th, .box thead th:first-child { text-align: left; }
-.box tbody th { display: flex; align-items: center; gap: 6px; font-weight: 700; }
-.box tbody th img { width: 28px; height: 28px; image-rendering: pixelated; }
-.box tbody th small { color: var(--muted); }
+/* The name column stays a real table cell (a flex <th> breaks the column widths on phones) and sticks
+   to the left while the stats scroll. */
+.box tbody th, .box tfoot th, .box thead th:first-child { position: sticky; left: 0; z-index: 1; background: var(--panel); }
+.box .who { display: flex; align-items: center; gap: 6px; font-weight: 700; }
+.box .who img { width: 28px; height: 28px; image-rendering: pixelated; flex-shrink: 0; }
+.box .who span { display: flex; flex-direction: column; line-height: 1.1; }
+.box .who small { color: var(--muted); font-size: 0.75rem; }
 .box tbody tr { border-top: 1px solid var(--line); }
 .box tfoot { border-top: 2px solid var(--line); font-weight: 800; }
 .box tr.bench th { opacity: 0.85; }
 .box tr.dnp { color: var(--muted); }
-.box tr.dnp td:first-of-type { text-align: left; }
+.box tr.dnp td.dnp-l { text-align: left; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
@@ -948,3 +952,29 @@ li.empty { color: var(--muted); }
   .rd-card.detail { position: relative; left: auto; right: auto; bottom: auto; border-radius: 12px; max-height: 86vh; }
 }
 @media (max-width: 600px) { .rd-tbl .rd-name img { width: 32px; height: 32px; } }
+
+/* franchise game log */
+.gamelog .gl-weeks { margin-bottom: 14px; }
+.gamelog .gl-weeks button.later { opacity: 0.55; }
+.gl-list { list-style: none; margin: 0 0 12px; padding: 0; display: grid; gap: 8px; }
+.gl-row {
+  width: 100%;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  gap: 4px 10px;
+  align-items: center;
+  padding: 10px 14px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  color: var(--muted);
+  text-align: left;
+}
+button.gl-row:hover { border-color: var(--muted); }
+.gl-row.mine { border-color: var(--accent); }
+.gl-row small { grid-column: 1 / -1; font-size: 0.85rem; }
+.gl-row.upcoming { opacity: 0.7; }
+.gl-team { display: flex; justify-content: space-between; gap: 8px; font-weight: 700; border-left: 4px solid var(--tc); padding-left: 8px; min-width: 0; }
+.gl-team b { font: 800 1.3rem/1 var(--sport); font-variant-numeric: tabular-nums; }
+.gl-team.win { color: var(--fg); }
+.gl-at { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.08em; }

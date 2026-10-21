@@ -1,4 +1,4 @@
-import { spriteUrl } from '../data/pokemon';
+import { spriteUrl, type Pos } from '../data/pokemon';
 import type { Game } from '../game/game';
 import type { Player, TeamId } from '../game/types';
 import { esc } from '../util';
@@ -7,6 +7,46 @@ const gameScore = (p: Player) => {
   const s = p.stats;
   return s.pts + s.reb * 1.2 + s.ast * 1.5 + s.stl * 2 + s.blk * 2 - (s.fga - s.fgm) * 0.4;
 };
+
+/** A player's line in a box score, from a live game or one saved in franchise mode. */
+export interface BoxRow {
+  dex: number;
+  name: string;
+  pos: Pos;
+  starter: boolean;
+  sec: number;
+  pts: number; fgm: number; fga: number; tpm: number; tpa: number;
+  reb: number; ast: number; stl: number; blk: number; dnk: number;
+}
+
+const mins = (sec: number) => `${Math.floor(sec / 60)}:${String(Math.floor(sec % 60)).padStart(2, '0')}`;
+
+/** One team's box score. `withBench` adds minutes and marks players who didn't play. */
+export function boxHtml(name: string, color: string, score: number, rows: BoxRow[], withBench: boolean): string {
+  const keys = ['pts', 'fgm', 'fga', 'tpm', 'tpa', 'reb', 'ast', 'stl', 'blk', 'dnk'] as const;
+  const tot = Object.fromEntries(keys.map((k) => [k, rows.reduce((a, r) => a + r[k], 0)])) as Record<(typeof keys)[number], number>;
+  const body = rows.map((r) => {
+    const who = `<th><div class="who"><img src="${spriteUrl(r.dex)}" alt=""><span>${esc(r.name)}<small>${r.pos}</small></span></div></th>`;
+    if (withBench && r.sec === 0) return `<tr class="dnp">${who}<td class="dnp-l">DNP</td><td colspan="8"></td></tr>`;
+    return `<tr class="${r.starter ? '' : 'bench'}">
+      ${who}
+      ${withBench ? `<td>${mins(r.sec)}</td>` : ''}
+      <td>${r.pts}</td><td>${r.fgm}-${r.fga}</td><td>${r.tpm}-${r.tpa}</td>
+      <td>${r.reb}</td><td>${r.ast}</td><td>${r.stl}</td><td>${r.blk}</td><td>${r.dnk}</td>
+    </tr>`;
+  }).join('');
+  return `
+    <div class="box" style="--tc:${color}">
+      <h3>${esc(name)} <b>${score}</b></h3>
+      <div class="box-scroll">
+        <table>
+          <thead><tr><th>Pokémon</th>${withBench ? '<th>MIN</th>' : ''}<th>PTS</th><th>FG</th><th>3PT</th><th>REB</th><th>AST</th><th>STL</th><th>BLK</th><th>DNK</th></tr></thead>
+          <tbody>${body}</tbody>
+          <tfoot><tr><th>Team</th>${withBench ? '<td></td>' : ''}<td>${tot.pts}</td><td>${tot.fgm}-${tot.fga}</td><td>${tot.tpm}-${tot.tpa}</td><td>${tot.reb}</td><td>${tot.ast}</td><td>${tot.stl}</td><td>${tot.blk}</td><td>${tot.dnk}</td></tr></tfoot>
+        </table>
+      </div>
+    </div>`;
+}
 
 export interface ResultsOptions {
   /** Line above the headline, e.g. "Week 3 · Final". */
@@ -26,36 +66,8 @@ export function resultsScreen(root: HTMLElement, g: Game, opts: ResultsOptions) 
   const headline = opts.headline ?? (!h.human ? `${g.teams[winner].name} win` : userWon ? 'You win!' : `${a.name} win`);
 
   const withBench = g.bench.length > 0;
-  const mins = (sec: number) => `${Math.floor(sec / 60)}:${String(Math.floor(sec % 60)).padStart(2, '0')}`;
-  const table = (t: TeamId) => {
-    const roster = g.rosterOf(t);
-    const rows = roster.map((p) => {
-      const s = p.stats;
-      const name = `<th><img src="${spriteUrl(p.mon.dex)}" alt="">${esc(p.mon.name)}<small>${p.mon.pos}</small></th>`;
-      if (withBench && s.sec === 0) return `<tr class="dnp">${name}<td>DNP</td><td colspan="8"></td></tr>`;
-      return `<tr class="${p.starter ? '' : 'bench'}">
-        ${name}
-        ${withBench ? `<td>${mins(s.sec)}</td>` : ''}
-        <td>${s.pts}</td><td>${s.fgm}-${s.fga}</td><td>${s.tpm}-${s.tpa}</td>
-        <td>${s.reb}</td><td>${s.ast}</td><td>${s.stl}</td><td>${s.blk}</td><td>${s.dnk}</td>
-      </tr>`;
-    }).join('');
-    const tot = roster.reduce((acc, p) => {
-      for (const k of Object.keys(p.stats) as (keyof Player['stats'])[]) acc[k] = (acc[k] ?? 0) + p.stats[k];
-      return acc;
-    }, {} as Record<keyof Player['stats'], number>);
-    return `
-      <div class="box" style="--tc:${g.teams[t].color}">
-        <h3>${esc(g.teams[t].name)} <b>${g.score[t]}</b></h3>
-        <div class="box-scroll">
-          <table>
-            <thead><tr><th>Pokémon</th>${withBench ? '<th>MIN</th>' : ''}<th>PTS</th><th>FG</th><th>3PT</th><th>REB</th><th>AST</th><th>STL</th><th>BLK</th><th>DNK</th></tr></thead>
-            <tbody>${rows}</tbody>
-            <tfoot><tr><th>Team</th>${withBench ? '<td></td>' : ''}<td>${tot.pts}</td><td>${tot.fgm}-${tot.fga}</td><td>${tot.tpm}-${tot.tpa}</td><td>${tot.reb}</td><td>${tot.ast}</td><td>${tot.stl}</td><td>${tot.blk}</td><td>${tot.dnk}</td></tr></tfoot>
-          </table>
-        </div>
-      </div>`;
-  };
+  const linesOf = (t: TeamId): BoxRow[] => g.rosterOf(t).map((p) => ({ dex: p.mon.dex, name: p.mon.name, pos: p.mon.pos, starter: p.starter, ...p.stats }));
+  const table = (t: TeamId) => boxHtml(g.teams[t].name, g.teams[t].color, g.score[t], linesOf(t), withBench);
 
   root.innerHTML = `
     <div class="results">

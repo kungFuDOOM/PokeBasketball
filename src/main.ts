@@ -15,6 +15,7 @@ import { quickPlay } from './screens/quick';
 import { resultsScreen } from './screens/results';
 import { rookieScreen } from './screens/rookies';
 import { rosterScreen } from './screens/roster';
+import { gamesScreen } from './screens/games';
 import { badgeSvg } from './ui/badges';
 import { abbr, esc, shuffle } from './util';
 
@@ -123,6 +124,10 @@ function hub() {
     play: (g) => playUserGame(f, g),
     simMine: (g) => void simUserGame(f, g),
     simWeek: () => void finishWeek(f).then(hub),
+    games: () => {
+      app.className = 'screen-results';
+      gamesScreen(app, f, hub);
+    },
     rookies: () => {
       startRookieDraft(f);
       saveFranchise(f);
@@ -139,16 +144,24 @@ function hub() {
 }
 
 /** Sims every game still open this week, then moves the league forward. */
-async function finishWeek(f: Franchise) {
+/** Sims every game still open this week. */
+async function simRestOfWeek(f: Franchise) {
   const open = weekGames(f).filter((g) => !g.score);
-  const done = overlay(open.length ? 'Simulating around the league…' : 'Advancing…');
+  if (!open.length) return;
+  const done = overlay('Simulating around the league…');
   for (const g of open) {
     const { cfg, sides, uidOf } = gameConfig(f, g, false, settings.quarterLen, settings.difficulty);
     recordGame(f, g, await simulate(cfg), sides, uidOf);
   }
-  advance(f);
   saveFranchise(f);
   done();
+}
+
+/** Sims every game still open this week, then moves the league forward. */
+async function finishWeek(f: Franchise) {
+  await simRestOfWeek(f);
+  advance(f);
+  saveFranchise(f);
 }
 
 function playUserGame(f: Franchise, g: FGame) {
@@ -156,7 +169,7 @@ function playUserGame(f: Franchise, g: FGame) {
   audio.unlock();
   const { cfg, sides, uidOf } = gameConfig(f, g, true, settings.quarterLen, settings.difficulty, settings.autoSubs !== false);
   cfg.autoSwitch = settings.autoSwitch !== false;
-  playGame(app, cfg, audio, (game) => afterUserGame(f, g, game, sides, uidOf, false), hub, {
+  playGame(app, cfg, audio, (game) => void afterUserGame(f, g, game, sides, uidOf, false), hub, {
     onAutoSubs: (on) => {
       settings.autoSubs = on;
       save();
@@ -169,7 +182,7 @@ async function simUserGame(f: Franchise, g: FGame) {
   const done = overlay('Simulating your game…');
   const game = await simulate(cfg);
   done();
-  afterUserGame(f, g, game, sides, uidOf, true);
+  void afterUserGame(f, g, game, sides, uidOf, true);
 }
 
 function progressHtml(f: Franchise, progress: Progress[]): string {
@@ -206,22 +219,33 @@ function badgeHtml(f: Franchise, teamId: number): string {
     </section>`;
 }
 
-function afterUserGame(f: Franchise, g: FGame, game: Game, sides: [number, number], uidOf: Map<Mon, string>, simmed: boolean) {
+async function afterUserGame(f: Franchise, g: FGame, game: Game, sides: [number, number], uidOf: Map<Mon, string>, simmed: boolean) {
   const before = badgesEarned(f);
   const progress = recordGame(f, g, game, sides, uidOf);
   const newBadge = [...badgesEarned(f)].find((id) => !before.has(id));
   saveFranchise(f);
-  app.className = 'screen-results';
-  window.scrollTo(0, 0);
+  // Finish the rest of the week now, so every result and box score is there to browse from this screen.
+  await simRestOfWeek(f);
   const won = game.score[0] > game.score[1];
   const label = g.round === 'final' ? 'The Final' : g.round === 'semi' ? 'Semifinal' : weekLabel(f);
-  resultsScreen(app, game, {
-    tag: simmed ? `${label} · Simulated` : label,
-    headline: won ? (g.round === 'final' ? 'Champions!' : 'You win!') : `${f.teams[sides[1]].name} win`,
-    extraHtml: (newBadge !== undefined ? badgeHtml(f, newBadge) : '') + progressHtml(f, progress),
-    buttons: [{ id: 'continue', label: 'Continue', kind: 'primary' }],
-    onAction: () => void finishWeek(f).then(hub),
-  });
+  const show = () => {
+    app.className = 'screen-results';
+    window.scrollTo(0, 0);
+    resultsScreen(app, game, {
+      tag: simmed ? `${label} · Simulated` : label,
+      headline: won ? (g.round === 'final' ? 'Champions!' : 'You win!') : `${f.teams[sides[1]].name} win`,
+      extraHtml: (newBadge !== undefined ? badgeHtml(f, newBadge) : '') + progressHtml(f, progress),
+      buttons: [
+        { id: 'continue', label: 'Continue', kind: 'primary' },
+        { id: 'games', label: `All ${g.round ? 'playoff' : 'week'} games` },
+      ],
+      onAction: (a) => {
+        if (a === 'games') gamesScreen(app, f, show, 'Back to your game', g.week);
+        else void finishWeek(f).then(hub);
+      },
+    });
+  };
+  show();
 }
 
 menu();
