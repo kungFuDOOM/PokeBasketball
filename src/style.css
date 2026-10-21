@@ -1141,7 +1141,9 @@ button.gl-row:hover { border-color: var(--muted); }
 .tbar-ovr { position: relative; display: flex; flex-direction: column; align-items: center; line-height: 1; min-width: 64px; }
 .tbar-ovr small { font-size: 0.6rem; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
 .tbar-ovr b { font: 800 2.3rem/1 var(--sport); color: var(--fg); text-shadow: 0 0 14px color-mix(in srgb, var(--accent) 60%, transparent); }
-.tbar-ovr .pop { left: 62%; top: -12px; margin: 0; z-index: 2; }
+/* The pop gets its own reserved lane to the right of the number, so it never covers the "My team" label or slots. */
+.tbar-ovr { padding-right: 38px; }
+.tbar-ovr .pop { right: 0; top: 50%; margin: -0.55rem 0 0; width: 36px; text-align: left; z-index: 2; }
 .tovr .pop { right: 100%; margin: 0 6px 0 0; }
 .tbar-slots { flex: 1; min-width: 0; display: grid; grid-template-columns: repeat(var(--slots), minmax(0, 1fr)); grid-template-rows: auto 1fr; gap: 3px; align-items: center; }
 .tbar-slots .tbar-lbl { grid-column: 1 / -1; flex-direction: row; gap: 6px; font-size: 0.7rem; color: var(--muted); }
@@ -1216,3 +1218,8 @@ button.gl-row:hover { border-color: var(--muted); }
   .mon-card, .mon-card:hover { transition: none; transform: none; }
   .otc.you { animation: none; }
 }
+
+/* Season Draft: confirm before "Use this team" replaces a saved franchise */
+.ss-confirm { margin: 12px auto 0; max-width: 560px; padding: 14px 16px; border: 2px solid var(--red); border-radius: 12px; background: color-mix(in srgb, var(--red) 12%, #0a0d1f); text-align: center; }
+.ss-confirm p { margin: 0 0 10px; line-height: 1.35; }
+.ss-confirm[hidden] { display: none; }

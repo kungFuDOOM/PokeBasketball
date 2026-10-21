@@ -1,6 +1,7 @@
 // Draft presentation only: trading-card markup, the draft-complete summary, confetti. No draft rules live here.
 import { RATING_LABELS, TYPE_COLORS, spriteUrl, type Mon, type Pos, type Ratings } from '../data/pokemon';
 import { bestLineup, teamOvr } from '../game/game';
+import { gradeOfOvr } from '../season/grade';
 import { esc, tier } from '../util';
 
 export function typeChips(m: Mon): string {
@@ -23,11 +24,7 @@ export function monCard(m: Mon, extra = '', i = -1): string {
     </button>`;
 }
 
-/** Display-only letter grade for a starters overall. */
-export function gradeOfOvr(ovr: number): string {
-  const steps: [number, string][] = [[92, 'A+'], [91, 'A'], [90, 'A-'], [89, 'B+'], [88, 'B'], [87, 'B-'], [86, 'C+'], [84, 'C'], [82, 'C-']];
-  return steps.find(([min]) => ovr >= min)?.[1] ?? 'D';
-}
+export { gradeOfOvr };
 
 /** Where each position stands on the mini court (percent from left / top of a half court, basket at the top). */
 const SPOT: Record<Pos, [number, number]> = { PG: [50, 78], SG: [80, 56], SF: [20, 56], PF: [68, 30], C: [34, 24] };

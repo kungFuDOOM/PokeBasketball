@@ -1,6 +1,7 @@
 // Share card as a PNG, drawn on a canvas. Sprites are same-origin, so the canvas is never tainted.
 import { monByDex, spriteUrl } from '../data/pokemon';
-import { gradeOf, PLAYOFF_TEXT } from './sim';
+import { PLAYOFF_TEXT } from './sim';
+import { teamGrade } from './grade';
 import type { SharedTeam } from './share';
 
 const SIZE = 1080;
@@ -30,7 +31,7 @@ export async function renderShareCard(t: SharedTeam): Promise<HTMLCanvasElement>
   const ctx = c.getContext('2d')!;
   const sans = "'Barlow Condensed', 'Arial Narrow', system-ui, sans-serif";
   const pixel = "'Press Start 2P', ui-monospace, monospace";
-  const grade = gradeOf(t.w, t.l, t.playoff);
+  const { grade } = teamGrade(t.dex.map((d) => monByDex(d)));
 
   const bg = ctx.createLinearGradient(0, 0, SIZE, SIZE);
   bg.addColorStop(0, t.color2);
@@ -102,7 +103,7 @@ export async function renderShareCard(t: SharedTeam): Promise<HTMLCanvasElement>
   ctx.fillStyle = '#fff';
   ctx.textAlign = 'center';
   ctx.font = `700 34px ${sans}`;
-  ctx.fillText('GRADE', SIZE - 56 - 125, top + 60);
+  ctx.fillText('DRAFT GRADE', SIZE - 56 - 125, top + 60);
   ctx.font = `110px ${pixel}`;
   ctx.fillText(grade, SIZE - 56 - 125, top + 200);
 

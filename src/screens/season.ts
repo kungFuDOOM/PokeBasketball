@@ -111,7 +111,7 @@ export function seasonMode(root: HTMLElement, settings: Settings, audio: Audio, 
             <h2>${esc(user.name)}</h2>
             <p class="ss-po ${u.playoff}">${PLAYOFF_TEXT[u.playoff]}</p>
           </div>
-          <div class="ss-grade" aria-label="Grade ${u.grade}"><small>Grade</small><b>${u.grade}</b></div>
+          <div class="ss-grade" aria-label="Draft grade ${u.grade}"><small>Draft grade</small><b>${u.grade}</b></div>
         </header>
         <section class="ss-hero">
           <div class="ss-big"><b>${u.w}-${u.l}</b><span>${ordinal(u.rank)} of ${u.teams}${u.seed ? ` · #${u.seed} seed` : ''}</span></div>
@@ -173,6 +173,13 @@ export function seasonMode(root: HTMLElement, settings: Settings, audio: Audio, 
           <button class="btn" data-go="use-quick">Quick Play with this team</button>
           <button class="btn" data-go="use-franchise">${act.hasFranchise ? 'Franchise (replaces your save)' : 'Start a franchise'}</button>
         </div>
+        <div class="ss-confirm" role="alertdialog" aria-labelledby="ss-confirm-t" hidden>
+          <p id="ss-confirm-t"><b>Replace your saved franchise?</b> Your current franchise, its season and its roster will be erased and replaced by this team. This can't be undone.</p>
+          <div class="actions center">
+            <button class="btn warn" data-go="confirm-replace">Replace my franchise</button>
+            <button class="btn primary" data-go="confirm-cancel">Cancel</button>
+          </div>
+        </div>
       </div>`;
     const status = root.querySelector<HTMLElement>('.ss-status')!;
     const link = root.querySelector<HTMLInputElement>('.ss-link')!;
@@ -205,12 +212,17 @@ export function seasonMode(root: HTMLElement, settings: Settings, audio: Audio, 
         say('Saved as My Drafted Team. Pick where to use it.');
       } else if (go === 'use-quick') act.useTeam('quick');
       else if (go === 'use-franchise') {
-        if (act.hasFranchise && !el.classList.contains('warn')) {
-          el.classList.add('warn');
-          el.textContent = 'Tap again to replace your franchise';
+        // Replacing a saved franchise needs an explicit OK; Cancel leaves everything as it is.
+        if (act.hasFranchise) {
+          root.querySelector<HTMLElement>('.ss-confirm')!.hidden = false;
+          root.querySelector<HTMLElement>('[data-go="confirm-cancel"]')!.focus();
           return;
         }
         act.useTeam('franchise');
+      } else if (go === 'confirm-replace') act.useTeam('franchise');
+      else if (go === 'confirm-cancel') {
+        root.querySelector<HTMLElement>('.ss-confirm')!.hidden = true;
+        say('Kept your franchise. Nothing was changed.');
       }
     });
   }

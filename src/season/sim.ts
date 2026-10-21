@@ -1,6 +1,7 @@
 // Season Draft: a fast, stat-based season sim. Pure and deterministic for a given seed; no DOM, no engine games.
 import { POSITIONS, type Mon } from '../data/pokemon';
 import { bestLineup, chemistry } from '../game/game';
+import { teamGrade } from './grade';
 
 export interface SimTeamIn {
   name: string;
@@ -148,12 +149,6 @@ export function roundRobin(n: number): [number, number][][] {
   return rounds;
 }
 
-export function gradeOf(w: number, l: number, playoff: Playoff): string {
-  const gp = w + l;
-  const score = (gp ? w / gp : 0) * 100 + (playoff === 'champion' ? 15 : playoff === 'final' ? 8 : playoff === 'semis' ? 3 : 0);
-  const steps: [number, string][] = [[95, 'A+'], [85, 'A'], [75, 'A-'], [68, 'B+'], [60, 'B'], [52, 'B-'], [45, 'C+'], [38, 'C'], [30, 'C-']];
-  return steps.find(([min]) => score >= min)?.[1] ?? 'D';
-}
 
 /** Share of a team total each player earns, from a per-player weight and minutes (starters 30, bench 10). */
 function shares(p: Profile, roster: Mon[], weight: (m: Mon) => number): number[] {
@@ -247,7 +242,7 @@ export function simulateSeason(input: SimInput): SeasonResult {
     user: {
       w: mineRec.w, l: mineRec.l, rank: mineRec.rank, teams: n, seed, playoff,
       ppg: round1(mineRec.pf / gp), oppg: round1(mineRec.pa / gp),
-      grade: gradeOf(mineRec.w, mineRec.l, playoff), ovr: mine.ovr,
+      ...teamGrade(mine.starters.concat(mine.bench)),
     },
     players,
     pots,

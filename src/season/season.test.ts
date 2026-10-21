@@ -2,7 +2,11 @@ import { describe, expect, it } from 'vitest';
 import { POKEMON, type Mon } from '../data/pokemon';
 import { LEAGUE } from '../franchise/league';
 import { decodeShare, encodeShare, shareFromHash, type SharedTeam } from './share';
-import { gradeOf, simulateSeason, type SimInput } from './sim';
+import { simulateSeason, type SimInput } from './sim';
+import { gradeOfOvr, teamGrade } from './grade';
+import { gradeOfOvr as draftGrade } from '../screens/draftView';
+import { bestLineup, teamOvr } from '../game/game';
+import { monByDex } from '../data/pokemon';
 
 const byOvr = [...POKEMON].sort((a, b) => b.ovr - a.ovr);
 
@@ -84,9 +88,19 @@ describe('simulateSeason', () => {
     expect(() => simulateSeason({ ...inp, teams: inp.teams.slice(0, 3) })).toThrow();
   });
 
-  it('grades go up with the record', () => {
-    expect(gradeOf(18, 0, 'champion')).toBe('A+');
-    expect(gradeOf(0, 18, 'missed')).toBe('D');
+  it('uses one grade scale: the draft summary and the season results agree', () => {
+    expect(draftGrade).toBe(gradeOfOvr);
+    expect(gradeOfOvr(95)).toBe('A+');
+    expect(gradeOfOvr(70)).toBe('D');
+    for (const seed of [1, 2, 3, 4, 5]) {
+      const inp = input(seed);
+      const res = simulateSeason(inp);
+      const mine = inp.teams[0].roster;
+      const draftOvr = teamOvr(bestLineup(mine).starters);
+      expect(res.user.ovr).toBe(draftOvr);
+      expect(res.user.grade).toBe(gradeOfOvr(draftOvr));
+      expect(teamGrade(mine.map((m) => monByDex(m.dex))).grade).toBe(res.user.grade);
+    }
   });
 });
 
