@@ -123,7 +123,7 @@ const ROWS: Row[] = [
   [448, 'Lucario', ['Fighting', 'Steel'], 'SG', 84, 86, 82, 78, 82, 58, 60, 84],
   [445, 'Garchomp', ['Dragon', 'Ground'], 'PF', 92, 66, 96, 60, 84, 84, 82, 70],
   [149, 'Dragonite', ['Dragon', 'Flying'], 'C', 74, 70, 92, 72, 76, 88, 92, 66],
-  [384, 'Rayquaza', ['Dragon', 'Flying'], 'PF', 84, 86, 96, 66, 78, 88, 90, 70],
+  [384, 'Rayquaza', ['Dragon', 'Flying'], 'PF', 84, 86, 96, 66, 82, 88, 90, 70],
   [151, 'Mew', ['Psychic'], 'PG', 88, 88, 80, 90, 78, 70, 68, 88],
   [257, 'Blaziken', ['Fire', 'Fighting'], 'SF', 88, 76, 95, 68, 78, 74, 70, 80],
   [248, 'Tyranitar', ['Rock', 'Dark'], 'C', 60, 58, 94, 56, 82, 92, 92, 58],
@@ -210,8 +210,8 @@ const ROWS: Row[] = [
   // Ground
   [105, 'Marowak', ['Ground'], 'SG', 70, 82, 74, 64, 80, 62, 64, 72],
   [530, 'Excadrill', ['Ground', 'Steel'], 'SF', 84, 66, 92, 58, 80, 70, 70, 76],
-  [383, 'Groudon', ['Ground'], 'PF', 70, 70, 96, 60, 84, 90, 92, 62],
-  [382, 'Kyogre', ['Water'], 'C', 68, 88, 88, 70, 76, 90, 92, 60],
+  [383, 'Groudon', ['Ground'], 'PF', 74, 70, 96, 60, 84, 94, 96, 62],
+  [382, 'Kyogre', ['Water'], 'C', 68, 88, 88, 70, 76, 93, 96, 60],
   [553, 'Krookodile', ['Ground', 'Dark'], 'SF', 80, 72, 88, 64, 84, 66, 70, 74],
   [473, 'Mamoswine', ['Ice', 'Ground'], 'C', 52, 48, 90, 46, 74, 86, 92, 50],
   // Ice, Fighting, Ghost, Dragon (the Elite Four's types)
