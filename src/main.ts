@@ -135,9 +135,10 @@ function season() {
     useTeam: (mode) => {
       if (mode === 'quick') return quick('mine');
       const mine = loadDrafted();
-      const name = settings.teamName.trim() || 'Pallet Town';
+      // The franchise team keeps the drafted team's name and colors.
+      const name = mine?.name ?? (settings.teamName.trim() || 'Pallet Town');
       const teams = [
-        { name, abbr: abbr(name), ...USER_STYLE, human: true },
+        { name, abbr: abbr(name), ...USER_STYLE, ...(mine ? mine.colors : {}), human: true },
         ...LEAGUE.map((t) => ({ ...t, human: false })),
       ];
       saveDraft(null);

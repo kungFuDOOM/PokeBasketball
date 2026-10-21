@@ -1218,3 +1218,16 @@ button.gl-row:hover { border-color: var(--muted); }
 .ss-confirm { margin: 12px auto 0; max-width: 560px; padding: 14px 16px; border: 2px solid var(--red); border-radius: 12px; background: color-mix(in srgb, var(--red) 12%, #0a0d1f); text-align: center; }
 .ss-confirm p { margin: 0 0 10px; line-height: 1.35; }
 .ss-confirm[hidden] { display: none; }
+
+/* Season Draft results: what to do next, right under the record */
+.ss-next { margin: 4px 0 18px; text-align: center; }
+.ss-next-btns { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.ss-next-btns .btn { width: 100%; justify-content: center; }
+.ss-next-note { margin: 10px 0 0; }
+.ss-next .ss-status:empty { display: none; }
+.ss-next .ss-status { margin: 6px 0 0; color: var(--good); font-weight: 700; }
+@media (max-width: 640px) { .ss-next-btns { grid-template-columns: minmax(0, 1fr); } }
+.ss-link-row { display: flex; gap: 8px; align-items: center; }
+.ss-link-row .ss-link { flex: 1; min-width: 0; }
+.nx-bench-lbl { margin: 8px 0 2px; }
+.nx-bench .lineup { opacity: 0.8; }
