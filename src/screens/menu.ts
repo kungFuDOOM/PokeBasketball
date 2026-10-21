@@ -140,7 +140,7 @@ export function menuScreen(root: HTMLElement, settings: Settings, onChange: () =
         <section class="card">
           <div class="mode battle-mode">
             <h2>Pack Battles <span class="new-chip">New</span></h2>
-            <p class="setup-note">Take on another player in one Quick Play game. Winner takes a prize pack. Free to enter.</p>
+            <p class="setup-note">Split the cost of a Collector Crypt gacha pull with another player, then play one game for it. Winner gets the pull. 18+.</p>
             <div class="actions"><button class="btn primary" data-go="battles">Pack Battles</button></div>
           </div>
           <div class="mode roster-mode">

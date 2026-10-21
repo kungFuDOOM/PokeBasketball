@@ -23,7 +23,7 @@ export function playGame(
   audio: Audio,
   onFinal: (g: Game) => void,
   onQuit: () => void,
-  opts: { onAutoSubs?: (on: boolean) => void } = {},
+  opts: { onAutoSubs?: (on: boolean) => void; quitLabel?: string } = {},
 ): PlayHandle {
   root.innerHTML = `
     <div class="game">
@@ -35,7 +35,7 @@ export function playGame(
           <div class="pause-actions">
             <button class="btn primary" data-a="resume">Resume</button>
             <button class="btn" data-a="mute"></button>
-            <button class="btn ghost" data-a="quit">Quit to menu</button>
+            <button class="btn ghost" data-a="quit">${esc(opts.quitLabel ?? 'Quit to menu')}</button>
           </div>
           <div class="subs-panel" hidden></div>
           ${controlsHtml()}

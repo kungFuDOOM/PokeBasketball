@@ -1,29 +1,73 @@
-// Pack Battles: two players, one Quick Play game, the winner takes a prize pack.
+// Pack Battles: two players split the cost of a gacha pull, play one Quick Play game, and the winner gets the pull.
 //
-// Entry is free. Prize packs come from the house prize pool, never from the players, so nobody
-// stakes anything on the result. Keep it that way unless a lawyer signs off on paid entry for
-// the places you operate: Washington (and several other states) treats paid entry into a game
-// with a material element of chance as gambling, even when skill matters most.
+// Each player pays half the machine price into escrow when they post or accept a battle. Cancelling before
+// anyone accepts refunds your half. Once the game starts, leaving forfeits. When the game ends, the server
+// spends the pot on one pull from the matching Collector Crypt gacha machine and sends what comes out to
+// the winner's wallet (see PackSource). Buying after the result, not before, means a cancelled or disputed
+// battle never leaves you holding a pull nobody paid for.
+//
+// This is paid entry for a prize decided by a game, which many places regulate as gambling. Washington
+// treats any contest where chance plays a "material" part as gambling even when skill dominates, and
+// arcade basketball has randomness on every shot. RESTRICTED_REGIONS below blocks Washington by default.
+// Have a gaming lawyer set that list (and confirm you can operate at all from where you are) before
+// any real money moves. The region a player picks in the browser is not enough on its own: the server
+// must verify location (IP or a geolocation provider) and age before taking an entry.
 //
 // This file is the only place the screens talk to "the server". LocalBattleService fakes one in
-// localStorage so the whole flow can be built and tested now. When you add a real backend,
-// implement BattleService against it and swap it in at the bottom of this file.
+// localStorage with play money so the whole flow can be built and tested now. When you add a real
+// backend, implement BattleService against it and swap it in at the bottom of this file.
 //
-// The real server must decide who won: run the game itself, or replay both players' inputs
-// with a shared seed. Never award a pack on a score the browser reports, or someone will
-// edit the score and empty the prize pool.
+// The real server must decide who won: run the game itself, or replay both players' inputs with a
+// shared seed. Never pay out on a score the browser reports, or someone will edit it and take every pot.
 
 import type { PokeType } from '../data/pokemon';
 
 export type PackTier = 'starter' | 'rare' | 'elite';
 
-export const PACK_TIERS: Record<PackTier, { label: string; short: string; color: string; color2: string }> = {
-  starter: { label: 'Starter Pack', short: 'STARTER', color: '#3b6fd8', color2: '#0f1a45' },
-  rare: { label: 'Rare Pack', short: 'RARE', color: '#e3350d', color2: '#3d0a03' },
-  elite: { label: 'Elite Pack', short: 'ELITE', color: '#ffcb05', color2: '#5c3d00' },
+/**
+ * One tier per Collector Crypt gacha machine. `price` (cents) must match the machine's current price, and
+ * `machine` is its id in CC's system; both are placeholders until you have their real values. Each
+ * player's entry is half the price.
+ */
+export const PACK_TIERS: Record<PackTier, { label: string; short: string; color: string; color2: string; price: number; machine: string }> = {
+  starter: { label: 'Starter Pack', short: 'STARTER', color: '#3b6fd8', color2: '#0f1a45', price: 2500, machine: 'cc-machine-25' },
+  rare: { label: 'Rare Pack', short: 'RARE', color: '#e3350d', color2: '#3d0a03', price: 5000, machine: 'cc-machine-50' },
+  elite: { label: 'Elite Pack', short: 'ELITE', color: '#ffcb05', color2: '#5c3d00', price: 10000, machine: 'cc-machine-100' },
 };
+
+/**
+ * Where prize pulls come from. Server-side only: it holds the escrowed pot and a funded wallet.
+ * Implement it with Collector Crypt's partner API (or their on-chain program, with their written OK),
+ * never by replaying calls from their website or One Arena's. Get the odds and drop-rate disclosure
+ * from CC and show them before players pay: a pull can be worth less than the pot.
+ */
+export interface PackSource {
+  /** Spend the battle's pot on one pull from `machine`. Called once, after the result is final. */
+  buyPull(machine: string, battleId: string): Promise<{ pullId: string }>;
+  /** Send the pulled card to the winner's wallet. */
+  deliver(pullId: string, wallet: string): Promise<void>;
+}
 export const TIER_ORDER: PackTier[] = ['starter', 'rare', 'elite'];
 export const BATTLE_QUARTERS = [60, 120, 180] as const;
+export const entryOf = (t: PackTier) => PACK_TIERS[t].price / 2;
+export const money = (cents: number) => `$${(cents / 100).toFixed(cents % 100 ? 2 : 0)}`;
+
+/** Where paid battles are off. Your lawyer sets this list; Washington is blocked by default. */
+export const RESTRICTED_REGIONS: string[] = ['WA'];
+
+export const US_REGIONS: [string, string][] = [
+  ['AL', 'Alabama'], ['AK', 'Alaska'], ['AZ', 'Arizona'], ['AR', 'Arkansas'], ['CA', 'California'], ['CO', 'Colorado'],
+  ['CT', 'Connecticut'], ['DE', 'Delaware'], ['DC', 'District of Columbia'], ['FL', 'Florida'], ['GA', 'Georgia'],
+  ['HI', 'Hawaii'], ['ID', 'Idaho'], ['IL', 'Illinois'], ['IN', 'Indiana'], ['IA', 'Iowa'], ['KS', 'Kansas'],
+  ['KY', 'Kentucky'], ['LA', 'Louisiana'], ['ME', 'Maine'], ['MD', 'Maryland'], ['MA', 'Massachusetts'],
+  ['MI', 'Michigan'], ['MN', 'Minnesota'], ['MS', 'Mississippi'], ['MO', 'Missouri'], ['MT', 'Montana'],
+  ['NE', 'Nebraska'], ['NV', 'Nevada'], ['NH', 'New Hampshire'], ['NJ', 'New Jersey'], ['NM', 'New Mexico'],
+  ['NY', 'New York'], ['NC', 'North Carolina'], ['ND', 'North Dakota'], ['OH', 'Ohio'], ['OK', 'Oklahoma'],
+  ['OR', 'Oregon'], ['PA', 'Pennsylvania'], ['RI', 'Rhode Island'], ['SC', 'South Carolina'], ['SD', 'South Dakota'],
+  ['TN', 'Tennessee'], ['TX', 'Texas'], ['UT', 'Utah'], ['VT', 'Vermont'], ['VA', 'Virginia'], ['WA', 'Washington'],
+  ['WV', 'West Virginia'], ['WI', 'Wisconsin'], ['WY', 'Wyoming'],
+];
+export const regionName = (code: string) => US_REGIONS.find(([c]) => c === code)?.[1] ?? code;
 
 export interface Challenger {
   name: string;
@@ -49,6 +93,7 @@ export interface Battle {
   status: BattleStatus;
   createdAt: number;
   score?: [number, number];
+  forfeit?: boolean;
 }
 
 export interface WonPack {
@@ -60,26 +105,41 @@ export interface WonPack {
   claimed: boolean;
 }
 
+export interface Eligibility {
+  adult: boolean;
+  region: string;
+}
+
 export interface BattleService {
   /** Open battles from other players, newest first. */
   open(): Battle[];
   /** Your battles: waiting for a challenger, ready to play, or finished. */
   mine(): Battle[];
-  /** Packs left in the house prize pool, by tier. */
-  stock(): Record<PackTier, number>;
   prizes(): WonPack[];
+  /** Your balance in cents. */
+  balance(): number;
+  addFunds(cents: number): void;
+  eligibility(): Eligibility | null;
+  setEligibility(e: Eligibility): void;
+  /** Null when paid battles are allowed, otherwise the reason they are not. */
+  blocked(): string | null;
+  /** Post a battle and pay your half into escrow. */
   create(tier: PackTier, quarterLen: number): Battle;
-  /** Reserve an open battle so nobody else can take it. */
+  /** Take an open battle and pay your half into escrow. */
   accept(id: string): Battle;
+  /** Cancel a battle nobody has accepted yet and refund your half. */
   cancel(id: string): void;
   /** Report a finished game. In production the server decides this, not the client. */
   finish(id: string, score: [number, number]): { won: boolean; prize: WonPack | null };
+  /** Leaving a started game loses it. */
+  forfeit(id: string): void;
   claim(id: string): void;
 }
 
-// ---------------------------------------------------------------- local stand-in
+// ---------------------------------------------------------------- local stand-in (play money)
 
 const KEY = 'pokejam.battles';
+const START_BALANCE = 5000;
 
 const RIVALS: Challenger[] = [
   { name: 'Route 1 Runners', abbr: 'RT1', color: '#3fae5a', color2: '#10351b', handle: 'Dunkmaster99', types: ['Grass', 'Bug'] },
@@ -93,14 +153,15 @@ const RIVALS: Challenger[] = [
 interface Store {
   battles: Battle[];
   prizes: WonPack[];
-  stock: Record<PackTier, number>;
+  balance: number;
+  eligibility: Eligibility | null;
   seq: number;
 }
 
 const uid = (s: Store) => `b${Date.now().toString(36)}${(++s.seq).toString(36)}`;
 
 function seed(): Store {
-  const s: Store = { battles: [], prizes: [], stock: { starter: 24, rare: 10, elite: 3 }, seq: 0 };
+  const s: Store = { battles: [], prizes: [], balance: START_BALANCE, eligibility: null, seq: 0 };
   const tiers: PackTier[] = ['starter', 'rare', 'starter', 'elite', 'rare', 'starter'];
   RIVALS.forEach((r, i) => s.battles.push({
     id: uid(s), tier: tiers[i], quarterLen: BATTLE_QUARTERS[i % 3], rival: r, mine: false, status: 'open',
@@ -115,15 +176,15 @@ const isTier = (v: unknown): v is PackTier => typeof v === 'string' && v in PACK
 function load(): Store {
   try {
     const raw = JSON.parse(localStorage.getItem(KEY) ?? 'null') as Partial<Store> | null;
-    if (!raw || !Array.isArray(raw.battles) || !Array.isArray(raw.prizes) || !raw.stock) return seed();
+    if (!raw || !Array.isArray(raw.battles) || !Array.isArray(raw.prizes) || typeof raw.balance !== 'number') return seed();
     const battles = raw.battles.filter((b): b is Battle =>
       !!b && typeof b.id === 'string' && isTier(b.tier) && typeof b.quarterLen === 'number'
       && ['open', 'ready', 'won', 'lost'].includes(b.status) && (b.rival === null || typeof b.rival?.name === 'string'));
     const prizes = raw.prizes.filter((p): p is WonPack =>
       !!p && typeof p.id === 'string' && isTier(p.tier) && Array.isArray(p.score) && typeof p.rival === 'string');
-    const stock = { starter: 0, rare: 0, elite: 0 };
-    for (const t of TIER_ORDER) stock[t] = Math.max(0, Math.floor(Number(raw.stock[t]) || 0));
-    return { battles, prizes, stock, seq: Number(raw.seq) || 0 };
+    const e = raw.eligibility;
+    const eligibility = e && typeof e.adult === 'boolean' && US_REGIONS.some(([c]) => c === e.region) ? { adult: e.adult, region: e.region } : null;
+    return { battles, prizes, balance: Math.max(0, Math.floor(raw.balance)), eligibility, seq: Number(raw.seq) || 0 };
   } catch {
     return seed();
   }
@@ -144,19 +205,26 @@ export class LocalBattleService implements BattleService {
     return b;
   }
 
+  private pay(tier: PackTier) {
+    const why = this.blocked();
+    if (why) throw new Error(why);
+    const cost = entryOf(tier);
+    if (this.s.balance < cost) throw new Error(`You need ${money(cost)} for this battle. Add funds first.`);
+    this.s.balance -= cost;
+  }
+
   open() {
     // Keep the lobby lively in the stand-in: refill it when it runs low.
     if (this.s.battles.filter((b) => !b.mine && b.status === 'open').length < 3) {
       const r = RIVALS[Math.floor(Math.random() * RIVALS.length)];
-      const tier = TIER_ORDER.filter((t) => this.s.stock[t] > 0)[Math.floor(Math.random() * 2)] ?? 'starter';
-      this.s.battles.push({ id: uid(this.s), tier, quarterLen: 120, rival: r, mine: false, status: 'open', createdAt: Date.now() });
+      this.s.battles.push({ id: uid(this.s), tier: TIER_ORDER[Math.floor(Math.random() * 2)], quarterLen: 120, rival: r, mine: false, status: 'open', createdAt: Date.now() });
       this.save();
     }
     return this.s.battles.filter((b) => !b.mine && b.status === 'open').sort((a, b) => b.createdAt - a.createdAt);
   }
 
   mine() {
-    // Stand-in matchmaking: a challenger accepts your battle a few seconds after you post it.
+    // Stand-in matchmaking: a challenger accepts your battle (and pays their half) a few seconds after you post it.
     for (const b of this.s.battles) {
       if (b.mine && b.status === 'open' && Date.now() - b.createdAt > 4000) {
         b.rival = RIVALS[Math.floor(Math.random() * RIVALS.length)];
@@ -167,16 +235,38 @@ export class LocalBattleService implements BattleService {
     return this.s.battles.filter((b) => b.mine || b.status !== 'open').sort((a, b) => b.createdAt - a.createdAt);
   }
 
-  stock() {
-    return { ...this.s.stock };
-  }
-
   prizes() {
     return [...this.s.prizes].sort((a, b) => b.wonAt - a.wonAt);
   }
 
+  balance() {
+    return this.s.balance;
+  }
+
+  addFunds(cents: number) {
+    this.s.balance += Math.max(0, Math.floor(cents));
+    this.save();
+  }
+
+  eligibility() {
+    return this.s.eligibility ? { ...this.s.eligibility } : null;
+  }
+
+  setEligibility(e: Eligibility) {
+    this.s.eligibility = { adult: e.adult, region: e.region };
+    this.save();
+  }
+
+  blocked() {
+    const e = this.s.eligibility;
+    if (!e) return 'Confirm your age and state to play paid battles.';
+    if (!e.adult) return 'Paid battles are 18+.';
+    if (RESTRICTED_REGIONS.includes(e.region)) return `Paid battles aren't available in ${regionName(e.region)}.`;
+    return null;
+  }
+
   create(tier: PackTier, quarterLen: number) {
-    if (this.s.stock[tier] <= 0) throw new Error(`No ${PACK_TIERS[tier].label}s left in the prize pool.`);
+    this.pay(tier);
     const b: Battle = { id: uid(this.s), tier, quarterLen, rival: null, mine: true, status: 'open', createdAt: Date.now() };
     this.s.battles.push(b);
     this.save();
@@ -186,13 +276,17 @@ export class LocalBattleService implements BattleService {
   accept(id: string) {
     const b = this.find(id);
     if (b.status !== 'open' || b.mine) throw new Error('Someone already took that battle.');
+    this.pay(b.tier);
     b.status = 'ready';
     this.save();
     return b;
   }
 
   cancel(id: string) {
-    this.s.battles = this.s.battles.filter((b) => !(b.id === id && b.mine && b.status === 'open'));
+    const b = this.s.battles.find((x) => x.id === id && x.mine && x.status === 'open');
+    if (!b) return;
+    this.s.balance += entryOf(b.tier);
+    this.s.battles = this.s.battles.filter((x) => x !== b);
     this.save();
   }
 
@@ -203,14 +297,20 @@ export class LocalBattleService implements BattleService {
     b.status = won ? 'won' : 'lost';
     b.score = score;
     let prize: WonPack | null = null;
-    // The pack leaves the pool either way: the other player takes it when you lose.
-    this.s.stock[b.tier] = Math.max(0, this.s.stock[b.tier] - 1);
     if (won) {
       prize = { id: uid(this.s), tier: b.tier, rival: b.rival?.name ?? 'Challenger', score, wonAt: Date.now(), claimed: false };
       this.s.prizes.push(prize);
     }
     this.save();
     return { won, prize };
+  }
+
+  forfeit(id: string) {
+    const b = this.s.battles.find((x) => x.id === id);
+    if (!b || b.status !== 'ready') return;
+    b.status = 'lost';
+    b.forfeit = true;
+    this.save();
   }
 
   claim(id: string) {

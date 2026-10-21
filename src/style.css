@@ -1119,3 +1119,26 @@ button.gl-row:hover { border-color: var(--muted); }
   .pack-rip .burst { opacity: 1; }
   .pack-won .pw-2 { opacity: 1; animation: none; }
 }
+
+/* pack battles: split entry, wallet, eligibility */
+.split-chip { font: 0.5rem/1 var(--pixel); letter-spacing: 0.04em; padding: 4px 6px 3px; border-radius: 4px; background: var(--accent); color: #1a1400; }
+.wallet { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+.wallet div { display: flex; align-items: baseline; gap: 8px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 6px 12px; }
+.wallet .lbl { font: 0.55rem var(--pixel); color: var(--accent); }
+.wallet strong { font: 800 1.35rem/1 var(--sport); letter-spacing: 0.02em; }
+.wallet .link-btn { margin-left: auto; color: var(--muted); font-size: 0.9rem; }
+.gate-note { background: color-mix(in srgb, var(--red) 16%, var(--panel)); border: 1px solid color-mix(in srgb, var(--red) 55%, var(--line)); border-radius: 8px; padding: 8px 12px; margin: 0 0 12px; font-weight: 700; }
+.bc-go { grid-area: go; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.bc-go small { color: var(--muted); font-weight: 700; }
+.battle-card .bc-go .btn { justify-self: auto; }
+.mb-line .waiting small { font-weight: 600; }
+.stake small { color: var(--muted); font-weight: 700; }
+.rules li.warn { border-color: color-mix(in srgb, var(--red) 60%, var(--line)); color: #ffb3a1; }
+.elig { display: flex; flex-direction: column; gap: 14px; margin: 14px 0 4px; }
+.elig select { font: 700 1.05rem var(--sport); color: var(--fg); background: var(--bg); border: 2px solid var(--line); border-radius: 6px; padding: 8px 10px; text-transform: none; letter-spacing: 0; }
+.check { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 1.05rem; }
+.check input { width: 20px; height: 20px; accent-color: var(--accent); }
+.seg.funds { margin-top: 14px; }
+.seg.funds button { font: 800 1.2rem var(--sport); padding: 12px; }
+.terms { margin: 0; padding-left: 18px; display: grid; gap: 6px; font-weight: 600; }
+.terms b { color: var(--accent); }

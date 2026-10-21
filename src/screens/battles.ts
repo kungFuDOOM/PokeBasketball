@@ -1,13 +1,16 @@
-// Pack Battles: accept or post a battle, snake-draft five against your challenger, play one
-// Quick Play game, and the winner takes the prize pack. Free entry; packs come from the house pool.
-// Every rule that decides a winner lives on the server (see battles/service.ts).
+// Pack Battles: two players split the cost of a pack, snake-draft five each, play one Quick Play game,
+// and the winner gets the pack. Money, eligibility and the result all live on the server
+// (see battles/service.ts); these screens only show what it says.
 import { courtFor } from '../data/courts';
 import { TYPE_COLORS, type Mon } from '../data/pokemon';
 import { USER_STYLE, contrastAway } from '../franchise/league';
 import type { Audio } from '../game/audio';
 import { teamOvr } from '../game/game';
 import type { TeamDef } from '../game/types';
-import { BATTLE_QUARTERS, PACK_TIERS, TIER_ORDER, battles, type Battle, type Challenger, type PackTier, type WonPack } from '../battles/service';
+import {
+  BATTLE_QUARTERS, PACK_TIERS, RESTRICTED_REGIONS, TIER_ORDER, US_REGIONS, battles, entryOf, money, regionName,
+  type Battle, type Challenger, type PackTier, type WonPack,
+} from '../battles/service';
 import { packSvg } from '../ui/pack';
 import { abbr, esc, shuffle } from '../util';
 import { draftScreen } from './draft';
@@ -43,24 +46,31 @@ export function battleScreen(root: HTMLElement, settings: Settings, audio: Audio
     const open = battles.open();
     const mine = battles.mine();
     const prizes = battles.prizes();
-    const stock = battles.stock();
+    const bal = battles.balance();
+    const blocked = battles.blocked();
     const unclaimed = prizes.filter((p) => !p.claimed).length;
 
-    const body = tab === 'open' ? openHtml(open) : tab === 'mine' ? mineHtml(mine) : prizesHtml(prizes);
+    const body = tab === 'open' ? openHtml(open, bal, !!blocked) : tab === 'mine' ? mineHtml(mine) : prizesHtml(prizes);
     root.innerHTML = `
       <div class="quick battles">
         <header class="draft-head">
           <button class="btn ghost small" data-a="menu">Menu</button>
-          <div class="status"><span class="round">PACK BATTLES</span><span class="otc">Win the game. Take the pack.</span></div>
-          <button class="btn primary small" data-a="create">Create battle</button>
+          <div class="status"><span class="round">PACK BATTLES</span><span class="otc">Split the pack. Win it all.</span></div>
+          <button class="btn primary small" data-a="create" ${blocked ? 'disabled' : ''}>Create battle</button>
         </header>
+        <section class="wallet">
+          <div><span class="lbl">Balance</span><strong>${money(bal)}</strong></div>
+          <button class="btn small" data-a="funds" ${blocked ? 'disabled' : ''}>Add funds</button>
+          <button class="link-btn" data-a="elig">${battles.eligibility() ? `Playing from ${esc(regionName(battles.eligibility()!.region))}` : 'Confirm age and state'}</button>
+        </section>
+        ${blocked ? `<p class="gate-note" role="status">${esc(blocked)} You can still look around.</p>` : ''}
         <section class="prize-pool">
-          <div class="pool-head"><span class="eyebrow">Prize pool</span><span class="free-chip">Free entry</span></div>
+          <div class="pool-head"><span class="eyebrow">How it works</span><span class="split-chip">Split entry</span></div>
           <ul class="pool-list">
             ${TIER_ORDER.map((t) => `
-              <li class="${stock[t] ? '' : 'out'}" style="--tc:${PACK_TIERS[t].color}">
+              <li style="--tc:${PACK_TIERS[t].color}">
                 ${packSvg(t, 40)}
-                <span><b>${PACK_TIERS[t].label}</b><small>${stock[t] ? `${stock[t]} left` : 'All won'}</small></span>
+                <span><b>${PACK_TIERS[t].label}</b><small>${money(entryOf(t))} each · ${money(PACK_TIERS[t].price)} pull</small></span>
               </li>`).join('')}
           </ul>
         </section>
@@ -70,37 +80,34 @@ export function battleScreen(root: HTMLElement, settings: Settings, audio: Audio
         </div>
         ${flash ? `<p class="flash" role="status">${esc(flash)}</p>` : ''}
         <div class="tab-body">${body}</div>
-        <p class="note center">Free to enter: every pack comes from the Poké Jam prize pool, never from the players. One game, winner takes the pack. You must be 18 or older to claim a prize.</p>
-        <p class="preview-note">Preview: challengers are played by the CPU until online play is ready.</p>
+        <p class="note center">You and your challenger each pay half the price of a gacha pull. Win the game and the pot buys you one pull from that Collector Crypt machine; what you pull is random and can be worth more or less than the pot. Cancel before anyone accepts for a full refund; leaving a game in progress forfeits it. 18+ only, and not available in every state.</p>
+        <p class="preview-note">Preview: play money only, and challengers are played by the CPU until online play is ready.</p>
       </div>`;
 
-    root.querySelector('[data-a="menu"]')!.addEventListener('click', () => { stopTimer(); act.menu(); });
-    root.querySelector('[data-a="create"]')!.addEventListener('click', () => createSheet(tab));
-    root.querySelectorAll<HTMLButtonElement>('[data-tab]').forEach((b) => b.addEventListener('click', () => {
-      audio.blip();
-      lobby(b.dataset.tab as Tab);
-    }));
-    root.querySelectorAll<HTMLButtonElement>('[data-accept]').forEach((b) => b.addEventListener('click', () => {
-      try {
-        const battle = battles.accept(b.dataset.accept!);
-        audio.blip(true);
-        draft(battle);
-      } catch (e) {
-        lobby('open', (e as Error).message);
-      }
-    }));
-    root.querySelectorAll<HTMLButtonElement>('[data-play]').forEach((b) => b.addEventListener('click', () => {
+    const on = (sel: string, fn: (el: HTMLButtonElement) => void) =>
+      root.querySelectorAll<HTMLButtonElement>(sel).forEach((b) => b.addEventListener('click', () => fn(b)));
+    on('[data-a="menu"]', () => { stopTimer(); act.menu(); });
+    on('[data-a="create"]', () => createSheet(tab));
+    on('[data-a="funds"]', () => fundsSheet(tab));
+    on('[data-a="elig"]', () => eligibilitySheet(tab));
+    on('[data-tab]', (b) => { audio.blip(); lobby(b.dataset.tab as Tab); });
+    on('[data-accept]', (b) => {
+      const battle = open.find((x) => x.id === b.dataset.accept);
+      if (battle) confirmSheet(battle);
+    });
+    on('[data-play]', (b) => {
       const battle = mine.find((x) => x.id === b.dataset.play);
       if (battle) { audio.blip(true); draft(battle); }
-    }));
-    root.querySelectorAll<HTMLButtonElement>('[data-cancel]').forEach((b) => b.addEventListener('click', () => {
+    });
+    on('[data-cancel]', (b) => {
+      const battle = mine.find((x) => x.id === b.dataset.cancel);
       battles.cancel(b.dataset.cancel!);
-      lobby('mine', 'Battle cancelled.');
-    }));
-    root.querySelectorAll<HTMLButtonElement>('[data-claim]').forEach((b) => b.addEventListener('click', () => {
+      lobby('mine', battle ? `Battle cancelled. ${money(entryOf(battle.tier))} refunded.` : 'Battle cancelled.');
+    });
+    on('[data-claim]', (b) => {
       const p = prizes.find((x) => x.id === b.dataset.claim);
       if (p) claimSheet(p);
-    }));
+    });
 
     // Watch for a challenger while one of your battles is waiting.
     const waiting = new Set(mine.filter((b) => b.status === 'open').map((b) => b.id));
@@ -108,17 +115,19 @@ export function battleScreen(root: HTMLElement, settings: Settings, audio: Audio
       timer = window.setInterval(() => {
         if (battles.mine().some((b) => b.status === 'ready' && waiting.has(b.id))) {
           audio.blip(true);
-          lobby('mine', 'A challenger accepted your battle!');
+          lobby('mine', 'A challenger accepted and paid their half. Your battle is ready!');
         }
       }, 1000);
     }
+
   }
 
-  function openHtml(list: Battle[]): string {
+  function openHtml(list: Battle[], bal: number, blocked: boolean): string {
     if (!list.length) return `<p class="empty">No open battles right now. Create one and wait for a challenger.</p>`;
     return `<ul class="battle-grid">${list.map((b) => {
       const t = PACK_TIERS[b.tier];
       const r = b.rival!;
+      const cost = entryOf(b.tier);
       return `
         <li><article class="battle-card" style="--tc:${t.color}; --rc:${r.color}">
           <div class="bc-pack">${packSvg(b.tier, 58)}</div>
@@ -128,7 +137,10 @@ export function battleScreen(root: HTMLElement, settings: Settings, audio: Audio
             <span class="bc-handle">@${esc(r.handle)} · ${ago(b.createdAt)}</span>
             <span class="types">${typeChips(r)}</span>
           </div>
-          <button class="btn primary" data-accept="${b.id}">Accept</button>
+          <div class="bc-go">
+            <button class="btn primary" data-accept="${b.id}" ${blocked || bal < cost ? 'disabled' : ''}>Accept · ${money(cost)}</button>
+            <small>Win a ${money(t.price)} pull</small>
+          </div>
         </article></li>`;
     }).join('')}</ul>`;
   }
@@ -139,10 +151,10 @@ export function battleScreen(root: HTMLElement, settings: Settings, audio: Audio
       const t = PACK_TIERS[b.tier];
       const r = b.rival;
       const [line, right] =
-        b.status === 'open' ? ['<span class="waiting"><i class="ball-spin" aria-hidden="true"></i>Waiting for a challenger…</span>', `<button class="btn small ghost" data-cancel="${b.id}">Cancel</button>`]
-        : b.status === 'ready' ? [`vs <b>${esc(r!.name)}</b> <small>@${esc(r!.handle)}</small>`, `<button class="btn primary" data-play="${b.id}">Play now</button>`]
+        b.status === 'open' ? [`<span class="waiting"><i class="ball-spin" aria-hidden="true"></i>Waiting for a challenger… <small>${money(entryOf(b.tier))} in escrow</small></span>`, `<button class="btn small ghost" data-cancel="${b.id}">Cancel · refund</button>`]
+        : b.status === 'ready' ? [`vs <b>${esc(r!.name)}</b> <small>@${esc(r!.handle)} · pot ${money(t.price)}</small>`, `<button class="btn primary" data-play="${b.id}">Play now</button>`]
         : b.status === 'won' ? [`Beat <b>${esc(r!.name)}</b>`, `<span class="res win">W ${b.score![0]}–${b.score![1]}</span>`]
-        : [`Lost to <b>${esc(r!.name)}</b>`, `<span class="res loss">L ${b.score![0]}–${b.score![1]}</span>`];
+        : [`Lost to <b>${esc(r!.name)}</b>`, `<span class="res loss">${b.forfeit ? 'Forfeit' : `L ${b.score![0]}–${b.score![1]}`}</span>`];
       return `
         <li class="mb-${b.status}" style="--tc:${t.color}">
           ${packSvg(b.tier, 34)}
@@ -170,29 +182,98 @@ export function battleScreen(root: HTMLElement, settings: Settings, audio: Audio
     bg.className = 'sheet-bg';
     bg.innerHTML = `<div class="sheet" role="dialog" aria-modal="true">${html}<button class="close" aria-label="Close">×</button></div>`;
     document.body.appendChild(bg);
-    const close = () => { bg.remove(); window.removeEventListener('keydown', esc_); };
-    const esc_ = (e: KeyboardEvent) => { if (e.key === 'Escape') close(); };
-    window.addEventListener('keydown', esc_);
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') close(); };
+    const close = () => { bg.remove(); window.removeEventListener('keydown', onKey); };
+    window.addEventListener('keydown', onKey);
     bg.addEventListener('click', (e) => { if (e.target === bg || (e.target as HTMLElement).closest('.close')) close(); });
     bind(bg.querySelector('.sheet')!, close);
   }
 
+  function eligibilitySheet(from: Tab) {
+    const cur = battles.eligibility();
+    sheet(`
+      <h3>Before you battle</h3>
+      <p class="note">Pack Battles use real money, so we need two things first.</p>
+      <div class="elig">
+        <label class="field" for="elig-region">State you're playing from
+          <select id="elig-region">
+            <option value="">Choose your state</option>
+            ${US_REGIONS.map(([c, n]) => `<option value="${c}" ${cur?.region === c ? 'selected' : ''}>${esc(n)}${RESTRICTED_REGIONS.includes(c) ? ' (not available)' : ''}</option>`).join('')}
+          </select>
+        </label>
+        <label class="check"><input type="checkbox" id="elig-adult" ${cur?.adult ? 'checked' : ''}> I'm 18 or older</label>
+      </div>
+      <p class="note">We also check your location and age when you add funds.</p>
+      <div class="actions center"><button class="btn primary big" data-a="save" disabled>Continue</button></div>`,
+    (el, close) => {
+      const region = el.querySelector<HTMLSelectElement>('#elig-region')!;
+      const adult = el.querySelector<HTMLInputElement>('#elig-adult')!;
+      const go = el.querySelector<HTMLButtonElement>('[data-a="save"]')!;
+      const sync = () => (go.disabled = !region.value);
+      region.addEventListener('change', sync);
+      sync();
+      go.addEventListener('click', () => {
+        battles.setEligibility({ adult: adult.checked, region: region.value });
+        close();
+        lobby(from);
+      });
+    });
+  }
+
+  function fundsSheet(from: Tab) {
+    sheet(`
+      <h3>Add funds</h3>
+      <p class="note">Balance ${money(battles.balance())}. Preview mode adds play money.</p>
+      <div class="seg funds">${[1250, 2500, 5000].map((c) => `<button data-v="${c}">${money(c)}</button>`).join('')}</div>`,
+    (el, close) => el.querySelectorAll<HTMLButtonElement>('[data-v]').forEach((b) => b.addEventListener('click', () => {
+      battles.addFunds(Number(b.dataset.v));
+      audio.blip(true);
+      close();
+      lobby(from, `${money(Number(b.dataset.v))} added.`);
+    })));
+  }
+
+  function confirmSheet(b: Battle) {
+    const t = PACK_TIERS[b.tier];
+    sheet(`
+      <h3>Accept this battle?</h3>
+      <div class="claim">${packSvg(b.tier, 72)}
+        <ul class="terms">
+          <li>You pay <b>${money(entryOf(b.tier))}</b>. ${esc(b.rival!.name)} already paid their half.</li>
+          <li>Win the game and the ${money(t.price)} pot buys you one pull from the <b>${t.label}</b> machine.</li>
+          <li>Lose, or leave the game, and the pull goes to them.</li>
+          <li>Pulls are random: the card can be worth more or less than ${money(t.price)}.</li>
+        </ul>
+      </div>
+      <p class="note">Balance after: ${money(battles.balance() - entryOf(b.tier))}</p>
+      <div class="actions center"><button class="btn primary big" data-a="go">Pay ${money(entryOf(b.tier))} and draft</button></div>`,
+    (el, close) => el.querySelector('[data-a="go"]')!.addEventListener('click', () => {
+      close();
+      try {
+        const battle = battles.accept(b.id);
+        audio.blip(true);
+        draft(battle);
+      } catch (e) {
+        lobby('open', (e as Error).message);
+      }
+    }));
+  }
+
   function createSheet(from: Tab) {
-    const stock = battles.stock();
-    let tier: PackTier = TIER_ORDER.find((t) => stock[t] > 0) ?? 'starter';
+    let tier: PackTier = 'starter';
     let qlen = 120;
     const render = (el: HTMLElement) => {
       el.querySelector('.create-pack')!.innerHTML = packSvg(tier, 92, 'float');
-      el.querySelector('.create-sum')!.textContent = `${PACK_TIERS[tier].label} · ${qLabel(qlen)} · All-Star`;
+      el.querySelector('.create-sum')!.textContent = `You pay ${money(entryOf(tier))} now · winner gets a ${money(PACK_TIERS[tier].price)} pull`;
     };
     sheet(`
       <h3>Create a battle</h3>
       <div class="create">
         <div class="create-pack"></div>
         <div class="create-fields">
-          <div class="field">Prize pack
+          <div class="field">Pack
             <div class="seg" id="tier">${TIER_ORDER.map((t) =>
-              `<button data-v="${t}" class="${t === tier ? 'on' : ''}" ${stock[t] ? '' : 'disabled'}>${PACK_TIERS[t].short}<small>${stock[t] ? `${stock[t]} left` : 'gone'}</small></button>`).join('')}</div>
+              `<button data-v="${t}" class="${t === tier ? 'on' : ''}">${PACK_TIERS[t].short}<small>${money(entryOf(t))} each</small></button>`).join('')}</div>
           </div>
           <div class="field">Quarter length
             <div class="seg" id="bq">${BATTLE_QUARTERS.map((s) => `<button data-v="${s}" class="${s === qlen ? 'on' : ''}">${s / 60} min</button>`).join('')}</div>
@@ -200,13 +281,13 @@ export function battleScreen(root: HTMLElement, settings: Settings, audio: Audio
         </div>
       </div>
       <p class="create-sum"></p>
-      <p class="note">Free to enter. The first player to accept plays you for this pack.</p>
-      <div class="actions center"><button class="btn primary big" data-a="post">Post battle</button></div>`,
+      <p class="note">Your half sits in escrow until someone accepts. Cancel before then for a full refund.</p>
+      <div class="actions center"><button class="btn primary big" data-a="post">Pay and post</button></div>`,
     (el, close) => {
       render(el);
       const seg = (id: string, set: (v: string) => void) => el.querySelector(id)!.addEventListener('click', (e) => {
         const b = (e.target as HTMLElement).closest<HTMLButtonElement>('button');
-        if (!b || b.disabled) return;
+        if (!b) return;
         el.querySelectorAll(`${id} button`).forEach((x) => x.classList.toggle('on', x === b));
         set(b.dataset.v!);
         audio.blip();
@@ -215,13 +296,12 @@ export function battleScreen(root: HTMLElement, settings: Settings, audio: Audio
       seg('#tier', (v) => (tier = v as PackTier));
       seg('#bq', (v) => (qlen = Number(v)));
       el.querySelector('[data-a="post"]')!.addEventListener('click', () => {
+        close();
         try {
           battles.create(tier, qlen);
-          close();
           audio.blip(true);
-          lobby('mine', 'Battle posted. You\'ll see it here when a challenger accepts.');
+          lobby('mine', `Battle posted. ${money(entryOf(tier))} is in escrow until a challenger accepts.`);
         } catch (e) {
-          close();
           lobby(from, (e as Error).message);
         }
       });
@@ -234,15 +314,15 @@ export function battleScreen(root: HTMLElement, settings: Settings, audio: Audio
       <div class="claim">${packSvg(p.tier, 84, 'float')}
         <ol>
           <li>Sign in to your Poké Jam account.</li>
-          <li>Confirm you're 18 or older.</li>
-          <li>Add a shipping address. We mail the sealed pack.</li>
+          <li>Connect the Solana wallet the card should go to.</li>
+          <li>We buy your pull from the Collector Crypt machine and send the card there.</li>
         </ol>
       </div>
       <div class="actions center"><button class="btn primary big" data-a="claim">Request claim</button></div>`,
     (el, close) => el.querySelector('[data-a="claim"]')!.addEventListener('click', () => {
       battles.claim(p.id);
       close();
-      lobby('prizes', 'Claim requested. Watch your email for shipping details.');
+      lobby('prizes', 'Claim requested.');
     }));
   }
 
@@ -256,7 +336,7 @@ export function battleScreen(root: HTMLElement, settings: Settings, audio: Audio
     window.scrollTo(0, 0);
     draftScreen(root, { teams: [user(), rivalTeam(b.rival!)], order: shuffle([0, 1]), taken: [], rounds: 5 }, audio,
       (rosters) => matchup(b, rosters[0], rosters[1]),
-      () => lobby('mine'), () => {});
+      () => lobby('mine', 'Your battle is waiting in Your battles. Come back to play it.'), () => {});
   }
 
   function matchup(b: Battle, mine: Mon[], theirs: Mon[]) {
@@ -277,12 +357,12 @@ export function battleScreen(root: HTMLElement, settings: Settings, audio: Audio
         <section class="card next battle-next" style="--tc:${t.color}">
           <p class="eyebrow">Pack Battle · ${esc(court.venue)}</p>
           <div class="nx-cols">
-            ${side(userName(), USER_STYLE.color, 'You', mine)}
-            <div class="stake">${packSvg(b.tier, 84, 'float')}<span>Winner takes</span><b>${t.label}</b></div>
-            ${side(r.name, r.color, `@${r.handle}`, theirs)}
+            ${side(userName(), USER_STYLE.color, `You · paid ${money(entryOf(b.tier))}`, mine)}
+            <div class="stake">${packSvg(b.tier, 84, 'float')}<span>Winner gets</span><b>${t.label}</b><small>${money(t.price)} pull</small></div>
+            ${side(r.name, r.color, `@${r.handle} · paid ${money(entryOf(b.tier))}`, theirs)}
           </div>
           <ul class="rules">
-            <li>All-Star difficulty</li><li>${qLabel(b.quarterLen)}</li><li>No stamina</li><li>Overtime until someone wins</li>
+            <li>All-Star difficulty</li><li>${qLabel(b.quarterLen)}</li><li>No stamina</li><li>Overtime until someone wins</li><li class="warn">Leaving forfeits</li>
           </ul>
           <div class="actions center">
             <button class="btn primary big" data-a="tip">Tip off</button>
@@ -314,7 +394,10 @@ export function battleScreen(root: HTMLElement, settings: Settings, audio: Audio
           : [{ id: 'lobby', label: 'Find another battle', kind: 'primary' }, { id: 'menu', label: 'Main menu', kind: 'ghost' }],
         onAction: (a) => (a === 'menu' ? act.menu() : lobby(a === 'prizes' ? 'prizes' : 'open')),
       });
-    }, () => lobby('mine', 'You left the game. Your battle is still waiting in Your battles.'));
+    }, () => {
+      battles.forfeit(b.id);
+      lobby('mine', `You left the game, so ${r.name} get the ${PACK_TIERS[b.tier].label}.`);
+    }, { quitLabel: 'Forfeit and quit' });
   }
 
   function outcomeHtml(b: Battle, won: boolean): string {
@@ -324,14 +407,16 @@ export function battleScreen(root: HTMLElement, settings: Settings, audio: Audio
       ? `<section class="pack-won" style="--tc:${t.color}">
           <div class="pack-rip">${packSvg(b.tier, 116)}<i class="burst" aria-hidden="true"></i></div>
           <p>${esc(who.toUpperCase())} won the ${t.short} PACK!</p>
-          <p class="pw-2">It's in your prizes. Claim it and we ship it to you.</p>
+          <p class="pw-2">Your ${money(t.price)} pull is in your prizes. Claim it and we open it from the Collector Crypt machine and send you the card.</p>
         </section>`
       : `<section class="pack-won lost" style="--tc:${t.color}">
           <div class="pack-gone">${packSvg(b.tier, 84)}</div>
           <p>${esc(who.toUpperCase())} took the ${t.short} PACK.</p>
-          <p class="pw-2">Run it back: there are more packs in the pool.</p>
+          <p class="pw-2">Your ${money(entryOf(b.tier))} went into the winner's pull.</p>
         </section>`;
   }
 
   lobby();
+  // First visit: ask for age and state before anything else.
+  if (!battles.eligibility()) eligibilitySheet('open');
 }
