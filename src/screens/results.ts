@@ -26,7 +26,7 @@ export function boxHtml(name: string, color: string, score: number, rows: BoxRow
   const keys = ['pts', 'fgm', 'fga', 'tpm', 'tpa', 'reb', 'ast', 'stl', 'blk', 'dnk'] as const;
   const tot = Object.fromEntries(keys.map((k) => [k, rows.reduce((a, r) => a + r[k], 0)])) as Record<(typeof keys)[number], number>;
   const body = rows.map((r) => {
-    const who = `<th><div class="who"><img src="${spriteUrl(r.dex)}" alt=""><span>${esc(r.name)}<small>${r.pos}</small></span></div></th>`;
+    const who = `<th><div class="who"><img src="${spriteUrl(r.dex)}" alt=""><div class="who-t"><b title="${esc(r.name)}">${esc(r.name)}</b><small>${r.pos}</small></div></div></th>`;
     if (withBench && r.sec === 0) return `<tr class="dnp">${who}<td class="dnp-l">DNP</td><td colspan="8"></td></tr>`;
     return `<tr class="${r.starter ? '' : 'bench'}">
       ${who}

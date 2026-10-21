@@ -823,12 +823,17 @@ li.empty { color: var(--muted); }
 .box th, .box td { padding: 5px 6px; text-align: right; white-space: nowrap; }
 .box thead th { color: var(--muted); font-size: 0.8rem; letter-spacing: 0.08em; }
 .box tbody th, .box tfoot th, .box thead th:first-child { text-align: left; }
-/* The name column stays a real table cell (a flex <th> breaks the column widths on phones) and sticks
-   to the left while the stats scroll. */
-.box tbody th, .box tfoot th, .box thead th:first-child { position: sticky; left: 0; z-index: 1; background: var(--panel); }
-.box .who { display: flex; align-items: center; gap: 6px; font-weight: 700; }
-.box .who img { width: 28px; height: 28px; image-rendering: pixelated; flex-shrink: 0; }
-.box .who span { display: flex; flex-direction: column; line-height: 1.1; }
+/* The name column has a fixed width that fits the longest names (Safari doesn't size flex content in
+   table cells reliably, which let long names run into MIN), truncates anything longer, and sticks to the
+   left while the stats scroll. */
+.box tbody th, .box tfoot th, .box thead th:first-child {
+  position: sticky; left: 0; z-index: 1; background: var(--panel);
+  width: 9.6em; min-width: 9.6em; max-width: 9.6em; padding-right: 10px;
+}
+.box .who { display: flex; align-items: center; gap: 6px; font-weight: 700; min-width: 0; }
+.box .who img { width: 28px; height: 28px; image-rendering: pixelated; flex: 0 0 28px; }
+.box .who-t { display: flex; flex-direction: column; line-height: 1.1; min-width: 0; flex: 1 1 auto; }
+.box .who-t b { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .box .who small { color: var(--muted); font-size: 0.75rem; }
 .box tbody tr { border-top: 1px solid var(--line); }
 .box tfoot { border-top: 2px solid var(--line); font-weight: 800; }
@@ -933,7 +938,7 @@ li.empty { color: var(--muted); }
 .rd-tbl thead th[aria-sort] { color: var(--accent); }
 .rd-tbl thead th[aria-sort="descending"]::after { content: ' ▼'; }
 .rd-tbl thead th[aria-sort="ascending"]::after { content: ' ▲'; }
-.rd-tbl .rd-name { position: sticky; left: 0; z-index: 1; background: var(--panel); text-align: left; }
+.rd-tbl .rd-name { position: sticky; left: 0; z-index: 1; background: var(--panel); text-align: left; width: 10.5em; min-width: 10.5em; }
 .rd-tbl thead .rd-name { z-index: 3; background: var(--panel-2); }
 .rd-tbl tbody tr { cursor: pointer; }
 .rd-tbl tbody tr:hover td, .rd-tbl tbody tr:hover .rd-name, .rd-tbl tbody tr:focus-visible td, .rd-tbl tbody tr:focus-visible .rd-name { background: var(--panel-2); }
