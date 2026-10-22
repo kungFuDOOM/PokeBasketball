@@ -13,19 +13,25 @@ export { monCard, typeChips };
 export const CPU_REACH = 7;
 
 /**
- * CPU general manager: best available, nudged toward open positions and the team's favorite types, with enough
- * noise that it sometimes reaches for a slightly lower-rated fit (never more than CPU_REACH below the best).
+ * CPU general manager: best available, nudged toward open positions, with enough noise that it sometimes reaches
+ * for a slightly lower-rated fit (never more than CPU_REACH below the best). A themed team's star has to be one of
+ * its types: until it has an on-type player it only looks at on-type Pokémon (falling back to everyone if none are
+ * left). After that, type doesn't matter.
  */
 export function cpuPick(pool: Mon[], roster: Mon[], types: PokeType[] = [], rng: () => number = Math.random): Mon {
+  const isOn = (m: Mon) => m.types.some((t) => types.includes(t));
+  if (types.length && !roster.some(isOn)) {
+    const on = pool.filter(isOn);
+    if (on.length) pool = on;
+  }
   const count = (pos: string) => roster.filter((m) => m.pos === pos).length;
   const floor = Math.max(...pool.map((m) => m.ovr)) - CPU_REACH;
   let best = pool[0];
   let bs = -Infinity;
   for (const m of pool) {
     if (m.ovr < floor) continue;
-    const onType = m.types.some((t) => types.includes(t));
     const need = [5, 2, 0][Math.min(2, count(m.pos))];
-    const s = m.ovr + need + (onType ? 8 : 0) + rng() * 9;
+    const s = m.ovr + need + rng() * 9;
     if (s > bs) { bs = s; best = m; }
   }
   return best;

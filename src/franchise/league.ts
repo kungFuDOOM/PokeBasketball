@@ -725,7 +725,8 @@ function rookieScore(f: Franchise, uid: string, t: FTeam): number {
   const pot = potentialOf(m.dex);
   const have = t.roster.filter((u) => monOf(f, u).pos === m.pos).length;
   return pot.ovr * 1.2 + m.ovr * 0.3 - pot.level * 1.5 + (have === 0 ? 6 : have === 1 ? 2 : 0)
-    + (t.types?.some((ty) => m.types.includes(ty)) ? 5 : 0) + Math.random() * 3;
+    + (t.types?.length && m.types.some((ty) => t.types!.includes(ty))
+      && !t.roster.some((u) => monOf(f, u).types.some((ty) => t.types!.includes(ty))) ? 5 : 0) + Math.random() * 3;
 }
 
 /** Makes the current pick: `uid` for the team on the clock, or the CPU's choice when omitted. */
