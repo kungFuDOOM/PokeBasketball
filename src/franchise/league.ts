@@ -1,4 +1,4 @@
-import { EVOLUTIONS, LAST_DEX, RATING_LABELS, monByDex, positionWeights, withBonus, type Mon, type PokeType, type Ratings } from '../data/pokemon';
+import { EVOLUTIONS, RATING_LABELS, isRetired, monByDex, positionWeights, withBonus, type Mon, type PokeType, type Ratings } from '../data/pokemon';
 import { Game, bestLineup } from '../game/game';
 import { courtFor, userCourt } from '../data/courts';
 import type { Difficulty, GameConfig, PStats, TeamDef } from '../game/types';
@@ -266,11 +266,11 @@ export function saveFranchise(f: Franchise) {
 }
 
 /**
- * Older saves can hold Gen 6+ Pokémon, which are no longer in the game: drop them from free agency and the
+ * Older saves can hold retired Pokémon, which are no longer in the game: drop them from free agency and the
  * rookie class, and replace any on a roster with the best free agent at the same position.
  */
 function retireLegacy(f: Franchise) {
-  const gone = (u: string) => f.players[u].dex > LAST_DEX;
+  const gone = (u: string) => isRetired(f.players[u].dex);
   f.freeAgents = f.freeAgents.filter((u) => !gone(u));
   if (f.rookies) f.rookies.pool = f.rookies.pool.filter((u) => !gone(u) || f.rookies!.picks.includes(u));
   for (const t of f.teams) {
@@ -282,7 +282,7 @@ function retireLegacy(f: Franchise) {
       t.roster = t.roster.map((x) => (x === u ? add : x));
       if (t.lineup) t.lineup = t.lineup.map((x) => (x === u ? add : x));
       f.freeAgents.splice(f.freeAgents.indexOf(add), 1);
-      f.news.unshift(`${old.name} left the league (Poké Jam is Gen 1-5 now). ${t.name} signed ${monOf(f, add).name}.`);
+      f.news.unshift(`${old.name} left the league (retired from Poké Jam). ${t.name} signed ${monOf(f, add).name}.`);
     }
   }
   f.news = f.news.slice(0, 8);
