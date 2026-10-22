@@ -4,6 +4,7 @@ import { LEAGUE, USER_STYLE } from '../franchise/league';
 import type { Audio } from '../game/audio';
 import { renameDrafted, saveDrafted } from '../season/team';
 import { inlineRename } from '../ui/teamName';
+import { confirmNewDraft } from '../ui/newDraft';
 import { shareUrl, type SharedTeam } from '../season/share';
 import { renderCard, renderShareCard, shareTeam, toPngBlob, download, fileName } from '../season/shareImage';
 import { teamGrade } from '../season/grade';
@@ -29,6 +30,23 @@ export function toShared(name: string, color: string, color2: string, mons: Mon[
   return { name, color, color2, dex: mons.map((m) => m.dex), w: u.w, l: u.l, rank: u.rank, teams: u.teams, seed: u.seed, playoff: u.playoff, ...(allStars ? { allStars } : {}) };
 }
 
+/**
+ * The draft is done: sim the season and only now save the team as My Drafted Team, replacing any older one.
+ * Nothing before this point writes the saved team, so quitting a new draft midway keeps the old team.
+ */
+export function finishSeasonDraft(user: Pick<DraftTeam, 'name' | 'abbr' | 'color' | 'color2'>, rosters: Mon[][], seed: number) {
+  const input: SimInput = {
+    seed,
+    teams: [
+      { name: user.name, abbr: user.abbr, color: user.color, color2: user.color2, roster: rosters[0] },
+      ...LEAGUE.map((t, i) => ({ name: t.name, abbr: t.abbr, color: t.color, color2: t.color2, boost: t.boost, roster: rosters[i + 1] })),
+    ],
+  };
+  const result = simulateSeason(input);
+  saveDrafted({ name: user.name, abbr: user.abbr, colors: { color: user.color, color2: user.color2 }, mons: rosters[0], record: { w: result.user.w, l: result.user.l }, rank: result.user.rank });
+  return { input, result };
+}
+
 /** Starts the draft. Never saved mid-way, so it can't touch the franchise draft save. */
 export function seasonMode(root: HTMLElement, settings: Settings, audio: Audio, act: SeasonActions) {
   const defaultName = settings.teamName.trim() || 'Pallet Town';
@@ -48,15 +66,7 @@ export function seasonMode(root: HTMLElement, settings: Settings, audio: Audio, 
   }
 
   function simulate(rosters: Mon[][]) {
-    const input: SimInput = {
-      seed: seedOf(),
-      teams: [
-        { name: user.name, abbr: user.abbr, color: user.color, color2: user.color2, roster: rosters[0] },
-        ...LEAGUE.map((t, i) => ({ name: t.name, abbr: t.abbr, color: t.color, color2: t.color2, boost: t.boost, roster: rosters[i + 1] })),
-      ],
-    };
-    const result = simulateSeason(input);
-    saveDrafted({ name: user.name, abbr: user.abbr, colors: { color: user.color, color2: user.color2 }, mons: rosters[0], record: { w: result.user.w, l: result.user.l }, rank: result.user.rank });
+    const { input, result } = finishSeasonDraft(user, rosters, seedOf());
     ticker(input, rosters[0], result);
   }
 
@@ -281,7 +291,14 @@ export function seasonMode(root: HTMLElement, settings: Settings, audio: Audio, 
           link.select();
           say(document.execCommand?.('copy') ? 'Link copied.' : 'Press Ctrl+C (or long-press) to copy the link.');
         }
-      } else if (go === 'season-again') draft();
+      } else if (go === 'season-again') {
+        // The team on this screen is the saved one: warn before a new draft would replace it.
+        void confirmNewDraft().then((c) => {
+          if (c === 'new') draft();
+          else if (c === 'quick') act.useTeam('quick');
+          else if (c === 'franchise') act.useTeam('franchise');
+        });
+      }
       else if (go === 'menu') act.menu();
       else if (go === 'use-quick') act.useTeam('quick');
       // The name confirm (with the replace-save warning when there is a save) comes from the franchise start itself.

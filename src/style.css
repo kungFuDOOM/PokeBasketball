@@ -1317,3 +1317,17 @@ button.gl-row:hover { border-color: var(--muted); }
 .ss-as-grid small span { display: block; white-space: nowrap; }
 .as-you { top: -9px; right: auto; left: 50%; transform: translateX(-50%); white-space: nowrap; }
 .ss-as-grid { padding-top: 6px; }
+/* "Start a new draft?" overwrite warning */
+.btn.danger { background: var(--red); border-color: var(--red); color: #fff; }
+.btn.danger:hover:not(:disabled) { filter: brightness(1.1); background: var(--red); }
+.nd-box .eyebrow { margin: 0; }
+.nd-name { margin: 4px 0 2px; }
+.nd-facts { margin: 0 0 10px; font-weight: 700; color: var(--muted); }
+.nd-sprites { list-style: none; display: grid; grid-template-columns: repeat(10, minmax(0, 1fr)); gap: 2px; margin: 0 0 12px; padding: 6px; background: var(--panel-2); border-radius: 10px; }
+.nd-sprites img { width: 100%; max-width: 40px; aspect-ratio: 1; image-rendering: pixelated; display: block; margin: auto; }
+.nd-title { margin: 4px 0 8px; font-size: 1.25rem; }
+.nd-actions { flex-wrap: wrap; gap: 10px; }
+.nd-actions .btn { flex: 1 1 160px; }
+.nd-use { margin-top: 12px; display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; align-items: center; }
+.nd-use-btns { display: inline-flex; gap: 8px; }
+.nd-use-btns[hidden] { display: none; }
