@@ -2,7 +2,7 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { POKEMON, POSITIONS, type Mon } from '../data/pokemon';
 import { bestLineup, teamOvr } from '../game/game';
-import { countAt, cpuPick, posTrackHtml, targetPer } from './draft';
+import { countAt, CPU_REACH, cpuPick, posTrackHtml, targetPer } from './draft';
 import { snakePicks } from './draft.logic';
 
 const pool = [...POKEMON].sort((a, b) => b.ovr - a.ovr);
@@ -92,6 +92,38 @@ describe('cpuPick', () => {
     const b = { ...pool[1], ovr: 76, types: ['Grass'], pos: 'PG' } as Mon;
     expect(cpuPick([a, b], [], ['Fire'])).toBe(a);
     expect(cpuPick([a, b], [], [])).toBe(b);
+  });
+  it('never reaches more than CPU_REACH below the best available, whatever the noise', () => {
+    for (const r of [0, 0.5, 0.999999]) {
+      const rest = [...pool].reverse();
+      const roster = POKEMON.filter((m) => m.pos === 'C').slice(0, 2);
+      const m = cpuPick(rest, roster, ['Fire', 'Water', 'Grass'], () => r);
+      expect(m.ovr).toBeGreaterThanOrEqual(pool[0].ovr - CPU_REACH);
+    }
+    seeded(7);
+    for (let i = 0; i < 300; i++) {
+      const left = [...pool];
+      const m = cpuPick(left, [], ['Fire']);
+      expect(m.ovr).toBeGreaterThanOrEqual(left[0].ovr - CPU_REACH);
+    }
+  });
+  it('is less predictable: different players come off the top from draft to draft', () => {
+    seeded(11);
+    const firsts = new Set(Array.from({ length: 60 }, () => cpuPick(pool, [], []).dex));
+    expect(firsts.size).toBeGreaterThanOrEqual(5);
+  });
+  it('still fills positions: a 10-round draft covers (almost) every slot, a 5-round draft most of them', () => {
+    seeded(5);
+    let missing = 0;
+    let slots = 0;
+    let covered = 0;
+    let teams5 = 0;
+    for (let run = 0; run < 20; run++) {
+      for (const r of simDraft([0, 1, 2, 3, 4, 5], 10, []).rosters) for (const p of POSITIONS) { slots++; if (!countAt(r, p)) missing++; }
+      for (const r of simDraft([0, 1], 5, []).rosters) { teams5++; covered += POSITIONS.filter((p) => countAt(r, p)).length; }
+    }
+    expect(missing / slots).toBeLessThan(0.01);
+    expect(covered / teams5).toBeGreaterThanOrEqual(4);
   });
   it('full 4-team 10-round CPU draft is stable for a seed', () => {
     seeded(99);
