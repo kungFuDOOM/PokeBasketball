@@ -19,6 +19,7 @@ import { rosterScreen } from './screens/roster';
 import { seasonMode, sharedScreen } from './screens/season';
 import { shareFromHash } from './season/share';
 import { autoDraft, draftedMons, loadDrafted, renameDrafted, type TeamSource } from './season/team';
+import { confirmNewDraft } from './ui/newDraft';
 import { confirmFranchiseName } from './ui/teamName';
 import { gamesScreen } from './screens/games';
 import { badgeSvg } from './ui/badges';
@@ -97,6 +98,7 @@ function menu() {
     },
     onQuick: () => quick('draft'),
     onSeason: season,
+    confirmSeason: () => guardNewDraft(menu),
     onResumeDraft: () => {
       const saved = loadDraft();
       if (saved) draft(saved);
@@ -126,22 +128,39 @@ function quick(source: TeamSource) {
   quickPlay(app, settings, audio, { menu, saved: save }, source);
 }
 
+/** Franchise with My Drafted Team (its name and colors); `onCancel` runs if the name confirm is cancelled. */
+function franchiseWithDrafted(onCancel: () => void) {
+  const mine = loadDrafted();
+  const name = mine?.name ?? (settings.teamName.trim() || 'Pallet Town');
+  const teams = [
+    { name, abbr: abbr(name), ...USER_STYLE, ...(mine ? mine.colors : {}), human: true },
+    ...LEAGUE.map((t) => ({ ...t, human: false })),
+  ];
+  const { rosters, leftovers } = autoDraft(teams, 10, mine ? draftedMons(mine) : undefined);
+  void startFranchise(teams, rosters, leftovers, { fromDrafted: !!mine, onCancel });
+}
+
+/**
+ * Before a new Season Draft while a team is saved: "Start a new draft? This will replace your saved team."
+ * Resolves to what to run next, or null for Keep my team (stay put, nothing changes). No saved team, no dialog.
+ * `onFranchiseCancel` is where a cancelled franchise name confirm lands after leaving the current screen.
+ */
+async function guardNewDraft(onFranchiseCancel: () => void): Promise<(() => void) | null> {
+  const choice = await confirmNewDraft();
+  if (choice === 'new') return season;
+  if (choice === 'quick') return () => quick('mine');
+  if (choice === 'franchise') return () => franchiseWithDrafted(onFranchiseCancel);
+  return null;
+}
+
 function season() {
   audio.unlock();
   seasonMode(app, settings, audio, {
     menu,
     useTeam: (mode) => {
       if (mode === 'quick') return quick('mine');
-      const mine = loadDrafted();
-      // The franchise team keeps the drafted team's name and colors.
-      const name = mine?.name ?? (settings.teamName.trim() || 'Pallet Town');
-      const teams = [
-        { name, abbr: abbr(name), ...USER_STYLE, ...(mine ? mine.colors : {}), human: true },
-        ...LEAGUE.map((t) => ({ ...t, human: false })),
-      ];
-      const { rosters, leftovers } = autoDraft(teams, 10, mine ? draftedMons(mine) : undefined);
       // Cancel leaves you on the results screen with nothing changed.
-      void startFranchise(teams, rosters, leftovers, { fromDrafted: !!mine, onCancel: () => {} });
+      franchiseWithDrafted(() => {});
     },
   });
 }
@@ -316,6 +335,9 @@ const clearHash = () => history.replaceState(null, '', location.pathname + locat
 if (shared) {
   sharedScreen(app, shared, {
     menu: () => { clearHash(); menu(); },
-    draftOwn: () => { clearHash(); season(); },
+    draftOwn: async () => {
+      const go = await guardNewDraft(() => {});
+      if (go) { clearHash(); go(); }
+    },
   });
 } else menu();

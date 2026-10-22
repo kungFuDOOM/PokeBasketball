@@ -97,6 +97,8 @@ export interface TitleOptions {
   onNew: (source: TeamSource) => void;
   onQuick: () => void;
   onSeason: () => void;
+  /** Before a Season Draft: resolves to what to run after leaving the menu, or null to stay put. */
+  confirmSeason?: () => Promise<(() => void) | null>;
   onRoster: () => void;
 }
 
@@ -261,7 +263,10 @@ export function menuScreen(root: HTMLElement, settings: Settings, onChange: () =
   });
   const quick = leave(opts.onQuick);
   $('[data-go="quick"]')!.addEventListener('click', quick);
-  $('[data-go="season"]')!.addEventListener('click', leave(opts.onSeason));
+  $('[data-go="season"]')!.addEventListener('click', async () => {
+    const go = opts.confirmSeason ? await opts.confirmSeason() : opts.onSeason;
+    if (go) leave(go)();
+  });
   $('[data-go="roster"]')!.addEventListener('click', leave(opts.onRoster));
   startNew.addEventListener('click', tryNew);
   $('[data-go="continue"]')?.addEventListener('click', leave(opts.onContinue));
