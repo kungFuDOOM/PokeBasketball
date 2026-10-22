@@ -133,7 +133,7 @@ const ROWS: Row[] = [
   [9, 'Blastoise', ['Water'], 'PF', 62, 92, 88, 72, 80, 88, 90, 64],
   [131, 'Lapras', ['Water', 'Ice'], 'C', 52, 70, 78, 86, 68, 86, 90, 58],
   [376, 'Metagross', ['Steel', 'Psychic'], 'C', 58, 64, 90, 70, 84, 94, 90, 60],
-  [145, 'Zapdos', ['Electric', 'Flying'], 'SF', 86, 78, 92, 68, 80, 82, 76, 74],
+  [145, 'Zapdos', ['Electric', 'Flying'], 'SF', 94, 84, 96, 68, 84, 82, 76, 74],
   [392, 'Infernape', ['Fire', 'Fighting'], 'SG', 92, 82, 88, 72, 74, 55, 58, 86],
   [461, 'Weavile', ['Dark', 'Ice'], 'PG', 94, 72, 78, 72, 92, 50, 52, 88],
   [196, 'Espeon', ['Psychic'], 'SG', 85, 93, 62, 86, 66, 48, 52, 84],
@@ -206,7 +206,7 @@ const ROWS: Row[] = [
   [38, 'Ninetales', ['Fire'], 'PG', 86, 86, 62, 86, 72, 52, 54, 84],
   [157, 'Typhlosion', ['Fire'], 'SF', 80, 86, 86, 64, 72, 66, 66, 76],
   [136, 'Flareon', ['Fire'], 'PF', 66, 64, 90, 58, 74, 74, 80, 62],
-  [146, 'Moltres', ['Fire', 'Flying'], 'SF', 86, 80, 90, 68, 76, 80, 74, 74],
+  [146, 'Moltres', ['Fire', 'Flying'], 'SF', 89, 90, 97, 68, 82, 80, 74, 74],
   [229, 'Houndoom', ['Dark', 'Fire'], 'SG', 88, 82, 78, 66, 84, 58, 58, 82],
   [637, 'Volcarona', ['Bug', 'Fire'], 'SF', 78, 88, 72, 72, 72, 72, 66, 74],
   // Ground
@@ -217,7 +217,7 @@ const ROWS: Row[] = [
   [553, 'Krookodile', ['Ground', 'Dark'], 'C', 80, 72, 88, 64, 84, 72, 78, 74],
   [473, 'Mamoswine', ['Ice', 'Ground'], 'C', 52, 48, 90, 46, 74, 86, 92, 50],
   // Ice, Fighting, Ghost, Dragon (the Elite Four's types)
-  [144, 'Articuno', ['Ice', 'Flying'], 'SF', 80, 82, 80, 74, 82, 84, 74, 72],
+  [144, 'Articuno', ['Ice', 'Flying'], 'SF', 80, 89, 80, 74, 92, 94, 75, 72],
   [87, 'Dewgong', ['Water', 'Ice'], 'C', 56, 62, 74, 70, 74, 82, 86, 54],
   [534, 'Conkeldurr', ['Fighting'], 'PF', 50, 48, 94, 56, 80, 82, 88, 56],
   [609, 'Chandelure', ['Ghost', 'Fire'], 'SF', 66, 92, 76, 70, 64, 70, 62, 70],
