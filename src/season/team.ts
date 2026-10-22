@@ -3,7 +3,7 @@
 import { POKEMON, monByDex, type Mon } from '../data/pokemon';
 import { bestLineup } from '../game/game';
 import { cpuPick, type DraftTeam } from '../screens/draft';
-import { shuffle } from '../util';
+import { abbr, shuffle } from '../util';
 import { cleanName } from './share';
 
 export const DRAFTED_KEY = 'pokejam.draftedTeam';
@@ -63,8 +63,21 @@ export function loadDrafted(): DraftedTeam | null {
   }
 }
 
+/** Renames the saved team (share card, share link and title-page line all read it from here). */
+export function renameDrafted(name: string): DraftedTeam | null {
+  const t = loadDrafted();
+  const clean = cleanName(name);
+  if (!t || !clean) return t;
+  const next: DraftedTeam = { ...t, name: clean, abbr: abbr(clean) };
+  try {
+    localStorage.setItem(DRAFTED_KEY, JSON.stringify(next));
+  } catch { /* storage unavailable */ }
+  return next;
+}
+
 export const draftedMons = (t: DraftedTeam): Mon[] => t.dex.map(monByDex);
-export const draftedStarters = (t: DraftedTeam): Mon[] => t.starters.map((i) => monByDex(t.dex[i]));
+/** The starting five, always from the shared by-position rule (older saves may hold a different `starters`). */
+export const draftedStarters = (t: DraftedTeam): Mon[] => bestLineup(draftedMons(t)).starters;
 
 export type TeamSource = 'draft' | 'mine' | 'random';
 

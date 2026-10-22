@@ -1,4 +1,4 @@
-// Share links: a drafted team and its season, packed into the URL hash (#s=<base64url>). No backend.
+// Share links: a drafted team (and its season, when one was played), packed into the URL hash (#s=<base64url>). No backend.
 // Everything decoded from a link is untrusted: it is validated and clamped before use.
 import { POKEMON } from '../data/pokemon';
 import type { Playoff } from './sim';
@@ -7,14 +7,18 @@ export interface SharedTeam {
   name: string;
   color: string;
   color2: string;
-  /** Ten dex numbers. */
+  /** Five to ten dex numbers (ten from a Season or Franchise draft, five from Quick Play). */
   dex: number[];
+  /** A team shared straight from a draft-complete screen: no season played, so no record (w, l, rank, teams, seed are 0). */
+  noRecord?: boolean;
   w: number;
   l: number;
   rank: number;
   teams: number;
   /** Playoff seed 1-4, or 0. */
   seed: number;
+  /** How many of this team's players made the season's All-Star five (0-5). */
+  allStars?: number;
   playoff: Playoff;
 }
 
@@ -39,15 +43,20 @@ export function encodeShare(t: SharedTeam): string {
   const name = new TextEncoder().encode(cleanName(t.name)).slice(0, 60);
   const bytes = new Uint8Array(HEAD + name.length);
   bytes[0] = VERSION;
+  // Unused dex slots stay 0 (a five-man Quick Play team).
   t.dex.slice(0, 10).forEach((d, i) => {
     bytes[1 + i * 2] = (d >> 8) & 255;
     bytes[2 + i * 2] = d & 255;
   });
   bytes.set(hexBytes(t.color), 21);
   bytes.set(hexBytes(t.color2), 24);
-  bytes[27] = t.w; bytes[28] = t.l; bytes[29] = t.rank; bytes[30] = t.teams;
-  bytes[31] = Math.max(0, PLAYOFFS.indexOf(t.playoff));
-  bytes[32] = t.seed;
+  // A draft with no season yet is all zeros here.
+  if (!t.noRecord) {
+    bytes[27] = t.w; bytes[28] = t.l; bytes[29] = t.rank; bytes[30] = t.teams;
+    bytes[31] = Math.max(0, PLAYOFFS.indexOf(t.playoff));
+    // Seed in the low four bits, the All-Star count in the high four (older links read as 0 All-Stars).
+    bytes[32] = (t.seed & 15) | (Math.min(5, Math.max(0, t.allStars ?? 0)) << 4);
+  }
   // Name length goes after the fixed header, so the header size stays fixed.
   const out = new Uint8Array(bytes.length + 1);
   out.set(bytes.slice(0, HEAD));
@@ -70,16 +79,24 @@ export function decodeShare(code: string): SharedTeam | null {
     if (b.length !== HEAD + 1 + nameLen) return null;
     known ??= new Set(POKEMON.map((m) => m.dex));
     const dex: number[] = [];
+    let ended = false;
     for (let i = 0; i < 10; i++) {
       const d = (b[1 + i * 2] << 8) | b[2 + i * 2];
-      if (!known.has(d)) return null;
+      // Five to ten Pokémon, then only empty (0) slots.
+      if (d === 0 && i >= 5) { ended = true; continue; }
+      if (ended || !known.has(d)) return null;
       dex.push(d);
     }
-    const [w, l, rank, teams, po, seed] = [b[27], b[28], b[29], b[30], b[31], b[32]];
-    if (teams < 2 || teams > 32 || rank < 1 || rank > teams || w + l < 1 || w + l > 99 || po >= PLAYOFFS.length || seed > Math.min(4, teams)) return null;
+    if (new Set(dex).size !== dex.length) return null;
+    const [w, l, rank, teams, po] = [b[27], b[28], b[29], b[30], b[31]];
+    const seed = b[32] & 15;
+    const allStars = b[32] >> 4;
+    if (allStars > 5) return null;
+    const noRecord = w === 0 && l === 0 && rank === 0 && teams === 0 && po === 0 && seed === 0;
+    if (!noRecord && (dex.length !== 10 || teams < 2 || teams > 32 || rank < 1 || rank > teams || w + l < 1 || w + l > 99 || po >= PLAYOFFS.length || seed > Math.min(4, teams))) return null;
     const name = cleanName(new TextDecoder('utf-8', { fatal: true }).decode(b.slice(HEAD + 1)));
     if (!name) return null;
-    return { name, color: toHex([...b.slice(21, 24)]), color2: toHex([...b.slice(24, 27)]), dex, w, l, rank, teams, seed, playoff: PLAYOFFS[po] };
+    return { name, color: toHex([...b.slice(21, 24)]), color2: toHex([...b.slice(24, 27)]), dex, w, l, rank, teams, seed, playoff: PLAYOFFS[po], ...(noRecord ? { noRecord: true } : {}), ...(allStars ? { allStars } : {}) };
   } catch {
     return null;
   }

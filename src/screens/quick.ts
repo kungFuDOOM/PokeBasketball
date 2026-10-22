@@ -6,7 +6,8 @@ import { LEAGUE, USER_STYLE, contrastAway, type LeagueTeam } from '../franchise/
 import type { Audio } from '../game/audio';
 import { bestLineup, teamOvr } from '../game/game';
 import type { TeamDef } from '../game/types';
-import { cpuRoster, draftedMons, draftedStarters, loadDrafted, type TeamSource } from '../season/team';
+import { cpuRoster, draftedMons, draftedStarters, loadDrafted, renameDrafted, type TeamSource } from '../season/team';
+import { inlineRename } from '../ui/teamName';
 import { badgeSvg } from '../ui/badges';
 import { abbr, esc, shuffle, tier } from '../util';
 import { draftScreen } from './draft';
@@ -32,8 +33,21 @@ export function quickPlay(root: HTMLElement, settings: Settings, audio: Audio, a
   let source: TeamSource = loadDrafted() || initial !== 'mine' ? initial : 'draft';
   /** Set while playing as My Drafted Team: its name and colors, and both benches. */
   let drafted: { name: string; color: string; color2: string; bench: Mon[]; oppBench: Mon[] } | null = null;
+  /** Colors picked on the Quick Play draft-complete screen (the name goes to settings.teamName). */
+  let picked: { color: string; color2: string } | null = null;
   const userName = () => drafted?.name ?? (settings.teamName.trim() || 'Pallet Town');
-  const user = () => ({ name: userName(), abbr: abbr(userName()), ...USER_STYLE, ...(drafted ? { color: drafted.color, color2: drafted.color2 } : {}), human: true });
+  const colors = () => (drafted ? { color: drafted.color, color2: drafted.color2 } : picked ?? {});
+  const user = () => ({ name: userName(), abbr: abbr(userName()), ...USER_STYLE, ...colors(), human: true });
+  /** Quick Play just uses the current name: a rename here updates it (and My Drafted Team when that's the team). */
+  const rename = (name: string) => {
+    if (drafted) {
+      drafted.name = name;
+      renameDrafted(name);
+    } else {
+      settings.teamName = name;
+      act.saved();
+    }
+  };
 
   const sourceNote = () => source === 'mine'
     ? 'Your Season Draft ten: the best five start and the other five come off the bench. Your opponent drafts ten too.'
@@ -92,6 +106,7 @@ export function quickPlay(root: HTMLElement, settings: Settings, audio: Audio, a
   function draft(opp: LeagueTeam) {
     const saved = source === 'mine' ? loadDrafted() : null;
     drafted = null;
+    picked = null;
     if (saved) {
       // My Drafted Team, no draft screen: its best five start and the other five come off the bench.
       // The opponent gets a CPU-drafted ten as well, so both sides tire and sub the same way.
@@ -112,18 +127,23 @@ export function quickPlay(root: HTMLElement, settings: Settings, audio: Audio, a
     window.scrollTo(0, 0);
     const teams = [user(), { ...opp, human: false }];
     draftScreen(root, { teams, order: shuffle([0, 1]), taken: [], rounds: 5 }, audio,
-      (rosters) => matchup(opp, rosters[0], rosters[1], courtFor(opp)),
-      pickOpponent, () => {}, { customize: false });
+      (rosters) => {
+        // The draft-complete screen can rename and recolor your team; Quick Play carries that into the game.
+        if (teams[0].name !== userName()) rename(teams[0].name);
+        picked = { color: teams[0].color, color2: teams[0].color2 };
+        matchup(opp, rosters[0], rosters[1], courtFor(opp));
+      },
+      pickOpponent, () => {});
   }
 
   function matchup(opp: LeagueTeam, mine: Mon[], theirs: Mon[], court: CourtStyle) {
     root.className = 'screen-quick';
     window.scrollTo(0, 0);
     const venues: CourtStyle[] = [userCourt(userName()), ...Object.entries(COURTS).filter(([k]) => k !== 'Pallet Town').map(([, c]) => c)];
-    const side = (name: string, color: string, sub: string, mons: Mon[], bench: Mon[] = []) => `
+    const side = (name: string, color: string, sub: string, mons: Mon[], bench: Mon[] = [], mine = false) => `
       <div class="nx-team" style="--tc:${color}">
         <span class="where">${esc(sub)}</span>
-        <h3>${esc(name)}</h3>
+        <h3 class="${mine ? 'nx-name' : ''}">${esc(name)}</h3>
         <p>${teamOvr(mons)} OVR</p>
         ${lineupHtml(mons)}
         ${bench.length ? `<p class="note nx-bench-lbl">Bench</p><div class="nx-bench">${lineupHtml(bench)}</div>` : ''}
@@ -133,7 +153,7 @@ export function quickPlay(root: HTMLElement, settings: Settings, audio: Audio, a
         <section class="card next">
           <p class="eyebrow">Quick Play · ${esc(court.venue)}</p>
           <div class="nx-cols">
-            ${side(userName(), drafted?.color ?? USER_STYLE.color, drafted ? 'You · My Drafted Team' : 'You', mine, drafted?.bench)}
+            ${side(userName(), user().color, drafted ? 'You · My Drafted Team' : 'You', mine, drafted?.bench, true)}
             <div class="vs">VS</div>
             ${side(opp.name, opp.color, opp.elite ? 'Final boss' : `Gym Leader ${opp.leader}`, theirs, drafted?.oppBench)}
           </div>
@@ -149,6 +169,7 @@ export function quickPlay(root: HTMLElement, settings: Settings, audio: Audio, a
         </section>
       </div>`;
     bindSettings(root, settings, act.saved);
+    inlineRename(root.querySelector<HTMLElement>('.nx-name')!, userName, rename);
     root.querySelector<HTMLSelectElement>('#venue')!.addEventListener('change', (e) => {
       matchup(opp, mine, theirs, venues[Number((e.target as HTMLSelectElement).value)]);
     });

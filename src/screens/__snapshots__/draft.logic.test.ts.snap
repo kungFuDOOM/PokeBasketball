@@ -55,10 +55,10 @@ exports[`cpuPick > full 4-team 10-round CPU draft is stable for a seed 1`] = `
 
 exports[`cpuPick > full 4-team 10-round CPU draft is stable for a seed 2`] = `
 [
-  89,
-  93,
+  91,
+  94,
   88,
-  92,
+  93,
 ]
 `;
 
@@ -76,11 +76,11 @@ exports[`cpuPick > takes the best fit with a pinned seed 1`] = `
 exports[`ratings math > starters overall of a top-ten roster is pinned 1`] = `
 [
   151,
+  381,
   150,
   384,
   249,
-  250,
 ]
 `;
 
-exports[`ratings math > starters overall of a top-ten roster is pinned 2`] = `95`;
+exports[`ratings math > starters overall of a top-ten roster is pinned 2`] = `94`;
