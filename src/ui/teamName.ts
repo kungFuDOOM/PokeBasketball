@@ -1,9 +1,8 @@
 // Team-name editing after a draft: an inline rename (tap the name or the pencil) and the
 // "Are you sure you want this name?" confirm shown before any new franchise starts.
-import { cleanName } from '../season/share';
-import { abbr, cleanAbbr, esc } from '../util';
+import { TEAM_NAME_MAX, abbr, cleanAbbr, esc, lettersName as cleanName } from '../util';
 
-export const NAME_MAX = 20;
+export const NAME_MAX = TEAM_NAME_MAX;
 
 /**
  * Turns `host` into an editable team name. Tapping the name or the pencil swaps in a text field;
@@ -62,7 +61,7 @@ export function confirmFranchiseName(opts: { name: string; abbr?: string; replac
             <input id="fc-input" maxlength="${NAME_MAX}" autocomplete="off" value="${esc(opts.name)}">
           </label>
           <label class="field fc-field fc-abbr" for="fc-abbr">Scoreboard
-            <input id="fc-abbr" maxlength="3" autocomplete="off" autocapitalize="characters" spellcheck="false" aria-label="Scoreboard abbreviation, 3 letters or digits" value="${esc(cleanAbbr(opts.abbr ?? '') || abbr(opts.name))}">
+            <input id="fc-abbr" maxlength="3" autocomplete="off" autocapitalize="characters" spellcheck="false" aria-label="Scoreboard abbreviation, 3 letters" value="${esc(cleanAbbr(opts.abbr ?? '') || abbr(opts.name))}">
           </label>
         </div>
         ${opts.replacing ? '<p class="fc-warn"><b>This replaces your saved franchise.</b> Its season, roster and progress will be erased. This can\'t be undone.</p>' : ''}

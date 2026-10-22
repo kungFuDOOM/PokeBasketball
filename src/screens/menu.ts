@@ -1,7 +1,7 @@
 import { POKEMON, spriteUrl } from '../data/pokemon';
 import { DIFFICULTIES, type Difficulty } from '../game/types';
 import type { TeamSource } from '../season/team';
-import { esc } from '../util';
+import { esc, lettersName } from '../util';
 import { prefersStatic, startAttract, type Attract, type AttractState } from './attract';
 
 export interface Settings {
@@ -167,7 +167,7 @@ export function menuScreen(root: HTMLElement, settings: Settings, onChange: () =
         </header>
         <div class="play-row">
           <label class="field team-field" for="team-name">Your team
-            <input id="team-name" maxlength="20" autocomplete="off" value="${esc(settings.teamName)}">
+            <input id="team-name" maxlength="20" autocomplete="off" value="${esc(lettersName(settings.teamName))}">
           </label>
           <button class="btn play-btn" data-go="season" aria-label="Season Draft: draft 10, sim a season, get your grade">DRAFT &amp; GET GRADED<small>Draft 10 · sim a season · get your grade</small></button>
         </div>
@@ -242,7 +242,7 @@ export function menuScreen(root: HTMLElement, settings: Settings, onChange: () =
 
   const name = $<HTMLInputElement>('#team-name')!;
   name.addEventListener('input', () => {
-    settings.teamName = name.value;
+    settings.teamName = lettersName(name.value);
     onChange();
   });
   const startNew = $<HTMLButtonElement>('[data-go="new"]')!;
