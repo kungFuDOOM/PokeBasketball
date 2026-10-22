@@ -1336,3 +1336,26 @@ button.gl-row:hover { border-color: var(--muted); }
 .play-row .team-field, .play-row .play-btn { width: min(100%, 400px); min-width: 0; box-sizing: border-box; }
 .play-row .team-field { display: flex; flex-direction: row; align-items: center; gap: 10px; padding: 8px 12px; }
 .play-row .team-field input { flex: 1; min-width: 0; text-align: center; }
+
+/* Draft-spot reveal: where you pick this draft */
+.myspot { font: 0.62rem var(--pixel); color: var(--muted); margin-top: 3px; }
+.myspot b { color: var(--accent); }
+.spot-reveal { position: fixed; inset: 0; z-index: 40; display: grid; place-items: center; padding: 16px; background: rgba(0, 0, 0, 0.62); cursor: pointer; animation: spot-in 0.22s ease-out; }
+.spot-reveal.out { opacity: 0; transition: opacity 0.22s; }
+.spot-card { width: min(420px, 100%); text-align: center; padding: 22px 18px 16px; border-radius: 16px; background: var(--panel, #161b2e); border: 2px solid var(--accent); box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5); animation: spot-pop 0.32s cubic-bezier(.2, 1.4, .4, 1); }
+.spot-kicker { margin: 0; font: 0.62rem var(--pixel); color: var(--muted); text-transform: uppercase; }
+.spot-card h2 { margin: 8px 0 4px; font: 800 1.9rem var(--sport); text-transform: uppercase; line-height: 1.05; }
+.spot-card h2 b { display: block; font-size: 3.4rem; color: var(--accent); }
+.spot-snake { margin: 0 0 12px; font-weight: 700; color: var(--muted); }
+.spot-order { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
+.spot-order li { padding: 5px 2px; border-radius: 8px; border-left: 3px solid var(--tc); background: rgba(255, 255, 255, 0.06); font-weight: 800; font-size: 0.85rem; }
+.spot-order li small { display: block; font: 0.5rem var(--pixel); color: var(--muted); }
+.spot-order li.me { background: var(--accent); color: #111; border-left-color: #fff; }
+.spot-order li.me small { color: #111; }
+.spot-tap { margin: 12px 0 0; font: 0.55rem var(--pixel); color: var(--muted); }
+@keyframes spot-in { from { opacity: 0; } }
+@keyframes spot-pop { from { transform: scale(0.8); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .spot-reveal, .spot-card { animation: none; }
+  .spot-reveal.out { transition: none; }
+}
