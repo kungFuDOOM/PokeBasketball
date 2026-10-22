@@ -2,7 +2,7 @@ import { POKEMON, POSITIONS, RATING_LABELS, SPECIALS, TYPE_COLORS, spriteUrl, ty
 import type { Audio } from '../game/audio';
 import { bestLineup, chemistry, teamOvr } from '../game/game';
 import { abbr, esc, tier } from '../util';
-import { snakePicks } from './draft.logic';
+import { ordinal, snakePicks } from './draft.logic';
 import { monCard, summaryHtml, SWATCHES, typeChips } from './draftView';
 import { cleanName } from '../season/share';
 import { wireDraftShare } from '../season/draftShare';
@@ -194,6 +194,8 @@ export function draftScreen(
   let selected: Mon | null = null;
   const log: string[] = [`Draft order: ${order.map((i) => (teams[i].human ? 'You' : teams[i].abbr)).join(', ')}`];
   let cpuTimer = 0;
+  /** True while the draft-spot reveal is up: your pick clock waits for it (CPU picks don't). */
+  let revealing = false;
   let done = false;
   /** Milliseconds left on your pick clock (counts only while the tab is visible). */
   let clockLeft = PICK_SECONDS * 1000;
@@ -212,7 +214,7 @@ export function draftScreen(
     <div class="draft">
       <header class="draft-head">
         <button class="btn ghost small" data-a="back">Menu</button>
-        <div class="status"><span class="round"></span><span class="otc"></span><span class="clock big" hidden></span></div>
+        <div class="status"><span class="round"></span><span class="otc"></span><span class="clock big" hidden></span><span class="myspot"></span></div>
         <div class="head-actions">
           <button class="btn small" data-a="auto">Auto-pick</button>
           <button class="btn small" data-a="sim">Sim rest</button>
@@ -253,6 +255,38 @@ export function draftScreen(
   });
 
   const userTurn = () => !done && picks[pick] === me;
+  const mySpot = order.indexOf(me) + 1;
+  $('.myspot').innerHTML = `Your spot: <b>${ordinal(mySpot)}</b>`;
+
+  /** Big "YOU PICK 4TH OF 10" card at the start of a fresh draft. Tap or ~2s to dismiss. */
+  const showReveal = () => {
+    revealing = true;
+    const mine = picks.map((t, i) => (t === me ? i + 1 : 0)).filter(Boolean);
+    const next = mine.slice(1, 3).map(ordinal).join(', ');
+    const el = document.createElement('div');
+    el.className = 'spot-reveal';
+    el.setAttribute('role', 'status');
+    el.innerHTML = `<div class="spot-card">
+      <p class="spot-kicker">Draft order is set</p>
+      <h2>You pick <b>${ordinal(mySpot)}</b> of ${teams.length}</h2>
+      <p class="spot-snake">Snake draft${next ? ` · then ${next}…` : ''}</p>
+      <ol class="spot-order">${order.map((i, k) => `<li class="${i === me ? 'me' : ''}" style="--tc:${teams[i].color}"><small>${k + 1}</small>${i === me ? 'YOU' : esc(teams[i].abbr)}</li>`).join('')}</ol>
+      <p class="spot-tap">Tap to continue</p></div>`;
+    root.querySelector('.draft')!.append(el);
+    const close = () => {
+      if (!revealing) return;
+      revealing = false;
+      window.clearTimeout(t);
+      el.classList.add('out');
+      window.setTimeout(() => el.remove(), 250);
+      // Your full clock starts only now.
+      if (userTurn()) { clockLeft = PICK_SECONDS * 1000; clockPick = pick; lastBeep = 0; }
+      lastTick = performance.now();
+      updateClock();
+    };
+    const t = window.setTimeout(close, 2200);
+    el.addEventListener('click', (e) => { e.stopPropagation(); close(); });
+  };
 
   const render = () => {
     const round = Math.floor(pick / teams.length) + 1;
@@ -315,7 +349,7 @@ export function draftScreen(
     const dt = now - lastTick;
     lastTick = now;
     if (!root.isConnected || done) { window.clearInterval(clock); return; }
-    if (!userTurn() || document.hidden) return;
+    if (!userTurn() || document.hidden || revealing) return;
     clockLeft -= Math.min(dt, 1000);
     const secs = Math.ceil(clockLeft / 1000);
     if (secs <= 5 && secs > 0 && secs !== lastBeep) { lastBeep = secs; audio.blip(secs <= 3); }
@@ -436,5 +470,6 @@ export function draftScreen(
   if (saved.length) log.push(`Draft resumed at pick ${pick + 1}.`);
   if (pick >= picks.length) return finish();
   render();
+  if (!saved.length) showReveal();
   scheduleCpu();
 }
