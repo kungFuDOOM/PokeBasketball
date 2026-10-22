@@ -77,7 +77,7 @@ export function summaryHtml(o: SummaryOpts): string {
           <div class="sum-grade" aria-label="Grade ${gradeOfOvr(ovr)}"><small>Grade</small><b>${gradeOfOvr(ovr)}</b></div>
           <div class="sum-ovr"><small>Team OVR</small><b>${ovr}</b><span>${rank === 1 ? 'Best in the league' : `#${rank} of ${o.others.length + 1} drafts`}</span></div>
         </div>
-        <div class="court" aria-label="Starting five">
+        <div class="mini-court" aria-label="Starting five">
           <span class="key"></span><span class="arc"></span>${players}
         </div>
         ${bench.length ? `<ul class="sum-bench">${bench.map((m) => `<li title="${esc(m.name)} (${m.pos}, ${m.ovr})"><img src="${spriteUrl(m.dex)}" alt="${esc(m.name)}"></li>`).join('')}</ul>` : ''}
