@@ -112,7 +112,8 @@ export class Audio {
         this.tone('square', 260, 240, 0.15, 0.1, 0.02);
         this.cheer(1.4);
         break;
-      case 'buzzer': this.tone('sawtooth', 165, 160, 0.9, 0.18); this.tone('sawtooth', 220, 214, 0.9, 0.12); break;
+      case 'buzzer': this.horn(0.85, 0.16); break;
+      case 'shotclock': this.horn(0.45, 0.09); break;
       case 'whistle': this.tone('sine', 2600, 2500, 0.22, 0.12); this.tone('sine', 2650, 2550, 0.22, 0.08, 0.25); break;
       case 'block': this.tone('square', 180, 70, 0.18, 0.2); this.noise(0.12, 0.2, 800, 'lowpass'); this.cheer(1); break;
       case 'steal': this.tone('square', 600, 1200, 0.1, 0.12); this.tone('square', 900, 1800, 0.1, 0.1, 0.08); this.cheer(0.6); break;
@@ -128,6 +129,35 @@ export class Audio {
       case 'special':
         [392, 523, 659, 784, 1047].forEach((f, i) => this.tone('square', f, f * 1.01, 0.09, 0.09, i * 0.05));
         break;
+    }
+  }
+
+  /**
+   * Arena horn for time running out: two slightly detuned square waves through a low-pass so it buzzes
+   * without screeching, a quick fade-in, a short hold and a soft fade-out. Goes through the master gain, so mute applies.
+   */
+  private horn(dur: number, vol: number) {
+    if (!this.ctx || !this.master) return;
+    const t = this.ctx.currentTime;
+    const f = this.ctx.createBiquadFilter();
+    f.type = 'lowpass';
+    f.frequency.value = 1400;
+    f.Q.value = 0.7;
+    const g = this.ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.linearRampToValueAtTime(vol, t + 0.04);
+    g.gain.setValueAtTime(vol, t + dur * 0.55);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    f.connect(g).connect(this.master);
+    for (const [hz, mix] of [[196, 1], [233, 0.7]] as const) {
+      const o = this.ctx.createOscillator();
+      const m = this.ctx.createGain();
+      o.type = 'square';
+      o.frequency.value = hz;
+      m.gain.value = mix * 0.5;
+      o.connect(m).connect(f);
+      o.start(t);
+      o.stop(t + dur + 0.05);
     }
   }
 
