@@ -12,26 +12,33 @@ export { monCard, typeChips };
 /** CPU picks only consider players within this many OVR of the best one left, so nobody reaches far. */
 export const CPU_REACH = 7;
 
+/** While a themed team has no on-type player yet, on-type Pokémon get this much extra value. */
+export const STAR_BONUS = 8;
+/** A themed team that still has no on-type player by this pick (1-based) takes the best on-type one in reach. */
+export const STAR_BY_PICK = 3;
+
 /**
  * CPU general manager: best available, nudged toward open positions, with enough noise that it sometimes reaches
- * for a slightly lower-rated fit (never more than CPU_REACH below the best). A themed team's star has to be one of
- * its types: until it has an on-type player it only looks at on-type Pokémon (falling back to everyone if none are
- * left). After that, type doesn't matter.
+ * for a slightly lower-rated fit. It never takes anyone more than CPU_REACH below the best player left, so a team
+ * never passes on a 97 for an 80. A themed team wants its star to be one of its types: until it has an on-type
+ * player, on-type Pokémon get +STAR_BONUS, and by its STAR_BY_PICK-th pick it takes the best on-type Pokémon in
+ * reach (if there is none, it picks normally). Once it has one, type doesn't matter.
  */
 export function cpuPick(pool: Mon[], roster: Mon[], types: PokeType[] = [], rng: () => number = Math.random): Mon {
   const isOn = (m: Mon) => m.types.some((t) => types.includes(t));
-  if (types.length && !roster.some(isOn)) {
-    const on = pool.filter(isOn);
-    if (on.length) pool = on;
-  }
+  const wantStar = types.length > 0 && !roster.some(isOn);
   const count = (pos: string) => roster.filter((m) => m.pos === pos).length;
   const floor = Math.max(...pool.map((m) => m.ovr)) - CPU_REACH;
-  let best = pool[0];
+  let cands = pool.filter((m) => m.ovr >= floor);
+  if (wantStar && roster.length >= STAR_BY_PICK - 1) {
+    const on = cands.filter(isOn);
+    if (on.length) cands = on;
+  }
+  let best = cands[0] ?? pool[0];
   let bs = -Infinity;
-  for (const m of pool) {
-    if (m.ovr < floor) continue;
+  for (const m of cands) {
     const need = [5, 2, 0][Math.min(2, count(m.pos))];
-    const s = m.ovr + need + rng() * 9;
+    const s = m.ovr + need + (wantStar && isOn(m) ? STAR_BONUS : 0) + rng() * 9;
     if (s > bs) { bs = s; best = m; }
   }
   return best;
