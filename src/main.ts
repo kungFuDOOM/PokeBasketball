@@ -183,10 +183,11 @@ async function startFranchise(
   opts: { fromDrafted: boolean; onCancel: () => void },
 ) {
   const me = teams.findIndex((t) => t.human);
-  const name = await confirmFranchiseName({ name: teams[me].name, replacing: !!franchise });
-  if (!name) return opts.onCancel();
+  const picked = await confirmFranchiseName({ name: teams[me].name, replacing: !!franchise });
+  if (!picked) return opts.onCancel();
+  const { name } = picked;
   teams[me].name = name;
-  teams[me].abbr = abbr(name);
+  teams[me].abbr = picked.abbr;
   settings.teamName = name;
   save();
   if (opts.fromDrafted) renameDrafted(name);

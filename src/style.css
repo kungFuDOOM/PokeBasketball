@@ -17,6 +17,8 @@
 
 * { box-sizing: border-box; }
 html, body { height: 100%; margin: 0; }
+/* Stop iOS Safari from enlarging text when the phone turns landscape (it blew up the scoreboard digits). */
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
 body {
   background: var(--bg);
   color: var(--fg);
@@ -631,6 +633,9 @@ li.empty { color: var(--muted); }
 .hud { position: absolute; inset: 0; pointer-events: none; z-index: 4; }
 .bug {
   position: absolute;
+  width: max-content;
+  max-width: calc(100vw - 16px);
+  white-space: nowrap;
   top: max(8px, env(safe-area-inset-top, 0px));
   left: 50%;
   transform: translateX(-50%);
@@ -643,9 +648,11 @@ li.empty { color: var(--muted); }
   overflow: hidden;
   box-shadow: 0 4px 0 rgba(0, 0, 0, 0.4);
 }
-.bug-team { display: flex; align-items: center; gap: 8px; padding: 5px 10px; border-left: 4px solid var(--tc); }
+.bug-team { display: grid; grid-template-columns: auto auto; align-items: center; gap: 8px; padding: 5px 10px; border-left: 4px solid var(--tc); flex: none; }
 .bug-team .abbr { letter-spacing: 0.06em; }
-.bug-team .pts { font: 0.95rem var(--pixel); min-width: 2.2em; text-align: right; font-variant-numeric: tabular-nums; }
+/* Score sits in its own grid column, never on top of the name; room for 3 digits so the bug doesn't jump. */
+.bug-team .pts { display: block; font: 0.95rem/1 var(--pixel); min-width: 3ch; text-align: right; font-variant-numeric: tabular-nums; color: var(--fg); text-shadow: none; }
+.bug-clock, .bug-shot { flex: none; }
 .pts.pop { animation: pop 0.5s ease-out; }
 @keyframes pop { 30% { color: var(--accent); transform: scale(1.35); } }
 .bug-clock { display: flex; gap: 8px; align-items: center; padding: 5px 10px; background: var(--panel-2); font-variant-numeric: tabular-nums; }
@@ -1280,6 +1287,10 @@ button.gl-row:hover { border-color: var(--muted); }
 .fc-box { width: min(100%, 460px); background: var(--panel); border: 2px solid var(--accent); border-radius: 14px; padding: 20px; text-align: center; box-shadow: 0 12px 40px #000; }
 .fc-big { margin: 6px 0 14px; font: 1.5rem/1.25 var(--pixel); color: var(--fg); overflow-wrap: anywhere; }
 .fc-field { text-align: left; }
+.fc-row { display: flex; gap: 10px; align-items: flex-end; }
+.fc-row .fc-field:first-child { flex: 1; min-width: 0; }
+.fc-abbr { width: 6.5em; flex: none; }
+.fc-abbr input { text-transform: uppercase; text-align: center; font-family: var(--pixel); letter-spacing: 0.1em; }
 .fc-field input { width: 100%; box-sizing: border-box; }
 .fc-warn { margin: 12px 0 0; padding: 10px 12px; border: 1px solid var(--red); border-radius: 10px; background: color-mix(in srgb, var(--red) 14%, transparent); font-size: 0.95rem; line-height: 1.35; }
 .fc-box .actions { margin-top: 16px; }

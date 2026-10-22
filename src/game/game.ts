@@ -36,7 +36,7 @@ export interface JumpBall {
   to: Player | null;
   fly: number;
 }
-export type Sfx = 'dribble' | 'swish' | 'rim' | 'dunk' | 'buzzer' | 'block' | 'steal' | 'shove' | 'pass' | 'fire' | 'special' | 'catch' | 'bounce' | 'shot' | 'whistle';
+export type Sfx = 'dribble' | 'swish' | 'rim' | 'dunk' | 'buzzer' | 'block' | 'steal' | 'shove' | 'pass' | 'fire' | 'special' | 'catch' | 'bounce' | 'shot' | 'whistle' | 'shotclock';
 
 /** +2 to every rating when the five starters cover all five positions. */
 export function chemistry(roster: Mon[]): number {
@@ -591,7 +591,7 @@ export class Game {
   private shotClockViolation() {
     const b = this.ball;
     this.events.push({ kind: 'shotclock', team: this.offense });
-    this.sfx.push('buzzer');
+    this.sfx.push('shotclock');
     if (b.owner) {
       const o = b.owner;
       b.owner = null;

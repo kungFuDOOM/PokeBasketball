@@ -3,6 +3,8 @@ export function esc(s: string): string {
 }
 
 /** Three-letter scorebug abbreviation from a team name. */
+/** Scoreboard abbreviation typed by the player: A-Z and 0-9 only, uppercase, at most 3. */
+export const cleanAbbr = (v: string) => v.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 3);
 export const abbr = (name: string) => (name.replace(/[^a-z0-9]/gi, '').slice(0, 3) || 'YOU').toUpperCase();
 
 export function shuffle<T>(a: T[]): T[] {
