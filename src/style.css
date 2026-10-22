@@ -648,13 +648,24 @@ li.empty { color: var(--muted); }
   overflow: hidden;
   box-shadow: 0 4px 0 rgba(0, 0, 0, 0.4);
 }
-.bug-team { display: grid; grid-template-columns: auto auto; align-items: center; gap: 8px; padding: 5px 10px; border-left: 4px solid var(--tc); flex: none; }
-.bug-team .abbr { letter-spacing: 0.06em; }
-/* Score sits in its own grid column, never on top of the name; room for 3 digits so the bug doesn't jump. */
-.bug-team .pts { display: block; font: 0.95rem/1 var(--pixel); min-width: 3ch; text-align: right; font-variant-numeric: tabular-nums; color: var(--fg); text-shadow: none; }
+.bug-team {
+  /* Both team boxes are the same fixed width (in em, so they scale with the bug): name left, score right. */
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; column-gap: 10px;
+  width: 7.4em; box-sizing: border-box; flex: none;
+  padding: 5px 12px 5px 10px; border-left: 4px solid var(--tc);
+}
+.bug-team .abbr { min-width: 0; overflow: hidden; text-align: left; letter-spacing: 0.06em; }
+/* Fixed 3-digit slot in a monospace pixel font: 0, 2, 48 and 112 all sit flush right without moving the box. */
+.bug-team .pts {
+  display: block; width: 3em; font: 0.95rem/1 var(--pixel); text-align: right;
+  font-variant-numeric: tabular-nums; color: var(--fg); text-shadow: none;
+}
 .bug-clock, .bug-shot { flex: none; }
+/* Score flash: color only, so it can never grow over the divider. */
 .pts.pop { animation: pop 0.5s ease-out; }
-@keyframes pop { 30% { color: var(--accent); transform: scale(1.35); } }
+@keyframes pop { 30% { color: var(--accent); } }
+/* Narrow portrait phones: shrink the whole bug (team boxes are in em, so they stay identical) so it never clips. */
+@media (max-width: 480px) { .bug { font-size: 0.92rem; } .bug-team .pts { font-size: 0.78rem; } .bug-shot { min-width: 28px; } }
 .bug-clock { display: flex; gap: 8px; align-items: center; padding: 5px 10px; background: var(--panel-2); font-variant-numeric: tabular-nums; }
 .bug-shot { display: grid; place-items: center; min-width: 34px; padding: 0 6px; background: var(--accent); color: #1a1400; font: 0.7rem var(--pixel); }
 .bug-shot.low { background: var(--red); color: #fff; }
