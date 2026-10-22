@@ -3,7 +3,8 @@
 // or download the image and copy the link where the share sheet can't take files.
 import type { Mon } from '../data/pokemon';
 import { SWATCHES } from '../screens/draftView';
-import { cleanName, shareUrl, type SharedTeam } from './share';
+import { shareUrl, type SharedTeam } from './share';
+import { lettersName } from '../util';
 import { renderDraftCard, shareTeam, toPngBlob } from './shareImage';
 
 /** A full-size look at a share card; tap anywhere or press Esc to close. */
@@ -34,7 +35,7 @@ export function wireDraftShare(host: HTMLElement, picks: Mon[], team: { name: st
   const status = host.querySelector<HTMLElement>('.sum-share-status');
   if (!thumb || !status) return;
   const current = (): SharedTeam => {
-    const name = cleanName(host.querySelector<HTMLInputElement>('#sum-name')?.value ?? '') || team.name;
+    const name = lettersName(host.querySelector<HTMLInputElement>('#sum-name')?.value ?? '') || team.name;
     const sw = host.querySelector<HTMLElement>('.sw.on');
     const [color, color2] = sw ? SWATCHES[Number(sw.dataset.sw)] : [team.color, team.color2];
     return draftShared(name, color, color2, picks);

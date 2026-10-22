@@ -1,10 +1,9 @@
 import { POKEMON, POSITIONS, RATING_LABELS, SPECIALS, TYPE_COLORS, spriteUrl, type Mon, type PokeType, type Pos, type Ratings } from '../data/pokemon';
 import type { Audio } from '../game/audio';
 import { bestLineup, chemistry, teamOvr } from '../game/game';
-import { abbr, esc, tier } from '../util';
+import { abbr, esc, lettersName, tier } from '../util';
 import { ordinal, snakePicks } from './draft.logic';
 import { monCard, summaryHtml, SWATCHES, typeChips } from './draftView';
-import { cleanName } from '../season/share';
 import { wireDraftShare } from '../season/draftShare';
 
 export { monCard, typeChips };
@@ -401,7 +400,7 @@ export function draftScreen(
     continued = true;
     const mine = teams[me];
     const input = root.querySelector<HTMLInputElement>('#sum-name');
-    const name = input ? cleanName(input.value) : '';
+    const name = input ? lettersName(input.value) : '';
     if (name) { mine.name = name; mine.abbr = abbr(name); }
     const sw = root.querySelector<HTMLElement>('.sw.on');
     if (sw) { [mine.color, mine.color2] = SWATCHES[Number(sw.dataset.sw)]; }

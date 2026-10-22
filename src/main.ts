@@ -23,7 +23,7 @@ import { confirmNewDraft } from './ui/newDraft';
 import { confirmFranchiseName } from './ui/teamName';
 import { gamesScreen } from './screens/games';
 import { badgeSvg } from './ui/badges';
-import { abbr, esc, shuffle } from './util';
+import { abbr, esc, guardNameInputs, lettersName, shuffle } from './util';
 
 const app = document.querySelector<HTMLElement>('#app')!;
 const audio = new Audio();
@@ -47,6 +47,7 @@ const save = () => {
 let franchise: Franchise | null = loadFranchise();
 
 // Browsers only allow audio after a gesture.
+guardNameInputs();
 window.addEventListener('pointerdown', () => audio.unlock(), { passive: true });
 window.addEventListener('keydown', () => audio.unlock(), { passive: true });
 
@@ -105,7 +106,7 @@ function menu() {
     },
     onNew: (source) => {
       audio.unlock();
-      const name = settings.teamName.trim() || 'Pallet Town';
+      const name = lettersName(settings.teamName) || 'Pallet Town';
       const teams = [
         { name, abbr: abbr(name), ...USER_STYLE, human: true },
         ...LEAGUE.map((t) => ({ ...t, human: false })),
@@ -131,7 +132,7 @@ function quick(source: TeamSource) {
 /** Franchise with My Drafted Team (its name and colors); `onCancel` runs if the name confirm is cancelled. */
 function franchiseWithDrafted(onCancel: () => void) {
   const mine = loadDrafted();
-  const name = mine?.name ?? (settings.teamName.trim() || 'Pallet Town');
+  const name = mine?.name ?? (lettersName(settings.teamName) || 'Pallet Town');
   const teams = [
     { name, abbr: abbr(name), ...USER_STYLE, ...(mine ? mine.colors : {}), human: true },
     ...LEAGUE.map((t) => ({ ...t, human: false })),

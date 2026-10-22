@@ -9,7 +9,7 @@ import type { TeamDef } from '../game/types';
 import { cpuRoster, draftedMons, draftedStarters, loadDrafted, renameDrafted, type TeamSource } from '../season/team';
 import { inlineRename } from '../ui/teamName';
 import { badgeSvg } from '../ui/badges';
-import { abbr, esc, shuffle, tier } from '../util';
+import { abbr, esc, lettersName, shuffle, tier } from '../util';
 import { draftScreen } from './draft';
 import { bindSettings, settingsHtml, type Settings } from './menu';
 import { playGame } from './play';
@@ -35,7 +35,7 @@ export function quickPlay(root: HTMLElement, settings: Settings, audio: Audio, a
   let drafted: { name: string; color: string; color2: string; bench: Mon[]; oppBench: Mon[] } | null = null;
   /** Colors picked on the Quick Play draft-complete screen (the name goes to settings.teamName). */
   let picked: { color: string; color2: string } | null = null;
-  const userName = () => drafted?.name ?? (settings.teamName.trim() || 'Pallet Town');
+  const userName = () => drafted?.name ?? (lettersName(settings.teamName) || 'Pallet Town');
   const colors = () => (drafted ? { color: drafted.color, color2: drafted.color2 } : picked ?? {});
   const user = () => ({ name: userName(), abbr: abbr(userName()), ...USER_STYLE, ...colors(), human: true });
   /** Quick Play just uses the current name: a rename here updates it (and My Drafted Team when that's the team). */

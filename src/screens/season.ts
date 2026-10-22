@@ -9,7 +9,7 @@ import { shareUrl, type SharedTeam } from '../season/share';
 import { renderCard, renderShareCard, shareTeam, toPngBlob, download, fileName } from '../season/shareImage';
 import { teamGrade } from '../season/grade';
 import { PLAYOFF_TEXT, simulateSeason, type SeasonResult, type SimInput } from '../season/sim';
-import { abbr, esc, shuffle, tier } from '../util';
+import { abbr, esc, lettersName, shuffle, tier } from '../util';
 import { bestLineup } from '../game/game';
 import { draftScreen, type DraftTeam } from './draft';
 import type { Settings } from './menu';
@@ -49,7 +49,7 @@ export function finishSeasonDraft(user: Pick<DraftTeam, 'name' | 'abbr' | 'color
 
 /** Starts the draft. Never saved mid-way, so it can't touch the franchise draft save. */
 export function seasonMode(root: HTMLElement, settings: Settings, audio: Audio, act: SeasonActions) {
-  const defaultName = settings.teamName.trim() || 'Pallet Town';
+  const defaultName = lettersName(settings.teamName) || 'Pallet Town';
   /** The human team. The draft summary can rename and recolor it, so everything after the draft reads from here. */
   let user: DraftTeam = { name: defaultName, abbr: abbr(defaultName), ...USER_STYLE, human: true };
 
