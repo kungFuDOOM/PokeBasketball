@@ -5,6 +5,7 @@ import { abbr, esc, tier } from '../util';
 import { snakePicks } from './draft.logic';
 import { monCard, summaryHtml, SWATCHES, typeChips } from './draftView';
 import { cleanName } from '../season/share';
+import { wireDraftShare } from '../season/draftShare';
 
 export { monCard, typeChips };
 
@@ -337,6 +338,7 @@ export function draftScreen(
     $('.summary-host').innerHTML = summaryHtml({
       teamName: mine.name, color: mine.color, color2: mine.color2, picks: rosters[me], size, others, customize: opts.customize !== false,
     });
+    wireDraftShare($('.summary-host'), rosters[me], mine);
     root.querySelector<HTMLElement>('[data-a="continue"]')?.focus();
   };
   const proceed = () => {

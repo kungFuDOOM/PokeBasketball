@@ -27,7 +27,7 @@ export function monCard(m: Mon, extra = '', i = -1): string {
 export { gradeOfOvr };
 
 /** Where each position stands on the mini court (percent from left / top of a half court, basket at the top). */
-const SPOT: Record<Pos, [number, number]> = { PG: [50, 78], SG: [80, 56], SF: [20, 56], PF: [68, 30], C: [34, 24] };
+const SPOT: Record<Pos, [number, number]> = { PG: [50, 78], SG: [82, 56], SF: [18, 56], PF: [68, 28], C: [32, 24] };
 
 export const SWATCHES: [string, string][] = [
   ['#3b6fd8', '#16224a'], ['#e3350d', '#4a0f05'], ['#21a366', '#0b3a26'],
@@ -57,14 +57,14 @@ export interface SummaryOpts {
 
 /** Draft-complete screen: team on a mini court, overall + grade, and (optionally) rename and color swatches. */
 export function summaryHtml(o: SummaryOpts): string {
-  const { starters, bench } = bestLineup(o.picks);
+  // One starter per slot (PG, SG, SF, PF, C) from the shared by-position rule; a cover player stands in their slot.
+  const { starters, bench, slots } = bestLineup(o.picks);
   const ovr = teamOvr(starters);
   const rank = 1 + o.others.filter((x) => x > ovr).length;
-  const seen: Record<string, number> = {};
   const players = starters.map((m, k) => {
-    const n = seen[m.pos] = (seen[m.pos] ?? -1) + 1;
-    const [x, y] = SPOT[m.pos];
-    return `<span class="cp t-${tier(m.ovr)}" style="--x:${Math.min(92, x + n * 14)}%;--y:${Math.min(88, y + n * 10)}%;--k:${k}"><img src="${spriteUrl(m.dex)}" alt="${esc(m.name)}"><b>${m.pos}</b><small>${esc(m.name)}</small></span>`;
+    const [x, y] = SPOT[slots[k]];
+    const cover = m.pos !== slots[k] ? ` title="${esc(m.name)} (${m.pos}) covers ${slots[k]}"` : '';
+    return `<span class="cp t-${tier(m.ovr)}" style="--x:${x}%;--y:${y}%;--k:${k}"${cover}><img src="${spriteUrl(m.dex)}" alt="${esc(m.name)}"><b>${slots[k]}</b><small>${esc(m.name)}</small></span>`;
   }).join('');
   const swatches = SWATCHES.map(([a, b], i) =>
     `<button class="sw ${a === o.color ? 'on' : ''}" data-sw="${i}" style="--a:${a};--b:${b}" aria-label="Team colors ${i + 1}"></button>`).join('');
@@ -87,7 +87,12 @@ export function summaryHtml(o: SummaryOpts): string {
           <input id="sum-name" type="text" maxlength="20" value="${esc(o.teamName)}" autocomplete="off" spellcheck="false">
           <div class="swatches" role="group" aria-label="Team colors">${swatches}</div>
         </div>` : `<p class="sum-team">${esc(o.teamName)}</p>`}
-        <button class="btn primary big" data-a="continue">Continue</button>
+        <div class="sum-actions">
+          <button class="ss-thumb" data-a="preview-draft" aria-label="See the share card full size" title="What you'll share"><span class="ss-thumb-ph">Drawing…</span></button>
+          <button class="btn big" data-a="share-draft">Share my team</button>
+          <button class="btn primary big" data-a="continue">Continue</button>
+        </div>
+        <p class="note sum-share-status" role="status"></p>
       </div>
     </div>`;
 }

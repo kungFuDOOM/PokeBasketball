@@ -18,7 +18,8 @@ import { rookieScreen } from './screens/rookies';
 import { rosterScreen } from './screens/roster';
 import { seasonMode, sharedScreen } from './screens/season';
 import { shareFromHash } from './season/share';
-import { autoDraft, draftedMons, loadDrafted, type TeamSource } from './season/team';
+import { autoDraft, draftedMons, loadDrafted, renameDrafted, type TeamSource } from './season/team';
+import { confirmFranchiseName } from './ui/teamName';
 import { gamesScreen } from './screens/games';
 import { badgeSvg } from './ui/badges';
 import { abbr, esc, shuffle } from './util';
@@ -102,7 +103,6 @@ function menu() {
     },
     onNew: (source) => {
       audio.unlock();
-      saveDraft(null);
       const name = settings.teamName.trim() || 'Pallet Town';
       const teams = [
         { name, abbr: abbr(name), ...USER_STYLE, human: true },
@@ -110,13 +110,12 @@ function menu() {
       ];
       const mine = source === 'mine' ? loadDrafted() : null;
       if (source === 'draft' || (source === 'mine' && !mine)) {
+        saveDraft(null);
         return draft({ teams, order: shuffle(teams.map((_, i) => i)), taken: [], rounds: 10 });
       }
       // My Drafted Team or Random: no draft screen. The CPU teams fill their rosters from what's left.
       const { rosters, leftovers } = autoDraft(teams, 10, mine ? draftedMons(mine) : undefined);
-      franchise = createFranchise(teams, rosters, leftovers);
-      saveFranchise(franchise);
-      hub();
+      void startFranchise(teams, rosters, leftovers, { fromDrafted: !!mine, onCancel: menu });
     },
   });
 }
@@ -131,7 +130,6 @@ function season() {
   audio.unlock();
   seasonMode(app, settings, audio, {
     menu,
-    hasFranchise: !!franchise,
     useTeam: (mode) => {
       if (mode === 'quick') return quick('mine');
       const mine = loadDrafted();
@@ -141,11 +139,9 @@ function season() {
         { name, abbr: abbr(name), ...USER_STYLE, ...(mine ? mine.colors : {}), human: true },
         ...LEAGUE.map((t) => ({ ...t, human: false })),
       ];
-      saveDraft(null);
       const { rosters, leftovers } = autoDraft(teams, 10, mine ? draftedMons(mine) : undefined);
-      franchise = createFranchise(teams, rosters, leftovers);
-      saveFranchise(franchise);
-      hub();
+      // Cancel leaves you on the results screen with nothing changed.
+      void startFranchise(teams, rosters, leftovers, { fromDrafted: !!mine, onCancel: () => {} });
     },
   });
 }
@@ -154,11 +150,31 @@ function draft(state: DraftState) {
   app.className = 'screen-draft';
   window.scrollTo(0, 0);
   draftScreen(app, state, audio, (rosters, leftovers) => {
-    franchise = createFranchise(state.teams, rosters, leftovers);
-    saveFranchise(franchise);
-    saveDraft(null);
-    hub();
+    // Cancel keeps the finished draft saved (Continue draft on the menu brings it back) and starts nothing.
+    void startFranchise(state.teams, rosters, leftovers, { fromDrafted: false, onCancel: menu });
   }, menu, saveDraft);
+}
+
+/**
+ * Every new franchise starts here: "Are you sure you want this name?" (editable, and with the replace-save
+ * warning when there is one), then the league is created. Cancel changes nothing.
+ */
+async function startFranchise(
+  teams: DraftState['teams'], rosters: Parameters<typeof createFranchise>[1], leftovers: Parameters<typeof createFranchise>[2],
+  opts: { fromDrafted: boolean; onCancel: () => void },
+) {
+  const me = teams.findIndex((t) => t.human);
+  const name = await confirmFranchiseName({ name: teams[me].name, replacing: !!franchise });
+  if (!name) return opts.onCancel();
+  teams[me].name = name;
+  teams[me].abbr = abbr(name);
+  settings.teamName = name;
+  save();
+  if (opts.fromDrafted) renameDrafted(name);
+  franchise = createFranchise(teams, rosters, leftovers);
+  saveFranchise(franchise);
+  saveDraft(null);
+  hub();
 }
 
 function hub() {

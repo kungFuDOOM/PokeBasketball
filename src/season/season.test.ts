@@ -153,6 +153,25 @@ describe('share links', () => {
     expect(tweak((b) => { b[27] = 0; b[28] = 0; })).toBeNull(); // no games
   });
 
+  it('carries the All-Star count, and old links read as none', () => {
+    expect(decodeShare(encodeShare({ ...team, allStars: 2 }))).toEqual({ ...team, allStars: 2 });
+    expect(decodeShare(encodeShare(team))?.allStars).toBeUndefined();
+  });
+
+  it('round-trips a draft with no season record (and a five-man Quick Play team)', () => {
+    const ten = { name: 'Pallet Town', color: '#3b6fd8', color2: '#16224a', dex: team.dex, w: 0, l: 0, rank: 0, teams: 0, seed: 0, playoff: 'missed' as const, noRecord: true };
+    expect(decodeShare(encodeShare(ten))).toEqual(ten);
+    const five = { ...ten, dex: team.dex.slice(0, 5) };
+    expect(decodeShare(encodeShare(five))).toEqual(five);
+    // A season card still needs all ten, and a partial record is not "no record".
+    expect(decodeShare(encodeShare({ ...team, dex: team.dex.slice(0, 5) }))).toBeNull();
+    expect(decodeShare(encodeShare({ ...ten, noRecord: false, w: 3 }))).toBeNull();
+    expect(decodeShare(encodeShare({ ...ten, dex: team.dex.slice(0, 4) }))).toBeNull();
+    const url = 'https://pokejam.xyz/#s=x';
+    const { grade, ovr } = teamGrade(team.dex.map((d) => monByDex(d)));
+    expect(shareText(ten, url)).toBe(`My PokeJam draft: Pallet Town, grade ${grade}, ${ovr} OVR ${url}`);
+  });
+
   it('share text has the record, the shared grade and the link', () => {
     const url = 'https://pokejam.xyz/#s=abc';
     const g = teamGrade(team.dex.map((d) => monByDex(d))).grade;

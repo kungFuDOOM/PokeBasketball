@@ -86,7 +86,31 @@ export interface SeasonResult {
   players: PlayerLine[];
   /** Index into `players`. */
   pots: number;
+  /** End-of-season All-Stars from every team: exactly one per slot, PG, SG, SF, PF, C. */
+  allStars: AllStar[];
 }
+
+export interface AllStar extends PlayerLine {
+  /** The All-Star slot this player fills (their listed position, or the slot they started in). */
+  slot: Mon['pos'];
+  /** Index into the league's teams (0 is yours). */
+  team: number;
+  teamName: string;
+  color: string;
+}
+
+/** Position-weighted season score for All-Star voting: guards for playmaking, bigs for boards and blocks. */
+const ALL_STAR_WEIGHTS: Record<Mon['pos'], { pts: number; reb: number; ast: number; stl: number; blk: number }> = {
+  PG: { pts: 1, reb: 0.8, ast: 2, stl: 2, blk: 1 },
+  SG: { pts: 1.2, reb: 0.9, ast: 1.3, stl: 2, blk: 1.2 },
+  SF: { pts: 1.1, reb: 1.3, ast: 1.2, stl: 2, blk: 1.8 },
+  PF: { pts: 1, reb: 1.6, ast: 0.9, stl: 1.5, blk: 2.5 },
+  C: { pts: 1, reb: 1.8, ast: 0.8, stl: 1.2, blk: 3 },
+};
+export const allStarScore = (p: PlayerLine, slot: Mon['pos']) => {
+  const w = ALL_STAR_WEIGHTS[slot];
+  return p.ppg * w.pts + p.rpg * w.reb + p.apg * w.ast + p.spg * w.stl + p.bpg * w.blk;
+};
 
 export function rng(seed: number): () => number {
   let a = seed >>> 0;
@@ -169,12 +193,37 @@ export function simulateSeason(input: SimInput): SeasonResult {
 
   const me = teams[0].roster;
   const mine = prof[0];
-  const tot = me.map(() => ({ pts: 0, reb: 0, ast: 0, stl: 0, blk: 0 }));
-  const shPts = shares(mine, me, (m) => (m.r.sht * 0.3 + m.r.ins * 0.3 + m.r.spd * 0.1 + m.r.hnd * 0.15 + m.r.pas * 0.15) ** 2);
-  const shReb = shares(mine, me, (m) => m.r.reb ** 2.5);
-  const shAst = shares(mine, me, (m) => (m.r.pas * 0.6 + m.r.hnd * 0.4) ** 3);
-  const shStl = shares(mine, me, (m) => (m.r.def * 0.5 + m.r.spd * 0.5) ** 3);
-  const shBlk = shares(mine, me, (m) => m.r.blk ** 4);
+  // Per-player season totals for every team (the All-Stars come from the whole league). No random draws here,
+  // so tracking them leaves every score exactly as the seed decides.
+  const book = teams.map((t, i) => {
+    const p = prof[i];
+    const ro = t.roster;
+    return {
+      tot: ro.map(() => ({ pts: 0, reb: 0, ast: 0, stl: 0, blk: 0 })),
+      pts: shares(p, ro, (m) => (m.r.sht * 0.3 + m.r.ins * 0.3 + m.r.spd * 0.1 + m.r.hnd * 0.15 + m.r.pas * 0.15) ** 2),
+      reb: shares(p, ro, (m) => m.r.reb ** 2.5),
+      ast: shares(p, ro, (m) => (m.r.pas * 0.6 + m.r.hnd * 0.4) ** 3),
+      stl: shares(p, ro, (m) => (m.r.def * 0.5 + m.r.spd * 0.5) ** 3),
+      blk: shares(p, ro, (m) => m.r.blk ** 4),
+      gp: 0,
+    };
+  });
+  /** A team's players share what the team did that night. */
+  const credit = (i: number, pf: number) => {
+    const b = book[i];
+    const d = prof[i].def;
+    const ast = Math.round(pf * 0.28);
+    const reb = Math.round(34 + (d - 74) * 0.25);
+    b.gp++;
+    b.tot.forEach((t, k) => {
+      t.pts += pf * b.pts[k];
+      t.reb += reb * b.reb[k];
+      t.ast += ast * b.ast[k];
+      t.stl += (6 + (d - 74) * 0.08) * b.stl[k];
+      t.blk += (4 + (d - 74) * 0.06) * b.blk[k];
+    });
+  };
+  const tot = book[0].tot;
 
   // Two passes of the round robin, home and away swapped.
   for (let leg = 0; leg < 2; leg++) {
@@ -186,21 +235,13 @@ export function simulateSeason(input: SimInput): SeasonResult {
         rec[a].pf += sa; rec[a].pa += sb; rec[b].pf += sb; rec[b].pa += sa;
         rec[sa > sb ? a : b].w++;
         rec[sa > sb ? b : a].l++;
+        credit(a, sa);
+        credit(b, sb);
         if (a === 0 || b === 0) {
           const home = a === 0;
           const pf = home ? sa : sb;
           const pa = home ? sb : sa;
           weeks.push({ week, opp: home ? b : a, home, pf, pa, win: pf > pa });
-          // The user's players share what the team did that night.
-          const ast = Math.round(pf * 0.28);
-          const reb = Math.round(34 + (mine.def - 74) * 0.25);
-          me.forEach((_, i) => {
-            tot[i].pts += pf * shPts[i];
-            tot[i].reb += reb * shReb[i];
-            tot[i].ast += ast * shAst[i];
-            tot[i].stl += (6 + (mine.def - 74) * 0.08) * shStl[i];
-            tot[i].blk += (4 + (mine.def - 74) * 0.06) * shBlk[i];
-          });
         }
       }
     }
@@ -234,6 +275,31 @@ export function simulateSeason(input: SimInput): SeasonResult {
   let pots = 0;
   players.forEach((p, i) => { if (value(p) > value(players[pots])) pots = i; });
 
+  // All-Stars: for each slot, the best season (position-weighted) among players listed at that position or who
+  // started there; ties go to the team with more wins, then overall, then dex. Nobody is picked twice.
+  const lines = teams.flatMap((t, ti) => {
+    const g = book[ti].gp || 1;
+    const lu = bestLineup(t.roster);
+    return t.roster.map((m, k): PlayerLine & { team: number; started?: Mon['pos'] } => {
+      const x = book[ti].tot[k];
+      const si = lu.starters.indexOf(m);
+      return {
+        dex: m.dex, name: m.name, pos: m.pos, ovr: m.ovr, starter: si >= 0, team: ti, started: si >= 0 ? lu.slots[si] : undefined,
+        ppg: round1(x.pts / g), rpg: round1(x.reb / g), apg: round1(x.ast / g), spg: round1(x.stl / g), bpg: round1(x.blk / g),
+      };
+    });
+  });
+  const taken = new Set<string>();
+  const allStars: AllStar[] = POSITIONS.flatMap((slot) => {
+    const pool = lines.filter((p) => (p.pos === slot || p.started === slot) && !taken.has(`${p.team}:${p.dex}`));
+    pool.sort((p, q) => allStarScore(q, slot) - allStarScore(p, slot) || rec[q.team].w - rec[p.team].w || q.ovr - p.ovr || p.dex - q.dex);
+    const best = pool[0];
+    if (!best) return [];
+    taken.add(`${best.team}:${best.dex}`);
+    const { started: _s, ...line } = best;
+    return [{ ...line, slot, teamName: teams[best.team].name, color: teams[best.team].color }];
+  });
+
   return {
     seed: input.seed,
     weeks,
@@ -246,6 +312,7 @@ export function simulateSeason(input: SimInput): SeasonResult {
     },
     players,
     pots,
+    allStars,
   };
 }
 
