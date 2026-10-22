@@ -2,7 +2,7 @@ import { POSITIONS, bestEffectiveness, effectiveness, type Mon, type Pos } from 
 import { think } from './ai';
 import {
   BALL_R, COURT_L, COURT_W, DIFFICULTIES, GRAVITY, HOOP_Y, RIM_R, RIM_Z,
-  backDir, clamp, dist, emptyIntent, hoopX, isThree, lerp, rand, randn,
+  backDir, clamp, dist, emptyIntent, hoopX, isThree, lerp, seeded,
   type Ball, type GameConfig, type GameEvent, type Grade, type Intent, type Player, type TeamDef, type TeamId,
 } from './types';
 
@@ -10,6 +10,13 @@ import {
 export const IDEAL_RELEASE = 0.8;
 /** Seconds for the shot meter to fill from empty to full. */
 const METER_TIME = 0.62;
+/** Layups and dunks go in when the shooter's finish() reaches this. */
+const FINISH = 0.6;
+/** How close (feet) a swipe has to get to the ball itself to strip it. */
+const STEAL_REACH = 3.6;
+/** A defender's one try at a block (see updateDunk and updateShot) succeeds at this edge or better. */
+const DUNK_BLOCK_EDGE = 0.53;
+const SHOT_BLOCK_EDGE = 0.465;
 
 export type Phase = 'tip' | 'live' | 'dead' | 'break' | 'final';
 
@@ -98,7 +105,7 @@ function makePlayer(id: number, team: TeamId, slot: number, mon: Mon, boost: num
     x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0,
     facing: team === 0 ? 1 : -1,
     back: false,
-    runPhase: Math.random() * 6,
+    runPhase: (id * 2.37) % 6,
     state: 'free', stateT: 0,
     turbo: 1, turboOn: false,
     special: 0.2,
@@ -154,11 +161,16 @@ export class Game {
   netT: [number, number] = [0, 0];
   paused = false;
   /** Who won the latest jump ball; the other team starts the following quarter. */
-  private tipWinner: TeamId;
+  private tipWinner: TeamId = 0;
   private dribblePh = 0;
+  /** Seeded stream for CPU play-calling variety and cosmetic jitter. Never decides a make, block, steal, rebound or tip. */
+  readonly rng: () => number;
 
   constructor(cfg: GameConfig) {
     this.cfg = cfg;
+    let h = cfg.seed ?? 2166136261;
+    if (cfg.seed === undefined) for (const ch of cfg.home.name + '|' + cfg.away.name) h = Math.imul(h ^ ch.charCodeAt(0), 16777619);
+    this.rng = seeded(h);
     this.teams = [cfg.home, cfg.away];
     this.diff = DIFFICULTIES[cfg.difficulty];
     let id = 0;
@@ -176,7 +188,6 @@ export class Game {
     }
     this.assignMatchups();
     this.clock = cfg.quarterLen;
-    this.tipWinner = Math.random() < 0.5 ? 0 : 1;
     this.ball = {
       x: 47, y: 25, z: 4, vx: 0, vy: 0, vz: 0,
       mode: 'loose', owner: null, shot: null, pass: null,
@@ -263,6 +274,21 @@ export class Game {
     });
   }
 
+  rand(a: number, b: number): number {
+    return a + this.rng() * (b - a);
+  }
+  /** Roughly normal jitter from the seeded stream (cosmetic / CPU variety only). */
+  randn(): number {
+    return (this.rng() + this.rng() + this.rng() - 1.5) * 2;
+  }
+  /**
+   * A CPU shooter's release error, as a pure function of who is shooting and how many shots they've taken
+   * (about -1.7..1.7, same spread idea as a bell curve). Same game state, same release.
+   */
+  private releaseWobble(p: Player): number {
+    const s = Math.sin(p.id * 12.9898 + p.stats.fga * 78.233) * 43758.5453;
+    return (s - Math.floor(s) - 0.5) * 3.4;
+  }
   greenWindow(p: Player): number {
     const userMult = p.human ? this.diff.green * (1 + 0.3 * this.catchup()) : 1;
     return (0.022 + (p.r.sht / 100) * 0.034) * userMult * (p.fire ? 1.7 : 1);
@@ -273,7 +299,7 @@ export class Game {
   /** Block reaction delay for an AI defender. */
   reactTime(p: Player): number {
     const base = this.cfg.home.human && p.team === 1 ? this.diff.react : 0.2;
-    return base + ((100 - p.r.def) / 100) * 0.25 + rand(0, 0.08);
+    return base + ((100 - p.r.def) / 100) * 0.25 + this.rand(0, 0.08);
   }
   aggro(p: Player): number {
     return this.cfg.home.human && p.team === 1 ? this.diff.aggro * (1 - 0.5 * this.catchup()) : 0.85;
@@ -283,8 +309,8 @@ export class Game {
 
   private startQuarter() {
     const q = this.quarter;
-    // Jump balls open each half; the team that lost the tip starts the next quarter.
-    const start: TeamId = q > 4 ? (Math.random() < 0.5 ? 0 : 1) : ((1 - this.tipWinner) as TeamId);
+    // Jump balls open each half and every overtime; the team that lost the tip starts the next quarter.
+    const start = (1 - this.tipWinner) as TeamId;
     this.clock = q > 4 ? Math.max(30, Math.round(this.cfg.quarterLen / 2)) : this.cfg.quarterLen;
     this.shotClock = 24;
     if (this.cfg.stamina && q > 1) {
@@ -307,7 +333,7 @@ export class Game {
     }
     const label = q > 4 ? (q === 5 ? 'OVERTIME' : `${q - 4}OT`) : ['1ST', '2ND', '3RD', '4TH'][q - 1] + ' QUARTER';
     this.phase = 'tip';
-    if (q === 1 || q === 3) {
+    if (q === 1 || q === 3 || q > 4) {
       this.setupJump();
       this.events.push({ kind: 'quarter', label, sub: 'JUMP BALL' });
       return;
@@ -345,7 +371,8 @@ export class Game {
     const human = [this.isHumanTeam(0), this.isHumanTeam(1)];
     // CPU timing: a noisy guess around the peak, sharper on higher difficulties.
     const sd = (t: TeamId) => (this.teams[0].human && !human[t] ? 0.2 - this.diff.cpuBoost * 0.012 : 0.2);
-    const guess = (t: TeamId) => 1 + (Math.random() + Math.random() + Math.random() - 1.5) * sd(t) * 1.4;
+    // The home center reads the toss a touch early, the away center a touch late: fixed, no roll.
+    const guess = (t: TeamId) => 1 + (t === 0 ? -0.35 : 0.35) * sd(t) * 1.4;
     this.tipoff = { t: -JUMP_PRE, jumpers: [a, b], at: [null, null], plan: [guess(0), guess(1)], window: 0.08 * this.diff.green, to: null, fly: 0 };
     const ball = this.ball;
     ball.owner = null;
@@ -418,8 +445,12 @@ export class Game {
     if (m < Math.max(1.3, last + 0.3)) return;
     const quality = (t: TeamId) => Math.max(0, 1 - Math.abs(j.at[t]! - 1) / 0.45);
     const ability = (p: Player) => (p.r.blk * 0.5 + p.r.reb * 0.3 + p.r.spd * 0.2) / 100 + (p.size - 1) * 0.4;
-    const score = (t: TeamId) => quality(t) * 0.65 + ability(j.jumpers[t]) * 0.35 + Math.random() * 0.06;
-    const win: TeamId = score(0) >= score(1) ? 0 : 1;
+    const score = (t: TeamId) => quality(t) * 0.65 + ability(j.jumpers[t]) * 0.35;
+    // No roll: the better jump wins. A dead heat alternates, home on the 1st jump ball, away on the 2nd, and so on.
+    const nth = this.quarter <= 3 ? (this.quarter - 1) / 2 : this.quarter - 3;
+    const s0 = score(0);
+    const s1 = score(1);
+    const win: TeamId = s0 > s1 ? 0 : s1 > s0 ? 1 : ((nth % 2) as TeamId);
     const w = j.jumpers[win];
     const mates = this.teamPlayers(win).filter((p) => p !== w);
     j.to = mates.find((p) => p.slot === 0) ?? mates[0];
@@ -460,7 +491,7 @@ export class Game {
     b.pass = null;
     b.lastTouch = p.team;
     p.lastCatch = this.time;
-    p.ai.think = Math.min(p.ai.think, rand(0.1, 0.3));
+    p.ai.think = Math.min(p.ai.think, this.rand(0.1, 0.3));
     if (p.team !== this.offense) this.setOffense(p.team);
     if (p.team === 1) this.autoSwitch(p);
     if (!silent) this.sfx.push('catch');
@@ -798,7 +829,7 @@ export class Game {
     if (!p.human) {
       const vsUser = p.team === 1 && this.teams[0].human;
       const sigma = Math.max(0.05, 0.09 + (100 - p.r.sht) * 0.0018 - (vsUser ? this.diff.cpuShot - 0.06 * this.catchup() : 0));
-      p.releaseAt = clamp(IDEAL_RELEASE + randn() * sigma, 0.3, 1.2);
+      p.releaseAt = clamp(IDEAL_RELEASE + this.releaseWobble(p) * sigma, 0.3, 1.2);
     }
   }
 
@@ -822,54 +853,59 @@ export class Game {
     return clamp(1 - worst, 0.35, 1);
   }
 
-  private baseProb(p: Player, d: number, three: boolean): number {
-    if (d < 8) return 0.55 + p.r.ins * 0.004;
-    if (!three) return clamp(0.2 + p.r.sht * 0.0042 - (d - 8) * 0.007, 0.1, 0.75);
-    return clamp(0.1 + p.r.sht * 0.0037 - Math.max(0, d - 24) * 0.03, 0.02, 0.6);
+  /**
+   * How far from the ideal release a jump shot can be and still drop, in green windows. There's no roll: a
+   * release inside this window always goes in and one outside it always misses. Wide open from mid-range
+   * that's anything up to the edge of a Good release; the window narrows with distance, a defender in your
+   * face and tired legs, and widens on fire. Deep heaves need a dead-center release.
+   */
+  makeWindow(p: Player, d: number, three: boolean, contest: number): number {
+    const open = (contest - 0.35) / 0.65;
+    const range = d < 8 ? 1.1 : !three ? 1 - (d - 8) * 0.015 : Math.max(0.2, 1.0 - Math.max(0, d - 24) * 0.06);
+    let reach = (0.95 + 1.8 * open) * range * (0.7 + 0.3 * this.effort(p));
+    if (p.fire) reach *= 1.25;
+    return reach;
   }
 
   private releaseShot(p: Player) {
-    const err = p.meter - IDEAL_RELEASE;
+    const lockin = p.fx.lockin;
+    p.fx.lockin = false;
+    // Lock-In is a perfect release: it plays as if the meter stopped dead center.
+    const err = lockin ? 0 : p.meter - IDEAL_RELEASE;
     const w = this.greenWindow(p);
+    const a = Math.abs(err);
     let grade: Grade;
-    if (p.fx.lockin) { grade = 'perfect'; p.fx.lockin = false; }
-    else if (Math.abs(err) <= w) grade = 'perfect';
-    else if (Math.abs(err) <= w * 2.3) grade = 'good';
-    else if (Math.abs(err) <= w * 4.5) grade = err < 0 ? 'early' : 'late';
+    if (a <= w) grade = 'perfect';
+    else if (a <= w * 2.3) grade = 'good';
+    else if (a <= w * 4.5) grade = err < 0 ? 'early' : 'late';
     else grade = err < 0 ? 'very-early' : 'very-late';
 
     const d = this.distToHoop(p);
     const three = isThree(p.x, p.y, p.team);
-    const contest = this.contest(p);
-    const base = this.baseProb(p, d, three);
-    let prob: number;
-    switch (grade) {
-      case 'perfect': prob = (three ? 0.86 : 0.94) - (1 - contest) * 0.55; break;
-      case 'good': prob = base * contest + 0.06; break;
-      case 'early': case 'late': prob = base * contest * 0.8; break;
-      default: prob = base * contest * 0.3;
-    }
-    prob *= 0.7 + 0.3 * this.effort(p);
-    if (p.fire) prob = Math.min(0.97, prob + 0.25);
-    if (d > 35) prob = Math.min(prob, grade === 'perfect' ? 0.25 : 0.04);
-    const make = Math.random() < prob;
-    const airball = !make && grade.startsWith('very') && Math.random() < 0.4;
+    const make = a <= w * this.makeWindow(p, d, three, this.contest(p));
+    // Way off the meter comes up short of the rim.
+    const airball = !make && a > w * 6;
     this.events.push({ kind: 'release', player: p, grade });
-    this.launchShot(p, make, airball, three ? 3 : 2, 'jump');
+    this.launchShot(p, make, airball, three ? 3 : 2, 'jump', err / w);
     p.state = 'free';
     p.meter = 0;
   }
 
+  /** Finishing at the rim: Inside rating, how open the shooter is, and legs. Layups and dunks go in at FINISH or better. */
+  private finish(p: Player, base: number, contested: number): number {
+    return (base + p.r.ins * 0.004) * (1 - contested * (1 - this.contest(p))) * (0.7 + 0.3 * this.effort(p));
+  }
+
   private releaseLayup(p: Player) {
-    const contest = this.contest(p);
-    let prob = (0.55 + p.r.ins * 0.004) * (0.45 + 0.55 * contest) * (0.7 + 0.3 * this.effort(p));
-    if (p.fx.lockin) { prob = 0.97; p.fx.lockin = false; }
-    if (p.fire) prob = Math.min(0.97, prob + 0.2);
-    this.launchShot(p, Math.random() < prob, false, 2, 'layup');
+    // No roll: an open layup drops, a defender close enough (better still, in the air) takes it away.
+    const make = p.fx.lockin || this.finish(p, 0.55, 0.55) + (p.fire ? 0.2 : 0) >= FINISH;
+    p.fx.lockin = false;
+    this.launchShot(p, make, false, 2, 'layup', 1);
     p.state = 'free';
   }
 
-  private launchShot(p: Player, make: boolean, airball: boolean, points: 2 | 3, kind: 'jump' | 'layup') {
+  /** `off`: how far the release missed the ideal, in green windows (negative = early). It aims a miss. */
+  private launchShot(p: Player, make: boolean, airball: boolean, points: 2 | 3, kind: 'jump' | 'layup', off: number) {
     const b = this.ball;
     const hx = hoopX(p.team);
     const x0 = p.x + p.facing * 0.3;
@@ -878,16 +914,18 @@ export class Game {
     let tx = hx;
     let ty = HOOP_Y;
     let tz = RIM_Z + 0.1;
+    // The flight is set by the release, not a roll (a defender can only block what's really in the air):
+    // airballs fall shorter the worse the timing, early misses catch the front rim and late ones the back.
     if (airball) {
       const bx = p.x - hx;
       const by = p.y - HOOP_Y;
       const l = Math.hypot(bx, by) || 1;
-      const short = rand(3, 6);
+      const short = clamp(3 + (Math.abs(off) - 6) * 0.5, 3, 6);
       tx = hx + (bx / l) * short;
-      ty = HOOP_Y + (by / l) * short + rand(-2, 2);
+      ty = HOOP_Y + (by / l) * short;
       tz = 6.5;
     } else if (!make) {
-      const a = rand(0, Math.PI * 2);
+      const a = Math.atan2(y0 - HOOP_Y, x0 - hx) + (off < 0 ? 0 : Math.PI);
       tx += Math.cos(a) * RIM_R * 1.25;
       ty += Math.sin(a) * RIM_R * 1.25;
     }
@@ -914,17 +952,16 @@ export class Game {
     const hx = hoopX(p.team);
     const d = this.distToHoop(p);
     const ang = Math.atan2(p.y - HOOP_Y, p.x - hx);
-    const contest = this.contest(p);
-    let prob = clamp(0.5 + p.r.ins * 0.0035 - (1 - contest) * 0.6, 0.3, 0.93) * (0.7 + 0.3 * this.effort(p));
-    if (p.fire || p.fx.lockin) prob = 0.99;
+    // No roll: decided at takeoff from the dunker's Inside rating and how open the lane is. On fire or locked in, it's down.
+    const make = p.fire || p.fx.lockin || this.finish(p, 0.55, 1.15) >= FINISH;
     p.fx.lockin = false;
     p.dunk = {
       x0: p.x, y0: p.y, z0: p.z,
       x1: hx + Math.cos(ang) * 1.2, y1: HOOP_Y + Math.sin(ang) * 1.2,
       t: 0, T: clamp(0.42 + d * 0.04, 0.45, 1.0),
       peak: 3 + d * 0.3,
-      spin: d > 9 && Math.random() < 0.65,
-      make: Math.random() < prob,
+      spin: d > 9 && this.rng() < 0.65,
+      make,
       oop,
       tested: new Set(),
     };
@@ -946,11 +983,15 @@ export class Game {
     if (k > 0.25 && k < 0.97 && p.fx.phase <= 0) {
       for (const q of this.players) {
         if (q.team === p.team || dk.tested.has(q.id) || q.z < 0.8) continue;
-        if (dist(p.x, p.y, q.x, q.y) > 3.6) continue;
-        if (q.z + q.heightFt + 1.6 < p.z + p.heightFt) continue;
+        const d = dist(p.x, p.y, q.x, q.y);
+        if (d > 3.6) continue;
+        const over = q.z + q.heightFt + 1.6 - (p.z + p.heightFt);
+        if (over < 0) continue;
         dk.tested.add(q.id);
-        const chance = clamp(0.25 + q.r.blk * 0.004 - p.r.ins * 0.0025 + (q.size - p.size) * 0.3, 0.08, 0.55);
-        if (Math.random() < chance) {
+        // No roll: each defender who gets up to the dunker has one try, judged on blocking, size, how far above
+        // the dunker they already are (jumping early enough) and how close (position), against Inside and size.
+        const edge = 0.25 + q.r.blk * 0.004 - p.r.ins * 0.0025 + (q.size - p.size) * 0.3 + 0.05 * Math.min(over, 3) + 0.05 * (3.6 - d);
+        if (edge >= DUNK_BLOCK_EDGE) {
           p.dunk = null;
           p.state = 'free';
           p.vz = 0;
@@ -982,10 +1023,10 @@ export class Game {
         b.owner = null;
         b.mode = 'loose';
         b.x = dk.x1; b.y = dk.y1; b.z = RIM_Z + 0.4;
-        const a = Math.atan2(dk.y0 - HOOP_Y, dk.x0 - hoopX(p.team)) + rand(-1, 1);
-        b.vx = Math.cos(a) * rand(6, 11);
-        b.vy = Math.sin(a) * rand(6, 11);
-        b.vz = rand(8, 13);
+        const a = Math.atan2(dk.y0 - HOOP_Y, dk.x0 - hoopX(p.team)) + this.rand(-1, 1);
+        b.vx = Math.cos(a) * this.rand(6, 11);
+        b.vy = Math.sin(a) * this.rand(6, 11);
+        b.vz = this.rand(8, 13);
         b.fromShot = p.team;
         b.noPickup = 0.25;
         this.sfx.push('rim');
@@ -996,13 +1037,13 @@ export class Game {
 
   private recordBlock(blocker: Player, victim: Player) {
     const b = this.ball;
-    const a = Math.atan2(b.y - blocker.y, b.x - blocker.x) + rand(-0.6, 0.6);
+    const a = Math.atan2(b.y - blocker.y, b.x - blocker.x) + this.rand(-0.6, 0.6);
     b.owner = null;
     b.shot = null;
     b.mode = 'loose';
-    b.vx = Math.cos(a) * rand(10, 18);
-    b.vy = Math.sin(a) * rand(10, 18);
-    b.vz = rand(2, 8);
+    b.vx = Math.cos(a) * this.rand(10, 18);
+    b.vy = Math.sin(a) * this.rand(10, 18);
+    b.vz = this.rand(2, 8);
     b.fromShot = victim.team;
     b.lastTouch = blocker.team;
     b.noPickup = 0.2;
@@ -1048,7 +1089,6 @@ export class Game {
     b.pass = {
       from: p, to, oop, t: 0,
       speed: oop ? 32 : 46 + p.r.pas * 0.16,
-      tested: new Set(),
       z0: b.z,
       dist0: Math.max(1, dist(b.x, b.y, to.x, to.y)),
     };
@@ -1078,11 +1118,14 @@ export class Game {
       if (!target) return;
       if (!(p.fx.surge > 0 || p.fire)) p.turbo = Math.max(0, p.turbo - 0.35);
       const mult = bestEffectiveness(p.mon.types, target.mon.types);
-      let chance = 0.55 + (p.size - target.size) * 0.8 + (p.r.def - target.r.hnd) / 250;
-      chance *= mult === 0 ? 0 : mult >= 2 ? 1.5 : mult < 1 ? 0.6 : 1;
-      if (target.fx.phase > 0) chance = 0;
-      const ok = Math.random() < clamp(chance, 0, 0.95);
+      // No roll: the shove lands if the target is within reach. Size, Defense against Handling and the type
+      // matchup set the reach: super effective connects from farther, not very effective has to be up close,
+      // immune never lands.
+      let power = 0.55 + (p.size - target.size) * 0.8 + (p.r.def - target.r.hnd) / 250;
+      power *= mult === 0 ? 0 : mult >= 2 ? 1.5 : mult < 1 ? 0.6 : 1;
+      if (target.fx.phase > 0) power = 0;
       const l = dist(p.x, p.y, target.x, target.y) || 1;
+      const ok = power > 0 && l <= 4.8 * Math.min(1, power);
       p.vx += ((target.x - p.x) / l) * 8;
       p.vy += ((target.y - p.y) / l) * 8;
       if (ok) this.knock(target, p, 1.1);
@@ -1093,10 +1136,13 @@ export class Game {
 
     if (!owner || owner.team === p.team || owner.state === 'dunk') return;
     if (dist(p.x, p.y, owner.x, owner.y) > 4.6) return;
-    let chance = clamp(0.1 + (p.r.def - owner.r.hnd) / 220, 0.03, 0.38);
-    if (owner.state === 'shoot' || owner.state === 'layup') chance *= 0.4;
-    if (owner.fx.phase > 0) chance = 0;
-    if (Math.random() < chance) {
+    // No roll: the swipe has to reach the ball while it's low on the dribble, out of the handler's hands. Defense
+    // against Handling sets how much of each bounce is open; a ball up for a shot is out of reach.
+    const b = this.ball;
+    const dribbling = owner.state === 'free' || owner.state === 'swipe';
+    const low = (b.z - owner.z - BALL_R) / (2.2 * owner.size);
+    const open = clamp(0.45 + (p.r.def - owner.r.hnd) / 200, 0.15, 0.65);
+    if (dribbling && owner.fx.phase <= 0 && low <= open && dist(p.x, p.y, b.x, b.y) <= STEAL_REACH) {
       owner.state = 'free';
       owner.meter = 0;
       this.giveBall(p);
@@ -1107,11 +1153,15 @@ export class Game {
     }
   }
 
-  /** Injury chance grows as a player tires: up to 3x when fully gassed. */
+  /**
+   * Injuries are a fatigue threshold, not a roll: a hard knock (or a landing) hurts only a player who is nearly
+   * gassed. The more spent, the longer they're out. `base` scales how hard the contact is (landings are lighter).
+   */
   private maybeInjure(p: Player, base: number) {
-    if (!this.cfg.injuries || p.hurt || Math.random() >= base * (1 + (1 - p.energy) * 2)) return;
-    const r = Math.random();
-    p.hurt = r < 0.6 ? 1 : r < 0.9 ? 2 : 3;
+    if (!this.cfg.injuries || p.hurt) return;
+    const spent = (1 - p.energy) * (base / 0.012);
+    if (spent < 0.8) return;
+    p.hurt = spent >= 0.95 ? 3 : spent >= 0.88 ? 2 : 1;
     p.energy = Math.min(p.energy, 0.15);
     this.events.push({ kind: 'injury', player: p, weeks: p.hurt });
     this.sfx.push('whistle');
@@ -1133,8 +1183,8 @@ export class Game {
     if (b.owner === target) {
       b.owner = null;
       b.mode = 'loose';
-      b.vx = nx * 8 + rand(-3, 3);
-      b.vy = ny * 8 + rand(-3, 3);
+      b.vx = nx * 8 + this.rand(-3, 3);
+      b.vy = ny * 8 + this.rand(-3, 3);
       b.vz = 7;
       b.noPickup = 0.25;
       b.fromShot = -1;
@@ -1317,7 +1367,7 @@ export class Game {
         let dy = c.y - a.y;
         let d = Math.hypot(dx, dy);
         if (d >= min) continue;
-        if (d < 0.001) { dx = rand(-1, 1); dy = rand(-1, 1); d = Math.hypot(dx, dy) || 1; }
+        if (d < 0.001) { dx = this.rand(-1, 1); dy = this.rand(-1, 1); d = Math.hypot(dx, dy) || 1; }
         const push = (min - d) / 2;
         a.x -= (dx / d) * push; a.y -= (dy / d) * push;
         c.x += (dx / d) * push; c.y += (dy / d) * push;
@@ -1339,8 +1389,8 @@ export class Game {
         b.z -= 9 * dt;
         if (b.z <= 6.8) {
           b.mode = 'loose';
-          b.vx = rand(-1.5, 1.5);
-          b.vy = rand(-1.5, 1.5);
+          b.vx = this.rand(-1.5, 1.5);
+          b.vy = this.rand(-1.5, 1.5);
           b.vz = -4;
           b.fromShot = -1;
         }
@@ -1386,13 +1436,15 @@ export class Game {
     b.z = lerp(ps.z0, tz, prog) + Math.sin(prog * Math.PI) * (ps.oop ? 6 : 1.2);
 
     for (const q of this.players) {
-      if (q.team === ps.from.team || ps.tested.has(q.id) || q.state === 'stun') continue;
-      if (dist(q.x, q.y, b.x, b.y) > 2) continue;
+      if (q.team === ps.from.team || q.state === 'stun') continue;
+      const d = dist(q.x, q.y, b.x, b.y);
+      if (d > 2) continue;
       if (b.z > q.z + q.heightFt + 1.6) continue;
-      ps.tested.add(q.id);
-      let chance = clamp(0.08 + (q.r.def - ps.from.r.pas) / 200 + (q.human && q.intent.steal ? 0.2 : 0), 0.03, 0.4);
-      if (ps.oop && q.z < 1) chance *= 0.2;
-      if (Math.random() < chance) {
+      // No roll: picked off if the pass comes within the defender's reach. Defense against the passer's Passing
+      // sets it, a human pressing Steal as it arrives stretches it, and a lob sails over a defender on the floor.
+      let reach = clamp(0.2 + (q.r.def - ps.from.r.pas) / 80 + (q.human && q.intent.steal ? 0.8 : 0), 0.15, 2);
+      if (ps.oop && q.z < 1) reach *= 0.2;
+      if (d <= reach) {
         this.giveBall(q);
         q.stats.stl++;
         q.special = Math.min(1, q.special + 0.3);
@@ -1436,11 +1488,14 @@ export class Game {
     if (t < s.T * 0.45 && s.shooter.fx.phase <= 0) {
       for (const q of this.players) {
         if (q.team === s.shooter.team || s.tested.has(q.id) || q.z < 0.8) continue;
-        if (dist(q.x, q.y, b.x, b.y) > 3.2) continue;
-        if (q.z + q.heightFt + 1.4 < b.z - 0.5) continue;
+        const d = dist(q.x, q.y, b.x, b.y);
+        if (d > 3.2) continue;
+        const over = q.z + q.heightFt + 1.4 - (b.z - 0.5);
+        if (over < 0) continue;
         s.tested.add(q.id);
-        const chance = clamp(0.15 + q.r.blk * 0.004 - s.shooter.r.sht * 0.002 - (s.kind === 'layup' ? 0 : 0.05), 0.05, 0.6);
-        if (Math.random() < chance) {
+        // Same rule as a dunk: one try, judged on blocking, height over the ball and closeness against the shooter's touch.
+        const edge = 0.15 + q.r.blk * 0.004 - s.shooter.r.sht * 0.002 - (s.kind === 'layup' ? 0 : 0.05) + 0.05 * Math.min(over, 3) + 0.05 * (3.2 - d);
+        if (edge >= SHOT_BLOCK_EDGE) {
           this.recordBlock(q, s.shooter);
           return;
         }
@@ -1464,11 +1519,11 @@ export class Game {
     } else {
       b.mode = 'loose';
       const hx = hoopX(s.shooter.team);
-      const a = Math.atan2(s.y0 - HOOP_Y, s.x0 - hx) + rand(-1.3, 1.3);
-      const sp = rand(5, 12);
+      const a = Math.atan2(s.y0 - HOOP_Y, s.x0 - hx) + this.rand(-1.3, 1.3);
+      const sp = this.rand(5, 12);
       b.vx = Math.cos(a) * sp;
       b.vy = Math.sin(a) * sp;
-      b.vz = rand(7, 13);
+      b.vz = this.rand(7, 13);
       b.fromShot = s.shooter.team;
       b.noPickup = 0.25;
       this.rimShake[hoopIdx] = 0.6;
@@ -1511,7 +1566,8 @@ export class Game {
       if (p.state === 'stun' || p.state === 'dunk' || p.state === 'hang') continue;
       if (dist(p.x, p.y, b.x, b.y) > 1.4 + p.size * 0.6) continue;
       if (b.z > p.z + p.heightFt + 1.6) continue;
-      const s = p.r.reb + Math.random() * 35 + (p.z > 0.5 ? 10 : 0);
+      // No roll: Rebounding, position (closer to the ball is better) and being up in the air.
+      const s = p.r.reb + 35 * (1 - dist(p.x, p.y, b.x, b.y) / (1.4 + p.size * 0.6)) + (p.z > 0.5 ? 10 : 0);
       if (s > bs) { bs = s; best = p; }
     }
     if (!best) return;

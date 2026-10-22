@@ -144,18 +144,17 @@ function profile(t: SimTeamIn): Profile {
   return { off, def, power: off + def, ovr, starters, bench };
 }
 
-/** Points for each side of one game. Never a tie: the stronger team wins the overtime coin flip. */
-function playGame(r: () => number, a: Profile, b: Profile, aHome: boolean): [number, number] {
-  const gauss = () => Math.sqrt(-2 * Math.log(1 - r())) * Math.cos(2 * Math.PI * r());
+/** Points for each side of one game: a pure function of the two teams' ratings (no upsets). Never a tie: the stronger team wins the overtime. */
+function playGame(a: Profile, b: Profile, aHome: boolean): [number, number] {
   const home = 1.8;
-  let sa = 64 + (a.off - 74) * 0.8 - (b.def - 74) * 0.55 + (aHome ? home : 0) + gauss() * 7;
-  let sb = 64 + (b.off - 74) * 0.8 - (a.def - 74) * 0.55 + (aHome ? 0 : home) + gauss() * 7;
+  let sa = 64 + (a.off - 74) * 0.8 - (b.def - 74) * 0.55 + (aHome ? home : 0);
+  let sb = 64 + (b.off - 74) * 0.8 - (a.def - 74) * 0.55 + (aHome ? 0 : home);
   sa = Math.max(30, Math.round(sa));
   sb = Math.max(30, Math.round(sb));
   if (sa === sb) {
-    const pa = 1 / (1 + Math.exp((b.power - a.power) / 12));
-    if (r() < pa) sa += 1 + Math.floor(r() * 3);
-    else sb += 1 + Math.floor(r() * 3);
+    const edge = 2 + Math.min(4, Math.round(Math.abs(a.power - b.power) / 4));
+    if (a.power > b.power || (a.power === b.power && aHome)) sa += edge;
+    else sb += edge;
   }
   return [sa, sb];
 }
@@ -185,7 +184,6 @@ export function simulateSeason(input: SimInput): SeasonResult {
   const { teams } = input;
   const n = teams.length;
   if (n < 4 || n % 2) throw new Error('A season needs an even number of teams, at least 4');
-  const r = rng(input.seed);
   const prof = teams.map(profile);
   const rec = teams.map((t, i) => ({ team: i, name: t.name, abbr: t.abbr, color: t.color, w: 0, l: 0, pf: 0, pa: 0, rank: 0 }));
   const rounds = roundRobin(n);
@@ -231,7 +229,7 @@ export function simulateSeason(input: SimInput): SeasonResult {
       const week = leg * rounds.length + k + 1;
       for (const [x, y] of rounds[k]) {
         const [a, b] = leg ? [y, x] : [x, y];
-        const [sa, sb] = playGame(r, prof[a], prof[b], true);
+        const [sa, sb] = playGame(prof[a], prof[b], true);
         rec[a].pf += sa; rec[a].pa += sb; rec[b].pf += sb; rec[b].pa += sa;
         rec[sa > sb ? a : b].w++;
         rec[sa > sb ? b : a].l++;
@@ -253,7 +251,7 @@ export function simulateSeason(input: SimInput): SeasonResult {
   // Top four make the playoffs: 1v4 and 2v3, then the final. One game each; the higher seed hosts.
   const playoffs: PlayoffGame[] = [];
   const meet = (round: 'semi' | 'final', a: number, b: number): number => {
-    const [sa, sb] = playGame(r, prof[a], prof[b], true);
+    const [sa, sb] = playGame(prof[a], prof[b], true);
     const winner = sa > sb ? a : b;
     playoffs.push({ round, a, b, sa, sb, winner });
     return winner;

@@ -78,6 +78,8 @@ export interface GameConfig {
   autoSwitch?: boolean;
   /** Franchise rule: hard knockdowns and big landings can injure, more often when tired. */
   injuries?: boolean;
+  /** Seed for CPU play-calling variety and cosmetic jitter (outcomes never use it). Defaults to the matchup. */
+  seed?: number;
 }
 
 export interface Intent {
@@ -194,7 +196,6 @@ export interface PassInfo {
   oop: boolean;
   t: number;
   speed: number;
-  tested: Set<number>;
   z0: number;
   dist0: number;
 }
@@ -235,6 +236,17 @@ export type GameEvent =
 
 export const clamp = (v: number, a: number, b: number) => (v < a ? a : v > b ? b : v);
 export const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
+/** Small seeded stream (mulberry32). Used only for CPU play-calling variety and cosmetic jitter, never for outcomes. */
+export function seeded(seed: number): () => number {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
 export const rand = (a: number, b: number) => a + Math.random() * (b - a);
 export function randn(): number {
   // Box-Muller

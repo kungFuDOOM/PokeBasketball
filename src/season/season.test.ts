@@ -26,9 +26,9 @@ function input(seed: number): SimInput {
 }
 
 describe('simulateSeason', () => {
-  it('is deterministic for a seed and differs between seeds', () => {
+  it('is pure ratings: the seed changes nothing, so there are no random upsets', () => {
     expect(simulateSeason(input(7))).toEqual(simulateSeason(input(7)));
-    expect(simulateSeason(input(7)).standings).not.toEqual(simulateSeason(input(8)).standings);
+    expect({ ...simulateSeason(input(7)), seed: 0 }).toEqual({ ...simulateSeason(input(8)), seed: 0 });
   });
 
   it('plays 10-player teams and keeps the books straight', () => {
