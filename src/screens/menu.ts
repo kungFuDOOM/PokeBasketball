@@ -166,10 +166,10 @@ export function menuScreen(root: HTMLElement, settings: Settings, onChange: () =
           <p class="tag">Draft your Pokémon. Run the floor. Full-court 5-on-5 arcade hoops.</p>
         </header>
         <div class="play-row">
-          <button class="btn play-btn" data-go="season" aria-label="Season Draft: draft 10, sim a season, get your grade">DRAFT &amp; GET GRADED<small>Draft 10 · sim a season · get your grade</small></button>
           <label class="field team-field" for="team-name">Your team
             <input id="team-name" maxlength="20" autocomplete="off" value="${esc(settings.teamName)}">
           </label>
+          <button class="btn play-btn" data-go="season" aria-label="Season Draft: draft 10, sim a season, get your grade">DRAFT &amp; GET GRADED<small>Draft 10 · sim a season · get your grade</small></button>
         </div>
         ${opts.drafted ? `<p class="mode-saved hero-saved"><span class="lbl">My drafted team</span> ${esc(opts.drafted)}</p>` : ''}
         <div class="mode-grid">
