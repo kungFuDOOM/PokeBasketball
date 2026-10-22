@@ -3,17 +3,25 @@ import { COURTS } from '../data/courts';
 import { monByDex } from '../data/pokemon';
 import { simulateSeason, type SimInput } from '../season/sim';
 import { Game, IDEAL_RELEASE } from './game';
-import gameSrc from './game.ts?raw';
-import aiSrc from './ai.ts?raw';
 import simSrc from '../season/sim.ts?raw';
 import {
-  BALL_R, HOOP_Y, emptyIntent, hoopX, seeded,
+  BALL_R, HOOP_Y, emptyIntent, hoopX,
   type GameConfig, type GameEvent, type Player, type TeamDef, type TeamId,
 } from './types';
 
 const TICK = 1 / 60;
 type Rng = () => number;
-const seededRng = seeded;
+/** Test-only stream (mulberry32) used to stand in for Math.random and to lay out scenarios. */
+function seededRng(seed: number): Rng {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
 
 const team = (name: string, human: boolean, dexes: number[]): TeamDef => ({
   name, abbr: name.slice(0, 3).toUpperCase(), color: '#3b6fd8', color2: '#16224a', human, roster: dexes.map(monByDex),
@@ -52,7 +60,7 @@ interface Plays {
 const plays = (g: Game) => g as unknown as Plays;
 
 /** Swaps the game's random stream. If a result changes with the stream, luck decided it. */
-const withRng = (g: Game, rng: Rng) => { (g as unknown as { rng: Rng }).rng = rng; vi.spyOn(Math, 'random').mockImplementation(rng); };
+const withRng = (_g: Game, rng: Rng) => { vi.spyOn(Math, 'random').mockImplementation(rng); };
 const constant = (v: number): Rng => () => v;
 const STREAMS: [string, () => Rng][] = [
   ['always 0', () => constant(0)],
@@ -355,13 +363,75 @@ describe('pure skill: franchise season sim', () => {
   });
 });
 
-describe('outcome sources never call Math.random', () => {
-  const sources: [string, string][] = [['game/game.ts', gameSrc], ['game/ai.ts', aiSrc], ['season/sim.ts', simSrc]];
-  for (const [name, text] of sources) {
+describe('pure skill: loose balls come from geometry', () => {
+  type Staged = ReturnType<typeof stage>;
+  const base: Scenario = { shooter: fromHoop(16, 0.3), meter: IDEAL_RELEASE, defender: { x: 20, y: 45 }, defZ: 0, mate: fromHoop(20, -1), low: 1 };
+  const snap = (g: Game) => ({ b: { x: g.ball.x, y: g.ball.y, z: g.ball.z, vx: g.ball.vx, vy: g.ball.vy, vz: g.ball.vz, mode: g.ball.mode }, s: g.score });
+
+  /** Stages one play, runs it to its first miss or block, then steps 30 more ticks. */
+  const cases: [string, (st: Staged) => void][] = [
+    ['jumper early', ({ g, p, shooter }) => { p.giveBall(shooter, true); shooter.state = 'shoot'; shooter.meter = IDEAL_RELEASE - 0.1; shooter.z = 1; p.releaseShot(shooter); for (let i = 0; i < 300 && g.ball.mode === 'shot'; i++) p.updateShot(TICK); }],
+    ['jumper late', ({ g, p, shooter }) => { p.giveBall(shooter, true); shooter.state = 'shoot'; shooter.meter = IDEAL_RELEASE + g.greenWindow(shooter) * 5; shooter.z = 1; p.releaseShot(shooter); for (let i = 0; i < 300 && g.ball.mode === 'shot'; i++) p.updateShot(TICK); }],
+    ['layup', ({ g, p, shooter, defender }) => { Object.assign(shooter, fromHoop(4, 0.4)); Object.assign(defender, near(shooter, 1, 0), { z: 2 }); p.giveBall(shooter, true); shooter.state = 'layup'; shooter.z = 1; p.releaseLayup(shooter); for (let i = 0; i < 300 && g.ball.mode === 'shot'; i++) p.updateShot(TICK); }],
+    ['block', ({ g, p, shooter, defender }) => { Object.assign(defender, near(shooter, 1, 0), { z: 3, vx: 3, vy: 1 }); p.giveBall(shooter, true); shooter.state = 'shoot'; shooter.meter = IDEAL_RELEASE; shooter.z = 1; p.releaseShot(shooter); for (let i = 0; i < 300 && g.ball.mode === 'shot'; i++) p.updateShot(TICK); }],
+    ['dunk', ({ p, shooter }) => { Object.assign(shooter, fromHoop(7, 0.2)); p.giveBall(shooter, true); p.startDunk(shooter, false); shooter.dunk!.make = false; for (let i = 0; i < 200 && shooter.state === 'dunk'; i++) p.updateDunk(shooter, TICK); }],
+  ];
+
+  for (const [name, run] of cases) {
+    it(`${name}: the loose ball is identical under any Math.random`, () => {
+      const results = STREAMS.map(([, rng]) => {
+        const st = stage(rng(), base);
+        run(st);
+        for (let i = 0; i < 30; i++) st.g.update(TICK);
+        return snap(st.g);
+      });
+      for (const r of results.slice(1)) expect(r).toEqual(results[0]);
+    });
+  }
+
+  it('different releases bounce differently', () => {
+    const outs = [-0.12, 0.12].map((o) => {
+      const st = stage(constant(0), base);
+      const { g, p, shooter } = st;
+      p.giveBall(shooter, true); shooter.state = 'shoot'; shooter.meter = IDEAL_RELEASE + o; shooter.z = 1; p.releaseShot(shooter);
+      for (let i = 0; i < 300 && g.ball.mode === 'shot'; i++) p.updateShot(TICK);
+      return g.ball.vx + ',' + g.ball.vy;
+    });
+    expect(outs[0]).not.toBe(outs[1]);
+  });
+});
+
+describe('pure skill: CPU games follow the matchup', () => {
+  const run = (a: number[], b: number[]) => {
+    const g = new Game({ ...config(0, [false, false], [a, b]), quarterLen: 40 });
+    const seq: string[] = [];
+    for (let i = 0; i < 100_000 && g.phase !== 'final'; i++) {
+      g.update(TICK);
+      for (const e of g.events) seq.push(e.kind);
+      g.events.length = 0; g.sfx.length = 0;
+    }
+    return { score: g.score.join('-'), seq: seq.join(',') };
+  };
+  it('different teams play different games', () => {
+    const pool = [HOME, AWAY, [3, 9, 65, 68, 143], [144, 145, 146, 131, 59]];
+    const games = [run(pool[0], pool[1]), run(pool[2], pool[3]), run(pool[0], pool[2]), run(pool[1], pool[3])];
+    expect(new Set(games.map((x) => x.score)).size).toBeGreaterThan(1);
+    expect(new Set(games.map((x) => x.seq)).size).toBe(games.length);
+  });
+});
+
+describe('gameplay has no random stream', () => {
+  const dir = import.meta.glob('./*.ts', { query: '?raw', import: 'default', eager: true }) as Record<string, string>;
+  const files = Object.entries(dir).filter(([n]) => !/\.test\.ts$/.test(n) && !/\/(render|audio)\.ts$/.test(n));
+  const all: [string, string][] = [...files, ['season/sim.ts', simSrc]];
+  it('scans every gameplay source', () => {
+    expect(files.map(([n]) => n)).toEqual(expect.arrayContaining(['./game.ts', './ai.ts', './types.ts']));
+  });
+  for (const [name, text] of all) {
     it(name, () => {
       const code = text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
-      expect(code.length).toBeGreaterThan(1000);
-      expect(code).not.toMatch(/Math\.random/);
+      expect(code.length).toBeGreaterThan(300);
+      expect(code).not.toMatch(/Math\.random|\brng\b|\brandn?\(|\bseeded\(/);
     });
   }
 });

@@ -78,7 +78,7 @@ export interface GameConfig {
   autoSwitch?: boolean;
   /** Franchise rule: hard knockdowns and big landings can injure, more often when tired. */
   injuries?: boolean;
-  /** Seed for CPU play-calling variety and cosmetic jitter (outcomes never use it). Defaults to the matchup. */
+  /** Ignored: gameplay has no random stream. Kept for compatibility. */
   seed?: number;
 }
 
@@ -130,6 +130,10 @@ export interface AIState {
   planT: number;
   dodge: number;
   pullUp: boolean; // ball handler plans to stop at the arc and shoot
+  /** Decisions made so far (feeds Game.mix). */
+  n: number;
+  /** Building urge to reach for the ball; fires a steal attempt at a threshold. */
+  reach: number;
 }
 
 export interface Player {
@@ -188,6 +192,8 @@ export interface ShotInfo {
   vx: number; vy: number; vz: number;
   tested: Set<number>;
   kind: 'jump' | 'layup';
+  /** How far the release missed the ideal, in green windows (negative = early). */
+  off: number;
 }
 
 export interface PassInfo {
@@ -236,22 +242,4 @@ export type GameEvent =
 
 export const clamp = (v: number, a: number, b: number) => (v < a ? a : v > b ? b : v);
 export const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
-/** Small seeded stream (mulberry32). Used only for CPU play-calling variety and cosmetic jitter, never for outcomes. */
-export function seeded(seed: number): () => number {
-  let a = seed >>> 0;
-  return () => {
-    a = (a + 0x6d2b79f5) >>> 0;
-    let t = a;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-export const rand = (a: number, b: number) => a + Math.random() * (b - a);
-export function randn(): number {
-  // Box-Muller
-  const u = 1 - Math.random();
-  const v = Math.random();
-  return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
-}
 export const dist = (ax: number, ay: number, bx: number, by: number) => Math.hypot(ax - bx, ay - by);

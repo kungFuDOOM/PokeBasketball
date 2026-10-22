@@ -106,7 +106,8 @@ function onBall(g: Game, p: Player, it: Intent): Intent {
 
   const turboAvail = p.turbo > 0.25 || p.fx.surge > 0 || p.fire;
   if (ai.think <= 0) {
-    ai.think = g.rand(0.18, 0.35);
+    ai.n++;
+    ai.think = g.vary(p, 1, 0.18, 0.35);
     const dr = g.dunkRange(p, turboAvail);
     const range = p.r.sht >= 88 ? 27 : p.r.sht >= 78 ? 25.5 : p.r.sht >= 66 ? 20 : 12;
     const laneClear = !g.opponents(p.team).some((q) =>
@@ -114,22 +115,22 @@ function onBall(g: Game, p: Player, it: Intent): Intent {
     const cutter = g.teamPlayers(p.team).find((q) => q !== p && q.ai.cutT > 0 && g.distToHoop(q) < 12 && g.openness(q) > 4);
     const heldFor = g.time - p.lastCatch;
     const three = isThree(p.x, p.y, p.team);
-    if (heldFor < 0.4) ai.pullUp = g.rng() < (p.r.sht - 50) / 80;
+    if (heldFor < 0.4) ai.pullUp = g.mix(p, 2) < (p.r.sht - 50) / 80;
 
     if (!front) ai.plan = 'drive';
     else if (g.shotClock < 3.2) ai.plan = 'shoot';
-    else if (d < dr && (laneClear || g.rng() < 0.08)) ai.plan = 'shoot';
-    else if (d < 15 && !laneClear && g.rng() < 0.3) ai.plan = g.rng() < 0.5 ? 'pass' : 'jumper';
-    else if (d < 7.5 && g.rng() < 0.65) ai.plan = 'shoot';
-    else if (cutter && g.rng() < 0.5) { ai.plan = 'pass'; it.passTo = cutter; }
-    else if (three && d < range && nd > 3 && heldFor < 1 && g.rng() < 0.15 + (p.r.sht - 60) / 80) ai.plan = 'shoot';
+    else if (d < dr && (laneClear || g.mix(p, 10) < 0.08)) ai.plan = 'shoot';
+    else if (d < 15 && !laneClear && g.mix(p, 11) < 0.3) ai.plan = g.mix(p, 12) < 0.5 ? 'pass' : 'jumper';
+    else if (d < 7.5 && g.mix(p, 13) < 0.65) ai.plan = 'shoot';
+    else if (cutter && g.mix(p, 14) < 0.5) { ai.plan = 'pass'; it.passTo = cutter; }
+    else if (three && d < range && nd > 3 && heldFor < 1 && g.mix(p, 15) < 0.15 + (p.r.sht - 60) / 80) ai.plan = 'shoot';
     else if (ai.pullUp && d < Math.min(range, 26) && nd > 2) ai.plan = 'shoot';
-    else if (d < range && nd > 3.5 && heldFor > 0.4 && g.rng() < 0.22 + (p.r.sht - 55) / 100) ai.plan = 'shoot';
-    else if (nd < 3.2 && g.rng() < 0.35) ai.plan = 'pass';
-    else if (heldFor > 1.2 && g.rng() < 0.14) ai.plan = 'pass';
-    else if (p.slot === 0 && heldFor < 1.5 && g.rng() < 0.3) ai.plan = 'hold';
+    else if (d < range && nd > 3.5 && heldFor > 0.4 && g.mix(p, 16) < 0.22 + (p.r.sht - 55) / 100) ai.plan = 'shoot';
+    else if (nd < 3.2 && g.mix(p, 17) < 0.35) ai.plan = 'pass';
+    else if (heldFor > 1.2 && g.mix(p, 18) < 0.14) ai.plan = 'pass';
+    else if (p.slot === 0 && heldFor < 1.5 && g.mix(p, 19) < 0.3) ai.plan = 'hold';
     else ai.plan = 'drive';
-    if (g.rng() < 0.3) ai.dodge = g.rng() < 0.5 ? -1 : 1;
+    if (g.mix(p, 20) < 0.3) ai.dodge = g.mix(p, 21) < 0.5 ? -1 : 1;
   }
 
   switch (ai.plan) {
@@ -187,7 +188,7 @@ function bestPassTarget(g: Game, p: Player): Player | null {
   for (const q of g.teamPlayers(p.team)) {
     if (q === p || q.state === 'stun') continue;
     const open = Math.min(g.openness(q), 10);
-    const s = open * 1.2 + (40 - g.distToHoop(q)) * 0.08 + q.r.sht * 0.03 + g.rand(0, 3);
+    const s = open * 1.2 + (40 - g.distToHoop(q)) * 0.08 + q.r.sht * 0.03 + 3 * g.mix(q, 30);
     if (s > bs) { bs = s; best = q; }
   }
   return best;
@@ -204,11 +205,12 @@ function offBall(g: Game, p: Player, it: Intent) {
 
   const owner = g.ball.owner;
   if (ai.jitterT <= 0) {
-    ai.jitterT = g.rand(1.5, 3.5);
-    ai.jx = g.rand(-3, 3);
-    ai.jy = g.rand(-3, 3);
-    if (owner && owner.team === p.team && inFrontcourt(owner.x, p.team) && g.rng() < 0.12 + p.r.ins / 500) {
-      ai.cutT = g.rand(1.2, 2);
+    ai.n++;
+    ai.jitterT = g.vary(p, 31, 1.5, 3.5);
+    ai.jx = g.vary(p, 32, -3, 3);
+    ai.jy = g.vary(p, 33, -3, 3);
+    if (owner && owner.team === p.team && inFrontcourt(owner.x, p.team) && g.mix(p, 34) < 0.12 + p.r.ins / 500) {
+      ai.cutT = g.vary(p, 35, 1.2, 2);
     }
   }
   if (ai.cutT > 0) {
@@ -242,8 +244,15 @@ function defend(g: Game, p: Player, it: Intent, dt: number) {
     const aggro = g.aggro(p);
     if (g.phase === 'live' && d < 4.2) {
       // Reach for the ball when the defender's attention is up; whether it works is decided in the engine, by reach.
-      if (g.rng() < dt * 0.3 * aggro * (p.r.def / 100)) it.steal = true;
-      else if (p.turbo > 0.6 && g.rng() < dt * 0.07 * aggro) { it.steal = true; it.turbo = true; }
+      // The urge to reach builds with attention and defensive skill; it goes for it at a threshold set by the matchup.
+      const lunge = p.turbo > 0.6;
+      p.ai.reach += dt * aggro * (0.3 * (p.r.def / 100) + (lunge ? 0.07 : 0));
+      if (p.ai.reach >= g.vary(p, 36, 0.5, 1.2)) {
+        p.ai.reach = 0;
+        p.ai.n++;
+        it.steal = true;
+        it.turbo = lunge && g.mix(p, 37) < 0.2;
+      }
     }
   } else {
     const l = dist(man.x, man.y, hx, HOOP_Y) || 1;

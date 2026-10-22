@@ -2,7 +2,10 @@ import { courtFor, type CourtStyle } from '../data/courts';
 import { badgeSvg } from '../ui/badges';
 import { IDEAL_RELEASE, type Game } from './game';
 import { getSprite } from './sprites';
-import { BALL_R, COURT_L, COURT_W, HOOP_Y, RIM_R, RIM_Z, clamp, rand, type GameEvent, type Player } from './types';
+import { BALL_R, COURT_L, COURT_W, HOOP_Y, RIM_R, RIM_Z, clamp, type GameEvent, type Player } from './types';
+
+/** Cosmetic only (particles, shake); never used by gameplay. */
+const rand = (a: number, b: number) => a + Math.random() * (b - a);
 
 /** The user's marker color (the game's accent yellow). */
 const USER_YELLOW = '#ffcb05';

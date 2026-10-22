@@ -2,7 +2,7 @@ import { POSITIONS, bestEffectiveness, effectiveness, type Mon, type Pos } from 
 import { think } from './ai';
 import {
   BALL_R, COURT_L, COURT_W, DIFFICULTIES, GRAVITY, HOOP_Y, RIM_R, RIM_Z,
-  backDir, clamp, dist, emptyIntent, hoopX, isThree, lerp, seeded,
+  backDir, clamp, dist, emptyIntent, hoopX, isThree, lerp,
   type Ball, type GameConfig, type GameEvent, type Grade, type Intent, type Player, type TeamDef, type TeamId,
 } from './types';
 
@@ -115,7 +115,7 @@ function makePlayer(id: number, team: TeamId, slot: number, mon: Mon, boost: num
     dunk: null,
     fx: { surge: 0, phase: 0, slow: 0, lockin: false },
     stats: { pts: 0, fgm: 0, fga: 0, tpm: 0, tpa: 0, reb: 0, ast: 0, stl: 0, blk: 0, dnk: 0, sec: 0, gs: slot >= 0 ? 1 : 0 },
-    ai: { think: 0, tx: 0, ty: 0, jitterT: 0, jx: 0, jy: 0, cutT: 0, jumpIn: -1, plan: 'none', planT: 0, dodge: 1, pullUp: false },
+    ai: { think: 0, tx: 0, ty: 0, jitterT: 0, jx: 0, jy: 0, cutT: 0, jumpIn: -1, plan: 'none', planT: 0, dodge: 1, pullUp: false, n: 0, reach: 0 },
     intent: emptyIntent(),
     human: false,
     lastCatch: -9,
@@ -163,14 +163,11 @@ export class Game {
   /** Who won the latest jump ball; the other team starts the following quarter. */
   private tipWinner: TeamId = 0;
   private dribblePh = 0;
-  /** Seeded stream for CPU play-calling variety and cosmetic jitter. Never decides a make, block, steal, rebound or tip. */
-  readonly rng: () => number;
+  /** Possessions so far; feeds the CPU's state-driven variety. */
+  possCount = 0;
 
   constructor(cfg: GameConfig) {
     this.cfg = cfg;
-    let h = cfg.seed ?? 2166136261;
-    if (cfg.seed === undefined) for (const ch of cfg.home.name + '|' + cfg.away.name) h = Math.imul(h ^ ch.charCodeAt(0), 16777619);
-    this.rng = seeded(h);
     this.teams = [cfg.home, cfg.away];
     this.diff = DIFFICULTIES[cfg.difficulty];
     let id = 0;
@@ -274,12 +271,25 @@ export class Game {
     });
   }
 
-  rand(a: number, b: number): number {
-    return a + this.rng() * (b - a);
+  /**
+   * CPU variety in [0, 1) as a pure function of the situation: who, which possession, the score, how many
+   * decisions they've made and their ratings. No random stream; the same situation always answers the same.
+   */
+  mix(p: Player, salt: number): number {
+    let h = Math.imul(p.id + 1, 0x9e3779b1);
+    h ^= Math.imul(this.possCount + 1, 0x85ebca6b);
+    h ^= Math.imul(this.score[0] - this.score[1] + 200, 0xc2b2ae35);
+    h ^= Math.imul(p.ai.n + 1, 0x27d4eb2f);
+    h ^= Math.imul(p.r.sht * 3 + p.r.ins * 5 + p.r.def * 7 + 1, 0x165667b1);
+    h ^= Math.imul(salt + 1, 0x7feb352d);
+    h ^= h >>> 15; h = Math.imul(h, 0x2c1b3c6d);
+    h ^= h >>> 12; h = Math.imul(h, 0x297a2d39);
+    h ^= h >>> 15;
+    return (h >>> 0) / 4294967296;
   }
-  /** Roughly normal jitter from the seeded stream (cosmetic / CPU variety only). */
-  randn(): number {
-    return (this.rng() + this.rng() + this.rng() - 1.5) * 2;
+  /** Maps mix() onto [a, b). */
+  vary(p: Player, salt: number, a: number, b: number): number {
+    return a + this.mix(p, salt) * (b - a);
   }
   /**
    * A CPU shooter's release error, as a pure function of who is shooting and how many shots they've taken
@@ -299,7 +309,7 @@ export class Game {
   /** Block reaction delay for an AI defender. */
   reactTime(p: Player): number {
     const base = this.cfg.home.human && p.team === 1 ? this.diff.react : 0.2;
-    return base + ((100 - p.r.def) / 100) * 0.25 + this.rand(0, 0.08);
+    return base + ((100 - p.r.def) / 100) * 0.25 + this.vary(p, 20, 0, 0.08);
   }
   aggro(p: Player): number {
     return this.cfg.home.human && p.team === 1 ? this.diff.aggro * (1 - 0.5 * this.catchup()) : 0.85;
@@ -478,6 +488,7 @@ export class Game {
 
   private setOffense(t: TeamId, clock = 24) {
     const changed = t !== this.offense;
+    if (changed) this.possCount++;
     this.offense = t;
     this.shotClock = clock;
     if (changed) this.updateUser(true);
@@ -491,7 +502,7 @@ export class Game {
     b.pass = null;
     b.lastTouch = p.team;
     p.lastCatch = this.time;
-    p.ai.think = Math.min(p.ai.think, this.rand(0.1, 0.3));
+    p.ai.think = Math.min(p.ai.think, this.vary(p, 21, 0.1, 0.3));
     if (p.team !== this.offense) this.setOffense(p.team);
     if (p.team === 1) this.autoSwitch(p);
     if (!silent) this.sfx.push('catch');
@@ -941,7 +952,7 @@ export class Game {
       x0, y0, z0, tx, ty, tz,
       vx: (tx - x0) / T, vy: (ty - y0) / T, vz: (tz - z0 + 0.5 * GRAVITY * T * T) / T,
       tested: new Set(),
-      kind,
+      kind, off,
     };
     p.stats.fga++;
     if (points === 3) p.stats.tpa++;
@@ -960,7 +971,7 @@ export class Game {
       x1: hx + Math.cos(ang) * 1.2, y1: HOOP_Y + Math.sin(ang) * 1.2,
       t: 0, T: clamp(0.42 + d * 0.04, 0.45, 1.0),
       peak: 3 + d * 0.3,
-      spin: d > 9 && this.rng() < 0.65,
+      spin: d > 9 && Math.hypot(p.vx, p.vy) > 4 + p.r.ins / 25,
       make,
       oop,
       tested: new Set(),
@@ -1023,10 +1034,14 @@ export class Game {
         b.owner = null;
         b.mode = 'loose';
         b.x = dk.x1; b.y = dk.y1; b.z = RIM_Z + 0.4;
-        const a = Math.atan2(dk.y0 - HOOP_Y, dk.x0 - hoopX(p.team)) + this.rand(-1, 1);
-        b.vx = Math.cos(a) * this.rand(6, 11);
-        b.vy = Math.sin(a) * this.rand(6, 11);
-        b.vz = this.rand(8, 13);
+        // No roll: the rim kicks it back out along the approach, swung by how far out the dunker took off.
+        const a0 = Math.atan2(dk.y0 - HOOP_Y, dk.x0 - hoopX(p.team));
+        const ph = this.distToHoop(p) * 0.9 + a0 * 2.1 + dk.T * 3;
+        const a = a0 + Math.sin(ph);
+        const sp = 8.5 + 2.5 * Math.sin(ph * 1.7 + 1);
+        b.vx = Math.cos(a) * sp;
+        b.vy = Math.sin(a) * sp;
+        b.vz = 10.5 + 2.5 * Math.sin(ph * 2.3 + 2);
         b.fromShot = p.team;
         b.noPickup = 0.25;
         this.sfx.push('rim');
@@ -1037,13 +1052,19 @@ export class Game {
 
   private recordBlock(blocker: Player, victim: Player) {
     const b = this.ball;
-    const a = Math.atan2(b.y - blocker.y, b.x - blocker.x) + this.rand(-0.6, 0.6);
+    // No roll: swatted away from the blocker, carried by their own motion, harder for a better shot blocker
+    // and higher the higher the ball was caught.
+    let dx = b.x - blocker.x + blocker.vx * 0.06;
+    let dy = b.y - blocker.y + blocker.vy * 0.06;
+    if (Math.hypot(dx, dy) < 0.001) { dx = blocker.facing; dy = 0; }
+    const a = Math.atan2(dy, dx);
+    const sp = 10 + 8 * (blocker.r.blk / 100);
     b.owner = null;
     b.shot = null;
     b.mode = 'loose';
-    b.vx = Math.cos(a) * this.rand(10, 18);
-    b.vy = Math.sin(a) * this.rand(10, 18);
-    b.vz = this.rand(2, 8);
+    b.vx = Math.cos(a) * sp;
+    b.vy = Math.sin(a) * sp;
+    b.vz = clamp(2 + (b.z - blocker.z - blocker.heightFt) * 1.5 + 3, 2, 8);
     b.fromShot = victim.team;
     b.lastTouch = blocker.team;
     b.noPickup = 0.2;
@@ -1183,8 +1204,9 @@ export class Game {
     if (b.owner === target) {
       b.owner = null;
       b.mode = 'loose';
-      b.vx = nx * 8 + this.rand(-3, 3);
-      b.vy = ny * 8 + this.rand(-3, 3);
+      // Thrown off the hit and carried by the hitter's own motion.
+      b.vx = nx * 8 + clamp(by.vx * 0.2, -3, 3);
+      b.vy = ny * 8 + clamp(by.vy * 0.2, -3, 3);
       b.vz = 7;
       b.noPickup = 0.25;
       b.fromShot = -1;
@@ -1367,7 +1389,7 @@ export class Game {
         let dy = c.y - a.y;
         let d = Math.hypot(dx, dy);
         if (d >= min) continue;
-        if (d < 0.001) { dx = this.rand(-1, 1); dy = this.rand(-1, 1); d = Math.hypot(dx, dy) || 1; }
+        if (d < 0.001) { dx = c.id > a.id ? 1 : -1; dy = 0; d = 1; }
         const push = (min - d) / 2;
         a.x -= (dx / d) * push; a.y -= (dy / d) * push;
         c.x += (dx / d) * push; c.y += (dy / d) * push;
@@ -1389,8 +1411,8 @@ export class Game {
         b.z -= 9 * dt;
         if (b.z <= 6.8) {
           b.mode = 'loose';
-          b.vx = this.rand(-1.5, 1.5);
-          b.vy = this.rand(-1.5, 1.5);
+          b.vx = b.x < COURT_L / 2 ? 1.2 : -1.2; // drops out toward the floor, away from the baseline
+          b.vy = 0;
           b.vz = -4;
           b.fromShot = -1;
         }
@@ -1519,11 +1541,18 @@ export class Game {
     } else {
       b.mode = 'loose';
       const hx = hoopX(s.shooter.team);
-      const a = Math.atan2(s.y0 - HOOP_Y, s.x0 - hx) + this.rand(-1.3, 1.3);
-      const sp = this.rand(5, 12);
-      b.vx = Math.cos(a) * sp;
-      b.vy = Math.sin(a) * sp;
-      b.vz = this.rand(7, 13);
+      // No roll: the carom is set by the release. Early shots clank the front rim and come back toward the shooter,
+      // late ones kick off the back iron; the swing and pace follow the timing error, distance and angle.
+      const a0 = Math.atan2(s.y0 - HOOP_Y, s.x0 - hx);
+      const d = dist(s.x0, s.y0, hx, HOOP_Y);
+      const e = clamp(s.off, -6, 6);
+      const ph = e * 1.3 + d * 0.37 + a0 * 2.3;
+      const a = a0 + 1.7 * Math.sin(ph);
+      const sp = 7.2 + 3 * Math.sin(ph * 1.9 + 1) + (e > 0 ? 0.25 * e : 0.1 * e);
+      const hard = s.kind === 'layup' ? 0.8 : 1; // a layup rolls off the glass softer
+      b.vx = Math.cos(a) * sp * hard;
+      b.vy = Math.sin(a) * sp * hard;
+      b.vz = 10 + 3 * Math.sin(ph * 2.7 + 2);
       b.fromShot = s.shooter.team;
       b.noPickup = 0.25;
       this.rimShake[hoopIdx] = 0.6;
