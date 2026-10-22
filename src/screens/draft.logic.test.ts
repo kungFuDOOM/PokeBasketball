@@ -2,7 +2,7 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { POKEMON, POSITIONS, type Mon } from '../data/pokemon';
 import { bestLineup, teamOvr } from '../game/game';
-import { countAt, CPU_REACH, cpuPick, posTrackHtml, targetPer } from './draft';
+import { countAt, CPU_REACH, cpuPick, posTrackHtml, STAR_BONUS, STAR_BY_PICK, targetPer } from './draft';
 import { snakePicks } from './draft.logic';
 
 const pool = [...POKEMON].sort((a, b) => b.ovr - a.ovr);
@@ -159,9 +159,37 @@ describe('posTrackHtml (need/thin/ok classes)', () => {
 describe('themed CPU teams', () => {
   const themes = [['Fire'], ['Water', 'Ice'], ['Grass'], ['Electric'], ['Psychic'], ['Dragon']];
   const isOn = (m: Mon, ty: string[]) => m.types.some((t) => ty.includes(t));
-  it('first pick is on-type; later picks are not type-biased', () => {
+  it('never passes the top players for its type star: every pick stays within CPU_REACH of the best left', () => {
+    seeded(21);
+    for (let run = 0; run < 40; run++) {
+      const left = [...pool];
+      const rosters: Mon[][] = themes.map(() => []);
+      for (const t of snakePicks([0, 1, 2, 3, 4, 5], 10)) {
+        const m = cpuPick(left, rosters[t], themes[t] as never);
+        expect(m.ovr).toBeGreaterThanOrEqual(left[0].ovr - CPU_REACH);
+        left.splice(left.indexOf(m), 1);
+        rosters[t].push(m);
+      }
+    }
+    // The live bug: an off-type 97 on the board and only weak on-type Pokémon. The team must not take an 80.
+    for (const r of [0, 0.5, 0.999999]) {
+      const top = { ...pool[0], ovr: 97, types: ['Psychic'], pos: 'SF' } as Mon;
+      const weak = { ...pool[1], ovr: 80, types: ['Grass'], pos: 'SF' } as Mon;
+      expect(cpuPick([top, weak], [], ['Grass'], () => r)).toBe(top);
+      expect(cpuPick([top, weak], [pool[2], pool[3]].map((m) => ({ ...m, types: ['Normal'] }) as Mon), ['Grass'], () => r)).toBe(top);
+    }
+  });
+  it(`favors an on-type star by +${STAR_BONUS} while it has none`, () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0);
+    const a = { ...pool[0], ovr: 90, types: ['Fire'], pos: 'PG' } as Mon;
+    const b = { ...pool[1], ovr: 90 + STAR_BONUS - 1, types: ['Grass'], pos: 'PG' } as Mon;
+    expect(cpuPick([a, b], [], ['Fire'])).toBe(a);
+    expect(cpuPick([a, b], [], [])).toBe(b);
+    expect(cpuPick([a, b], [{ ...a, pos: 'C' }], ['Fire'])).toBe(b);
+  });
+  it(`every themed team has an on-type player by pick ${STAR_BY_PICK}; later picks are not type-biased`, () => {
     seeded(7);
-    let firstOn = 0;
+    let on3 = 0;
     let teams = 0;
     let laterOn = 0;
     let later = 0;
@@ -170,14 +198,21 @@ describe('themed CPU teams', () => {
       const { rosters } = simDraft([0, 1, 2, 3, 4, 5], 10, themes);
       rosters.forEach((r, i) => {
         teams++;
-        if (isOn(r[0], themes[i])) firstOn++;
-        for (const m of r.slice(1)) { later++; if (isOn(m, themes[i])) laterOn++; }
+        const first = r.findIndex((m) => isOn(m, themes[i]));
+        if (first >= 0 && first < STAR_BY_PICK) on3++;
+        for (const m of r.slice(first + 1)) { later++; if (isOn(m, themes[i])) laterOn++; }
         base += pool.filter((m) => isOn(m, themes[i])).length / pool.length;
       });
     }
-    expect(firstOn).toBe(teams);
-    // Later on-type share stays near the pool's base rate (old +8 bonus pushed it far above).
+    expect(on3).toBe(teams);
+    // After the star, the on-type share stays near the pool's base rate.
     expect(Math.abs(laterOn / later - base / teams)).toBeLessThan(0.08);
+  });
+  it(`takes the best on-type Pokémon in reach at pick ${STAR_BY_PICK} if it still has none`, () => {
+    const roster = [pool[0], pool[1]].map((m) => ({ ...m, types: ['Normal'] }) as Mon);
+    const offs = [0, 1, 2].map((i) => ({ ...pool[i + 2], ovr: 90 - i, types: ['Water'], pos: 'C' }) as Mon);
+    const on = { ...pool[5], ovr: 85, types: ['Fire'], pos: 'PG' } as Mon;
+    for (const r of [0, 0.999999]) expect(cpuPick([...offs, on], roster, ['Fire'], () => r)).toBe(on);
   });
   it('falls back to the best fit when no on-type Pokémon are left', () => {
     seeded(3);
