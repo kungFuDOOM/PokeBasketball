@@ -184,7 +184,7 @@ const ROWS: Row[] = [
   [71, 'Victreebel', ['Grass', 'Poison'], 'SF', 70, 70, 82, 64, 82, 74, 70, 66],
   [154, 'Meganium', ['Grass'], 'C', 52, 60, 80, 80, 72, 84, 88, 58],
   [465, 'Tangrowth', ['Grass'], 'C', 48, 68, 90, 58, 76, 86, 92, 50],
-  [470, 'Leafeon', ['Grass'], 'SF', 86, 78, 80, 70, 80, 62, 62, 78],
+  [470, 'Leafeon', ['Grass'], 'PG', 92, 80, 78, 80, 82, 50, 52, 84],
   // Poison
   [110, 'Weezing', ['Poison'], 'C', 40, 52, 70, 60, 78, 90, 86, 48],
   [89, 'Muk', ['Poison'], 'C', 36, 50, 84, 52, 76, 88, 94, 46],
@@ -233,6 +233,11 @@ const ROWS: Row[] = [
   [123, 'Scyther', ['Bug', 'Flying'], 'SG', 92, 74, 80, 62, 90, 58, 56, 82],
   [214, 'Heracross', ['Bug', 'Fighting'], 'PF', 74, 56, 92, 54, 82, 80, 84, 62],
   [127, 'Pinsir', ['Bug'], 'PF', 70, 52, 86, 50, 84, 76, 78, 58],
+  // Requested additions
+  [303, 'Mawile', ['Steel', 'Fairy'], 'PG', 72, 78, 66, 78, 84, 46, 48, 80],
+  [628, 'Braviary', ['Normal', 'Flying'], 'PF', 78, 62, 90, 60, 82, 80, 84, 64],
+  [697, 'Tyrantrum', ['Rock', 'Dragon'], 'C', 66, 54, 95, 54, 82, 88, 90, 58],
+  [959, 'Tinkaton', ['Fairy', 'Steel'], 'SG', 80, 82, 84, 70, 90, 66, 60, 78],
   // Position calls: same ratings as the formula, played where they fit
   [17, 'Pidgeotto', ['Normal', 'Flying'], 'SF', 66, 60, 65, 56, 67, 52, 58, 61],
   [162, 'Furret', ['Normal'], 'SF', 77, 60, 75, 58, 72, 63, 68, 66],
@@ -247,8 +252,8 @@ const ROWS: Row[] = [
 ];
 
 /**
- * Gen 6+ Pokémon that used to be in the game. Poké Jam is Gen 1-5 now: these are not draftable and never
- * appear in a new league, but stay here so older franchise saves (box scores, awards) still load.
+ * Later-gen Pokémon that used to be in the game. These are not draftable and never appear in a new league,
+ * but stay here so older franchise saves (box scores, awards) still load.
  */
 const RETIRED_ROWS: Row[] = [
   [658, 'Greninja', ['Water', 'Dark'], 'SG', 94, 88, 78, 80, 82, 55, 58, 88],
@@ -266,8 +271,10 @@ const RETIRED_ROWS: Row[] = [
   [700, 'Sylveon', ['Fairy'], 'SF', 70, 86, 66, 84, 72, 70, 68, 76],
 ];
 
-/** Highest dex number in the draft pool (end of Gen 5). */
-export const LAST_DEX = 649;
+/** True for the retired Pokémon in RETIRED_ROWS: still loadable from old saves, not in the draft pool. */
+export function isRetired(dex: number): boolean {
+  return RETIRED_ROWS.some((r) => r[0] === dex);
+}
 
 const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
 
@@ -309,7 +316,7 @@ function buildMon([dex, name, types, pos, spd, sht, ins, pas, def, blk, reb, hnd
 /** The draft pool. */
 const HAND = new Set(ROWS.map((r) => r[0]));
 
-/** The draft pool: every Gen 1 and Gen 2 Pokémon plus favorites from Gens 3-5. Hand-tuned rows win over generated ones. */
+/** The draft pool: every Gen 1 and Gen 2 Pokémon plus favorites from Gens 3-5 and a few requested later picks (Tyrantrum, Tinkaton). Hand-tuned rows win over generated ones. */
 export const POKEMON: Mon[] = [...ROWS, ...GENERATED_ROWS.filter((r) => !HAND.has(r[0]))]
   .sort((a, b) => a[0] - b[0])
   .map(buildMon);

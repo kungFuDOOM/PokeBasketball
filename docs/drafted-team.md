@@ -31,7 +31,7 @@ JSON, versioned. Readers must check `v` and ignore (or discard) anything they do
 | `name` | string | Team name, at most 20 characters, no control characters. |
 | `abbr` | string, optional | Up to 4 letters, upper case. |
 | `colors` | `{ color, color2 }` | Primary and secondary team color, `#rrggbb`. |
-| `dex` | number[10] | National Pokédex numbers (Gen 1-5, 1-649), in draft order. Duplicates do not occur. |
+| `dex` | number[10] | National Pokédex numbers (any Pokémon in the draft pool), in draft order. Duplicates do not occur. |
 | `starters` | number[5] | Distinct indices into `dex`: the starting five (best lineup by rating, covering PG-C where possible). The other five are the bench. |
 | `record` | `{ w, l }`, optional | Regular-season record of the season it was drafted for. |
 | `rank` | number, optional | League rank (1 = best) from that season. |
