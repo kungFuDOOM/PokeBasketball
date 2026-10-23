@@ -35,6 +35,7 @@ for (const f of await readdir(new URL('../dist/assets/', import.meta.url))) {
   if (f.endsWith('.woff2')) await copyFile(new URL(`../dist/assets/${f}`, import.meta.url), new URL(`assets/${f}`, out));
 }
 await copyFile(new URL('../dist/privacy.html', import.meta.url), new URL('privacy.html', out));
+await copyFile(new URL('../dist/terms.html', import.meta.url), new URL('terms.html', out));
 await writeFile(new URL('index.html', out), `<title>Poké Jam</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="stylesheet" href="assets/index.css">

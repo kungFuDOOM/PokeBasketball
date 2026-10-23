@@ -217,7 +217,8 @@ export function menuScreen(root: HTMLElement, settings: Settings, onChange: () =
         <footer class="foot">
           <p>Fan-made game. Pokémon and its characters are trademarks of Nintendo, Game Freak and The Pokémon Company. Sprites from PokeAPI.</p>
           <p class="foot-links">
-            <a href="privacy.html">Privacy and terms</a>
+            <a href="privacy.html">Privacy</a>
+            <a href="terms.html">Terms</a>
             <button class="link-btn" data-go="delete">Delete saved data</button>
           </p>
           <p class="foot-status" role="status"></p>
