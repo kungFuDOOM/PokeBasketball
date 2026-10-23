@@ -207,6 +207,8 @@ def sfx(name):
 
 
 ANNOUNCER = Path(__file__).resolve().parent.parent / 'public' / 'announcer'
+# Announcer level in the trailer mix (each clip is peak-normalized first).
+VOICE_GAIN = 0.38
 
 
 def voice_clip(name):
@@ -320,10 +322,10 @@ def main():
     tail = int(1.2 * SR)
     fade[-tail:] = np.linspace(1, 0, tail)
 
-    # Duck the music and crowd under the announcer so every call reads.
+    # The announcer sits in the mix rather than on top of it: the music only dips a little under each call.
     talking = onepole((np.abs(voice) > 0.01).astype(np.float64), 6)
-    duck = 1 - 0.5 * np.clip(talking * 8, 0, 1)
-    mix = ((music * 0.85 + crowd * crowd_env * 0.5) * duck + fx * 0.8 + voice * 0.95) * fade
+    duck = 1 - 0.2 * np.clip(talking * 8, 0, 1)
+    mix = ((music * 0.85 + crowd * crowd_env * 0.5) * duck + fx * 0.8 + voice * VOICE_GAIN) * fade
     mix = np.tanh(mix * 1.2)
     mix /= np.max(np.abs(mix)) / 0.89
     pcm = (mix * 32767).astype(np.int16)
