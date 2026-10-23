@@ -10,7 +10,7 @@ export const stepDur = (s: Song) => 240 / (s.bpm * (s.steps ?? 8));
 export const swingAt = (s: Song, step: number) => (step % 2 ? s.swing * stepDur(s) : 0);
 
 /** The synth kit for a song, with its own low-pass and echo time. */
-export const kitFor = (ctx: BaseAudioContext, dest: AudioNode, s: Song) => makeKit(ctx, dest, (60 / s.bpm) * (s.echoBeats ?? 1.5), s.cutoff);
+export const kitFor = (ctx: BaseAudioContext, dest: AudioNode, s: Song) => makeKit(ctx, dest, (60 / s.bpm) * (s.echoBeats ?? 1.5), s.cutoff, { lowCut: s.lowCut, drumLevel: s.drumLevel });
 
 /** Notes of a loop grouped by step. */
 function byStep(s: Song): { steps: number; at: NoteEv[][] } {

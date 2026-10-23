@@ -35,6 +35,10 @@ export interface Song {
   cutoff?: number;
   /** Echo time on the lead, in beats (default 1.5). */
   echoBeats?: number;
+  /** High-pass on the track in Hz, to keep sub lows off phone speakers (default none). */
+  lowCut?: number;
+  /** Drum bus level relative to the melody (default 1). */
+  drumLevel?: number;
 }
 
 export type TrackId = 'menu' | 'draft' | 'season';
@@ -52,6 +56,8 @@ export const SONGS: Record<TrackId, Song> = {
     swing: 0.1,
     cutoff: 7500,
     echoBeats: 0.75,
+    lowCut: 80,
+    drumLevel: 0.75,
     bassVoice: 'slap',
     chords: [
       ch('G3 B3 D4 F4'), ch('G3 B3 D4 F4'), ch('C3 E3 G3 Bb3'), ch('C3 E3 G3 Bb3'),
