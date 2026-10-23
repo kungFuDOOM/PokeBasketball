@@ -25,6 +25,8 @@ export const FPS = 30;
 type Cut = 'main' | 'vertical' | 'franchise' | 'top5';
 const CUT: Cut = (['vertical', 'franchise', 'top5'] as const).find((c) => c === new URLSearchParams(location.search).get('cut')) ?? 'main';
 const VERTICAL = CUT === 'vertical';
+/** The top 5 cut is dressed as a 90s sports highlight show ("POKé CENTER"). */
+const RETRO = CUT === 'top5';
 const W = VERTICAL ? 1080 : 1920;
 const H = VERTICAL ? 1920 : 1080;
 /** Game-canvas zoom: 4 shows the whole 480x270 court at 1080p; vertical crops a 135x240 window around the ball. */
@@ -388,6 +390,8 @@ interface Callout {
   y: number;
   size: number;
   fill?: string;
+  /** Chrome 90s-show lettering instead of the pixel font. */
+  retro?: boolean;
 }
 let callouts: Callout[] = [];
 
@@ -399,7 +403,8 @@ function drawCallouts(t: number) {
     const pop = a < 0.22 ? easeOutBack(a / 0.22) : 1;
     const shake = a < 0.45 ? (Math.random() - 0.5) * 18 : 0;
     const fade = clamp01((c.t0 + c.dur - t) / 0.2);
-    jamText(c.text, W / 2 + shake, c.y + shake, c.size, { scale: 0.2 + 0.8 * pop, alpha: fade, fill: c.fill });
+    if (c.retro) chromeText(c.text, W / 2 + shake, c.y + shake, c.size, { scale: 0.2 + 0.8 * pop, alpha: fade });
+    else jamText(c.text, W / 2 + shake, c.y + shake, c.size, { scale: 0.2 + 0.8 * pop, alpha: fade, fill: c.fill });
   }
 }
 
@@ -499,6 +504,23 @@ function scorebug(g: Game) {
 }
 
 function replayTag(t: number) {
+  if (RETRO) {
+    // A 90s "INSTANT REPLAY" chyron, top left.
+    ctx.save();
+    const g = ctx.createLinearGradient(0, 40, 0, 104);
+    g.addColorStop(0, '#2a56c6');
+    g.addColorStop(1, '#0a1a4a');
+    ctx.fillStyle = g;
+    ctx.fillRect(40, 40, 400, 64);
+    ctx.fillStyle = '#c8102e';
+    ctx.fillRect(40, 100, 400, 6);
+    ctx.font = `italic 800 44px ${SPORT}`;
+    ctx.fillStyle = '#fff';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('INSTANT REPLAY', 62, 73);
+    ctx.restore();
+    return;
+  }
   if (Math.floor(t * 3) % 2) return;
   ctx.save();
   ctx.fillStyle = '#e3350d';
@@ -550,6 +572,10 @@ function renderClip(seg: Segment & { kind: 'clip' }, t: number, first: boolean) 
         }
         continue;
       }
+      if (RETRO) {
+        retroCallout(e, h, tt);
+        continue;
+      }
       if (e.kind === 'oop' && e.player.id === h.player) {
         callouts.push({ text: 'ALLEY-OOP!', t0: tt, dur: 1.1, y: 200, size: 96, fill: '#7aa2ff' });
       } else if (e.kind === 'score' && e.player.id === h.player && h.kind === 'dunk') {
@@ -573,7 +599,11 @@ function renderClip(seg: Segment & { kind: 'clip' }, t: number, first: boolean) 
       }
     }
   }, true, VERTICAL ? (slow ? 9 : 8) : slow ? 6 : 5);
-  if (seg.style === 'hero') scorebug(c.sg.g);
+  if (seg.style === 'hero' && !RETRO) scorebug(c.sg.g);
+  if (RETRO) {
+    retroBug();
+    ticker(t);
+  }
   if (slow) replayTag(t);
   if (seg.lower) lowerThird(seg, c.f);
   c.f++;
@@ -1059,59 +1089,259 @@ function renderFChamps(seg: Segment, t: number, a: number) {
 
 // ---------- cut: top 5 ----------
 
-function renderTTitle(seg: Segment, t: number, a: number) {
-  ctx.fillStyle = '#12020a';
-  ctx.fillRect(0, 0, W, H);
-  // Diagonal stripes sliding by
+// The look: chrome italic lettering, navy and red chyrons, a 3D grid, lens flares and VHS fuzz.
+
+const CHROME = ['#ffffff', '#dfe3ea', '#7c8596', '#f5f7fb', '#a5adbd'];
+const GOLD = ['#fff7c2', '#ffd84d', '#9a6400', '#ffe58a', '#c98a00'];
+
+/** Chrome (or gold) italic lettering with a navy outline, a red keyline and a drop shadow. */
+function chromeText(text: string, x: number, y: number, size: number, opts: { scale?: number; alpha?: number; gold?: boolean; maxW?: number } = {}) {
   ctx.save();
-  ctx.fillStyle = '#e3350d';
-  for (let i = -4; i < 16; i++) {
-    const x = i * 220 + ((a * 600) % 220);
+  ctx.font = `italic 800 ${size}px ${SPORT}`;
+  const w = ctx.measureText(text).width;
+  const fit = Math.min(1, (opts.maxW ?? W - 140) / w);
+  ctx.translate(x, y);
+  ctx.scale((opts.scale ?? 1) * fit, (opts.scale ?? 1) * fit);
+  ctx.transform(1, 0, -0.12, 1, 0, 0);
+  ctx.globalAlpha = opts.alpha ?? 1;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.lineJoin = 'round';
+  ctx.fillStyle = 'rgba(0,0,0,0.8)';
+  ctx.fillText(text, size * 0.06, size * 0.09);
+  ctx.lineWidth = size * 0.17;
+  ctx.strokeStyle = '#0a1440';
+  ctx.strokeText(text, 0, 0);
+  ctx.lineWidth = size * 0.07;
+  ctx.strokeStyle = '#c8102e';
+  ctx.strokeText(text, 0, 0);
+  const stops = opts.gold ? GOLD : CHROME;
+  const g = ctx.createLinearGradient(0, -size * 0.45, 0, size * 0.45);
+  [0, 0.44, 0.5, 0.6, 1].forEach((o, i) => g.addColorStop(o, stops[i]));
+  ctx.fillStyle = g;
+  ctx.fillText(text, 0, 0);
+  ctx.restore();
+}
+
+/** A horizontal lens flare: a streak and a glow. */
+function flare(x: number, y: number, strength: number) {
+  if (strength <= 0) return;
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  const glow = ctx.createRadialGradient(x, y, 0, x, y, 260);
+  glow.addColorStop(0, `rgba(255,255,255,${0.9 * strength})`);
+  glow.addColorStop(0.2, `rgba(160,200,255,${0.35 * strength})`);
+  glow.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = glow;
+  ctx.fillRect(x - 260, y - 260, 520, 520);
+  const streak = ctx.createLinearGradient(x - W * 0.6, 0, x + W * 0.6, 0);
+  streak.addColorStop(0, 'rgba(120,170,255,0)');
+  streak.addColorStop(0.5, `rgba(220,235,255,${0.8 * strength})`);
+  streak.addColorStop(1, 'rgba(120,170,255,0)');
+  ctx.fillStyle = streak;
+  ctx.fillRect(x - W * 0.6, y - 3, W * 1.2, 6);
+  ctx.restore();
+}
+
+/** Navy studio backdrop with a scrolling neon 3D grid floor. */
+function retroBackdrop(a: number) {
+  const bgGrad = ctx.createLinearGradient(0, 0, 0, H);
+  bgGrad.addColorStop(0, '#02040f');
+  bgGrad.addColorStop(0.55, '#0a1a4a');
+  bgGrad.addColorStop(1, '#1b0730');
+  ctx.fillStyle = bgGrad;
+  ctx.fillRect(0, 0, W, H);
+  const horizon = H * 0.58;
+  ctx.save();
+  ctx.strokeStyle = 'rgba(80,140,255,0.55)';
+  ctx.lineWidth = 2;
+  for (let i = -14; i <= 14; i++) {
     ctx.beginPath();
-    ctx.moveTo(x, 0); ctx.lineTo(x + 90, 0); ctx.lineTo(x - 210, H); ctx.lineTo(x - 300, H);
-    ctx.globalAlpha = 0.18;
-    ctx.fill();
+    ctx.moveTo(W / 2 + i * 40, horizon);
+    ctx.lineTo(W / 2 + i * 260, H);
+    ctx.stroke();
+  }
+  for (let j = 0; j < 12; j++) {
+    const k = ((j + (a * 1.6) % 1) / 12) ** 2;
+    const y = horizon + k * (H - horizon);
+    ctx.globalAlpha = 0.25 + 0.6 * k;
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(W, y);
+    ctx.stroke();
   }
   ctx.restore();
-  once('ttitle', t, seg.t0 + 0.25, () => { flash = 0.2; cue(t, 'slam'); cue(t, 'crowd'); });
+}
+
+function renderTTitle(seg: Segment, t: number, a: number) {
+  retroBackdrop(a);
+  once('ttitle', t, seg.t0 + 0.25, () => { flash = 0.25; cue(t, 'slam'); cue(t, 'crowd'); });
   const k = easeOutBack(clamp01((a - 0.25) / 0.25));
-  if (a > 0.25) jamText('TOP 5 PLAYS', W / 2, H / 2 - 60, 170, { scale: 0.3 + 0.7 * k });
-  if (a > 0.8) logo(W / 2, H / 2 + 130, 64);
-  if (a > 1.2) plainText(`${HOME.name.toUpperCase()} vs ${AWAY.name.toUpperCase()}`, W / 2, H / 2 + 250, 54, '#ffcb05');
+  if (a > 0.25) chromeText('POKé CENTER', W / 2, H / 2 - 120, 190, { scale: 0.3 + 0.7 * k });
+  flare(W * (0.15 + 0.7 * clamp01((a - 0.3) / 0.9)), H / 2 - 170, a > 0.3 && a < 1.3 ? 1 : 0);
+  if (a > 0.9) {
+    const s = easeOutBack(clamp01((a - 0.9) / 0.25));
+    ctx.save();
+    ctx.translate(W / 2, H / 2 + 110);
+    ctx.scale(s, 1);
+    ctx.fillStyle = '#c8102e';
+    ctx.fillRect(-430, -62, 860, 124);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(-430, 56, 860, 6);
+    ctx.restore();
+    chromeText('TOP 5 PLAYS', W / 2, H / 2 + 108, 104, { scale: s });
+  }
+  if (a > 1.4) plainText(`${HOME.name.toUpperCase()} vs ${AWAY.name.toUpperCase()}`, W / 2, H - 150, 48, '#ffd84d', SPORT, 800);
 }
 
 function renderTNum(seg: Segment & { rank?: number }, t: number, a: number) {
-  ctx.fillStyle = '#05060f';
-  ctx.fillRect(0, 0, W, H);
+  retroBackdrop(a + (seg.rank ?? 0));
   const rank = seg.rank ?? 1;
-  once(`tnum${rank}`, t, seg.t0, () => { cue(t, 'slam'); if (rank === 1) cue(t, 'crowd'); });
-  const k = a < 0.18 ? 3 - 2 * easeOutBack(a / 0.18) : 1 + (a - 0.18) * 0.06;
-  jamText(`#${rank}`, W / 2, H / 2, 360, { scale: k, fill: rank === 1 ? undefined : '#f8f8f0' });
+  once(`tnum${rank}`, t, seg.t0, () => { cue(t, 'whoosh'); });
+  once(`tnum-hit${rank}`, t, seg.t0 + 0.32, () => { cue(t, 'slam'); if (rank === 1) cue(t, 'crowd'); });
+  // The numeral spins in like a 90s 3D logo, then lands with a flare.
+  const spin = clamp01(a / 0.32);
+  const sx = Math.cos((1 - spin) * Math.PI * 3);
+  ctx.save();
+  ctx.translate(W / 2, H / 2 - 20);
+  ctx.scale(Math.max(0.04, Math.abs(sx)), 1);
+  chromeText(`${rank}`, 0, 0, 470, { gold: rank === 1 });
+  ctx.restore();
+  flare(W / 2 + 160, H / 2 - 170, a > 0.32 && a < 0.8 ? 1 - (a - 0.32) / 0.48 : 0);
+  if (a > 0.3) chromeText(rank === 1 ? 'THE NUMBER ONE PLAY' : `NUMBER ${['', 'ONE', 'TWO', 'THREE', 'FOUR', 'FIVE'][rank]}`, W / 2, H - 170, 70);
 }
 
-/** Lower-third caption for countdown clips: rank chip, then the play. */
+/** A 90s chyron above the ticker: red rank box, navy-to-blue bar, white italic caption. */
 function lowerThird(seg: Segment & { kind: 'clip' }, f: number) {
-  const k = clamp01((f - 6) / 8);
+  const k = clamp01((f - 6) / 7);
   if (k <= 0) return;
-  const x = 80 - (1 - k) * 900;
-  const y = H - 190;
+  const x = 60 - (1 - k) * 1200;
+  const y = H - 230;
   ctx.save();
-  ctx.fillStyle = '#e3350d';
-  ctx.fillRect(x, y, 130, 110);
-  ctx.font = `70px ${PIXEL}`;
-  ctx.fillStyle = '#fff';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText(`${seg.rank ?? ''}`, x + 68, y + 60);
-  ctx.fillStyle = 'rgba(5,6,15,0.9)';
-  ctx.fillRect(x + 130, y, 900, 110);
-  ctx.fillStyle = '#ffcb05';
-  ctx.fillRect(x + 130, y + 104, 900, 6);
-  ctx.font = `800 64px ${SPORT}`;
-  ctx.fillStyle = '#f8f8f0';
-  ctx.textAlign = 'left';
-  ctx.fillText(seg.lower ?? '', x + 170, y + 58);
+  ctx.fillStyle = '#c8102e';
+  ctx.fillRect(x, y, 150, 120);
   ctx.restore();
+  chromeText(`${seg.rank ?? ''}`, x + 75, y + 60, 100);
+  ctx.save();
+  const g = ctx.createLinearGradient(0, y, 0, y + 120);
+  g.addColorStop(0, '#3a6ae0');
+  g.addColorStop(0.5, '#1b3fa0');
+  g.addColorStop(1, '#0a1a4a');
+  ctx.fillStyle = g;
+  ctx.fillRect(x + 150, y, 1050, 120);
+  ctx.fillStyle = '#ffd84d';
+  ctx.fillRect(x + 150, y, 1050, 5);
+  ctx.font = `italic 800 66px ${SPORT}`;
+  ctx.fillStyle = '#000';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(seg.lower ?? '', x + 194, y + 66);
+  ctx.fillStyle = '#ffffff';
+  ctx.fillText(seg.lower ?? '', x + 190, y + 62);
+  // A white wipe right as it lands.
+  if (k < 1) {
+    ctx.globalAlpha = 1 - k;
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(x, y, 1200, 120);
+  }
+  ctx.restore();
+}
+
+/** "POKé CENTER" bug, top right. */
+function retroBug() {
+  ctx.save();
+  const x = W - 380;
+  const y = 40;
+  const g = ctx.createLinearGradient(0, y, 0, y + 80);
+  g.addColorStop(0, '#2a56c6');
+  g.addColorStop(1, '#0a1a4a');
+  ctx.globalAlpha = 0.92;
+  ctx.fillStyle = g;
+  ctx.fillRect(x, y, 340, 80);
+  ctx.fillStyle = '#c8102e';
+  ctx.fillRect(x, y + 74, 340, 6);
+  ctx.restore();
+  chromeText('POKé CENTER', x + 170, y + 38, 50);
+}
+
+const TICKER = `POKé JAM · FREE IN YOUR BROWSER · DRAFT ${POKEMON.length} POKéMON · RUN A FRANCHISE · BEAT THE ELITE FOUR · kungfudoom.github.io/PokeBasketball · $PJAM · `;
+/** Scrolling ticker along the bottom. */
+function ticker(t: number) {
+  ctx.save();
+  const y = H - 78;
+  ctx.fillStyle = '#0a1a4a';
+  ctx.fillRect(0, y, W, 78);
+  ctx.fillStyle = '#c8102e';
+  ctx.fillRect(0, y, W, 5);
+  ctx.font = `800 44px ${SPORT}`;
+  ctx.textBaseline = 'middle';
+  const w = ctx.measureText(TICKER).width;
+  const off = (t * 260) % w;
+  ctx.fillStyle = '#ffd84d';
+  for (let x = 250 - off; x < W; x += w) ctx.fillText(TICKER, x, y + 42);
+  ctx.fillStyle = '#c8102e';
+  ctx.fillRect(0, y + 5, 230, 73);
+  ctx.font = `italic 800 40px ${SPORT}`;
+  ctx.fillStyle = '#fff';
+  ctx.fillText('LATEST', 34, y + 42);
+  ctx.restore();
+}
+
+/** VHS: color bleed, a rolling tracking band, snow and a vignette. */
+function vhs(t: number) {
+  ctx.save();
+  ctx.globalCompositeOperation = 'screen';
+  ctx.globalAlpha = 0.16;
+  ctx.drawImage(stage, 6, 0);
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.globalAlpha = 1;
+  const band = ((t * 170) % (H + 300)) - 150;
+  ctx.drawImage(stage, 0, band, W, 22, 14, band, W, 22);
+  ctx.fillStyle = 'rgba(255,255,255,0.07)';
+  ctx.fillRect(0, band, W, 22);
+  ctx.fillStyle = 'rgba(255,255,255,0.18)';
+  for (let i = 0; i < 260; i++) ctx.fillRect(Math.random() * W, Math.random() * H, 2 + Math.random() * 3, 1);
+  const v = ctx.createRadialGradient(W / 2, H / 2, H * 0.45, W / 2, H / 2, H * 1.05);
+  v.addColorStop(0, 'rgba(0,0,0,0)');
+  v.addColorStop(1, 'rgba(0,0,0,0.5)');
+  ctx.fillStyle = v;
+  ctx.fillRect(0, 0, W, H);
+  ctx.restore();
+}
+
+/** 90s highlight-show calls for the featured play. */
+function retroCallout(e: GameEvent, h: Highlight, tt: number) {
+  const say = (text: string, size = 140, dur = 1.5) => callouts.push({ text, t0: tt, dur, y: 220, size, retro: true });
+  if (e.kind === 'oop' && e.player.id === h.player) say('ALLEY-OOP!', 120, 1.1);
+  else if (e.kind === 'buzzerbeater' && e.player.id === h.player) { say('AT THE BUZZER!', 130, 1.8); cue(tt, 'buzzer'); cue(tt + 0.1, 'crowd_big'); }
+  else if (e.kind === 'score' && e.player.id === h.player && h.kind !== 'buzzer') {
+    say(e.how === 'dunk' ? 'BOO-YAH!' : e.points === 3 ? 'FROM WAY DOWNTOWN!' : 'BANG!', e.points === 3 ? 120 : 160);
+    cue(tt, 'crowd');
+  } else if (e.kind === 'block' && e.player.id === h.player) { say('GET THAT OUTTA HERE!', 110); cue(tt, 'crowd'); }
+  else if (e.kind === 'fire' && e.on && e.player.id === h.player) { say('EN FUEGO!', 170, 2); cue(tt, 'crowd'); }
+}
+
+/** Sign-off: the show logo, where to play, then $PJAM in gold. */
+function renderROutro(seg: Segment, t: number, a: number) {
+  retroBackdrop(a);
+  once('rout', t, seg.t0 + 0.2, () => { flash = 0.25; cue(t, 'slam'); cue(t, 'crowd_big'); });
+  const pj = a - 2.2;
+  if (pj < 0) {
+    chromeText('POKé CENTER', W / 2, H / 2 - 190, 150, { scale: easeOutBack(clamp01(a / 0.3)) });
+    flare(W / 2 + 300, H / 2 - 230, a < 0.9 ? 1 - a / 0.9 : 0);
+    if (a > 0.5) {
+      ctx.fillStyle = '#c8102e';
+      ctx.fillRect(W / 2 - 520, H / 2 - 40, 1040, 110);
+      chromeText('PLAY FREE IN YOUR BROWSER', W / 2, H / 2 + 14, 74);
+    }
+    if (a > 0.9) plainText('kungfudoom.github.io/PokeBasketball', W / 2, H / 2 + 170, 60, '#ffd84d');
+  } else {
+    once('rpjam', t, seg.t0 + 2.2, () => { flash = 0.35; cue(t, 'slam'); cue(t, 'coin'); });
+    const s = pj < 0.3 ? 0.3 + 0.7 * easeOutBack(pj / 0.3) : 1 + 0.02 * Math.sin(pj * 6);
+    chromeText('$PJAM', W / 2, H / 2 - 40, 260, { scale: s, gold: true });
+    flare(W / 2 + 280, H / 2 - 120, pj > 0.25 && pj < 1.2 ? 1 - (pj - 0.25) / 0.95 : 0);
+    if (pj > 0.5) chromeText('POKé JAM', W / 2, H - 200, 70);
+  }
+  fadeOut(seg, t, 0.5);
 }
 
 // ---------- shared ----------
@@ -1153,7 +1383,7 @@ function renderSegment(seg: Segment, t: number, first: boolean) {
     case 'legends': renderLegends(seg, t, a); break;
     case 'badges': renderBadges(seg, t, a); break;
     case 'evolve': renderEvolve(seg, t, a); break;
-    case 'outro': renderOutro(seg, t, a); break;
+    case 'outro': (RETRO ? renderROutro : renderOutro)(seg, t, a); break;
     case 'v-hook': renderVHook(seg, t, a); break;
     case 'v-cards': renderVCards(seg, t, a); break;
     case 'v-outro': renderVOutro(seg, t, a); break;
@@ -1188,6 +1418,7 @@ export function renderFrame(i: number) {
     ctx.fillRect(0, 0, W, H);
     flash -= 1 / fps;
   }
+  if (RETRO) vhs(t);
   scanlines();
   ctx.restore();
 }

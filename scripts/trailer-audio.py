@@ -48,18 +48,18 @@ STYLES = {
             'F': [(0, 'A6', 4), (4, 'G6', 2), (6, 'F6', 2), (8, 'C6', 4), (12, 'D6', 2), (14, 'E6', 2)],
         },
         stab=['C2', 'C3', 'E3', 'G3', 'C4']),
-    # Top 5: a funky, syncopated highlight-show groove.
+    # Top 5: an original 90s highlight-show fanfare: synth-brass stabs, a heroic major-key hook.
     'top5': dict(
-        bpm=132, kicks=(0, 6, 8, 11), snares=(4, 12), hats=2, hook_from=1,
-        prog=[('Gm', ['G4', 'A#4', 'D5', 'G5']), ('Eb', ['G4', 'A#4', 'D#5', 'G5']), ('F', ['F4', 'A4', 'C5', 'F5']), ('D', ['F#4', 'A4', 'D5', 'F#5'])],
-        roots={'Gm': 'G1', 'Eb': 'D#2', 'F': 'F1', 'D': 'D2'},
+        bpm=120, kicks=(0, 8, 10), snares=(4, 12), hats=2, hook_from=0, brass=(0, 3, 6, 10),
+        prog=[('Bb', ['A#3', 'D4', 'F4', 'A#4']), ('Gm', ['G3', 'A#3', 'D4', 'G4']), ('Eb', ['G3', 'A#3', 'D#4', 'G4']), ('F', ['A3', 'C4', 'F4', 'A4'])],
+        roots={'Bb': 'A#1', 'Gm': 'G1', 'Eb': 'D#2', 'F': 'F1'},
         hook={
-            'Gm': [(0, 'G5', 1), (2, 'A#5', 1), (3, 'D6', 2), (6, 'G6', 1), (7, 'F6', 1), (8, 'D6', 2), (11, 'A#5', 2), (14, 'A5', 2)],
-            'Eb': [(0, 'G5', 1), (2, 'A#5', 1), (3, 'D#6', 2), (6, 'G6', 1), (7, 'F6', 1), (8, 'D#6', 2), (11, 'A#5', 2), (14, 'G5', 2)],
-            'F': [(0, 'A5', 1), (2, 'C6', 1), (3, 'F6', 2), (6, 'A6', 1), (7, 'G6', 1), (8, 'F6', 2), (11, 'C6', 2), (14, 'A5', 2)],
-            'D': [(0, 'F#5', 2), (2, 'A5', 2), (4, 'D6', 4), (8, 'F#6', 4), (12, 'A6', 4)],
+            'Bb': [(0, 'F5', 2), (2, 'F5', 1), (3, 'F5', 1), (4, 'A#5', 4), (8, 'D6', 3), (11, 'C6', 1), (12, 'A#5', 4)],
+            'Gm': [(0, 'D6', 2), (2, 'D6', 1), (3, 'D6', 1), (4, 'G6', 4), (8, 'F6', 3), (11, 'D6', 1), (12, 'A#5', 4)],
+            'Eb': [(0, 'D#6', 2), (2, 'D#6', 1), (3, 'D#6', 1), (4, 'G6', 4), (8, 'A#6', 3), (11, 'G6', 1), (12, 'D#6', 4)],
+            'F': [(0, 'F6', 2), (2, 'F6', 1), (3, 'F6', 1), (4, 'A6', 4), (8, 'C7', 4), (12, 'A6', 2), (14, 'F6', 2)],
         },
-        stab=['G1', 'G2', 'A#2', 'D3', 'G3']),
+        stab=['A#1', 'A#2', 'D3', 'F3', 'A#3']),
 }
 rng = np.random.default_rng(7)
 
@@ -133,6 +133,12 @@ def bass_note(freq, dur):
 
 def lead_note(freq, dur, duty=0.25):
     return onepole(square(freq, dur, duty), 5000) * env(dur, 0.002, dur * 0.6)
+
+
+def brass_chord(names, dur):
+    """Synth-brass stab: detuned saws through a closing filter."""
+    s = sum(saw(note(x) * d, dur) for x in names for d in (0.997, 1.003)) / (2 * len(names))
+    return onepole(s, 2800) * env(dur, 0.012, dur * 0.5)
 
 
 def hook_note(freq, dur):
@@ -270,7 +276,11 @@ def main():
                 # Octave-jumping bass, offbeats up an octave.
                 f = note(roots[chord]) * (2 if s16 % 4 == 2 else 1)
                 put(music, t, bass_note(f, step16 * 2), 0.32)
-            put(music, t, lead_note(note(arp[s16 % 4]), step16 * 0.9), 0.07)
+            if 'brass' in st:
+                if s16 in st['brass']:
+                    put(music, t, brass_chord(arp, step16 * 2.5), 0.22)
+            else:
+                put(music, t, lead_note(note(arp[s16 % 4]), step16 * 0.9), 0.07)
         if b >= st['hook_from']:  # the hook comes in after the intro bars
             for s16, nm, length in hook[chord]:
                 t = t0 + s16 * step16
