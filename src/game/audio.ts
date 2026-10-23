@@ -14,6 +14,11 @@ export class Audio {
     } catch { /* storage unavailable */ }
   }
 
+  /** The audio context, once a tap has unlocked it (the background music shares it). */
+  get context(): AudioContext | null {
+    return this.ctx;
+  }
+
   /** Must be called from a user gesture. */
   unlock() {
     if (this.ctx) {

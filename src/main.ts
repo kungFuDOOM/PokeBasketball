@@ -6,6 +6,8 @@ import {
   simulate, weekGames, weekLabel, type FGame, type Franchise, type Progress,
 } from './franchise/league';
 import { Audio } from './game/audio';
+import { Music, trackFor } from './music/music';
+import { musicToggle } from './ui/musicToggle';
 import { DIFFICULTIES, type Difficulty } from './game/types';
 import type { Game } from './game/game';
 import { draftScreen, type DraftState } from './screens/draft';
@@ -27,6 +29,7 @@ import { abbr, esc, guardNameInputs, lettersName, shuffle } from './util';
 
 const app = document.querySelector<HTMLElement>('#app')!;
 const audio = new Audio();
+const music = new Music();
 
 const settings: Settings = { difficulty: 'pro', quarterLen: 120, teamName: 'Pallet Town' };
 try {
@@ -48,8 +51,29 @@ let franchise: Franchise | null = loadFranchise();
 
 // Browsers only allow audio after a gesture.
 guardNameInputs();
-window.addEventListener('pointerdown', () => audio.unlock(), { passive: true });
-window.addEventListener('keydown', () => audio.unlock(), { passive: true });
+// iPhone Safari only unlocks Web Audio inside certain gestures, so every kind of tap tries.
+const unlock = () => {
+  audio.unlock();
+  music.attach(audio.context);
+};
+for (const ev of ['pointerdown', 'touchend', 'click', 'keydown']) window.addEventListener(ev, unlock, { passive: true });
+
+// Background music follows the screen: each screen sets #app's class.
+const musicBtn = musicToggle(music, unlock);
+const syncTrack = () => {
+  music.setTrack(trackFor(app.className));
+  // Games keep their own sound toggle in the pause menu, and that corner belongs to the pause button.
+  musicBtn.hidden = app.classList.contains('screen-game');
+  // Draft boards and the franchise hub have buttons in that corner, so the music button joins them there;
+  // elsewhere it floats top-right.
+  const dock = app.querySelector('.draft-head .head-actions, .hub-head');
+  if (dock) {
+    if (musicBtn.parentElement !== dock) dock.appendChild(musicBtn);
+  } else if (musicBtn.parentElement !== document.body) document.body.appendChild(musicBtn);
+  musicBtn.classList.toggle('docked', !!dock);
+};
+new MutationObserver(syncTrack).observe(app, { attributes: true, attributeFilter: ['class'], childList: true });
+syncTrack();
 
 
 function overlay(text: string): () => void {
