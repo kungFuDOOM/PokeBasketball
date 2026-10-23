@@ -26,6 +26,11 @@ await mkdir(new URL('assets/', out), { recursive: true });
 await writeFile(new URL('sprites.js', out), `window.__POKE_SPRITES=${JSON.stringify(sprites)};\n`);
 await copyFile(new URL('../dist/assets/game.js', import.meta.url), new URL('assets/game.js', out));
 await copyFile(new URL('../dist/assets/index.css', import.meta.url), new URL('assets/index.css', out));
+// The announcer's lines, fetched by path at runtime.
+await mkdir(new URL('announcer/', out), { recursive: true });
+for (const f of await readdir(new URL('../public/announcer/', import.meta.url))) {
+  await copyFile(new URL(`../public/announcer/${f}`, import.meta.url), new URL(`announcer/${f}`, out));
+}
 for (const f of await readdir(new URL('../dist/assets/', import.meta.url))) {
   if (f.endsWith('.woff2')) await copyFile(new URL(`../dist/assets/${f}`, import.meta.url), new URL(`assets/${f}`, out));
 }

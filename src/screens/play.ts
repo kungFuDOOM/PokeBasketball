@@ -1,3 +1,4 @@
+import { Announcer, CLIPS } from '../game/announcer';
 import type { Audio } from '../game/audio';
 import { Game } from '../game/game';
 import { Hud } from '../game/hud';
@@ -7,11 +8,15 @@ import { preload } from '../game/sprites';
 import type { GameConfig, Player } from '../game/types';
 import { spriteUrl } from '../data/pokemon';
 import { esc } from '../util';
+import { Voice } from '../game/voice';
 import { controlsHtml } from './menu';
 
 const STEP = 1 / 60;
 /** Dev aid: ?speed=4 runs the simulation four times faster. */
 const SPEED = Math.max(1, Math.min(8, Number(new URLSearchParams(location.search).get('speed')) || 1));
+
+/** One announcer voice for the whole visit, so his clips load once. */
+let sharedVoice: Voice | null = null;
 
 export interface PlayHandle {
   stop(): void;
@@ -35,6 +40,7 @@ export function playGame(
           <div class="pause-actions">
             <button class="btn primary" data-a="resume">Resume</button>
             <button class="btn" data-a="mute"></button>
+            <button class="btn" data-a="announcer"></button>
             <button class="btn ghost" data-a="quit">Quit to menu</button>
           </div>
           <div class="subs-panel" hidden></div>
@@ -47,6 +53,7 @@ export function playGame(
   const canvas = root.querySelector<HTMLCanvasElement>('canvas')!;
   const pauseMenu = root.querySelector<HTMLElement>('.pause-menu')!;
   const muteBtn = pauseMenu.querySelector<HTMLButtonElement>('[data-a="mute"]')!;
+  const annBtn = pauseMenu.querySelector<HTMLButtonElement>('[data-a="announcer"]')!;
   const loading = root.querySelector<HTMLElement>('.loading')!;
 
   const g = new Game(cfg);
@@ -59,6 +66,11 @@ export function playGame(
     gameEl.classList.add('has-touch');
   }
 
+  // Arena announcer: display only (never touches the sim). His clips load in the background now that audio is unlocked.
+  const announcer = new Announcer();
+  const voice = (sharedVoice ??= new Voice(audio));
+  voice.load(CLIPS);
+
   let running = true;
   let ready = false;
   let raf = 0;
@@ -67,7 +79,10 @@ export function playGame(
   let finalT = -1;
   let pend = { shoot: false, pass: false, swap: false, steal: false, special: false };
 
-  const setMuteLabel = () => (muteBtn.textContent = audio.muted ? 'Sound: off' : 'Sound: on');
+  const setMuteLabel = () => {
+    muteBtn.textContent = audio.muted ? 'Sound: off' : 'Sound: on';
+    annBtn.textContent = voice.on ? 'Announcer: on' : 'Announcer: off';
+  };
   setMuteLabel();
   // ---- substitutions (franchise games with a bench) ----
   const subsPanel = pauseMenu.querySelector<HTMLElement>('.subs-panel')!;
@@ -138,7 +153,8 @@ export function playGame(
   pauseMenu.addEventListener('click', (e) => {
     const a = (e.target as HTMLElement).closest<HTMLElement>('[data-a]')?.dataset.a;
     if (a === 'resume') setPaused(false);
-    if (a === 'mute') { audio.setMuted(!audio.muted); setMuteLabel(); }
+    if (a === 'mute') { audio.setMuted(!audio.muted); if (audio.muted) voice.stop(); setMuteLabel(); }
+    if (a === 'announcer') { voice.setOn(!voice.on); setMuteLabel(); }
     if (a === 'quit') { stop(); onQuit(); }
   });
   const onKey = (e: KeyboardEvent) => {
@@ -178,7 +194,15 @@ export function playGame(
       const events = g.events.splice(0);
       hud.handle(events);
       renderer.handle(events, g);
-      for (const s of g.sfx.splice(0)) audio.play(s);
+      const sfx = g.sfx.splice(0);
+      for (const s of sfx) audio.play(s);
+      // A call that lands with a horn (end of a quarter, shot clock) waits for the horn to finish.
+      const hold = Voice.hornDelay(sfx);
+      const line = announcer.next(events, g.time, (c) => hold + voice.length(c));
+      if (line) {
+        voice.load(CLIPS); // in case the first tap came after the game started
+        voice.say(line.clip, hold);
+      }
       const u = g.user;
       input.setContext(!!u && g.ball.owner === u, !!u && u.special >= 1);
       if (g.phase === 'final') {
@@ -202,6 +226,7 @@ export function playGame(
     cancelAnimationFrame(raf);
     input.destroy();
     audio.stopCrowd();
+    voice.stop();
     window.removeEventListener('keydown', onKey);
     document.removeEventListener('visibilitychange', onVis);
   }

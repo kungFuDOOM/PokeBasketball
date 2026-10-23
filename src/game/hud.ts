@@ -147,6 +147,9 @@ export class Hud {
           this.say(...lines);
           break;
         }
+        case 'heating':
+          this.say(`${NAME(e.player)} is heating up!`);
+          break;
         case 'fire':
           if (e.on) this.banner(`${NAME(e.player)}`, 'IS ON FIRE!', 2.2);
           else this.say(`${NAME(e.player)} cooled off.`);
