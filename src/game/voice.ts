@@ -3,7 +3,7 @@ import type { Sfx } from './game';
 
 const KEY = 'pokejam.announcer';
 /** Same level the sound effects use (their master gain is 0.5), a touch under it. */
-const GAIN = 0.45;
+const GAIN = 0.28;
 /** How long the arena horns ring, so a call waits for the horn instead of shouting over it. */
 const HORN: Partial<Record<Sfx, number>> = { buzzer: 0.7, shotclock: 0.4 };
 
