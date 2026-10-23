@@ -32,6 +32,8 @@ export default defineConfig({
   base: './',
   plugins: [securityHeaders()],
   build: {
+    // Older iPads (iPadOS 13/14, Safari 12-14) and Android WebViews: lower ?. ?? ??= instead of shipping them as written.
+    target: ['es2019', 'chrome70', 'safari12', 'firefox68', 'edge79'],
     rollupOptions: {
       output: {
         entryFileNames: 'assets/game.js',

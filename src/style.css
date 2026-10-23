@@ -583,7 +583,7 @@ li.empty { color: var(--muted); }
   touch-action: none;
 }
 .game canvas, .game .touch, .game .tb, .game .pause-btn { touch-action: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
-.stage { width: min(100vw, calc(100dvh * 16 / 9)); aspect-ratio: 16 / 9; max-width: 100%; }
+.stage { width: min(100vw, calc(100vh * 16 / 9)); width: min(100vw, calc(100dvh * 16 / 9)); aspect-ratio: 16 / 9; max-width: 100%; }
 .court { width: 100%; height: 100%; display: block; image-rendering: pixelated; image-rendering: crisp-edges; }
 .loading { position: absolute; font: 0.8rem var(--pixel); color: var(--muted); }
 .icon-btn {
@@ -1428,3 +1428,13 @@ body:has(.pause-btn) .music-btn:not(.docked) {
   right: calc(max(10px, env(safe-area-inset-right, 0px)) + 40px + 10px);
 }
 .hub-head .music-btn.docked { order: 3; }
+
+/* Browsers without color-mix() (Safari < 16.2, Chrome < 111) drop those whole declarations; give the main cards and
+   rows a plain fallback so they still have a background and border. */
+@supports not (color: color-mix(in srgb, red, blue)) {
+  .opp, .mon-card, .gl-row, .cp, .tbar-slots img { background: var(--panel); border-color: var(--line); }
+  .sum-bg { background: #0b0e1a; }
+  .standings tr.me, .roster-tbl tr.picked { background: var(--panel-2); }
+  .roster-tbl tr.pickable:hover { background: var(--panel); }
+  .fc-warn { background: var(--panel-2); }
+}

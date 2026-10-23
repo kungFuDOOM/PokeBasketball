@@ -27,7 +27,11 @@ export class Audio {
     }
     const AC = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
     if (!AC) return;
-    this.ctx = new AC();
+    try {
+      this.ctx = new AC();
+    } catch {
+      return; // too many contexts or audio blocked: the game stays silent instead of throwing
+    }
     this.master = this.ctx.createGain();
     this.master.gain.value = this.muted ? 0 : 0.5;
     this.master.connect(this.ctx.destination);
