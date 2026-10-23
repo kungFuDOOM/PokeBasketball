@@ -33,15 +33,20 @@ There is no origin server to overload: GitHub Pages serves the files from Fastly
 volumetric attacks, and GitHub runs its own DDoS mitigation. The realistic limit is GitHub Pages' soft
 bandwidth limit (100 GB a month).
 
-For the strongest setup, put **Cloudflare (free plan)** in front once the site has its own domain:
+The site is live at **pokejam.xyz**: Porkbun DNS, apex A records to GitHub Pages (185.199.108-111.153),
+`www` as a CNAME to `kungfudoom.github.io`, HTTPS enforced (http and www redirect to https://pokejam.xyz).
 
-1. Add the domain to Cloudflare and switch the registrar's nameservers (e.g. Porkbun) to Cloudflare's.
-2. DNS: `CNAME www → kungfudoom.github.io` and `CNAME @ → kungfudoom.github.io` (flattened), both proxied
-   (orange cloud). Set the custom domain in the repo's Pages settings and tick Enforce HTTPS.
+For the strongest setup, put **Cloudflare (free plan)** in front of the domain:
+
+1. Add `pokejam.xyz` to Cloudflare; it imports the DNS records. At Porkbun, switch the nameservers to the two
+   Cloudflare gives you.
+2. Keep the same records (apex A records to GitHub Pages, `www` CNAME to `kungfudoom.github.io`), now proxied
+   (orange cloud). The custom domain stays set in the repo's Pages settings, with Enforce HTTPS on.
 3. SSL/TLS → Full (strict); Edge certificates → Always Use HTTPS, HSTS (6 months, include subdomains), minimum
    TLS 1.2.
 4. Security → Bot Fight Mode on; DDoS protection is automatic. Add a rate-limiting rule (free plan allows one),
-   e.g. more than 300 requests in 10 seconds from one IP → block for 10 seconds.
+   e.g. more than 1,500 requests in 10 seconds from one IP → block for 10 seconds (one player opening the
+   draft loads ~300 sprites at once, so keep the limit well above that).
 5. Rules → Transform Rules → modify response headers, add:
 
    ```

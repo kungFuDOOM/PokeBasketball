@@ -48,12 +48,19 @@ function load(key: string, url: string): Promise<Sprite | null> {
   const p = new Promise<Sprite | null>((resolve) => {
     const img = new Image();
     img.crossOrigin = 'anonymous';
+    let retried = false;
     img.onload = () => {
       const s = crop(img);
       cache.set(key, s);
       resolve(s);
     };
     img.onerror = () => {
+      // One retry for a host hiccup (a 503 right after a deploy); a sprite that's really missing gives up.
+      if (!retried && !url.startsWith('data:')) {
+        retried = true;
+        window.setTimeout(() => { img.src = `${url}${url.includes('?') ? '&' : '?'}r=1`; }, 700);
+        return;
+      }
       cache.set(key, null);
       resolve(null);
     };

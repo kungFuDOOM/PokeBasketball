@@ -49,6 +49,15 @@ const save = () => {
 
 let franchise: Franchise | null = loadFranchise();
 
+// A sprite <img> that fails to load (a host hiccup) gets one retry before it shows as missing.
+document.addEventListener('error', (e) => {
+  const img = e.target;
+  if (!(img instanceof HTMLImageElement) || img.dataset.retried || !img.src.includes('/sprites/')) return;
+  img.dataset.retried = '1';
+  const src = img.src;
+  window.setTimeout(() => { img.src = `${src}${src.includes('?') ? '&' : '?'}r=1`; }, 700);
+}, true);
+
 // Browsers only allow audio after a gesture.
 guardNameInputs();
 // iPhone Safari only unlocks Web Audio inside certain gestures, so every kind of tap tries.

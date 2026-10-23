@@ -872,7 +872,7 @@ function renderOutro(seg: Segment, t: number, a: number) {
   if (pj < 0) {
     logo(W / 2, H / 2 - 150, 170, a < 0.25 ? 3 - 2 * k * k : 1);
     if (a > 0.6) jamText('PLAY FREE IN YOUR BROWSER', W / 2, H / 2 + 40, 64, { fill: '#f8f8f0' });
-    if (a > 1.0) plainText('kungfudoom.github.io/PokeBasketball', W / 2, H / 2 + 170, 64, '#ffcb05');
+    if (a > 1.0) plainText('pokejam.xyz', W / 2, H / 2 + 170, 80, '#ffcb05');
   } else {
     // $PJAM: gold, glinting, center stage.
     once('pjam', t, seg.t0 + 2.2, () => { flash = 0.35; cue(t, 'slam'); cue(t, 'coin'); cue(t, 'crowd_big'); });
@@ -953,7 +953,7 @@ function renderVOutro(seg: Segment, t: number, a: number) {
   logo(W / 2, 560, 104);
   if (a > 0.5) jamText('PLAY FREE', W / 2, 760, 96, { fill: '#f8f8f0', maxW: W - 100 });
   if (a > 0.8) plainText('IN YOUR BROWSER', W / 2, 870, 64, '#f8f8f0');
-  if (a > 1.1) plainText('kungfudoom.github.io/PokeBasketball', W / 2, 980, 50, '#ffcb05');
+  if (a > 1.1) plainText('pokejam.xyz', W / 2, 990, 84, '#ffcb05');
   const pj = a - 2.0;
   if (pj >= 0) {
     once('vpjam', t, seg.t0 + 2.0, () => { flash = 0.35; cue(t, 'slam'); cue(t, 'coin'); cue(t, 'crowd_big'); });
@@ -1263,7 +1263,7 @@ function retroBug() {
   chromeText('POKé CENTER', x + 170, y + 38, 50);
 }
 
-const TICKER = `POKé JAM · FREE IN YOUR BROWSER · DRAFT ${POKEMON.length} POKéMON · RUN A FRANCHISE · BEAT THE ELITE FOUR · kungfudoom.github.io/PokeBasketball · $PJAM · `;
+const TICKER = `POKé JAM · FREE IN YOUR BROWSER · DRAFT ${POKEMON.length} POKéMON · RUN A FRANCHISE · BEAT THE ELITE FOUR · PLAY AT POKEJAM.XYZ · $PJAM · `;
 /** Scrolling ticker along the bottom. */
 function ticker(t: number) {
   ctx.save();
@@ -1333,7 +1333,7 @@ function renderROutro(seg: Segment, t: number, a: number) {
       ctx.fillRect(W / 2 - 520, H / 2 - 40, 1040, 110);
       chromeText('PLAY FREE IN YOUR BROWSER', W / 2, H / 2 + 14, 74);
     }
-    if (a > 0.9) plainText('kungfudoom.github.io/PokeBasketball', W / 2, H / 2 + 170, 60, '#ffd84d');
+    if (a > 0.9) plainText('pokejam.xyz', W / 2, H / 2 + 170, 80, '#ffd84d');
   } else {
     once('rpjam', t, seg.t0 + 2.2, () => { flash = 0.35; cue(t, 'slam'); cue(t, 'coin'); });
     const s = pj < 0.3 ? 0.3 + 0.7 * easeOutBack(pj / 0.3) : 1 + 0.02 * Math.sin(pj * 6);
