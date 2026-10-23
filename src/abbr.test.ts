@@ -8,6 +8,7 @@ import { readFileSync } from 'node:fs';
 import { VIEWPORT, guardZoom, isDoubleTap } from './ui/noZoom';
 
 const css: string = readFileSync('src/style.css', 'utf8');
+const hud: string = readFileSync('src/game/hud.ts', 'utf8');
 const store = new Map<string, string>();
 (globalThis as { localStorage?: Storage }).localStorage = {
   getItem: (k: string) => store.get(k) ?? null,
@@ -54,17 +55,27 @@ describe('old saves with short abbreviations', () => {
 
 describe('scoreboard layout', () => {
   const rule = (sel: string) => css.match(new RegExp(`${sel.replace(/[.]/g, '\\.')}\\s*\\{([^}]*)\\}`))![1];
-  it('never clips the abbreviation and keeps a gap before the score', () => {
-    expect(rule('.bug-team .abbr')).not.toMatch(/overflow:\s*hidden/);
-    expect(rule('.bug-team .abbr')).toMatch(/min-width:\s*3ch/);
-    expect(rule('.bug-team')).toMatch(/column-gap:\s*10px/);
+  it('gives abbreviation and score their own flex boxes with a gap', () => {
+    const team = rule('.bug-team'), abbr = rule('.bug-team .abbr'), pts = rule('.bug-team .pts');
+    expect(team).toMatch(/display:\s*flex/);
+    expect(team).toMatch(/gap:\s*0\.6em/);
+    expect(abbr).toMatch(/flex:\s*none/);
+    expect(abbr).not.toMatch(/overflow:\s*hidden|position:\s*absolute|width:\s*\d/);
+    expect(pts).toMatch(/min-width:\s*3ch/);
+    expect(pts).toMatch(/tabular-nums/);
+    expect(pts).not.toMatch(/position:\s*absolute|[^-]width:\s*\d/);
   });
-  it('gives the score slot room for three digits', () => {
-    // 3 digits of the pixel font are 3em of .pts; the box (8.2em of the bug font) must hold name + gap + slot.
-    const box = 8.2 * 18.4 - 24; // 1.15rem bug font, 10px side padding + 4px border
-    const name = 3 * 0.75 * 18.4 + 3; // generous 3-letter width incl. letter-spacing
-    const pts = 3 * 0.95 * 16;
-    expect(name + 10 + pts).toBeLessThan(box);
+  it('score flash uses its own class, not the absolutely positioned global .pop', () => {
+    expect(hud).not.toMatch(/classList\.(add|remove)\('pop'\)/);
+    expect(hud).toContain("classList.add('pts-flash')");
+    expect(css).toMatch(/\.pts\.pts-flash\s*\{/);
+    expect(css).not.toMatch(/\.pts\.pop/);
+  });
+  it('shrinks on short landscape screens and leaves room for the player card', () => {
+    const m = css.match(/@media \(orientation: landscape\) and \(max-height: 500px\) \{([\s\S]*?)\n\}/)![1];
+    expect(m).toMatch(/\.bug \{[^}]*font-size/);
+    expect(m).toMatch(/\.bug \{[^}]*max-width:[^;]*safe-area-inset-left/);
+    expect(m).toMatch(/\.bug-team \{[^}]*min-width/);
   });
 });
 

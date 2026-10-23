@@ -103,9 +103,9 @@ export class Hud {
         case 'score': {
           const tag = e.player.team === 0 ? 's0' : 's1';
           const s = this.q(tag);
-          s.classList.remove('pop');
+          s.classList.remove('pts-flash');
           void s.offsetWidth;
-          s.classList.add('pop');
+          s.classList.add('pts-flash');
           if (e.how === 'dunk') this.say(`${NAME(e.player)} used ${DUNK_MOVES[e.player.mon.types[0]]}!`, `It's super effective!`);
           else if (e.points === 3) this.say(`${NAME(e.player)} drains a three!`);
           break;
