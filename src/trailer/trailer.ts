@@ -9,6 +9,7 @@ import { COURTS, type CourtStyle } from '../data/courts';
 import { LEAGUE } from '../franchise/league';
 import { POKEMON, monByDex, TYPE_COLORS, type Mon } from '../data/pokemon';
 import { Game, type Sfx } from '../game/game';
+import { Announcer, CLIPS } from '../game/announcer';
 import { DUNK_MOVES } from '../game/hud';
 import { Renderer, VH, VW } from '../game/render';
 import { getSprite, preload } from '../game/sprites';
@@ -402,6 +403,21 @@ function drawCallouts(t: number) {
   }
 }
 
+// ---------- announcer ----------
+
+const announcer = new Announcer(mulberry32(31));
+const clipLength = new Map<string, number>();
+/** Clip lengths, so the announcer never talks over himself (the audio pass mixes the recordings in). */
+async function loadAnnouncer() {
+  const ac = new OfflineAudioContext(1, 1, 44100);
+  await Promise.all(CLIPS.map(async (c) => {
+    try {
+      const buf = await (await fetch(`${import.meta.env.BASE_URL}announcer/${c}.mp3`)).arrayBuffer();
+      clipLength.set(c, (await ac.decodeAudioData(buf)).duration);
+    } catch { /* missing clip: he skips that line */ }
+  }));
+}
+
 // ---------- cue sheet for the audio pass ----------
 
 export interface Cue { t: number; sound: string }
@@ -427,7 +443,12 @@ function drawGame(r: Renderer, sg: SeededGame, canvas: HTMLCanvasElement, steps:
   const sfx = sg.g.sfx.splice(0) as Sfx[];
   r.handle(events, sg.g);
   onEvents?.(events, t);
-  if (sfxOut) for (const s of sfx) cue(t, s);
+  if (sfxOut) {
+    for (const s of sfx) cue(t, s);
+    // The arena announcer calls the filmed games, on the same moments he calls in the real game.
+    const call = announcer.next(events, t, (c) => clipLength.get(c) ?? 1.5);
+    if (call) cue(t, `ann:${call.clip}`);
+  }
   r.draw(sg.g, steps * STEP);
   const cw = W / zoom;
   const ch = H / zoom;
@@ -1179,6 +1200,7 @@ export async function prepare(): Promise<{ frames: number; fps: number }> {
   ]);
   await document.fonts.load(`40px ${PIXEL}`);
   await document.fonts.load(`800 40px ${SPORT}`);
+  await loadAnnouncer();
 
   const scans: Scan[] = [];
   for (let seed = 1; seed <= 22; seed++) scans.push(scanGame(seed));

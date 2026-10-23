@@ -1,8 +1,11 @@
 """Scores a Poké Jam trailer cut: a chiptune track (each cut has its own tempo, key and hook) plus
 sound effects on the cue times the trailer exported. Usage: python3 scripts/trailer-audio.py cues.json out.wav  (needs numpy)."""
 import json
+import re
+import subprocess
 import sys
 import wave
+from pathlib import Path
 
 import numpy as np
 
@@ -197,6 +200,21 @@ def sfx(name):
     return None
 
 
+ANNOUNCER = Path(__file__).resolve().parent.parent / 'public' / 'announcer'
+
+
+def voice_clip(name):
+    """An announcer recording (public/announcer/<name>.mp3), decoded to mono floats."""
+    if not re.fullmatch(r'[a-z0-9_]+', name):
+        return None
+    path = ANNOUNCER / f'{name}.mp3'
+    if not path.exists():
+        return None
+    raw = subprocess.run(['ffmpeg', '-v', 'error', '-i', str(path), '-f', 'f32le', '-ac', '1', '-ar', str(SR), '-'],
+                         check=True, capture_output=True).stdout
+    return np.frombuffer(raw, dtype=np.float32).astype(np.float64)
+
+
 def main():
     data = json.load(open(sys.argv[1]))
     out_path = sys.argv[2]
@@ -267,8 +285,14 @@ def main():
 
     # ---------- effects + crowd ----------
     gains = {'dribble': 0.4, 'dunk': 0.9, 'slam': 0.9, 'card': 0.6, 'whoosh': 0.45}
+    voice = np.zeros(n)
     for c in cues:
         s = c['sound']
+        if s.startswith('ann:'):
+            clip = voice_clip(s[4:])
+            if clip is not None:
+                put(voice, c['t'], clip / (np.max(np.abs(clip)) or 1))
+            continue
         if s in ('crowd', 'crowd_big', 'crowd_low'):
             i = int(c['t'] * SR)
             length = {'crowd': 1.8, 'crowd_big': 3.0, 'crowd_low': 2.0}[s]
@@ -286,7 +310,10 @@ def main():
     tail = int(1.2 * SR)
     fade[-tail:] = np.linspace(1, 0, tail)
 
-    mix = (music * 0.85 + fx * 0.8 + crowd * crowd_env * 0.5) * fade
+    # Duck the music and crowd under the announcer so every call reads.
+    talking = onepole((np.abs(voice) > 0.01).astype(np.float64), 6)
+    duck = 1 - 0.5 * np.clip(talking * 8, 0, 1)
+    mix = ((music * 0.85 + crowd * crowd_env * 0.5) * duck + fx * 0.8 + voice * 0.95) * fade
     mix = np.tanh(mix * 1.2)
     mix /= np.max(np.abs(mix)) / 0.89
     pcm = (mix * 32767).astype(np.int16)
