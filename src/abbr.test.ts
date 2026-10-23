@@ -101,8 +101,8 @@ describe('no zoom', () => {
       querySelector: () => null,
     };
     guardZoom({ addEventListener: () => {} }, doc as never);
-    const ev = (target: string | null, timeStamp = 0) => {
-      const e = { target: { closest: (s: string) => (target && s.includes(target) ? {} : null) }, timeStamp, prevented: false, preventDefault() { this.prevented = true; } };
+    const ev = (target: string | null, timeStamp = 0, cancelable = true) => {
+      const e = { target: { closest: (s: string) => (target && s.includes(target) ? {} : null) }, timeStamp, cancelable, prevented: false, preventDefault() { this.prevented = true; } };
       return e;
     };
     for (const t of ['gesturestart', 'gesturechange', 'gestureend']) { const e = ev(null); handlers[t][0](e as never); expect(e.prevented).toBe(true); }
@@ -115,5 +115,23 @@ describe('no zoom', () => {
     const m1 = ev('.nothing', 2000), m2 = ev('.nothing', 2100);
     handlers.touchend[0](m1 as never); handlers.touchend[0](m2 as never);
     expect(m2.prevented).toBe(false);
+  });
+  it('guardZoom never swallows a quick tap on the pause button (its action runs on click) or a non-cancelable touchend', () => {
+    const handlers: Record<string, ((e: Event) => void)[]> = {};
+    const doc = {
+      addEventListener: (t: string, f: (e: Event) => void) => void (handlers[t] ??= []).push(f),
+      querySelector: () => null,
+    };
+    guardZoom({ addEventListener: () => {} }, doc as never);
+    const ev = (target: string, timeStamp: number, cancelable = true) =>
+      ({ target: { closest: (s: string) => (s.includes(target) ? {} : null) }, timeStamp, cancelable, prevented: false, preventDefault() { this.prevented = true; } });
+    // Shoot, then pause 200ms later: the pause click must survive.
+    const shoot = ev('.tb', 1000), pause = ev('.pause-btn', 1200);
+    handlers.touchend[0](shoot as never); handlers.touchend[0](pause as never);
+    expect(pause.prevented).toBe(false);
+    // Scrolling in progress: the browser ignores preventDefault and logs a console error, so don't call it.
+    const s1 = ev('.tb', 3000), s2 = ev('.tb', 3100, false);
+    handlers.touchend[0](s1 as never); handlers.touchend[0](s2 as never);
+    expect(s2.prevented).toBe(false);
   });
 });
