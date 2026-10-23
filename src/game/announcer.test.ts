@@ -33,30 +33,42 @@ describe('announcer', () => {
     expect(callFor({ kind: 'special', player: p, hits: [{ victim: p, mult: 1 }] })).toBeNull();
   });
 
-  it('the bigger moment wins when several land at once: on fire over the basket that lit it', () => {
-    const a = new Announcer(() => 0);
-    expect(a.next([ev.fire, ev.dunk], 0, len)?.call).toBe('fire');
-    expect(new Announcer(() => 0).next([ev.heating, ev.three], 0, len)?.call).toBe('heating');
+  /** Frames at 30 fps up to `to` seconds, with each plan entry's events landing at its time; returns what he said. */
+  const run = (a: Announcer, plan: [number, GameEvent[]][], to: number, clip = len) => {
+    const said: { t: number; call: string; clip: string }[] = [];
+    for (let f = 0; f <= to * 30; f++) {
+      const t = f / 30;
+      const evs = plan.filter(([at]) => Math.round(at * 30) === f).flatMap(([, e]) => e);
+      const line = a.next(evs, t, clip);
+      if (line) said.push({ t: +t.toFixed(2), ...line });
+    }
+    return said;
+  };
+
+  it('the bigger moment goes first when several land at once, and the other follows right after', () => {
+    const said = run(new Announcer(() => 0), [[0, [ev.dunk, ev.fire]]], 3);
+    expect(said.map((s) => s.call)).toEqual(['fire', 'dunk']);
+    expect(said[1].t).toBeLessThan(1.2);
   });
 
-  it('never talks over himself unless the moment is much bigger', () => {
-    const a = new Announcer(() => 0);
-    expect(a.next([ev.steal], 0, len)?.call).toBe('steal');
-    expect(a.next([ev.dunk], 0.5, len)).toBeNull(); // still on the steal
-    expect(a.next([ev.fire], 0.6, len)?.call).toBe('fire'); // cuts in
-    expect(a.next([ev.final], 0.7, len)?.call).toBe('final');
-    expect(a.next([ev.dunk], 3, len)?.call).toBe('dunk');
+  it('a call that lands mid-line is said as soon as he finishes, not dropped', () => {
+    const said = run(new Announcer(() => 0), [[0, [ev.steal]], [0.5, [ev.dunk]]], 3);
+    expect(said.map((s) => [s.call, s.t])).toEqual([['steal', 0], ['dunk', 1.07]]);
   });
 
-  it('a run of dunks gets a call, then a breather, and never the same line twice in a row', () => {
-    const a = new Announcer(() => 0);
-    const said: (string | undefined)[] = [];
-    for (let t = 0; t < 60; t += 2) said.push(a.next([ev.dunk], t, len)?.clip);
-    const calls = said.filter(Boolean) as string[];
-    expect(calls.length).toBeGreaterThan(5);
-    expect(calls.length).toBeLessThan(said.length / 2);
-    for (let i = 1; i < calls.length; i++) expect(calls[i]).not.toBe(calls[i - 1]);
-    expect(calls.every((c) => (CALLS.dunk as readonly string[]).includes(c))).toBe(true);
+  it('only a much bigger moment cuts in; a call that would be stale by the time he is free is dropped', () => {
+    const said = run(new Announcer(() => 0), [[0, [ev.steal]], [0.3, [ev.fire]], [0.4, [ev.final]]], 4);
+    expect(said.map((s) => s.call)).toEqual(['steal', 'fire', 'final']); // each cuts the last one off
+    const slow = run(new Announcer(() => 0), [[0, [ev.steal]], [0.2, [ev.dunk]]], 5, () => 2);
+    expect(slow.map((s) => s.call)).toEqual(['steal']); // the dunk was 1.8 s old by then
+  });
+
+  it('a run of dunks gets every call, never the same line twice in a row', () => {
+    const plan: [number, GameEvent[]][] = Array.from({ length: 20 }, (_, i) => [i * 2.5, [ev.dunk]]);
+    const said = run(new Announcer(Math.random), plan, 50);
+    expect(said).toHaveLength(20);
+    for (let i = 1; i < said.length; i++) expect(said[i].clip).not.toBe(said[i - 1].clip);
+    expect(said.every((s) => (CALLS.dunk as readonly string[]).includes(s.clip))).toBe(true);
   });
 
   it('every call has a priority and lines', () => {
