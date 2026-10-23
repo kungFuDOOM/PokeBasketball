@@ -1,7 +1,7 @@
 // Renders a preview MP3 of each background music track with the game's own synth, in headless Chrome
 // (OfflineAudioContext). Needs Playwright (or playwright-core plus CHROME=/path/to/chrome) and ffmpeg.
 // The preview is boosted (+8 dB) so it is easy to hear on a phone; in game the music sits under the effects.
-// Usage: node scripts/render-music.mjs [outDir] [seconds]
+// Usage: node scripts/render-music.mjs [outDir] [seconds] [menu,draft,season]
 import { spawnSync } from 'node:child_process';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -16,8 +16,8 @@ mkdirSync(out, { recursive: true });
 
 const entry = `
 import { SONGS, loopNotes } from './src/music/songs';
-import { makeKit, playNote } from './src/music/synth';
-import { stepDur, swingAt } from './src/music/music';
+import { playNote } from './src/music/synth';
+import { kitFor, stepDur, swingAt } from './src/music/music';
 window.renderSong = async (id, secs) => {
   const s = SONGS[id];
   const rate = 44100;
@@ -28,7 +28,7 @@ window.renderSong = async (id, secs) => {
   const g = ctx.createGain();
   g.connect(bus);
   const sd = stepDur(s);
-  const kit = makeKit(ctx, g, sd);
+  const kit = kitFor(ctx, g, s);
   const { steps, notes } = loopNotes(s);
   for (let loop = 0; loop * steps * sd < secs; loop++)
     for (const n of notes) {
@@ -46,7 +46,7 @@ const browser = await pw.chromium.launch({ executablePath: process.env.CHROME ||
 const page = await browser.newPage();
 await page.setContent('<html><body></body></html>');
 await page.addScriptTag({ content: js });
-const ids = ['menu', 'draft', 'season'];
+const ids = process.argv[4] ? process.argv[4].split(',') : ['menu', 'draft', 'season'];
 for (const id of ids) {
   const pcm = await page.evaluate(([i, s]) => window.renderSong(i, s), [id, secs]);
   const n = pcm.length;

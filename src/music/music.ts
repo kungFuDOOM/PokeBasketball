@@ -5,9 +5,12 @@ const KEY = 'pokejam.music';
 const VOLUME = 0.6;
 const LOOKAHEAD = 0.25;
 
-/** Seconds per step (eighth note) and the swing offset for a step. */
-export const stepDur = (s: Song) => 30 / s.bpm;
+/** Seconds per step (an eighth or a sixteenth note) and the swing offset for a step. */
+export const stepDur = (s: Song) => 240 / (s.bpm * (s.steps ?? 8));
 export const swingAt = (s: Song, step: number) => (step % 2 ? s.swing * stepDur(s) : 0);
+
+/** The synth kit for a song, with its own low-pass and echo time. */
+export const kitFor = (ctx: BaseAudioContext, dest: AudioNode, s: Song) => makeKit(ctx, dest, (60 / s.bpm) * (s.echoBeats ?? 1.5), s.cutoff);
 
 /** Notes of a loop grouped by step. */
 function byStep(s: Song): { steps: number; at: NoteEv[][] } {
@@ -32,7 +35,7 @@ class Player {
     const t = ctx.currentTime;
     this.gain.gain.setValueAtTime(0.0001, t);
     this.gain.gain.exponentialRampToValueAtTime(1, t + 1.2);
-    this.kit = makeKit(ctx, this.gain, stepDur(song));
+    this.kit = kitFor(ctx, this.gain, song);
     this.loop = byStep(song);
     this.next = t + 0.08;
     this.tick();
