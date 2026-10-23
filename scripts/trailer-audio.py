@@ -1,5 +1,5 @@
-"""Scores the Poké Jam trailer: a 128 BPM chiptune track in D minor plus sound effects on the cue
-times the trailer exported. Usage: python3 scripts/trailer-audio.py cues.json out.wav  (needs numpy)."""
+"""Scores a Poké Jam trailer cut: a chiptune track (each cut has its own tempo, key and hook) plus
+sound effects on the cue times the trailer exported. Usage: python3 scripts/trailer-audio.py cues.json out.wav  (needs numpy)."""
 import json
 import sys
 import wave
@@ -7,9 +7,57 @@ import wave
 import numpy as np
 
 SR = 44100
-BPM = 128
-BEAT = 60 / BPM
-STEP16 = BEAT / 4
+# Per-cut grooves: tempo, chord progression (name, arpeggio), bass roots, hook (16th step, note, length in
+# 16ths), drum pattern and the final stab.
+STYLES = {
+    'main': dict(
+        bpm=128, kicks=(0, 4, 8, 12), snares=(4, 12), hats=2, hook_from=2,
+        prog=[('Dm', ['D4', 'F4', 'A4', 'D5']), ('Bb', ['D4', 'F4', 'A#4', 'D5']), ('C', ['E4', 'G4', 'C5', 'E5']), ('A', ['E4', 'A4', 'C#5', 'E5'])],
+        roots={'Dm': 'D2', 'Bb': 'A#1', 'C': 'C2', 'A': 'A1'},
+        hook={
+            'Dm': [(0, 'D6', 2), (2, 'D6', 1), (3, 'F6', 3), (6, 'A6', 2), (8, 'G6', 2), (10, 'F6', 2), (12, 'E6', 2), (14, 'F6', 2)],
+            'Bb': [(0, 'D6', 3), (3, 'A#5', 3), (6, 'D6', 2), (8, 'F6', 4), (12, 'D6', 2), (14, 'C6', 2)],
+            'C': [(0, 'E6', 2), (2, 'E6', 1), (3, 'G6', 3), (6, 'C7', 2), (8, 'A#6', 2), (10, 'G6', 2), (12, 'E6', 4)],
+            'A': [(0, 'C#6', 3), (3, 'E6', 3), (6, 'A6', 4), (10, 'G6', 2), (12, 'E6', 2), (14, 'C#6', 2)],
+        },
+        stab=['D2', 'D3', 'F3', 'A3', 'D4']),
+    # Vertical: fast and punchy, trap-style hats, hook from the first bar (short attention spans).
+    'vertical': dict(
+        bpm=144, kicks=(0, 3, 6, 10), snares=(8,), hats=1, hook_from=0,
+        prog=[('Em', ['E4', 'G4', 'B4', 'E5']), ('C', ['E4', 'G4', 'C5', 'E5']), ('G', ['D4', 'G4', 'B4', 'D5']), ('D', ['D4', 'F#4', 'A4', 'D5'])],
+        roots={'Em': 'E2', 'C': 'C2', 'G': 'G1', 'D': 'D2'},
+        hook={
+            'Em': [(0, 'B5', 2), (2, 'B5', 2), (4, 'E6', 2), (6, 'G6', 2), (8, 'F#6', 2), (10, 'E6', 2), (12, 'B5', 4)],
+            'C': [(0, 'C6', 2), (2, 'C6', 2), (4, 'E6', 2), (6, 'G6', 2), (8, 'E6', 2), (10, 'C6', 2), (12, 'G5', 4)],
+            'G': [(0, 'D6', 2), (2, 'D6', 2), (4, 'G6', 2), (6, 'B6', 2), (8, 'A6', 2), (10, 'G6', 2), (12, 'D6', 4)],
+            'D': [(0, 'F#6', 3), (3, 'E6', 3), (6, 'D6', 2), (8, 'A5', 4), (12, 'F#6', 2), (14, 'A6', 2)],
+        },
+        stab=['E2', 'E3', 'G3', 'B3', 'E4']),
+    # Franchise: an uplifting major-key anthem for the season story.
+    'franchise': dict(
+        bpm=116, kicks=(0, 8, 10), snares=(4, 12), hats=2, hook_from=2,
+        prog=[('C', ['C4', 'E4', 'G4', 'C5']), ('G', ['B3', 'D4', 'G4', 'B4']), ('Am', ['A3', 'C4', 'E4', 'A4']), ('F', ['A3', 'C4', 'F4', 'A4'])],
+        roots={'C': 'C2', 'G': 'G1', 'Am': 'A1', 'F': 'F1'},
+        hook={
+            'C': [(0, 'E6', 4), (4, 'G6', 4), (8, 'C7', 6), (14, 'B6', 2)],
+            'G': [(0, 'B6', 4), (4, 'A6', 2), (6, 'G6', 2), (8, 'D6', 8)],
+            'Am': [(0, 'C7', 4), (4, 'B6', 2), (6, 'A6', 2), (8, 'E6', 6), (14, 'G6', 2)],
+            'F': [(0, 'A6', 4), (4, 'G6', 2), (6, 'F6', 2), (8, 'C6', 4), (12, 'D6', 2), (14, 'E6', 2)],
+        },
+        stab=['C2', 'C3', 'E3', 'G3', 'C4']),
+    # Top 5: a funky, syncopated highlight-show groove.
+    'top5': dict(
+        bpm=132, kicks=(0, 6, 8, 11), snares=(4, 12), hats=2, hook_from=1,
+        prog=[('Gm', ['G4', 'A#4', 'D5', 'G5']), ('Eb', ['G4', 'A#4', 'D#5', 'G5']), ('F', ['F4', 'A4', 'C5', 'F5']), ('D', ['F#4', 'A4', 'D5', 'F#5'])],
+        roots={'Gm': 'G1', 'Eb': 'D#2', 'F': 'F1', 'D': 'D2'},
+        hook={
+            'Gm': [(0, 'G5', 1), (2, 'A#5', 1), (3, 'D6', 2), (6, 'G6', 1), (7, 'F6', 1), (8, 'D6', 2), (11, 'A#5', 2), (14, 'A5', 2)],
+            'Eb': [(0, 'G5', 1), (2, 'A#5', 1), (3, 'D#6', 2), (6, 'G6', 1), (7, 'F6', 1), (8, 'D#6', 2), (11, 'A#5', 2), (14, 'G5', 2)],
+            'F': [(0, 'A5', 1), (2, 'C6', 1), (3, 'F6', 2), (6, 'A6', 1), (7, 'G6', 1), (8, 'F6', 2), (11, 'C6', 2), (14, 'A5', 2)],
+            'D': [(0, 'F#5', 2), (2, 'A5', 2), (4, 'D6', 4), (8, 'F#6', 4), (12, 'A6', 4)],
+        },
+        stab=['G1', 'G2', 'A#2', 'D3', 'G3']),
+}
 rng = np.random.default_rng(7)
 
 
@@ -162,6 +210,9 @@ def main():
         i = int(at * SR)
         if i >= n or sig is None:
             return
+        if i < 0:  # starts before the video: keep only the part that's on screen
+            sig = sig[-i:]
+            i = 0
         j = min(n, i + len(sig))
         buf[i:j] += sig[: j - i] * gain
 
@@ -175,15 +226,11 @@ def main():
     put(music, start - riser_len, r)
 
     # ---------- the groove ----------
-    prog = [('Dm', ['D4', 'F4', 'A4', 'D5']), ('Bb', ['D4', 'F4', 'A#4', 'D5']), ('C', ['E4', 'G4', 'C5', 'E5']), ('A', ['E4', 'A4', 'C#5', 'E5'])]
-    roots = {'Dm': 'D2', 'Bb': 'A#1', 'C': 'C2', 'A': 'A1'}
-    hook = {  # (16th step, note, length in 16ths) per bar: a call-and-response with a pickup into each bar
-        'Dm': [(0, 'D6', 2), (2, 'D6', 1), (3, 'F6', 3), (6, 'A6', 2), (8, 'G6', 2), (10, 'F6', 2), (12, 'E6', 2), (14, 'F6', 2)],
-        'Bb': [(0, 'D6', 3), (3, 'A#5', 3), (6, 'D6', 2), (8, 'F6', 4), (12, 'D6', 2), (14, 'C6', 2)],
-        'C': [(0, 'E6', 2), (2, 'E6', 1), (3, 'G6', 3), (6, 'C7', 2), (8, 'A#6', 2), (10, 'G6', 2), (12, 'E6', 4)],
-        'A': [(0, 'C#6', 3), (3, 'E6', 3), (6, 'A6', 4), (10, 'G6', 2), (12, 'E6', 2), (14, 'C#6', 2)],
-    }
-    bar_len = 4 * BEAT
+    st = STYLES.get(data.get('style', 'main'), STYLES['main'])
+    beat = 60 / st['bpm']
+    step16 = beat / 4
+    prog, roots, hook = st['prog'], st['roots'], st['hook']
+    bar_len = 4 * beat
     bars = int(np.ceil((end - start) / bar_len))
     put(music, start, CRASH, 0.5)
     for b in range(bars):
@@ -192,28 +239,28 @@ def main():
         if b % 8 == 0 and b:
             put(music, t0, CRASH, 0.4)
         for s16 in range(16):
-            t = t0 + s16 * STEP16
+            t = t0 + s16 * step16
             if t >= end:
                 break
-            if s16 in (0, 4, 8, 12) or (b % 2 == 1 and s16 == 14):
+            if s16 in st['kicks'] or (b % 2 == 1 and s16 == 14):
                 put(music, t, KICK, 0.9)
-            if s16 in (4, 12):
+            if s16 in st['snares']:
                 put(music, t, SNARE, 0.55)
-            if s16 % 2 == 0:
-                put(music, t, OPEN_HAT if s16 == 14 else HAT, 0.25)
+            if s16 % st['hats'] == 0:
+                put(music, t, OPEN_HAT if s16 == 14 else HAT, 0.25 if st['hats'] == 2 else 0.18)
             if s16 % 2 == 0:
                 # Octave-jumping bass, offbeats up an octave.
                 f = note(roots[chord]) * (2 if s16 % 4 == 2 else 1)
-                put(music, t, bass_note(f, STEP16 * 2), 0.32)
-            put(music, t, lead_note(note(arp[s16 % 4]), STEP16 * 0.9), 0.07)
-        if b >= 2:  # hook comes in after the intro bars
+                put(music, t, bass_note(f, step16 * 2), 0.32)
+            put(music, t, lead_note(note(arp[s16 % 4]), step16 * 0.9), 0.07)
+        if b >= st['hook_from']:  # the hook comes in after the intro bars
             for s16, nm, length in hook[chord]:
-                t = t0 + s16 * STEP16
+                t = t0 + s16 * step16
                 if t < end:
-                    put(music, t, hook_note(note(nm), STEP16 * length), 0.12)
+                    put(music, t, hook_note(note(nm), step16 * length), 0.12)
 
-    # Final hit: D minor stab ringing out under $PJAM.
-    stab = sum(saw(note(x), 2.4) for x in ['D2', 'D3', 'F3', 'A3', 'D4']) / 5
+    # Final hit: a stab in the cut's key ringing out under $PJAM.
+    stab = sum(saw(note(x), 2.4) for x in st['stab']) / 5
     put(music, end, onepole(stab, 2500) * env(2.4, 0.003, 0.9), 0.5)
     put(music, end, KICK, 1.0)
     put(music, end, CRASH, 0.6)

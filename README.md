@@ -106,9 +106,16 @@ Add `?speed=4` to the URL to run the simulation faster when testing.
 
 `trailer.html` + `src/trailer/trailer.ts` build an NBA Jam-style trailer from the real engine, shot on the Indigo Plateau court (Pallet Town vs the Elite Four). It opens on a real jump ball, then cuts between highlights found by scanning seeded CPU-vs-CPU games (dunks, blocks, a player catching fire, replayed with slow-motion punch-ins and callouts) and title scenes: the 287-Pokémon wall with Mewtwo at #1, the 60-second draft clock, Kyogre vs Groudon, the badge case and Elite Four crown, Dragonair evolving, and a $PJAM end card.
 
+Three more cuts share the same engine, each with its own matchup, court and music:
+
+- `vertical`: 9:16 for TikTok, Reels and Shorts. "POKéMON. BUT IT'S NBA JAM.", close-up gameplay, the card flip to Mewtwo, a buzzer beater, $PJAM.
+- `franchise`: the season story. Brock's challenge, the 10-team draft board, the bench stepping in, Charmander's double evolution, badges, CHAMPIONS!, $PJAM.
+- `top5`: a highlight-show countdown from #5 to #1 with lower-third captions.
+
 ```sh
-npm run dev   # then open /trailer.html?play for a real-time preview (no sound)
-NODE_PATH=$(npm root -g) node scripts/render-trailer.mjs   # writes trailer-out/poke-jam-trailer.mp4
+npm run dev   # then open /trailer.html?play (or ?cut=vertical&play) for a real-time preview (no sound)
+NODE_PATH=$(npm root -g) node scripts/render-trailer.mjs               # trailer-out/poke-jam-trailer.mp4
+NODE_PATH=$(npm root -g) node scripts/render-trailer.mjs --cut top5    # trailer-out/top5/poke-jam-top5.mp4
 ```
 
 Rendering needs Playwright with Chromium, ffmpeg (libx264 + aac) and python3 with numpy. `scripts/trailer-audio.py` composes the 128 BPM chiptune (D minor) and places sound effects on the cue times the engine reports.

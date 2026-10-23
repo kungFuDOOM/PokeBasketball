@@ -5,7 +5,8 @@
 // scripts/render-trailer.mjs captures the frames and scores the result; open /trailer.html?play in the
 // dev server to preview it in real time.
 import '../fonts.css';
-import { COURTS } from '../data/courts';
+import { COURTS, type CourtStyle } from '../data/courts';
+import { LEAGUE } from '../franchise/league';
 import { POKEMON, monByDex, TYPE_COLORS, type Mon } from '../data/pokemon';
 import { Game, type Sfx } from '../game/game';
 import { DUNK_MOVES } from '../game/hud';
@@ -16,8 +17,17 @@ import { badgeSvg } from '../ui/badges';
 import { tier } from '../util';
 
 export const FPS = 30;
-const W = 1920;
-const H = 1080;
+/**
+ * Which cut to render (?cut=…): 'main' (the launch trailer), 'vertical' (9:16 for TikTok / Reels / Shorts),
+ * 'franchise' (the season story) or 'top5' (a countdown of the best plays).
+ */
+type Cut = 'main' | 'vertical' | 'franchise' | 'top5';
+const CUT: Cut = (['vertical', 'franchise', 'top5'] as const).find((c) => c === new URLSearchParams(location.search).get('cut')) ?? 'main';
+const VERTICAL = CUT === 'vertical';
+const W = VERTICAL ? 1080 : 1920;
+const H = VERTICAL ? 1920 : 1080;
+/** Game-canvas zoom: 4 shows the whole 480x270 court at 1080p; vertical crops a 135x240 window around the ball. */
+const BG_ZOOM = VERTICAL ? 8 : 4;
 const STEP = 1 / 60;
 
 // ---------- deterministic simulation ----------
@@ -41,7 +51,7 @@ class SeededGame {
 
   constructor(seed: number) {
     this.rng = mulberry32(seed);
-    this.g = this.seeded(() => new Game({ home: HOME, away: AWAY, quarterLen: 120, difficulty: 'pro', court: COURTS['Indigo Elite'] }));
+    this.g = this.seeded(() => new Game({ home: HOME, away: AWAY, quarterLen: 120, difficulty: 'pro', court: COURT }));
   }
 
   private seeded<T>(fn: () => T): T {
@@ -65,21 +75,26 @@ class SeededGame {
 }
 
 const mons = (dexes: number[]) => dexes.map(monByDex);
-const HOME: TeamDef = {
-  name: 'Pallet Town', abbr: 'PAL', color: '#3b6fd8', color2: '#16224a', human: false,
-  roster: mons([25, 381, 6, 445, 382]),
+const gym = (name: string, dexes: number[]): TeamDef => {
+  const t = LEAGUE.find((x) => x.name === name)!;
+  return { name: t.name, abbr: t.abbr, color: t.color, color2: t.color2, human: false, roster: mons(dexes) };
 };
-const AWAY: TeamDef = {
-  name: 'Indigo Elite', abbr: 'E4', color: '#d4a017', color2: '#2a2106', human: false,
-  roster: mons([151, 94, 150, 383, 149]),
+const pallet = (dexes: number[]): TeamDef => ({ name: 'Pallet Town', abbr: 'PAL', color: '#3b6fd8', color2: '#16224a', human: false, roster: mons(dexes) });
+/** Each cut has its own matchup and floor. */
+const MATCHUPS: Record<Cut, { home: TeamDef; away: TeamDef; court: CourtStyle }> = {
+  main: { home: pallet([25, 381, 6, 445, 382]), away: gym('Indigo Elite', [151, 94, 150, 383, 149]), court: COURTS['Indigo Elite'] },
+  vertical: { home: pallet([25, 6, 448, 445, 143]), away: gym('Saffron Psychics', [65, 94, 150, 376, 248]), court: COURTS['Saffron Psychics'] },
+  franchise: { home: pallet([25, 6, 9, 3, 143]), away: gym('Cerulean Cascades', [121, 134, 131, 130, 382]), court: COURTS['Cerulean Cascades'] },
+  top5: { home: pallet([151, 381, 384, 149, 249]), away: gym('Cinnabar Volcanoes', [59, 157, 146, 244, 250]), court: COURTS['Cinnabar Volcanoes'] },
 };
+const { home: HOME, away: AWAY, court: COURT } = MATCHUPS[CUT];
 
 // ---------- highlight scan ----------
 
 interface Highlight {
   seed: number;
   step: number;
-  kind: 'dunk' | 'three' | 'block' | 'fire';
+  kind: 'dunk' | 'three' | 'block' | 'fire' | 'buzzer';
   player: number;
   oop: boolean;
   spin: boolean;
@@ -123,6 +138,8 @@ function scanGame(seed: number): Scan {
         highlights.push({ seed, step: k, kind: 'block', player: e.player.id, oop: false, spin: false, dist: 0, score: 2 });
       } else if (e.kind === 'fire' && e.on) {
         highlights.push({ seed, step: k, kind: 'fire', player: e.player.id, oop: false, spin: false, dist: 0, score: 2 });
+      } else if (e.kind === 'buzzerbeater') {
+        highlights.push({ seed, step: k, kind: 'buzzer', player: e.player.id, oop: false, spin: false, dist: 0, score: 3 + e.points });
       }
     }
     g.sfx.length = 0;
@@ -139,10 +156,13 @@ interface ClipPlan {
   eventFrame: number;
 }
 
-type Scene = 'tipoff' | 'logo' | 'wall' | 'clock' | 'legends' | 'badges' | 'evolve' | 'outro';
+type Scene = 'tipoff' | 'logo' | 'wall' | 'clock' | 'legends' | 'badges' | 'evolve' | 'outro'
+  | 'v-hook' | 'v-cards' | 'v-outro'
+  | 'f-intro' | 'f-draft' | 'f-subs' | 'f-evolve' | 'f-champs'
+  | 't-title' | 't-num';
 type Segment =
   | { kind: Scene; t0: number; t1: number }
-  | { kind: 'clip'; t0: number; t1: number; plan: ClipPlan; style: 'hero' | 'montage' };
+  | { kind: 'clip'; t0: number; t1: number; plan: ClipPlan; style: 'hero' | 'montage'; rank?: number; lower?: string };
 
 /** Builds the per-frame step schedule so the highlight lands on `eventAt` seconds into the slot. */
 function plan(h: Highlight, scan: Scan, seconds: number, eventAt: number, slow: boolean): ClipPlan | null {
@@ -154,7 +174,9 @@ function plan(h: Highlight, scan: Scan, seconds: number, eventAt: number, slow: 
   const start = h.step - before;
   const end = h.step + after;
   if (start < 120 || end > scan.end - 30) return null;
-  if (scan.quarterSteps.some((q) => q > start - 200 && q < end)) return null;
+  // A buzzer beater ends its quarter: the horn may come after the shot, never before the clip starts.
+  const stop = h.kind === 'buzzer' ? h.step : end;
+  if (scan.quarterSteps.some((q) => q > start - 200 && q < stop)) return null;
   return { h, start, per, eventFrame };
 }
 
@@ -218,9 +240,9 @@ function plainText(text: string, x: number, y: number, size: number, color = '#f
 
 /** Pokémon battle text box, typed out over `typeDur` seconds. */
 function battleBox(lines: string[], age: number, typeDur = 0.9) {
-  const bx = 260;
-  const by = H - 250;
-  const bw = W - 520;
+  const bx = VERTICAL ? 60 : 260;
+  const by = H - (VERTICAL ? 330 : 250);
+  const bw = W - 2 * bx;
   const bh = 170;
   ctx.save();
   ctx.fillStyle = '#f8f8f0';
@@ -409,7 +431,7 @@ function drawGame(r: Renderer, sg: SeededGame, canvas: HTMLCanvasElement, steps:
   r.draw(sg.g, steps * STEP);
   const cw = W / zoom;
   const ch = H / zoom;
-  if (zoom === 4) {
+  if (zoom === 4 && !VERTICAL) {
     ctx.drawImage(canvas, 0, 0, VW, VH, 0, 0, W, H);
     return;
   }
@@ -512,21 +534,27 @@ function renderClip(seg: Segment & { kind: 'clip' }, t: number, first: boolean) 
       } else if (e.kind === 'score' && e.player.id === h.player && h.kind === 'dunk') {
         const m = nameOf(c.sg.g, h.player);
         callouts.push({ text: `${DUNK_MOVES[m.types[0]]}!`, t0: tt, dur: 1.5, y: 200, size: 130 });
-        callouts.push({ text: "IT'S SUPER EFFECTIVE!", t0: tt + 0.65, dur: 1.4, y: H - 130, size: 72, fill: '#f8f8f0' });
+        if (!seg.lower) callouts.push({ text: "IT'S SUPER EFFECTIVE!", t0: tt + 0.65, dur: 1.4, y: H - 130, size: 72, fill: '#f8f8f0' });
         cue(tt, 'crowd');
       } else if (e.kind === 'block' && h.kind === 'block' && e.player.id === h.player) {
         callouts.push({ text: 'REJECTED!', t0: tt, dur: 1.5, y: 210, size: 150 });
-        callouts.push({ text: `${e.player.mon.name.toUpperCase()} USED PROTECT!`, t0: tt + 0.5, dur: 1.3, y: H - 130, size: 56, fill: '#f8f8f0' });
+        if (!seg.lower) callouts.push({ text: `${e.player.mon.name.toUpperCase()} USED PROTECT!`, t0: tt + 0.5, dur: 1.3, y: H - 130, size: 56, fill: '#f8f8f0' });
         cue(tt, 'crowd');
+      } else if (e.kind === 'buzzerbeater' && h.kind === 'buzzer' && e.player.id === h.player) {
+        callouts.push({ text: 'BUZZER BEATER!', t0: tt, dur: 1.8, y: VERTICAL ? 300 : 200, size: 130 });
+        if (!seg.lower) callouts.push({ text: `${e.player.mon.name.toUpperCase()} AT THE HORN!`, t0: tt + 0.45, dur: 1.5, y: H - (VERTICAL ? 420 : 140), size: 64, fill: '#f8f8f0' });
+        cue(tt, 'buzzer');
+        cue(tt + 0.1, 'crowd_big');
       } else if (e.kind === 'fire' && e.on && h.kind === 'fire' && e.player.id === h.player) {
         callouts.push({ text: e.player.mon.name.toUpperCase(), t0: tt, dur: 2.2, y: 190, size: 110 });
-        callouts.push({ text: 'IS ON FIRE!', t0: tt + 0.3, dur: 1.9, y: H - 150, size: 130 });
+        callouts.push({ text: 'IS ON FIRE!', t0: tt + 0.3, dur: 1.9, y: seg.lower ? 330 : H - 150, size: 130 });
         cue(tt, 'crowd');
       }
     }
-  }, true, slow ? 6 : 5);
+  }, true, VERTICAL ? (slow ? 9 : 8) : slow ? 6 : 5);
   if (seg.style === 'hero') scorebug(c.sg.g);
   if (slow) replayTag(t);
+  if (seg.lower) lowerThird(seg, c.f);
   c.f++;
 }
 
@@ -538,7 +566,7 @@ function renderBackground(t: number, dim = 0.6) {
     r.snap(sg.g);
     bg = { sg, r };
   }
-  drawGame(bg.r, bg.sg, bgCanvas, 2, t);
+  drawGame(bg.r, bg.sg, bgCanvas, 2, t, undefined, false, BG_ZOOM);
   ctx.fillStyle = `rgba(5, 6, 15, ${dim})`;
   ctx.fillRect(0, 0, W, H);
 }
@@ -823,6 +851,277 @@ function renderOutro(seg: Segment, t: number, a: number) {
   }
 }
 
+// ---------- cut: vertical (9:16) ----------
+
+/** "POKéMON. BUT IT'S NBA JAM." stacked over close-up gameplay. */
+function renderVHook(seg: Segment, t: number, a: number) {
+  renderBackground(t, 0.5);
+  once('vhook', t, seg.t0, () => { cue(t, 'crowd_low'); cue(t + 0.05, 'whistle'); });
+  const line = (txt: string, at: number, y: number, size: number, fill?: string) => {
+    if (a < at) return;
+    once(`vh-${txt}`, t, seg.t0 + at, () => { cue(t, 'slam'); flash = 0.12; });
+    const k = easeOutBack(clamp01((a - at) / 0.2));
+    jamText(txt, W / 2, y, size, { scale: 0.3 + 0.7 * k, fill, maxW: W - 100 });
+  };
+  line('POKéMON.', 0.15, H / 2 - 300, 120);
+  line("BUT IT'S", 0.6, H / 2 - 110, 90, '#f8f8f0');
+  line('NBA JAM.', 1.05, H / 2 + 80, 140);
+  if (a > 1.6) plainText('DRAFT · DUNK · EVOLVE', W / 2, H / 2 + 300, 64, '#ffcb05');
+}
+
+/** Cards flipping past, slowing down, landing on Mewtwo. */
+function renderVCards(seg: Segment, t: number, a: number) {
+  renderBackground(t, 0.8);
+  jamText(`${POKEMON.length} POKéMON`, W / 2, 280, 120, { scale: a < 0.2 ? easeOutBack(a / 0.2) : 1, maxW: W - 100 });
+  plainText('TO DRAFT', W / 2, 420, 80, '#f8f8f0');
+  const land = 2.0;
+  if (a < land) {
+    // Flip rate slows from ~14/s to ~3/s.
+    const n = Math.floor(14 * a - 2.75 * a * a);
+    const pool = [...POKEMON].sort((x, y) => y.ovr - x.ovr).slice(0, 60);
+    const m = pool[(n * 7) % pool.length];
+    once(`vc${n}`, t, t, () => cue(t, 'tick'));
+    card(m, W / 2, H / 2 + 120, Math.sin(n) * 0.04, 1.7);
+  } else {
+    once('vc-land', t, seg.t0 + land, () => { flash = 0.2; cue(t, 'slam'); cue(t, 'crowd'); });
+    const k = a - land;
+    card(monByDex(150), W / 2, H / 2 + 120, 0, k < 0.15 ? 2.2 - k * 3.4 : 1.7);
+    jamText('#1 OVERALL', W / 2, H - 320, 100, { maxW: W - 100 });
+  }
+}
+
+/** Logo, where to play, then $PJAM: stacked for a tall screen. */
+function renderVOutro(seg: Segment, t: number, a: number) {
+  renderBackground(t, 0.68);
+  once('vout-hit', t, seg.t0 + 0.2, () => { flash = 0.3; cue(t, 'slam'); cue(t, 'crowd_big'); });
+  const icon = images.get('icon');
+  if (icon) {
+    const k = easeOutBack(clamp01(a / 0.3));
+    ctx.drawImage(icon, W / 2 - 130 * k, 260 - 130 * k, 260 * k, 260 * k);
+  }
+  logo(W / 2, 560, 104);
+  if (a > 0.5) jamText('PLAY FREE', W / 2, 760, 96, { fill: '#f8f8f0', maxW: W - 100 });
+  if (a > 0.8) plainText('IN YOUR BROWSER', W / 2, 870, 64, '#f8f8f0');
+  if (a > 1.1) plainText('kungfudoom.github.io/PokeBasketball', W / 2, 980, 50, '#ffcb05');
+  const pj = a - 2.0;
+  if (pj >= 0) {
+    once('vpjam', t, seg.t0 + 2.0, () => { flash = 0.35; cue(t, 'slam'); cue(t, 'coin'); cue(t, 'crowd_big'); });
+    pjam(W / 2, 1320, 200, pj);
+  }
+  fadeOut(seg, t, 0.5);
+}
+
+// ---------- cut: franchise ----------
+
+function renderFIntro(seg: Segment, t: number, a: number) {
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, W, H);
+  once('fintro', t, seg.t0, () => { cue(t, 'crowd_low'); cue(t + 0.1, 'whistle'); });
+  const img = images.get('badge-Boulder');
+  if (img && a > 0.2) {
+    const k = easeOutBack(clamp01((a - 0.2) / 0.3));
+    ctx.drawImage(img, W / 2 - 150 * k, 330 - 150 * k, 300 * k, 300 * k);
+  }
+  if (a > 0.3) battleBox(['GYM LEADER BROCK', 'wants to ball!'], a - 0.3, 1.0);
+}
+
+/** Ten teams snake-drafting ten Pokémon each, picks landing fast. */
+const DRAFT_TEAMS = [{ abbr: 'PAL', color: '#3b6fd8' }, ...LEAGUE.map((t) => ({ abbr: t.abbr, color: t.color }))];
+let draftPicks: number[][] | null = null;
+function renderFDraft(t: number, a: number) {
+  renderBackground(t, 0.86);
+  jamText('DRAFT 10. BUILD A DYNASTY.', W / 2, 110, 76);
+  if (!draftPicks) {
+    const pool = [...POKEMON].sort((x, y) => y.ovr - x.ovr);
+    draftPicks = DRAFT_TEAMS.map(() => []);
+    let i = 0;
+    for (let r = 0; r < 10; r++) {
+      const order = r % 2 ? [...DRAFT_TEAMS.keys()].reverse() : [...DRAFT_TEAMS.keys()];
+      for (const ti of order) draftPicks[ti].push(pool[i++].dex);
+    }
+  }
+  const made = Math.floor(clamp01((a - 0.2) / 2.6) * 100);
+  const rowH = 76;
+  const top = 200;
+  DRAFT_TEAMS.forEach((tm, ti) => {
+    const y = top + ti * rowH;
+    ctx.fillStyle = 'rgba(18,22,58,0.85)';
+    ctx.fillRect(220, y, W - 440, rowH - 8);
+    ctx.fillStyle = tm.color;
+    ctx.fillRect(220, y, 12, rowH - 8);
+    ctx.font = `800 40px ${SPORT}`;
+    ctx.fillStyle = ti === 0 ? '#ffcb05' : '#f2f0e6';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(ti === 0 ? 'YOU' : tm.abbr, 250, y + rowH / 2 - 4);
+    for (let r = 0; r < 10; r++) {
+      // Pick number of team ti in round r (snake order).
+      const idx = r * 10 + (r % 2 ? 9 - ti : ti);
+      const x = 380 + r * 128;
+      if (idx < made) sprite(draftPicks![ti][r], x + 50, y + rowH - 6, 72);
+      else {
+        ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+        ctx.strokeRect(x + 20, y + 10, 60, 48);
+      }
+    }
+  });
+  if (made > 0 && made < 100) once(`fd${Math.floor(made / 4)}`, t, t, () => cue(t, 'card'));
+}
+
+/** A tired starter heads to the bench and the 6th man checks in. */
+function renderFSubs(seg: Segment, t: number, a: number) {
+  renderBackground(t, 0.82);
+  jamText('STARTERS TIRE.', W / 2, 110, 84);
+  if (a > 0.5) jamText('THE BENCH STEPS IN.', W / 2, 220, 84, { fill: '#f8f8f0' });
+  const swap = 1.5;
+  const energy = a < swap ? 1 - 0.85 * clamp01(a / 1.3) : 1;
+  const out = clamp01((a - swap) / 0.35);
+  const inn = easeOutBack(clamp01((a - swap - 0.15) / 0.35));
+  if (out < 1) sprite(25, W / 2 - out * 900, 760, 330, { alpha: 1 - out });
+  if (a > swap) sprite(26, W / 2 + (1 - inn) * 900, 760, 360);
+  // Energy bar
+  const bw = 520;
+  const bx = W / 2 - bw / 2;
+  ctx.fillStyle = '#05060f';
+  ctx.fillRect(bx - 6, 330, bw + 12, 44);
+  ctx.fillStyle = energy < 0.3 ? '#e3350d' : '#21d07a';
+  ctx.fillRect(bx, 336, bw * energy, 32);
+  plainText('ENERGY', bx - 20, 352, 40, '#f2f0e6', SPORT, 800, 'right');
+  once('fsub', t, seg.t0 + swap, () => { cue(t, 'whistle'); cue(t + 0.2, 'card'); });
+  battleBox(a < swap ? ['Come back, PIKACHU!'] : ['Come back, PIKACHU!', 'Go! RAICHU!'], a < swap ? a : 0.6 + (a - swap), a < swap ? 0.5 : 1.0);
+}
+
+/** Charmander to Charmeleon to Charizard. */
+function renderFEvolve(seg: Segment, t: number, a: number) {
+  ctx.fillStyle = '#05060f';
+  ctx.fillRect(0, 0, W, H);
+  const glow = ctx.createRadialGradient(W / 2, 520, 50, W / 2, 520, 700);
+  glow.addColorStop(0, 'rgba(238,129,48,0.35)');
+  glow.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = glow;
+  ctx.fillRect(0, 0, W, H);
+  jamText('LEVEL UP. EVOLVE. AGAIN.', W / 2, 120, 84);
+  const stage = a < 1.2 ? 0 : a < 2.4 ? 1 : 2;
+  const local = stage === 0 ? a : stage === 1 ? a - 1.2 : a - 2.4;
+  const flick = stage < 2 && local > 0.25 && Math.floor(Math.pow(local, 2.2) * 16) % 2 === 1;
+  const dex = [4, 5, 6][stage];
+  sprite(dex, W / 2, 770, [300, 400, 520][stage], { white: flick ? 1 : 0 });
+  once('fe0', t, seg.t0 + 0.2, () => cue(t, 'evolve'));
+  once('fe1', t, seg.t0 + 1.2, () => { flash = 0.25; cue(t, 'slam'); cue(t + 0.15, 'evolve'); });
+  once('fe2', t, seg.t0 + 2.4, () => { flash = 0.3; cue(t, 'slam'); cue(t, 'crowd'); });
+  const lines = stage === 0 ? ['What? CHARMANDER', 'is evolving!'] : stage === 1 ? ['CHARMANDER evolved into', 'CHARMELEON! ...and again?!'] : ['CHARMELEON evolved', 'into CHARIZARD!'];
+  battleBox(lines, local, 0.6);
+}
+
+/** Title night: confetti, the trophy, and the season's awards. */
+function renderFChamps(seg: Segment, t: number, a: number) {
+  renderBackground(t, 0.7);
+  once('champs', t, seg.t0 + 0.2, () => { flash = 0.3; cue(t, 'slam'); cue(t, 'crowd_big'); });
+  // Confetti
+  const colors = ['#ffcb05', '#3b6fd8', '#e3350d', '#21d07a', '#f8f8f0'];
+  for (let i = 0; i < 140; i++) {
+    const x = ((i * 137.5) % W) + Math.sin(a * 2 + i) * 30;
+    const y = ((i * 71) % 400) - 400 + a * (380 + (i % 7) * 40);
+    ctx.fillStyle = colors[i % colors.length];
+    ctx.save();
+    ctx.translate(x, y % (H + 60));
+    ctx.rotate(a * 4 + i);
+    ctx.fillRect(-7, -4, 14, 8);
+    ctx.restore();
+  }
+  const k = easeOutBack(clamp01((a - 0.2) / 0.3));
+  jamText('CHAMPIONS!', W / 2, 240, 150, { scale: 0.3 + 0.7 * k });
+  const crown = images.get('badge-Elite');
+  if (crown) ctx.drawImage(crown, W / 2 - 120 * k, 520 - 120 * k, 240 * k, 240 * k);
+  if (a > 1.0) plainText('MVP · DEFENSIVE PLAYER · SIXTH MAN · MOST IMPROVED', W / 2, 760, 54, '#ffcb05');
+  if (a > 1.6) plainText('THEN THE ROOKIE DRAFT. AND RUN IT BACK.', W / 2, 860, 54, '#f2f0e6');
+}
+
+// ---------- cut: top 5 ----------
+
+function renderTTitle(seg: Segment, t: number, a: number) {
+  ctx.fillStyle = '#12020a';
+  ctx.fillRect(0, 0, W, H);
+  // Diagonal stripes sliding by
+  ctx.save();
+  ctx.fillStyle = '#e3350d';
+  for (let i = -4; i < 16; i++) {
+    const x = i * 220 + ((a * 600) % 220);
+    ctx.beginPath();
+    ctx.moveTo(x, 0); ctx.lineTo(x + 90, 0); ctx.lineTo(x - 210, H); ctx.lineTo(x - 300, H);
+    ctx.globalAlpha = 0.18;
+    ctx.fill();
+  }
+  ctx.restore();
+  once('ttitle', t, seg.t0 + 0.25, () => { flash = 0.2; cue(t, 'slam'); cue(t, 'crowd'); });
+  const k = easeOutBack(clamp01((a - 0.25) / 0.25));
+  if (a > 0.25) jamText('TOP 5 PLAYS', W / 2, H / 2 - 60, 170, { scale: 0.3 + 0.7 * k });
+  if (a > 0.8) logo(W / 2, H / 2 + 130, 64);
+  if (a > 1.2) plainText(`${HOME.name.toUpperCase()} vs ${AWAY.name.toUpperCase()}`, W / 2, H / 2 + 250, 54, '#ffcb05');
+}
+
+function renderTNum(seg: Segment & { rank?: number }, t: number, a: number) {
+  ctx.fillStyle = '#05060f';
+  ctx.fillRect(0, 0, W, H);
+  const rank = seg.rank ?? 1;
+  once(`tnum${rank}`, t, seg.t0, () => { cue(t, 'slam'); if (rank === 1) cue(t, 'crowd'); });
+  const k = a < 0.18 ? 3 - 2 * easeOutBack(a / 0.18) : 1 + (a - 0.18) * 0.06;
+  jamText(`#${rank}`, W / 2, H / 2, 360, { scale: k, fill: rank === 1 ? undefined : '#f8f8f0' });
+}
+
+/** Lower-third caption for countdown clips: rank chip, then the play. */
+function lowerThird(seg: Segment & { kind: 'clip' }, f: number) {
+  const k = clamp01((f - 6) / 8);
+  if (k <= 0) return;
+  const x = 80 - (1 - k) * 900;
+  const y = H - 190;
+  ctx.save();
+  ctx.fillStyle = '#e3350d';
+  ctx.fillRect(x, y, 130, 110);
+  ctx.font = `70px ${PIXEL}`;
+  ctx.fillStyle = '#fff';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(`${seg.rank ?? ''}`, x + 68, y + 60);
+  ctx.fillStyle = 'rgba(5,6,15,0.9)';
+  ctx.fillRect(x + 130, y, 900, 110);
+  ctx.fillStyle = '#ffcb05';
+  ctx.fillRect(x + 130, y + 104, 900, 6);
+  ctx.font = `800 64px ${SPORT}`;
+  ctx.fillStyle = '#f8f8f0';
+  ctx.textAlign = 'left';
+  ctx.fillText(seg.lower ?? '', x + 170, y + 58);
+  ctx.restore();
+}
+
+// ---------- shared ----------
+
+function pjam(x: number, y: number, size: number, pj: number) {
+  const s = pj < 0.25 ? 3.2 - 2.2 * easeOutBack(pj / 0.25) : 1 + 0.03 * Math.sin(pj * 6);
+  const gold = ctx.createLinearGradient(0, -size / 2, 0, size / 2);
+  gold.addColorStop(0, '#fff7c2');
+  gold.addColorStop(0.45, '#ffcb05');
+  gold.addColorStop(1, '#b37400');
+  const shake = pj > 0.25 && pj < 0.55 ? (Math.random() - 0.5) * 26 : 0;
+  jamText('$PJAM', x + shake, y + shake, size, { scale: s, fill: gold, maxW: W - 100 });
+  const gx = ((pj * 900) % (W + 700)) - 400;
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  const g = ctx.createLinearGradient(gx - 120, 0, gx + 120, 0);
+  g.addColorStop(0, 'rgba(255,255,255,0)');
+  g.addColorStop(0.5, 'rgba(255,255,255,0.35)');
+  g.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(gx - 120, y - size * 0.9, 240, size * 1.6);
+  ctx.restore();
+}
+
+function fadeOut(seg: Segment, t: number, dur: number) {
+  if (seg.t1 - t < dur) {
+    ctx.fillStyle = `rgba(0,0,0,${clamp01(1 - (seg.t1 - t) / dur)})`;
+    ctx.fillRect(0, 0, W, H);
+  }
+}
+
 function renderSegment(seg: Segment, t: number, first: boolean) {
   const a = t - seg.t0;
   switch (seg.kind) {
@@ -834,6 +1133,16 @@ function renderSegment(seg: Segment, t: number, first: boolean) {
     case 'badges': renderBadges(seg, t, a); break;
     case 'evolve': renderEvolve(seg, t, a); break;
     case 'outro': renderOutro(seg, t, a); break;
+    case 'v-hook': renderVHook(seg, t, a); break;
+    case 'v-cards': renderVCards(seg, t, a); break;
+    case 'v-outro': renderVOutro(seg, t, a); break;
+    case 'f-intro': renderFIntro(seg, t, a); break;
+    case 'f-draft': renderFDraft(t, a); break;
+    case 'f-subs': renderFSubs(seg, t, a); break;
+    case 'f-evolve': renderFEvolve(seg, t, a); break;
+    case 'f-champs': renderFChamps(seg, t, a); break;
+    case 't-title': renderTTitle(seg, t, a); break;
+    case 't-num': renderTNum(seg as Segment & { rank?: number }, t, a); break;
     case 'clip': renderClip(seg, t, first); break;
   }
 }
@@ -846,6 +1155,8 @@ export function renderFrame(i: number) {
   const t = i / fps;
   const seg = segments.find((s) => t >= s.t0 && t < s.t1) ?? segments[segments.length - 1];
   const first = seg !== lastSeg;
+  // A clip's callouts end with the clip; scenes add their own.
+  if (first) callouts = callouts.filter((c) => c.t0 >= seg.t0);
   if (first && seg.kind !== 'clip' && seg.kind !== 'tipoff') cue(t, 'whoosh');
   lastSeg = seg;
   ctx.save();
@@ -870,11 +1181,11 @@ export async function prepare(): Promise<{ frames: number; fps: number }> {
   await document.fonts.load(`800 40px ${SPORT}`);
 
   const scans: Scan[] = [];
-  for (let seed = 1; seed <= 14; seed++) scans.push(scanGame(seed));
+  for (let seed = 1; seed <= 22; seed++) scans.push(scanGame(seed));
   const used = new Set<string>();
   const key = (h: Highlight) => `${h.seed}:${h.step}`;
-  const pick = (kinds: Highlight['kind'][], seconds: number, eventAt: number, slow: boolean): ClipPlan => {
-    const all = scans.flatMap((s) => s.highlights.filter((h) => kinds.includes(h.kind) && !used.has(key(h))).map((h) => ({ h, s })));
+  const pick = (kinds: Highlight['kind'][], seconds: number, eventAt: number, slow: boolean, ok: (h: Highlight) => boolean = () => true): ClipPlan => {
+    const all = scans.flatMap((s) => s.highlights.filter((h) => kinds.includes(h.kind) && !used.has(key(h)) && ok(h)).map((h) => ({ h, s })));
     all.sort((x, y) => y.h.score - x.h.score);
     for (const { h, s } of all) {
       const p = plan(h, s, seconds, eventAt, slow);
@@ -886,25 +1197,92 @@ export async function prepare(): Promise<{ frames: number; fps: number }> {
     throw new Error(`No usable ${kinds.join('/')} highlight`);
   };
 
+  /** First choice that has a usable highlight, so a cut never fails for want of one kind of play. */
+  const pickAny = (choices: Highlight['kind'][][], seconds: number, eventAt: number, slow: boolean, ok?: (h: Highlight) => boolean): ClipPlan => {
+    for (const kinds of choices) {
+      try { return pick(kinds, seconds, eventAt, slow, ok); } catch { /* try the next kind */ }
+    }
+    if (ok) return pickAny(choices, seconds, eventAt, slow);
+    throw new Error(`No usable ${choices.flat().join('/')} highlight`);
+  };
+  const LABELS: Record<Highlight['kind'], string> = { dunk: 'POSTER DUNK', three: 'FROM DOWNTOWN', block: 'GET THAT OUTTA HERE', fire: 'HEATING UP', buzzer: 'AT THE BUZZER' };
+  const label = (p: ClipPlan) => {
+    const g = new SeededGame(p.h.seed);
+    const m = g.g.players.concat(g.g.bench).find((x) => x.id === p.h.player)?.mon;
+    const what = p.h.kind === 'dunk' ? (p.h.oop ? 'ALLEY-OOP' : DUNK_MOVES[m?.types[0] ?? 'Normal']) : LABELS[p.h.kind];
+    return `${m?.name.toUpperCase() ?? ''} · ${what}`;
+  };
+
   const s: Segment[] = [];
   let t = 0;
   const add = (seg: Segment) => { s.push(seg); t = seg.t1; };
-  add({ kind: 'tipoff', t0: t, t1: t + 3.6 });
-  add({ kind: 'logo', t0: t, t1: t + 2.2 });
-  add({ kind: 'clip', t0: t, t1: t + 5.5, plan: pick(['dunk'], 5.5, 3.3, true), style: 'hero' });
-  add({ kind: 'wall', t0: t, t1: t + 3.6 });
-  add({ kind: 'clock', t0: t, t1: t + 3.0 });
-  add({ kind: 'clip', t0: t, t1: t + 4, plan: pick(['block'], 4, 2.2, true), style: 'hero' });
-  add({ kind: 'legends', t0: t, t1: t + 2.8 });
-  add({ kind: 'clip', t0: t, t1: t + 4.5, plan: pick(['fire'], 4.5, 1.8, true), style: 'hero' });
-  add({ kind: 'badges', t0: t, t1: t + 3.2 });
-  add({ kind: 'evolve', t0: t, t1: t + 2.6 });
-  for (let i = 0; i < 4; i++) add({ kind: 'clip', t0: t, t1: t + 1, plan: pick(i === 1 ? ['three', 'dunk'] : ['dunk'], 1, 0.7, false), style: 'montage' });
-  add({ kind: 'outro', t0: t, t1: t + 5.4 });
+  const clip = (kinds: Highlight['kind'][][], seconds: number, eventAt: number, slow = true, style: 'hero' | 'montage' = 'hero') =>
+    add({ kind: 'clip', t0: t, t1: t + seconds, plan: pickAny(kinds, seconds, eventAt, slow), style });
+  let musicStart = 0;
+  let musicEnd = 0;
+  if (CUT === 'vertical') {
+    add({ kind: 'v-hook', t0: t, t1: t + 2.6 });
+    clip([['dunk']], 4.2, 2.6);
+    add({ kind: 'v-cards', t0: t, t1: t + 3.4 });
+    clip([['fire'], ['three']], 3.6, 1.4);
+    clip([['buzzer'], ['three'], ['dunk']], 4.2, 2.0);
+    clip([['block']], 3.2, 1.8);
+    for (let i = 0; i < 3; i++) clip([['dunk']], 0.9, 0.6, false, 'montage');
+    add({ kind: 'v-outro', t0: t, t1: t + 4.8 });
+    musicStart = 0.15;
+    musicEnd = s[s.length - 1].t0 + 2.0;
+  } else if (CUT === 'franchise') {
+    add({ kind: 'f-intro', t0: t, t1: t + 2.8 });
+    add({ kind: 'logo', t0: t, t1: t + 2.2 });
+    musicStart = s[1].t0 + 0.3;
+    add({ kind: 'f-draft', t0: t, t1: t + 3.4 });
+    clip([['dunk']], 4.5, 2.8);
+    add({ kind: 'f-subs', t0: t, t1: t + 3.0 });
+    clip([['block']], 3.8, 2.1);
+    add({ kind: 'f-evolve', t0: t, t1: t + 3.6 });
+    add({ kind: 'badges', t0: t, t1: t + 3.2 });
+    clip([['fire'], ['buzzer']], 4.2, 1.7);
+    add({ kind: 'f-champs', t0: t, t1: t + 3.0 });
+    add({ kind: 'outro', t0: t, t1: t + 5.4 });
+    musicEnd = s[s.length - 1].t0 + 2.2;
+  } else if (CUT === 'top5') {
+    add({ kind: 't-title', t0: t, t1: t + 2.4 });
+    musicStart = 0.25;
+    // Pick #1 first so it gets the best dunk, then fill the countdown.
+    const one = pickAny([['dunk']], 4.6, 2.8, true);
+    const plays: [number, ClipPlan, number][] = [
+      [5, pickAny([['three'], ['fire']], 3.6, 2.0, true), 3.6],
+      [4, pickAny([['block']], 3.6, 2.0, true), 3.6],
+      [3, pickAny([['dunk']], 3.8, 2.2, true, (h) => h.player !== one.h.player), 3.8],
+      [2, pickAny([['buzzer'], ['fire'], ['three']], 4.2, 2.0, true), 4.2],
+      [1, one, 4.6],
+    ];
+    for (const [rank, p, sec] of plays) {
+      add({ kind: 't-num', t0: t, t1: t + 0.8, rank } as Segment);
+      add({ kind: 'clip', t0: t, t1: t + sec, plan: p, style: 'hero', rank, lower: label(p) });
+    }
+    add({ kind: 'outro', t0: t, t1: t + 5.4 });
+    musicEnd = s[s.length - 1].t0 + 2.2;
+  } else {
+    add({ kind: 'tipoff', t0: t, t1: t + 3.6 });
+    add({ kind: 'logo', t0: t, t1: t + 2.2 });
+    musicStart = s[1].t0 + 0.3;
+    clip([['dunk']], 5.5, 3.3);
+    add({ kind: 'wall', t0: t, t1: t + 3.6 });
+    add({ kind: 'clock', t0: t, t1: t + 3.0 });
+    clip([['block']], 4, 2.2);
+    add({ kind: 'legends', t0: t, t1: t + 2.8 });
+    clip([['fire']], 4.5, 1.8);
+    add({ kind: 'badges', t0: t, t1: t + 3.2 });
+    add({ kind: 'evolve', t0: t, t1: t + 2.6 });
+    for (let i = 0; i < 4; i++) clip(i === 1 ? [['three', 'dunk']] : [['dunk']], 1, 0.7, false, 'montage');
+    add({ kind: 'outro', t0: t, t1: t + 5.4 });
+    musicEnd = s[s.length - 1].t0 + 2.2;
+  }
   segments = s;
   total = t;
-  cue(segments.find((x) => x.kind === 'logo')!.t0 + 0.3, 'music_start');
-  cue(segments.find((x) => x.kind === 'outro')!.t0 + 2.2, 'music_end');
+  cue(musicStart, 'music_start');
+  cue(musicEnd, 'music_end');
   return { frames: Math.round(total * fps), fps };
 }
 
@@ -914,10 +1292,10 @@ export function getCues(): Cue[] {
 
 declare global {
   interface Window {
-    trailer?: { prepare: typeof prepare; renderFrame: typeof renderFrame; getCues: typeof getCues };
+    trailer?: { prepare: typeof prepare; renderFrame: typeof renderFrame; getCues: typeof getCues; cut: Cut; size: [number, number] };
   }
 }
-window.trailer = { prepare, renderFrame, getCues };
+window.trailer = { prepare, renderFrame, getCues, cut: CUT, size: [W, H] };
 
 // Real-time preview: /trailer.html?play
 if (new URLSearchParams(location.search).has('play')) {

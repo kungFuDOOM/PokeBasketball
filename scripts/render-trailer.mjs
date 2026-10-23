@@ -1,6 +1,6 @@
-// Renders the trailer to trailer-out/poke-jam-trailer.mp4.
+// Renders a trailer cut to trailer-out/<cut>/poke-jam-<cut>.mp4 (the launch trailer: trailer-out/poke-jam-trailer.mp4).
 // Needs Playwright (with a Chromium) and ffmpeg (libx264 + aac) on the machine, plus python3 with numpy
-// for the soundtrack. Usage: node scripts/render-trailer.mjs [--frames N] [--silent]
+// for the soundtrack. Usage: node scripts/render-trailer.mjs [--cut main|vertical|franchise|top5] [--frames N] [--silent]
 import { spawn, spawnSync } from 'node:child_process';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -12,7 +12,8 @@ const arg = (name) => {
   const i = process.argv.indexOf(name);
   return i < 0 ? null : process.argv[i + 1] ?? true;
 };
-const OUT = 'trailer-out';
+const cut = arg('--cut') || 'main';
+const OUT = cut === 'main' ? 'trailer-out' : `trailer-out/${cut}`;
 mkdirSync(OUT, { recursive: true });
 
 const server = await createServer({ server: { port: 5199, strictPort: true }, logLevel: 'error' });
@@ -20,8 +21,10 @@ await server.listen();
 const browser = await chromium.launch();
 const page = await browser.newPage({ viewport: { width: 1920, height: 1080 } });
 page.on('pageerror', (e) => console.error('page error:', e.message));
-await page.goto('http://localhost:5199/trailer.html');
+await page.goto(`http://localhost:5199/trailer.html?cut=${cut}`);
 await page.waitForFunction(() => !!window.trailer);
+const [w, h] = await page.evaluate(() => window.trailer.size);
+await page.setViewportSize({ width: w, height: h });
 console.log('Scanning seeded games for highlights…');
 const info = await page.evaluate(() => window.trailer.prepare());
 const frames = Math.min(info.frames, Number(arg('--frames')) || Infinity);
@@ -46,11 +49,11 @@ ff.stdin.end();
 await done;
 
 const cues = await page.evaluate(() => window.trailer.getCues());
-writeFileSync(`${OUT}/cues.json`, JSON.stringify({ duration: frames / info.fps, cues }, null, 1));
+writeFileSync(`${OUT}/cues.json`, JSON.stringify({ duration: frames / info.fps, style: cut, cues }, null, 1));
 await browser.close();
 await server.close();
 
-const final = `${OUT}/poke-jam-trailer.mp4`;
+const final = cut === 'main' ? `${OUT}/poke-jam-trailer.mp4` : `${OUT}/poke-jam-${cut}.mp4`;
 if (arg('--silent')) {
   console.log(`Video only: ${video}`);
 } else {
