@@ -1,7 +1,7 @@
 // Renders a preview MP3 of each background music track with the game's own synth, in headless Chrome
 // (OfflineAudioContext). Needs Playwright (or playwright-core plus CHROME=/path/to/chrome) and ffmpeg.
 // The preview is boosted (+8 dB) so it is easy to hear on a phone; in game the music sits under the effects.
-// Usage: node scripts/render-music.mjs [outDir] [seconds] [menu,draft,season]
+// Usage: node scripts/render-music.mjs [outDir] [seconds] [menu,draft,hype,route,jam,fastbreak]
 import { spawnSync } from 'node:child_process';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -16,10 +16,11 @@ mkdirSync(out, { recursive: true });
 
 const entry = `
 import { SONGS, loopNotes } from './src/music/songs';
+import { MENU_VARIANTS } from './src/music/menuSongs';
 import { playNote } from './src/music/synth';
 import { kitFor, stepDur, swingAt } from './src/music/music';
 window.renderSong = async (id, secs) => {
-  const s = SONGS[id];
+  const s = SONGS[id] ?? MENU_VARIANTS[id];
   const rate = 44100;
   const ctx = new OfflineAudioContext(1, Math.ceil(rate * (secs + 1)), rate);
   const bus = ctx.createGain();
@@ -46,7 +47,7 @@ const browser = await pw.chromium.launch({ executablePath: process.env.CHROME ||
 const page = await browser.newPage();
 await page.setContent('<html><body></body></html>');
 await page.addScriptTag({ content: js });
-const ids = process.argv[4] ? process.argv[4].split(',') : ['menu', 'draft', 'season'];
+const ids = process.argv[4] ? process.argv[4].split(',') : ['menu', 'draft'];
 for (const id of ids) {
   const pcm = await page.evaluate(([i, s]) => window.renderSong(i, s), [id, secs]);
   const n = pcm.length;

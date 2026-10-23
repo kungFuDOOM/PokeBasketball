@@ -9,6 +9,8 @@ export interface Kit {
   echo: AudioNode;
   /** Drum bus (its own level, so the beat sits under the melody). */
   drums: AudioNode;
+  /** Bass bus (its own level, kept moderate for phone speakers). */
+  bass: AudioNode;
   pulse25: PeriodicWave;
   pulse12: PeriodicWave;
   noise: AudioBuffer;
@@ -27,23 +29,39 @@ function pulse(ctx: BaseAudioContext, duty: number): PeriodicWave {
  * Builds the music bus: song gain -> soft low-pass (keeps the square waves mellow) -> `dest`,
  * plus an echo on the lead.
  */
-export function makeKit(ctx: BaseAudioContext, dest: AudioNode, echoTime: number, cutoff = 3400, opts: { lowCut?: number; drumLevel?: number } = {}): Kit {
+export function makeKit(ctx: BaseAudioContext, dest: AudioNode, echoTime: number, cutoff = 3400, opts: { lowCut?: number; drumLevel?: number; bassLevel?: number; crispDrums?: boolean } = {}): Kit {
   const out = ctx.createGain();
   const lp = ctx.createBiquadFilter();
   lp.type = 'lowpass';
   lp.frequency.value = cutoff;
   lp.Q.value = 0.5;
-  if (opts.lowCut) {
+  const drums = ctx.createGain();
+  drums.gain.value = opts.drumLevel ?? 1;
+  const bass = ctx.createGain();
+  bass.gain.value = opts.bassLevel ?? 1;
+  bass.connect(out);
+  const lowCut = (from: AudioNode) => {
+    if (!opts.lowCut) return from;
     // Roll off the sub lows phone speakers can't play (they only distort).
     const hp = ctx.createBiquadFilter();
     hp.type = 'highpass';
     hp.frequency.value = opts.lowCut;
     hp.Q.value = 0.7;
-    out.connect(hp).connect(lp).connect(dest);
-  } else out.connect(lp).connect(dest);
-  const drums = ctx.createGain();
-  drums.gain.value = opts.drumLevel ?? 1;
-  drums.connect(out);
+    return from.connect(hp);
+  };
+  lowCut(out).connect(lp).connect(dest);
+  if (opts.crispDrums) {
+    // Drums skip the mellow low-pass so the hats stay crisp (they're on their own, lower bus), but not the low cut.
+    const dlp = ctx.createBiquadFilter();
+    dlp.type = 'lowpass';
+    dlp.frequency.value = 9500;
+    // Lift the snare and hats rather than the kick: the groove reads on a phone without more low end.
+    const shelf = ctx.createBiquadFilter();
+    shelf.type = 'highshelf';
+    shelf.frequency.value = 1500;
+    shelf.gain.value = 8;
+    lowCut(drums).connect(shelf).connect(dlp).connect(dest);
+  } else drums.connect(out);
   const echo = ctx.createGain();
   echo.gain.value = 0.22;
   const delay = ctx.createDelay(2);
@@ -64,17 +82,19 @@ export function makeKit(ctx: BaseAudioContext, dest: AudioNode, echoTime: number
     s = (s * 1103515245 + 12345) & 0x7fffffff;
     d[i] = (s / 0x7fffffff) * 2 - 1;
   }
-  return { ctx, out, echo, drums, pulse25: pulse(ctx, 0.25), pulse12: pulse(ctx, 0.125), noise };
+  return { ctx, out, echo, drums, bass, pulse25: pulse(ctx, 0.25), pulse12: pulse(ctx, 0.125), noise };
 }
 
-const DRUMS = new Set<NoteEv['voice']>(['kick', 'punch', 'snare', 'ghost', 'hat', 'ohat']);
+const DRUMS = new Set<NoteEv['voice']>(['kick', 'punch', 'snare', 'snap', 'ghost', 'hat', 'ohat']);
 
 /** Schedules one note at time `t`. */
 export function playNote(k: Kit, ev: NoteEv, t: number, stepDur: number) {
   const { ctx } = k;
   const dur = ev.len * stepDur;
   const g = ctx.createGain();
-  g.connect(DRUMS.has(ev.voice) ? k.drums : k.out);
+  // Silent until the envelope starts: a sub-sample start time could otherwise let one full-level sample through (a click).
+  g.gain.value = 0;
+  g.connect(DRUMS.has(ev.voice) ? k.drums : ev.voice === 'bass' || ev.voice === 'slap' ? k.bass : k.out);
   const env = g.gain;
   switch (ev.voice) {
     case 'lead': {
@@ -101,6 +121,74 @@ export function playNote(k: Kit, ev: NoteEv, t: number, stepDur: number) {
       g.connect(k.echo);
       o.start(t);
       o.stop(t + dur + 0.08);
+      break;
+    }
+    case 'wobble': {
+      // Wobbly G-funk lead: a filtered saw that scoops into the note and wavers the whole time.
+      const o = ctx.createOscillator();
+      o.type = 'sawtooth';
+      o.frequency.setValueAtTime(ev.freq * 0.977, t);
+      o.frequency.exponentialRampToValueAtTime(ev.freq, t + 0.06);
+      const lfo = ctx.createOscillator();
+      const depth = ctx.createGain();
+      lfo.frequency.value = 5.5;
+      depth.gain.value = ev.freq * 0.011;
+      lfo.connect(depth).connect(o.frequency);
+      const f = ctx.createBiquadFilter();
+      f.type = 'lowpass';
+      f.frequency.value = 1700;
+      f.Q.value = 2;
+      env.setValueAtTime(0.0001, t);
+      env.linearRampToValueAtTime(0.06, t + 0.02);
+      env.setValueAtTime(0.06, t + Math.max(0.03, dur - 0.06));
+      env.exponentialRampToValueAtTime(0.0001, t + dur + 0.08);
+      o.connect(f).connect(g);
+      g.connect(k.echo);
+      lfo.start(t); o.start(t);
+      lfo.stop(t + dur + 0.12); o.stop(t + dur + 0.12);
+      break;
+    }
+    case 'brass': {
+      // Arcade synth brass: two detuned saws with a filter that swells open on each note.
+      const f = ctx.createBiquadFilter();
+      f.type = 'lowpass';
+      f.Q.value = 1;
+      f.frequency.setValueAtTime(700, t);
+      f.frequency.linearRampToValueAtTime(2600, t + 0.05);
+      f.frequency.exponentialRampToValueAtTime(1400, t + 0.3);
+      for (const cents of [-8, 8]) {
+        const o = ctx.createOscillator();
+        o.type = 'sawtooth';
+        o.frequency.value = ev.freq;
+        o.detune.value = cents;
+        o.connect(f);
+        o.start(t);
+        o.stop(t + dur + 0.1);
+      }
+      env.setValueAtTime(0.0001, t);
+      env.linearRampToValueAtTime(0.035, t + 0.018);
+      env.setValueAtTime(0.035, t + Math.max(0.03, dur - 0.05));
+      env.exponentialRampToValueAtTime(0.0001, t + dur + 0.07);
+      f.connect(g);
+      break;
+    }
+    case 'ep': {
+      // Electric piano: a sine with a short FM "tine" at the start, ringing out.
+      const o = ctx.createOscillator();
+      o.type = 'sine';
+      o.frequency.value = ev.freq;
+      const m = ctx.createOscillator();
+      m.frequency.value = ev.freq;
+      const mg = ctx.createGain();
+      mg.gain.setValueAtTime(ev.freq * 1.4, t);
+      mg.gain.exponentialRampToValueAtTime(ev.freq * 0.05, t + 0.35);
+      m.connect(mg).connect(o.frequency);
+      env.setValueAtTime(0.0001, t);
+      env.linearRampToValueAtTime(0.022, t + 0.006);
+      env.exponentialRampToValueAtTime(0.0001, t + 1.1);
+      o.connect(g);
+      m.start(t); o.start(t);
+      m.stop(t + 1.15); o.stop(t + 1.15);
       break;
     }
     case 'arp': {
@@ -199,6 +287,21 @@ export function playNote(k: Kit, ev: NoteEv, t: number, stepDur: number) {
       noiseHit(k, g, t, ghost ? 0.05 : 0.12, ghost ? 0.015 : 0.05, 'bandpass', 1600);
       break;
     }
+    case 'snap': {
+      // Rounder, more present snare for the newer tracks: a soft body and a wider noise band, eased in.
+      const o = ctx.createOscillator();
+      o.type = 'triangle';
+      o.frequency.setValueAtTime(200, t);
+      o.frequency.exponentialRampToValueAtTime(140, t + 0.07);
+      env.setValueAtTime(0.0001, t);
+      env.linearRampToValueAtTime(0.035, t + 0.004);
+      env.exponentialRampToValueAtTime(0.0001, t + 0.09);
+      o.connect(g);
+      o.start(t);
+      o.stop(t + 0.11);
+      noiseHit(k, g, t, 0.14, 0.13, 'bandpass', 1900);
+      break;
+    }
     case 'ohat':
       noiseHit(k, g, t, 0.16, 0.025, 'highpass', 6500);
       break;
@@ -239,6 +342,7 @@ function noiseHit(k: Kit, out: AudioNode, t: number, dur: number, vol: number, t
   f.type = type;
   f.frequency.value = freq;
   const g = k.ctx.createGain();
+  g.gain.value = 0;
   // A 2 ms ramp in takes the edge off the transient.
   g.gain.setValueAtTime(0.0001, t);
   g.gain.linearRampToValueAtTime(vol, t + 0.002);
