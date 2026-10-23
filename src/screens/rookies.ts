@@ -37,7 +37,7 @@ export function rookieScreen(root: HTMLElement, f: Franchise, audio: Audio, act:
 
   const card = (u: string) => {
     const m = monOf(f, u);
-    const pot = potentialOf(m.dex);
+    const pot = potentialOf(m.dex, f.players[u].bonus);
     const grows = pot.dex !== m.dex;
     const mons = myMons();
     const fits = countAt(mons, m.pos) < targetPer(10);
@@ -56,7 +56,7 @@ export function rookieScreen(root: HTMLElement, f: Franchise, audio: Audio, act:
   const detail = () => {
     if (!selected) return '';
     const m = monOf(f, selected);
-    const pot = potentialOf(m.dex);
+    const pot = potentialOf(m.dex, f.players[selected].bonus);
     const end = monByDex(pot.dex);
     return `
       <button class="close" aria-label="Close">×</button>
@@ -94,7 +94,7 @@ export function rookieScreen(root: HTMLElement, f: Franchise, audio: Audio, act:
         ${posTrackHtml(myMons(), 10)}
         ${must ? `<ul class="fa-list">${sorted.map((u) => {
           const m = monOf(f, u);
-          const pot = potentialOf(m.dex);
+          const pot = potentialOf(m.dex, f.players[u].bonus);
           const p = f.players[u];
           return `<li class="${cutting === u ? 'picked' : ''}"><img src="${spriteUrl(m.dex)}" alt=""><span class="nm">${esc(m.name)}<small>${m.pos} · Lv ${p.level}${pot.dex !== m.dex ? ` · grows to ${pot.ovr}` : ''}${f.rookies!.picks.includes(u) ? ' · Rookie' : ''}</small></span><b class="t-${tier(m.ovr)}">${m.ovr}</b><button class="btn small ${cutting === u ? 'primary' : 'ghost'}" data-cut="${u}">${cutting === u ? 'Cut' : 'Select'}</button></li>`;
         }).join('')}</ul>` : ''}
@@ -150,7 +150,7 @@ export function rookieScreen(root: HTMLElement, f: Franchise, audio: Audio, act:
     const u = rookiePick(f, uid);
     if (!t || !u) return;
     const m = monOf(f, u);
-    log.push(`${t.human ? 'You' : t.name} ${note} ${m.name} (${m.pos}, grows to ${potentialOf(m.dex).ovr})`);
+    log.push(`${t.human ? 'You' : t.name} ${note} ${m.name} (${m.pos}, grows to ${potentialOf(m.dex, f.players[u].bonus).ovr})`);
     audio.blip(t.human);
     if (selected === u) selected = null;
     act.saved();

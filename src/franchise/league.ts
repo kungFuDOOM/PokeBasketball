@@ -126,6 +126,10 @@ export interface Franchise {
   history: { season: number; champion: string; mvp: string }[];
   /** Offseason rookie draft, between the final and the next season. */
   rookies?: RookieDraft;
+  /** Seeds the rookie classes, so the same save gets the same class. Missing in older saves; made on first use. */
+  seed?: number;
+  /** Recent rookie classes (dex numbers), newest last, so the same prospects don't come back year after year. */
+  classes?: { season: number; dexes: number[] }[];
 }
 
 /**
@@ -685,13 +689,14 @@ export function sign(f: Franchise, release: string, add: string) {
 }
 
 /** The best form a Pokémon can grow into in franchise mode, and the level it gets there. */
-export function potentialOf(dex: number): { dex: number; ovr: number; level: number } {
-  let best = { dex, ovr: monByDex(dex).ovr, level: 1 };
+export function potentialOf(dex: number, bonus: Partial<Ratings> = {}): { dex: number; ovr: number; level: number } {
+  const ovrOf = (d: number) => withBonus(d, bonus).ovr;
+  let best = { dex, ovr: ovrOf(dex), level: 1 };
   const walk = (d: number, seen: number) => {
     const evo = EVOLUTIONS[d];
     if (!evo || seen > 3) return;
     for (const to of evo.to) {
-      const o = monByDex(to).ovr;
+      const o = ovrOf(to);
       if (o > best.ovr) best = { dex: to, ovr: o, level: evo.level };
       walk(to, seen + 1);
     }
@@ -700,15 +705,120 @@ export function potentialOf(dex: number): { dex: number; ovr: number; level: num
   return best;
 }
 
-/** Sets up the rookie draft once the final is over. Prospects are level-1 free agents that can still evolve. */
+/** Prospects per class. */
+const CLASS_SIZE = 24;
+/** How many past classes a prospect sits out. */
+const CLASS_MEMORY = 3;
+/** No rookie's fully grown form rates above this (the best class ceiling the draft has always had). */
+const POTENTIAL_CAP = 91;
+/** Prospects must be able to grow to at least this (the weakest class ceiling the draft has always had). */
+const MIN_POTENTIAL = 62;
+const inRange = (pot: number) => pot >= MIN_POTENTIAL && pot <= POTENTIAL_CAP;
+
+function mulberry32(seed: number) {
+  let a = seed | 0;
+  return () => {
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+const hashOf = (text: string) => {
+  let h = 2166136261;
+  for (let i = 0; i < text.length; i++) h = Math.imul(h ^ text.charCodeAt(i), 16777619);
+  return h >>> 0;
+};
+
+/** The save's draft seed. Older saves get one from their team names and starting rosters, then keep it. */
+function draftSeed(f: Franchise): number {
+  f.seed ??= hashOf(f.teams.map((t) => `${t.name}:${t.roster.join(',')}`).join('|') + Object.keys(f.players).length);
+  return f.seed;
+}
+
+/** Pokémon with no earlier form: the only ones that show up as rookies. */
+const BASICS = (() => {
+  const later = new Set(Object.values(EVOLUTIONS).flatMap((e) => e.to));
+  return (dex: number) => !later.has(dex);
+})();
+
+/**
+ * Picks `n` of `cands` at random with soft quotas: each pick makes its type and position less likely
+ * next time, empty positions are favored, and better prospects are somewhat more likely.
+ */
+function pickClass(cands: number[], n: number, rng: () => number, bonusOf: (dex: number) => Partial<Ratings>): number[] {
+  const left = [...cands];
+  const out: number[] = [];
+  const typeCount: Record<string, number> = {};
+  const posCount: Record<string, number> = {};
+  const cap = Math.ceil(n / 4);
+  while (out.length < n && left.length) {
+    const weights = left.map((d) => {
+      const m = monByDex(d);
+      const pos = posCount[m.pos] ?? 0;
+      let w = Math.exp((potentialOf(d, bonusOf(d)).ovr - 76) / 12);
+      for (const t of m.types) w *= Math.pow(0.45, typeCount[t] ?? 0);
+      w *= pos === 0 ? 3 : pos >= cap ? 0.15 : Math.pow(0.7, pos);
+      return w;
+    });
+    let x = rng() * weights.reduce((a, b) => a + b, 0);
+    let i = 0;
+    while (i < left.length - 1 && (x -= weights[i]) > 0) i++;
+    const m = monByDex(left[i]);
+    for (const t of m.types) typeCount[t] = (typeCount[t] ?? 0) + 1;
+    posCount[m.pos] = (posCount[m.pos] ?? 0) + 1;
+    out.push(left.splice(i, 1)[0]);
+  }
+  return out;
+}
+
+/**
+ * A prospect's talent roll, added to every rating: mostly small (bell-shaped), now and then a gem (+5) or a bust
+ * (-5). Never lifts the grown-up form past POTENTIAL_CAP.
+ */
+function talentRoll(dex: number, rng: () => number): Partial<Ratings> {
+  const r = rng();
+  const bell = (rng() + rng() + rng() + rng() - 2) * 3.5;
+  let delta = r < 0.06 ? 5 : r < 0.12 ? -5 : Math.round(bell);
+  const bonusOf = (d: number) => Object.fromEntries((Object.keys(RATING_LABELS) as (keyof Ratings)[]).map((k) => [k, d])) as Partial<Ratings>;
+  while (delta > 0 && potentialOf(dex, bonusOf(delta)).ovr > Math.max(POTENTIAL_CAP, potentialOf(dex).ovr)) delta--;
+  return delta ? bonusOf(delta) : {};
+}
+
+/**
+ * Sets up the rookie draft once the final is over. Prospects are level-1 free agents with no earlier form
+ * (they can still evolve), drawn at random from the whole pool with the save's seed and the season: no repeats
+ * of recent classes, a mix of types and positions, and a talent roll each. Short pools fall back to older
+ * classes, then to anyone available.
+ */
 export function startRookieDraft(f: Franchise) {
   if (f.phase !== 'done' || f.rookies) return;
-  const seen = new Set<number>();
-  const rookies = f.freeAgents
-    .filter((u) => f.players[u].level === 1 && EVOLUTIONS[f.players[u].dex])
-    .sort((a, b) => potentialOf(f.players[b].dex).ovr - potentialOf(f.players[a].dex).ovr)
-    .filter((u) => !seen.has(f.players[u].dex) && seen.add(f.players[u].dex));
-  const pool = rookies.slice(0, 24);
+  const rng = mulberry32(draftSeed(f) ^ Math.imul(f.season, 0x9e3779b1));
+  const classes = f.classes ?? [];
+  const fresh = f.freeAgents.filter((u) => f.players[u].level === 1 && BASICS(f.players[u].dex) && inRange(potentialOf(f.players[u].dex).ovr)).sort((a, b) => f.players[a].dex - f.players[b].dex);
+  const byDex = new Map<number, string>();
+  for (const u of fresh) if (!byDex.has(f.players[u].dex)) byDex.set(f.players[u].dex, u);
+  // Skip the last few classes; if that leaves too few, bring back the oldest ones first.
+  let recent = classes.slice(-CLASS_MEMORY);
+  const dexes = () => [...byDex.keys()].filter((d) => !recent.some((c) => c.dexes.includes(d)));
+  while (dexes().length < CLASS_SIZE && recent.length) recent = recent.slice(1);
+  let cands = dexes();
+  if (cands.length < CLASS_SIZE) {
+    // Still short: any free agent will do, but never a duplicate Pokémon.
+    for (const u of f.freeAgents.filter((x) => !byDex.has(f.players[x].dex)).sort((a, b) => f.players[a].dex - f.players[b].dex)) {
+      if (!byDex.has(f.players[u].dex)) byDex.set(f.players[u].dex, u);
+    }
+    cands = [...byDex.keys()].filter((d) => !recent.some((c) => c.dexes.includes(d)));
+    if (cands.length < CLASS_SIZE) cands = [...byDex.keys()];
+  }
+  // Talent first, so the quota weights see each prospect as he really is.
+  const bonuses = new Map(cands.map((d) => [d, talentRoll(d, rng)] as const));
+  const chosen = pickClass(cands, CLASS_SIZE, rng, (d) => bonuses.get(d) ?? {});
+  const pool = chosen.map((d) => byDex.get(d)!);
+  for (const u of pool) f.players[u].bonus = { ...bonuses.get(f.players[u].dex) };
+  pool.sort((a, b) => potentialOf(f.players[b].dex, f.players[b].bonus).ovr - potentialOf(f.players[a].dex, f.players[a].bonus).ovr);
+  f.classes = [...classes.filter((c) => c.season !== f.season), { season: f.season, dexes: pool.map((u) => f.players[u].dex) }].slice(-6);
   const order = standings(f).reverse().map((t) => t.id);
   if (f.champion !== undefined) order.push(...order.splice(order.indexOf(f.champion), 1));
   f.rookies = { order, picks: [], pool };
@@ -723,7 +833,7 @@ export const rookieLeft = (f: Franchise) => (f.rookies ? f.rookies.pool.filter((
 /** Rookie value for a team: grown-up rating, how soon it gets there, its type, and an open position. */
 function rookieScore(f: Franchise, uid: string, t: FTeam): number {
   const m = monOf(f, uid);
-  const pot = potentialOf(m.dex);
+  const pot = potentialOf(m.dex, f.players[uid].bonus);
   const have = t.roster.filter((u) => monOf(f, u).pos === m.pos).length;
   return pot.ovr * 1.2 + m.ovr * 0.3 - pot.level * 1.5 + (have === 0 ? 6 : have === 1 ? 2 : 0)
     + (t.types?.length && m.types.some((ty) => t.types!.includes(ty))
