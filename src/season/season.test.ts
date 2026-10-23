@@ -26,9 +26,10 @@ function input(seed: number): SimInput {
 }
 
 describe('simulateSeason', () => {
-  it('is pure ratings: the seed changes nothing, so there are no random upsets', () => {
+  it('is ratings-driven with a little luck: the same seed replays the same season, other seeds can differ', () => {
     expect(simulateSeason(input(7))).toEqual(simulateSeason(input(7)));
-    expect({ ...simulateSeason(input(7)), seed: 0 }).toEqual({ ...simulateSeason(input(8)), seed: 0 });
+    const strip = (s: number) => JSON.stringify({ ...simulateSeason(input(s)), seed: 0 });
+    expect([8, 9, 10, 11].some((s) => strip(s) !== strip(7))).toBe(true);
   });
 
   it('plays 10-player teams and keeps the books straight', () => {

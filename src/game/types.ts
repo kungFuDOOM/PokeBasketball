@@ -78,7 +78,9 @@ export interface GameConfig {
   autoSwitch?: boolean;
   /** Franchise rule: hard knockdowns and big landings can injure, more often when tired. */
   injuries?: boolean;
-  /** Ignored: gameplay has no random stream. Kept for compatibility. */
+  /** The luck source for every roll in the game (default: a stream from `seed`, or Math.random when neither is given). */
+  rng?: () => number;
+  /** Seeds the game's random stream; the same seed and inputs replay the same game. */
   seed?: number;
 }
 
@@ -204,6 +206,8 @@ export interface PassInfo {
   speed: number;
   z0: number;
   dist0: number;
+  /** Each defender's own reach jitter for this pass, drawn the first time the ball gets near them. */
+  jit?: Map<number, number>;
 }
 
 export interface Ball {
@@ -243,3 +247,18 @@ export type GameEvent =
 export const clamp = (v: number, a: number, b: number) => (v < a ? a : v > b ? b : v);
 export const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 export const dist = (ax: number, ay: number, bx: number, by: number) => Math.hypot(ax - bx, ay - by);
+
+/** A small seedable stream (mulberry32): the same seed always gives the same sequence in [0, 1). */
+export function seededRng(seed: number): () => number {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/** The production stream: the platform's Math.random. Gameplay only ever calls the stream a Game was given. */
+export const platformRng = (): number => Math.random();

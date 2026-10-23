@@ -2,7 +2,7 @@ import { POSITIONS, bestEffectiveness, effectiveness, type Mon, type Pos } from 
 import { think } from './ai';
 import {
   BALL_R, COURT_L, COURT_W, DIFFICULTIES, GRAVITY, HOOP_Y, RIM_R, RIM_Z,
-  backDir, clamp, dist, emptyIntent, hoopX, isThree, lerp,
+  backDir, clamp, dist, emptyIntent, hoopX, isThree, lerp, platformRng, seededRng,
   type Ball, type GameConfig, type GameEvent, type Grade, type Intent, type Player, type TeamDef, type TeamId,
 } from './types';
 
@@ -10,13 +10,15 @@ import {
 export const IDEAL_RELEASE = 0.8;
 /** Seconds for the shot meter to fill from empty to full. */
 const METER_TIME = 0.62;
-/** Layups and dunks go in when the shooter's finish() reaches this. */
+/** A layup's finish() at this level goes in about half the time; each 0.1 above it is worth 25 points. */
 const FINISH = 0.6;
 /** How close (feet) a swipe has to get to the ball itself to strip it. */
-const STEAL_REACH = 3.6;
-/** A defender's one try at a block (see updateDunk and updateShot) succeeds at this edge or better. */
+const STEAL_REACH = 4.0;
+/** A defender's one try at a block (see updateDunk and updateShot) succeeds at this edge or better, give or take the jitter. */
 const DUNK_BLOCK_EDGE = 0.53;
 const SHOT_BLOCK_EDGE = 0.465;
+/** How much luck leans on the thresholds: blocks, steals, shoves, pass picks and rebounds (fraction either way). */
+const JITTER = 0.13;
 
 export type Phase = 'tip' | 'live' | 'dead' | 'break' | 'final';
 
@@ -162,12 +164,15 @@ export class Game {
   paused = false;
   /** Who won the latest jump ball; the other team starts the following quarter. */
   private tipWinner: TeamId = 0;
+  /** Every roll in the game comes from here (injected for tests, seeded by cfg.seed, else the platform stream). */
+  readonly rng: () => number;
   private dribblePh = 0;
   /** Possessions so far; feeds the CPU's state-driven variety. */
   possCount = 0;
 
   constructor(cfg: GameConfig) {
     this.cfg = cfg;
+    this.rng = cfg.rng ?? (cfg.seed !== undefined ? seededRng(cfg.seed) : platformRng);
     this.teams = [cfg.home, cfg.away];
     this.diff = DIFFICULTIES[cfg.difficulty];
     let id = 0;
@@ -271,9 +276,21 @@ export class Game {
     });
   }
 
+  /** Symmetric luck in [-w, w]. */
+  jr(w: number): number {
+    return (this.rng() * 2 - 1) * w;
+  }
+  /** A threshold nudged by up to +-JITTER (or `w`) of itself: the small random part of a block, steal or rebound. */
+  private fuzz(x: number, w = JITTER): number {
+    return x * (1 + this.jr(w));
+  }
+  /** A bell-ish draw, about -1.5..1.5 (sum of three uniforms). */
+  private bell(): number {
+    return this.rng() + this.rng() + this.rng() - 1.5;
+  }
   /**
-   * CPU variety in [0, 1) as a pure function of the situation: who, which possession, the score, how many
-   * decisions they've made and their ratings. No random stream; the same situation always answers the same.
+   * CPU variety in [0, 1): the situation (who, which possession, the score, how many decisions they've made,
+   * their ratings) blended with the game's random stream, so the CPU is steered by the game but not predictable.
    */
   mix(p: Player, salt: number): number {
     let h = Math.imul(p.id + 1, 0x9e3779b1);
@@ -285,19 +302,11 @@ export class Game {
     h ^= h >>> 15; h = Math.imul(h, 0x2c1b3c6d);
     h ^= h >>> 12; h = Math.imul(h, 0x297a2d39);
     h ^= h >>> 15;
-    return (h >>> 0) / 4294967296;
+    return 0.55 * ((h >>> 0) / 4294967296) + 0.45 * this.rng();
   }
   /** Maps mix() onto [a, b). */
   vary(p: Player, salt: number, a: number, b: number): number {
     return a + this.mix(p, salt) * (b - a);
-  }
-  /**
-   * A CPU shooter's release error, as a pure function of who is shooting and how many shots they've taken
-   * (about -1.7..1.7, same spread idea as a bell curve). Same game state, same release.
-   */
-  private releaseWobble(p: Player): number {
-    const s = Math.sin(p.id * 12.9898 + p.stats.fga * 78.233) * 43758.5453;
-    return (s - Math.floor(s) - 0.5) * 3.4;
   }
   greenWindow(p: Player): number {
     const userMult = p.human ? this.diff.green * (1 + 0.3 * this.catchup()) : 1;
@@ -381,8 +390,7 @@ export class Game {
     const human = [this.isHumanTeam(0), this.isHumanTeam(1)];
     // CPU timing: a noisy guess around the peak, sharper on higher difficulties.
     const sd = (t: TeamId) => (this.teams[0].human && !human[t] ? 0.2 - this.diff.cpuBoost * 0.012 : 0.2);
-    // The home center reads the toss a touch early, the away center a touch late: fixed, no roll.
-    const guess = (t: TeamId) => 1 + (t === 0 ? -0.35 : 0.35) * sd(t) * 1.4;
+    const guess = (t: TeamId) => 1 + this.bell() * sd(t) * 1.4;
     this.tipoff = { t: -JUMP_PRE, jumpers: [a, b], at: [null, null], plan: [guess(0), guess(1)], window: 0.08 * this.diff.green, to: null, fly: 0 };
     const ball = this.ball;
     ball.owner = null;
@@ -456,11 +464,10 @@ export class Game {
     const quality = (t: TeamId) => Math.max(0, 1 - Math.abs(j.at[t]! - 1) / 0.45);
     const ability = (p: Player) => (p.r.blk * 0.5 + p.r.reb * 0.3 + p.r.spd * 0.2) / 100 + (p.size - 1) * 0.4;
     const score = (t: TeamId) => quality(t) * 0.65 + ability(j.jumpers[t]) * 0.35;
-    // No roll: the better jump wins. A dead heat alternates, home on the 1st jump ball, away on the 2nd, and so on.
-    const nth = this.quarter <= 3 ? (this.quarter - 1) / 2 : this.quarter - 3;
+    // The better jump wins; only an exact dead heat is a coin flip.
     const s0 = score(0);
     const s1 = score(1);
-    const win: TeamId = s0 > s1 ? 0 : s1 > s0 ? 1 : ((nth % 2) as TeamId);
+    const win: TeamId = s0 > s1 ? 0 : s1 > s0 ? 1 : this.rng() < 0.5 ? 0 : 1;
     const w = j.jumpers[win];
     const mates = this.teamPlayers(win).filter((p) => p !== w);
     j.to = mates.find((p) => p.slot === 0) ?? mates[0];
@@ -840,7 +847,7 @@ export class Game {
     if (!p.human) {
       const vsUser = p.team === 1 && this.teams[0].human;
       const sigma = Math.max(0.05, 0.09 + (100 - p.r.sht) * 0.0018 - (vsUser ? this.diff.cpuShot - 0.06 * this.catchup() : 0));
-      p.releaseAt = clamp(IDEAL_RELEASE + this.releaseWobble(p) * sigma, 0.3, 1.2);
+      p.releaseAt = clamp(IDEAL_RELEASE + this.bell() * 1.15 * sigma, 0.3, 1.2);
     }
   }
 
@@ -865,17 +872,30 @@ export class Game {
   }
 
   /**
-   * How far from the ideal release a jump shot can be and still drop, in green windows. There's no roll: a
-   * release inside this window always goes in and one outside it always misses. Wide open from mid-range
-   * that's anything up to the edge of a Good release; the window narrows with distance, a defender in your
-   * face and tired legs, and widens on fire. Deep heaves need a dead-center release.
+   * Chance a jump shot drops, from the release (`r`: its distance from ideal in green windows), the spot, the
+   * defender and legs. Timing dominates: dead center is as good as it gets, Good is still likely, Early or Late is a
+   * long shot and Very early or late almost never goes. A defender in your face cuts it hard; distance and tired
+   * legs shave it; on fire adds a bit.
    */
-  makeWindow(p: Player, d: number, three: boolean, contest: number): number {
+  shotOdds(p: Player, r: number, d: number, three: boolean, contest: number): number {
     const open = (contest - 0.35) / 0.65;
-    const range = d < 8 ? 1.1 : !three ? 1 - (d - 8) * 0.015 : Math.max(0.2, 1.0 - Math.max(0, d - 24) * 0.06);
-    let reach = (0.95 + 1.8 * open) * range * (0.7 + 0.3 * this.effort(p));
-    if (p.fire) reach *= 1.25;
-    return reach;
+    const timing = r <= 1 ? 1 : r <= 2.3 ? lerp(1, 0.72, (r - 1) / 1.3) : r <= 4.5 ? lerp(0.72, 0.1, (r - 2.3) / 2.2) : lerp(0.1, 0.01, Math.min(1, (r - 4.5) / 1.5));
+    const touch = 0.76 + p.r.sht * 0.0015;
+    const spot = d < 8 ? 1.04 : !three ? 1 - (d - 8) * 0.008 : Math.max(0.4, 0.8 - Math.max(0, d - 24) * 0.04);
+    const defended = 0.1 + 0.9 * Math.pow(open, 0.7);
+    const legs = 0.8 + 0.2 * this.effort(p);
+    return clamp(timing * touch * spot * defended * legs * (p.fire ? 1.2 : 1), 0, 0.97);
+  }
+
+  /** A perfect release on an open or lightly contested look always drops; every other jumper is a roll at shotOdds. */
+  private rollJumper(p: Player, r: number, d: number, three: boolean, contest: number): boolean {
+    if (r <= 1 && (contest - 0.35) / 0.65 >= 0.4) return true;
+    return this.rng() < this.shotOdds(p, r, d, three, contest);
+  }
+
+  /** Layups and dunks: make chance from the finishing score, half at FINISH and 25 points per 0.1 either way. */
+  private finishOdds(f: number): number {
+    return clamp(0.5 + (f - FINISH - 0.08) * 2.5, 0.03, 0.92);
   }
 
   private releaseShot(p: Player) {
@@ -893,7 +913,8 @@ export class Game {
 
     const d = this.distToHoop(p);
     const three = isThree(p.x, p.y, p.team);
-    const make = a <= w * this.makeWindow(p, d, three, this.contest(p));
+    const contest = this.contest(p);
+    const make = this.rollJumper(p, a / w, d, three, contest);
     // Way off the meter comes up short of the rim.
     const airball = !make && a > w * 6;
     this.events.push({ kind: 'release', player: p, grade });
@@ -908,8 +929,8 @@ export class Game {
   }
 
   private releaseLayup(p: Player) {
-    // No roll: an open layup drops, a defender close enough (better still, in the air) takes it away.
-    const make = p.fx.lockin || this.finish(p, 0.55, 0.55) + (p.fire ? 0.2 : 0) >= FINISH;
+    // Decided by the finishing score: open layups mostly drop, a defender close enough (better still, in the air) takes it away.
+    const make = p.fx.lockin || this.rng() < this.finishOdds(this.finish(p, 0.55, 0.55) + (p.fire ? 0.2 : 0));
     p.fx.lockin = false;
     this.launchShot(p, make, false, 2, 'layup', 1);
     p.state = 'free';
@@ -963,8 +984,8 @@ export class Game {
     const hx = hoopX(p.team);
     const d = this.distToHoop(p);
     const ang = Math.atan2(p.y - HOOP_Y, p.x - hx);
-    // No roll: decided at takeoff from the dunker's Inside rating and how open the lane is. On fire or locked in, it's down.
-    const make = p.fire || p.fx.lockin || this.finish(p, 0.55, 1.15) >= FINISH;
+    // Decided at takeoff from the dunker's Inside rating and how open the lane is. On fire or locked in, it's down.
+    const make = p.fire || p.fx.lockin || this.rng() < this.finishOdds(this.finish(p, 0.55, 1.15));
     p.fx.lockin = false;
     p.dunk = {
       x0: p.x, y0: p.y, z0: p.z,
@@ -999,10 +1020,10 @@ export class Game {
         const over = q.z + q.heightFt + 1.6 - (p.z + p.heightFt);
         if (over < 0) continue;
         dk.tested.add(q.id);
-        // No roll: each defender who gets up to the dunker has one try, judged on blocking, size, how far above
+        // Each defender who gets up to the dunker has one try, judged on blocking, size, how far above
         // the dunker they already are (jumping early enough) and how close (position), against Inside and size.
         const edge = 0.25 + q.r.blk * 0.004 - p.r.ins * 0.0025 + (q.size - p.size) * 0.3 + 0.05 * Math.min(over, 3) + 0.05 * (3.6 - d);
-        if (edge >= DUNK_BLOCK_EDGE) {
+        if (edge >= this.fuzz(DUNK_BLOCK_EDGE)) {
           p.dunk = null;
           p.state = 'free';
           p.vz = 0;
@@ -1034,11 +1055,11 @@ export class Game {
         b.owner = null;
         b.mode = 'loose';
         b.x = dk.x1; b.y = dk.y1; b.z = RIM_Z + 0.4;
-        // No roll: the rim kicks it back out along the approach, swung by how far out the dunker took off.
+        // The rim kicks it back out along the approach, swung by how far out the dunker took off.
         const a0 = Math.atan2(dk.y0 - HOOP_Y, dk.x0 - hoopX(p.team));
         const ph = this.distToHoop(p) * 0.9 + a0 * 2.1 + dk.T * 3;
-        const a = a0 + Math.sin(ph);
-        const sp = 8.5 + 2.5 * Math.sin(ph * 1.7 + 1);
+        const a = a0 + Math.sin(ph) + this.jr(0.3);
+        const sp = (8.5 + 2.5 * Math.sin(ph * 1.7 + 1)) * (1 + this.jr(0.15));
         b.vx = Math.cos(a) * sp;
         b.vy = Math.sin(a) * sp;
         b.vz = 10.5 + 2.5 * Math.sin(ph * 2.3 + 2);
@@ -1052,13 +1073,13 @@ export class Game {
 
   private recordBlock(blocker: Player, victim: Player) {
     const b = this.ball;
-    // No roll: swatted away from the blocker, carried by their own motion, harder for a better shot blocker
+    // Swatted away from the blocker, carried by their own motion, harder for a better shot blocker
     // and higher the higher the ball was caught.
     let dx = b.x - blocker.x + blocker.vx * 0.06;
     let dy = b.y - blocker.y + blocker.vy * 0.06;
     if (Math.hypot(dx, dy) < 0.001) { dx = blocker.facing; dy = 0; }
-    const a = Math.atan2(dy, dx);
-    const sp = 10 + 8 * (blocker.r.blk / 100);
+    const a = Math.atan2(dy, dx) + this.jr(0.3);
+    const sp = (10 + 8 * (blocker.r.blk / 100)) * (1 + this.jr(0.15));
     b.owner = null;
     b.shot = null;
     b.mode = 'loose';
@@ -1139,14 +1160,14 @@ export class Game {
       if (!target) return;
       if (!(p.fx.surge > 0 || p.fire)) p.turbo = Math.max(0, p.turbo - 0.35);
       const mult = bestEffectiveness(p.mon.types, target.mon.types);
-      // No roll: the shove lands if the target is within reach. Size, Defense against Handling and the type
+      // The shove lands if the target is within reach. Size, Defense against Handling and the type
       // matchup set the reach: super effective connects from farther, not very effective has to be up close,
       // immune never lands.
       let power = 0.55 + (p.size - target.size) * 0.8 + (p.r.def - target.r.hnd) / 250;
       power *= mult === 0 ? 0 : mult >= 2 ? 1.5 : mult < 1 ? 0.6 : 1;
       if (target.fx.phase > 0) power = 0;
       const l = dist(p.x, p.y, target.x, target.y) || 1;
-      const ok = power > 0 && l <= 4.8 * Math.min(1, power);
+      const ok = power > 0 && l <= this.fuzz(4.8 * Math.min(1, power));
       p.vx += ((target.x - p.x) / l) * 8;
       p.vy += ((target.y - p.y) / l) * 8;
       if (ok) this.knock(target, p, 1.1);
@@ -1157,13 +1178,13 @@ export class Game {
 
     if (!owner || owner.team === p.team || owner.state === 'dunk') return;
     if (dist(p.x, p.y, owner.x, owner.y) > 4.6) return;
-    // No roll: the swipe has to reach the ball while it's low on the dribble, out of the handler's hands. Defense
+    // The swipe has to reach the ball while it's low on the dribble, out of the handler's hands. Defense
     // against Handling sets how much of each bounce is open; a ball up for a shot is out of reach.
     const b = this.ball;
     const dribbling = owner.state === 'free' || owner.state === 'swipe';
     const low = (b.z - owner.z - BALL_R) / (2.2 * owner.size);
-    const open = clamp(0.45 + (p.r.def - owner.r.hnd) / 200, 0.15, 0.65);
-    if (dribbling && owner.fx.phase <= 0 && low <= open && dist(p.x, p.y, b.x, b.y) <= STEAL_REACH) {
+    const open = clamp(0.5 + (p.r.def - owner.r.hnd) / 200, 0.15, 0.7);
+    if (dribbling && owner.fx.phase <= 0 && low <= this.fuzz(open) && dist(p.x, p.y, b.x, b.y) <= STEAL_REACH) {
       owner.state = 'free';
       owner.meter = 0;
       this.giveBall(p);
@@ -1175,13 +1196,14 @@ export class Game {
   }
 
   /**
-   * Injuries are a fatigue threshold, not a roll: a hard knock (or a landing) hurts only a player who is nearly
-   * gassed. The more spent, the longer they're out. `base` scales how hard the contact is (landings are lighter).
+   * Injuries are a fatigue threshold plus a small chance: a hard knock (or a landing) hurts a player who is nearly
+   * gassed, and now and then a half-tired one. The more spent, the longer they're out. `base` scales how hard the contact is (landings are lighter).
    */
   private maybeInjure(p: Player, base: number) {
     if (!this.cfg.injuries || p.hurt) return;
     const spent = (1 - p.energy) * (base / 0.012);
-    if (spent < 0.8) return;
+    // A tired player is hurt past the threshold; a fresher one has a small chance of a minor knock.
+    if (spent < 0.8 && !(spent > 0.5 && this.rng() < 0.03)) return;
     p.hurt = spent >= 0.95 ? 3 : spent >= 0.88 ? 2 : 1;
     p.energy = Math.min(p.energy, 0.15);
     this.events.push({ kind: 'injury', player: p, weeks: p.hurt });
@@ -1205,8 +1227,14 @@ export class Game {
       b.owner = null;
       b.mode = 'loose';
       // Thrown off the hit and carried by the hitter's own motion.
-      b.vx = nx * 8 + clamp(by.vx * 0.2, -3, 3);
-      b.vy = ny * 8 + clamp(by.vy * 0.2, -3, 3);
+      const pa = this.jr(0.3);
+      const ps = 1 + this.jr(0.15);
+      const ca = Math.cos(pa);
+      const sa = Math.sin(pa);
+      const px = nx * 8 + clamp(by.vx * 0.2, -3, 3);
+      const py = ny * 8 + clamp(by.vy * 0.2, -3, 3);
+      b.vx = (px * ca - py * sa) * ps;
+      b.vy = (px * sa + py * ca) * ps;
       b.vz = 7;
       b.noPickup = 0.25;
       b.fromShot = -1;
@@ -1462,10 +1490,14 @@ export class Game {
       const d = dist(q.x, q.y, b.x, b.y);
       if (d > 2) continue;
       if (b.z > q.z + q.heightFt + 1.6) continue;
-      // No roll: picked off if the pass comes within the defender's reach. Defense against the passer's Passing
+      // Picked off if the pass comes within the defender's reach. Defense against the passer's Passing
       // sets it, a human pressing Steal as it arrives stretches it, and a lob sails over a defender on the floor.
       let reach = clamp(0.2 + (q.r.def - ps.from.r.pas) / 80 + (q.human && q.intent.steal ? 0.8 : 0), 0.15, 2);
       if (ps.oop && q.z < 1) reach *= 0.2;
+      ps.jit ??= new Map();
+      let jit = ps.jit.get(q.id);
+      if (jit === undefined) { jit = 1 + this.jr(JITTER); ps.jit.set(q.id, jit); }
+      reach *= jit;
       if (d <= reach) {
         this.giveBall(q);
         q.stats.stl++;
@@ -1517,7 +1549,7 @@ export class Game {
         s.tested.add(q.id);
         // Same rule as a dunk: one try, judged on blocking, height over the ball and closeness against the shooter's touch.
         const edge = 0.15 + q.r.blk * 0.004 - s.shooter.r.sht * 0.002 - (s.kind === 'layup' ? 0 : 0.05) + 0.05 * Math.min(over, 3) + 0.05 * (3.2 - d);
-        if (edge >= SHOT_BLOCK_EDGE) {
+        if (edge >= this.fuzz(SHOT_BLOCK_EDGE)) {
           this.recordBlock(q, s.shooter);
           return;
         }
@@ -1541,14 +1573,14 @@ export class Game {
     } else {
       b.mode = 'loose';
       const hx = hoopX(s.shooter.team);
-      // No roll: the carom is set by the release. Early shots clank the front rim and come back toward the shooter,
+      // The carom is set by the release (plus a little jitter). Early shots clank the front rim and come back toward the shooter,
       // late ones kick off the back iron; the swing and pace follow the timing error, distance and angle.
       const a0 = Math.atan2(s.y0 - HOOP_Y, s.x0 - hx);
       const d = dist(s.x0, s.y0, hx, HOOP_Y);
       const e = clamp(s.off, -6, 6);
       const ph = e * 1.3 + d * 0.37 + a0 * 2.3;
-      const a = a0 + 1.7 * Math.sin(ph);
-      const sp = 7.2 + 3 * Math.sin(ph * 1.9 + 1) + (e > 0 ? 0.25 * e : 0.1 * e);
+      const a = a0 + 1.7 * Math.sin(ph) + this.jr(0.3);
+      const sp = (7.2 + 3 * Math.sin(ph * 1.9 + 1) + (e > 0 ? 0.25 * e : 0.1 * e)) * (1 + this.jr(0.15));
       const hard = s.kind === 'layup' ? 0.8 : 1; // a layup rolls off the glass softer
       b.vx = Math.cos(a) * sp * hard;
       b.vy = Math.sin(a) * sp * hard;
@@ -1595,8 +1627,8 @@ export class Game {
       if (p.state === 'stun' || p.state === 'dunk' || p.state === 'hang') continue;
       if (dist(p.x, p.y, b.x, b.y) > 1.4 + p.size * 0.6) continue;
       if (b.z > p.z + p.heightFt + 1.6) continue;
-      // No roll: Rebounding, position (closer to the ball is better) and being up in the air.
-      const s = p.r.reb + 35 * (1 - dist(p.x, p.y, b.x, b.y) / (1.4 + p.size * 0.6)) + (p.z > 0.5 ? 10 : 0);
+      // Rebounding, position (closer to the ball is better) and being up in the air.
+      const s = p.r.reb + 35 * (1 - dist(p.x, p.y, b.x, b.y) / (1.4 + p.size * 0.6)) + (p.z > 0.5 ? 10 : 0) + this.jr(12);
       if (s > bs) { bs = s; best = p; }
     }
     if (!best) return;

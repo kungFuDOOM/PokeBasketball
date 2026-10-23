@@ -1,6 +1,7 @@
-// Season Draft: a fast, stat-based season sim. Pure and deterministic for a given seed; no DOM, no engine games.
+// Season Draft: a fast, stat-based season sim. Deterministic for a given seed (all luck comes from one rng); no DOM, no engine games.
 import { POSITIONS, type Mon } from '../data/pokemon';
 import { bestLineup, chemistry } from '../game/game';
+import { seededRng } from '../game/types';
 import { teamGrade } from './grade';
 
 export interface SimTeamIn {
@@ -15,6 +16,8 @@ export interface SimTeamIn {
 
 export interface SimInput {
   seed: number;
+  /** The one luck source for the season (default: a stream from `seed`). Same seed, same season. */
+  rng?: () => number;
   /** Index 0 is the user's team. Needs an even number of teams, at least 4. */
   teams: SimTeamIn[];
 }
@@ -133,11 +136,15 @@ function profile(t: SimTeamIn): Profile {
   return { off, def, power: off + def, ovr, starters, bench };
 }
 
-/** Points for each side of one game: a pure function of the two teams' ratings (no upsets). Never a tie: the stronger team wins the overtime. */
-function playGame(a: Profile, b: Profile, aHome: boolean): [number, number] {
+/** Night-to-night luck on each side's points (std dev): small next to the ratings gap, so upsets happen mostly between close teams. */
+const NIGHT = 2.6;
+
+/** Points for each side of one game: set by the two teams' ratings, plus a little luck from `r`. Never a tie: the stronger team wins the overtime. */
+function playGame(r: () => number, a: Profile, b: Profile, aHome: boolean): [number, number] {
+  const gauss = () => Math.sqrt(-2 * Math.log(1 - r())) * Math.cos(2 * Math.PI * r());
   const home = 1.8;
-  let sa = 64 + (a.off - 74) * 0.8 - (b.def - 74) * 0.55 + (aHome ? home : 0);
-  let sb = 64 + (b.off - 74) * 0.8 - (a.def - 74) * 0.55 + (aHome ? 0 : home);
+  let sa = 64 + (a.off - 74) * 0.8 - (b.def - 74) * 0.55 + (aHome ? home : 0) + gauss() * NIGHT;
+  let sb = 64 + (b.off - 74) * 0.8 - (a.def - 74) * 0.55 + (aHome ? 0 : home) + gauss() * NIGHT;
   sa = Math.max(30, Math.round(sa));
   sb = Math.max(30, Math.round(sb));
   if (sa === sb) {
@@ -173,6 +180,7 @@ export function simulateSeason(input: SimInput): SeasonResult {
   const { teams } = input;
   const n = teams.length;
   if (n < 4 || n % 2) throw new Error('A season needs an even number of teams, at least 4');
+  const r = input.rng ?? seededRng(input.seed);
   const prof = teams.map(profile);
   const rec = teams.map((t, i) => ({ team: i, name: t.name, abbr: t.abbr, color: t.color, w: 0, l: 0, pf: 0, pa: 0, rank: 0 }));
   const rounds = roundRobin(n);
@@ -181,7 +189,7 @@ export function simulateSeason(input: SimInput): SeasonResult {
   const me = teams[0].roster;
   const mine = prof[0];
   // Per-player season totals for every team (the All-Stars come from the whole league). No random draws here,
-  // so tracking them leaves every score exactly as the seed decides.
+  // so tracking them leaves every score exactly as the rng decides.
   const book = teams.map((t, i) => {
     const p = prof[i];
     const ro = t.roster;
@@ -218,7 +226,7 @@ export function simulateSeason(input: SimInput): SeasonResult {
       const week = leg * rounds.length + k + 1;
       for (const [x, y] of rounds[k]) {
         const [a, b] = leg ? [y, x] : [x, y];
-        const [sa, sb] = playGame(prof[a], prof[b], true);
+        const [sa, sb] = playGame(r, prof[a], prof[b], true);
         rec[a].pf += sa; rec[a].pa += sb; rec[b].pf += sb; rec[b].pa += sa;
         rec[sa > sb ? a : b].w++;
         rec[sa > sb ? b : a].l++;
@@ -240,7 +248,7 @@ export function simulateSeason(input: SimInput): SeasonResult {
   // Top four make the playoffs: 1v4 and 2v3, then the final. One game each; the higher seed hosts.
   const playoffs: PlayoffGame[] = [];
   const meet = (round: 'semi' | 'final', a: number, b: number): number => {
-    const [sa, sb] = playGame(prof[a], prof[b], true);
+    const [sa, sb] = playGame(r, prof[a], prof[b], true);
     const winner = sa > sb ? a : b;
     playoffs.push({ round, a, b, sa, sb, winner });
     return winner;
