@@ -133,7 +133,7 @@ const ROWS: Row[] = [
   [9, 'Blastoise', ['Water'], 'PF', 62, 92, 88, 72, 80, 88, 90, 64],
   [131, 'Lapras', ['Water', 'Ice'], 'C', 52, 70, 78, 86, 68, 86, 90, 58],
   [376, 'Metagross', ['Steel', 'Psychic'], 'C', 58, 64, 90, 70, 84, 94, 90, 60],
-  [145, 'Zapdos', ['Electric', 'Flying'], 'SF', 86, 78, 92, 68, 80, 82, 76, 74],
+  [145, 'Zapdos', ['Electric', 'Flying'], 'SF', 94, 84, 96, 68, 84, 82, 76, 74],
   [392, 'Infernape', ['Fire', 'Fighting'], 'SG', 92, 82, 88, 72, 74, 55, 58, 86],
   [461, 'Weavile', ['Dark', 'Ice'], 'PG', 94, 72, 78, 72, 92, 50, 52, 88],
   [196, 'Espeon', ['Psychic'], 'SG', 85, 93, 62, 86, 66, 48, 52, 84],
@@ -184,7 +184,7 @@ const ROWS: Row[] = [
   [71, 'Victreebel', ['Grass', 'Poison'], 'SF', 70, 70, 82, 64, 82, 74, 70, 66],
   [154, 'Meganium', ['Grass'], 'C', 52, 60, 80, 80, 72, 84, 88, 58],
   [465, 'Tangrowth', ['Grass'], 'C', 48, 68, 90, 58, 76, 86, 92, 50],
-  [470, 'Leafeon', ['Grass'], 'SF', 86, 78, 80, 70, 80, 62, 62, 78],
+  [470, 'Leafeon', ['Grass'], 'PG', 92, 80, 78, 80, 82, 50, 52, 84],
   // Poison
   [110, 'Weezing', ['Poison'], 'C', 40, 52, 70, 60, 78, 90, 86, 48],
   [89, 'Muk', ['Poison'], 'C', 36, 50, 84, 52, 76, 88, 94, 46],
@@ -206,7 +206,7 @@ const ROWS: Row[] = [
   [38, 'Ninetales', ['Fire'], 'PG', 86, 86, 62, 86, 72, 52, 54, 84],
   [157, 'Typhlosion', ['Fire'], 'SF', 80, 86, 86, 64, 72, 66, 66, 76],
   [136, 'Flareon', ['Fire'], 'PF', 66, 64, 90, 58, 74, 74, 80, 62],
-  [146, 'Moltres', ['Fire', 'Flying'], 'SF', 86, 80, 90, 68, 76, 80, 74, 74],
+  [146, 'Moltres', ['Fire', 'Flying'], 'SF', 89, 90, 97, 68, 82, 80, 74, 74],
   [229, 'Houndoom', ['Dark', 'Fire'], 'SG', 88, 82, 78, 66, 84, 58, 58, 82],
   [637, 'Volcarona', ['Bug', 'Fire'], 'SF', 78, 88, 72, 72, 72, 72, 66, 74],
   // Ground
@@ -217,7 +217,7 @@ const ROWS: Row[] = [
   [553, 'Krookodile', ['Ground', 'Dark'], 'C', 80, 72, 88, 64, 84, 72, 78, 74],
   [473, 'Mamoswine', ['Ice', 'Ground'], 'C', 52, 48, 90, 46, 74, 86, 92, 50],
   // Ice, Fighting, Ghost, Dragon (the Elite Four's types)
-  [144, 'Articuno', ['Ice', 'Flying'], 'SF', 80, 82, 80, 74, 82, 84, 74, 72],
+  [144, 'Articuno', ['Ice', 'Flying'], 'SF', 80, 89, 80, 74, 92, 94, 75, 72],
   [87, 'Dewgong', ['Water', 'Ice'], 'C', 56, 62, 74, 70, 74, 82, 86, 54],
   [534, 'Conkeldurr', ['Fighting'], 'PF', 50, 48, 94, 56, 80, 82, 88, 56],
   [609, 'Chandelure', ['Ghost', 'Fire'], 'SF', 66, 92, 76, 70, 64, 70, 62, 70],
@@ -233,6 +233,11 @@ const ROWS: Row[] = [
   [123, 'Scyther', ['Bug', 'Flying'], 'SG', 92, 74, 80, 62, 90, 58, 56, 82],
   [214, 'Heracross', ['Bug', 'Fighting'], 'PF', 74, 56, 92, 54, 82, 80, 84, 62],
   [127, 'Pinsir', ['Bug'], 'PF', 70, 52, 86, 50, 84, 76, 78, 58],
+  // Requested additions
+  [303, 'Mawile', ['Steel', 'Fairy'], 'PG', 72, 78, 66, 78, 84, 46, 48, 80],
+  [628, 'Braviary', ['Normal', 'Flying'], 'PF', 78, 62, 90, 60, 82, 80, 84, 64],
+  [697, 'Tyrantrum', ['Rock', 'Dragon'], 'C', 66, 54, 95, 54, 82, 88, 90, 58],
+  [959, 'Tinkaton', ['Fairy', 'Steel'], 'SG', 80, 82, 84, 70, 90, 66, 60, 78],
   // Position calls: same ratings as the formula, played where they fit
   [17, 'Pidgeotto', ['Normal', 'Flying'], 'SF', 66, 60, 65, 56, 67, 52, 58, 61],
   [162, 'Furret', ['Normal'], 'SF', 77, 60, 75, 58, 72, 63, 68, 66],
@@ -247,8 +252,8 @@ const ROWS: Row[] = [
 ];
 
 /**
- * Gen 6+ Pokémon that used to be in the game. Poké Jam is Gen 1-5 now: these are not draftable and never
- * appear in a new league, but stay here so older franchise saves (box scores, awards) still load.
+ * Later-gen Pokémon that used to be in the game. These are not draftable and never appear in a new league,
+ * but stay here so older franchise saves (box scores, awards) still load.
  */
 const RETIRED_ROWS: Row[] = [
   [658, 'Greninja', ['Water', 'Dark'], 'SG', 94, 88, 78, 80, 82, 55, 58, 88],
@@ -266,8 +271,10 @@ const RETIRED_ROWS: Row[] = [
   [700, 'Sylveon', ['Fairy'], 'SF', 70, 86, 66, 84, 72, 70, 68, 76],
 ];
 
-/** Highest dex number in the draft pool (end of Gen 5). */
-export const LAST_DEX = 649;
+/** True for the retired Pokémon in RETIRED_ROWS: still loadable from old saves, not in the draft pool. */
+export function isRetired(dex: number): boolean {
+  return RETIRED_ROWS.some((r) => r[0] === dex);
+}
 
 const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
 
@@ -309,7 +316,7 @@ function buildMon([dex, name, types, pos, spd, sht, ins, pas, def, blk, reb, hnd
 /** The draft pool. */
 const HAND = new Set(ROWS.map((r) => r[0]));
 
-/** The draft pool: every Gen 1 and Gen 2 Pokémon plus favorites from Gens 3-5. Hand-tuned rows win over generated ones. */
+/** The draft pool: every Gen 1 and Gen 2 Pokémon plus favorites from Gens 3-5 and a few requested later picks (Tyrantrum, Tinkaton). Hand-tuned rows win over generated ones. */
 export const POKEMON: Mon[] = [...ROWS, ...GENERATED_ROWS.filter((r) => !HAND.has(r[0]))]
   .sort((a, b) => a[0] - b[0])
   .map(buildMon);

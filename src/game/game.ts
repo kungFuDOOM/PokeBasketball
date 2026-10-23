@@ -1,4 +1,4 @@
-import { POSITIONS, bestEffectiveness, effectiveness, type Mon } from '../data/pokemon';
+import { POSITIONS, bestEffectiveness, effectiveness, type Mon, type Pos } from '../data/pokemon';
 import { think } from './ai';
 import {
   BALL_R, COURT_L, COURT_W, DIFFICULTIES, GRAVITY, HOOP_Y, RIM_R, RIM_Z,
@@ -36,7 +36,7 @@ export interface JumpBall {
   to: Player | null;
   fly: number;
 }
-export type Sfx = 'dribble' | 'swish' | 'rim' | 'dunk' | 'buzzer' | 'block' | 'steal' | 'shove' | 'pass' | 'fire' | 'special' | 'catch' | 'bounce' | 'shot' | 'whistle';
+export type Sfx = 'dribble' | 'swish' | 'rim' | 'dunk' | 'buzzer' | 'block' | 'steal' | 'shove' | 'pass' | 'fire' | 'special' | 'catch' | 'bounce' | 'shot' | 'whistle' | 'shotclock';
 
 /** +2 to every rating when the five starters cover all five positions. */
 export function chemistry(roster: Mon[]): number {
@@ -53,20 +53,39 @@ export function staminaOf(mon: Mon): number {
   return clamp(Math.round(35 + mon.r.reb * 0.45 + mon.r.def * 0.15), 40, 99);
 }
 
+/** For a lineup slot with nobody at that position: which positions can cover it, closest first. */
+const COVER: Record<Pos, Pos[]> = {
+  PG: ['SG', 'SF', 'PF', 'C'],
+  SG: ['PG', 'SF', 'PF', 'C'],
+  SF: ['SG', 'PF', 'PG', 'C'],
+  PF: ['C', 'SF', 'SG', 'PG'],
+  C: ['PF', 'SF', 'SG', 'PG'],
+};
+
 /**
- * Starting five for a roster: the best Pokémon at each position, unless that would start someone
- * far worse than the best available; then the rest by overall. Everyone else is the bench.
+ * Starting five for a roster, one per slot PG, SG, SF, PF, C: the highest-overall Pokémon whose position matches
+ * each slot. A slot nobody plays goes to the best remaining Pokémon from the nearest position (an SG or PF covers SF).
+ * Starters come back in slot order, with `slots` naming the slot each one fills. Everyone else is the bench, best first.
+ * This is the one starters rule used everywhere (draft screens, Season Draft, share cards, Quick Play, Franchise).
  */
-export function bestLineup(mons: Mon[]): { starters: Mon[]; bench: Mon[] } {
-  if (mons.length <= 5) return { starters: [...mons], bench: [] };
+export function bestLineup(mons: Mon[]): { starters: Mon[]; bench: Mon[]; slots: Pos[] } {
   const left = [...mons].sort((a, b) => b.ovr - a.ovr);
-  const starters: Mon[] = [];
-  for (const pos of POSITIONS) {
+  const pick: (Mon | null)[] = POSITIONS.map(() => null);
+  POSITIONS.forEach((pos, k) => {
     const i = left.findIndex((m) => m.pos === pos);
-    if (i >= 0 && left[i].ovr >= left[0].ovr - 8) starters.push(...left.splice(i, 1));
-  }
-  while (starters.length < 5) starters.push(left.shift()!);
-  return { starters, bench: left };
+    if (i >= 0) pick[k] = left.splice(i, 1)[0];
+  });
+  POSITIONS.forEach((pos, k) => {
+    if (pick[k] || !left.length) return;
+    for (const near of COVER[pos]) {
+      const i = left.findIndex((m) => m.pos === near);
+      if (i >= 0) { pick[k] = left.splice(i, 1)[0]; return; }
+    }
+  });
+  const starters: Mon[] = [];
+  const slots: Pos[] = [];
+  pick.forEach((m, k) => { if (m) { starters.push(m); slots.push(POSITIONS[k]); } });
+  return { starters, bench: left, slots };
 }
 
 function makePlayer(id: number, team: TeamId, slot: number, mon: Mon, boost: number): Player {
@@ -572,7 +591,7 @@ export class Game {
   private shotClockViolation() {
     const b = this.ball;
     this.events.push({ kind: 'shotclock', team: this.offense });
-    this.sfx.push('buzzer');
+    this.sfx.push('shotclock');
     if (b.owner) {
       const o = b.owner;
       b.owner = null;
@@ -1189,6 +1208,7 @@ export class Game {
         this.events.push({ kind: 'fire', player: p, on: false });
       }
     } else if (p.streak >= 3) this.setFire(p);
+    else if (p.streak === 2) this.events.push({ kind: 'heating', player: p });
 
     this.events.push({ kind: 'score', player: p, points: pts, how });
     if (this.clock <= 0) {

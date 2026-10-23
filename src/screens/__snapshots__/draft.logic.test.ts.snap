@@ -1,0 +1,86 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`cpuPick > full 4-team 10-round CPU draft is stable for a seed 1`] = `
+[
+  [
+    146,
+    376,
+    384,
+    381,
+    382,
+    448,
+    470,
+    254,
+    244,
+    135,
+  ],
+  [
+    151,
+    250,
+    380,
+    6,
+    248,
+    143,
+    9,
+    196,
+    121,
+    466,
+  ],
+  [
+    249,
+    144,
+    445,
+    145,
+    571,
+    392,
+    464,
+    350,
+    26,
+    959,
+  ],
+  [
+    150,
+    383,
+    149,
+    243,
+    65,
+    169,
+    3,
+    697,
+    373,
+    635,
+  ],
+]
+`;
+
+exports[`cpuPick > full 4-team 10-round CPU draft is stable for a seed 2`] = `
+[
+  92,
+  92,
+  92,
+  93,
+]
+`;
+
+exports[`cpuPick > takes the best fit with a pinned seed 1`] = `
+[
+  "151",
+  "250",
+  "380",
+  "383",
+  "249",
+  "150",
+]
+`;
+
+exports[`ratings math > starters overall of a top-ten roster is pinned 1`] = `
+[
+  151,
+  381,
+  150,
+  384,
+  249,
+]
+`;
+
+exports[`ratings math > starters overall of a top-ten roster is pinned 2`] = `94`;

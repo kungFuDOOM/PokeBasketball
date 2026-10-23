@@ -223,6 +223,8 @@ export type GameEvent =
   | { kind: 'shove'; player: Player; victim: Player; mult: number; ok: boolean }
   | { kind: 'special'; player: Player; hits: { victim: Player; mult: number }[] }
   | { kind: 'fire'; player: Player; on: boolean }
+  /** Two straight baskets without the other team scoring: one more and they're on fire. Output only. */
+  | { kind: 'heating'; player: Player }
   | { kind: 'oop'; player: Player }
   | { kind: 'sub'; out: Player; in: Player }
   | { kind: 'subQueued'; out: Player; in: Player }

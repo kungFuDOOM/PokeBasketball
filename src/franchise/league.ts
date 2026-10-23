@@ -1,8 +1,9 @@
-import { EVOLUTIONS, LAST_DEX, RATING_LABELS, monByDex, positionWeights, withBonus, type Mon, type PokeType, type Ratings } from '../data/pokemon';
+import { EVOLUTIONS, RATING_LABELS, isRetired, monByDex, positionWeights, withBonus, type Mon, type PokeType, type Ratings } from '../data/pokemon';
 import { Game, bestLineup } from '../game/game';
 import { courtFor, userCourt } from '../data/courts';
 import type { Difficulty, GameConfig, PStats, TeamDef } from '../game/types';
 import type { DraftState } from '../screens/draft';
+import { abbr } from '../util';
 
 const SAVE_KEY = 'pokejam.franchise.v1';
 /** XP needed to go from `level` to the next one; each level costs a bit more. */
@@ -266,11 +267,11 @@ export function saveFranchise(f: Franchise) {
 }
 
 /**
- * Older saves can hold Gen 6+ Pokémon, which are no longer in the game: drop them from free agency and the
+ * Older saves can hold retired Pokémon, which are no longer in the game: drop them from free agency and the
  * rookie class, and replace any on a roster with the best free agent at the same position.
  */
 function retireLegacy(f: Franchise) {
-  const gone = (u: string) => f.players[u].dex > LAST_DEX;
+  const gone = (u: string) => isRetired(f.players[u].dex);
   f.freeAgents = f.freeAgents.filter((u) => !gone(u));
   if (f.rookies) f.rookies.pool = f.rookies.pool.filter((u) => !gone(u) || f.rookies!.picks.includes(u));
   for (const t of f.teams) {
@@ -282,7 +283,7 @@ function retireLegacy(f: Franchise) {
       t.roster = t.roster.map((x) => (x === u ? add : x));
       if (t.lineup) t.lineup = t.lineup.map((x) => (x === u ? add : x));
       f.freeAgents.splice(f.freeAgents.indexOf(add), 1);
-      f.news.unshift(`${old.name} left the league (Poké Jam is Gen 1-5 now). ${t.name} signed ${monOf(f, add).name}.`);
+      f.news.unshift(`${old.name} left the league (retired from Poké Jam). ${t.name} signed ${monOf(f, add).name}.`);
     }
   }
   f.news = f.news.slice(0, 8);
@@ -299,7 +300,7 @@ function cleanTeams(teams: unknown): boolean {
   for (const t of teams as { name: unknown; abbr: unknown; color: unknown; color2: unknown }[]) {
     if (!t || typeof t !== 'object') return false;
     t.name = String(t.name ?? '').slice(0, 24) || 'Team';
-    t.abbr = String(t.abbr ?? '').replace(/[^a-z0-9]/gi, '').slice(0, 4).toUpperCase() || 'TM';
+    t.abbr = String(t.abbr ?? '').replace(/[^a-z0-9]/gi, '').slice(0, 4).toUpperCase() || abbr(t.name as string);
     if (typeof t.color !== 'string' || !HEX.test(t.color)) t.color = USER_STYLE.color;
     if (typeof t.color2 !== 'string' || !HEX.test(t.color2)) t.color2 = USER_STYLE.color2;
   }
@@ -725,7 +726,8 @@ function rookieScore(f: Franchise, uid: string, t: FTeam): number {
   const pot = potentialOf(m.dex);
   const have = t.roster.filter((u) => monOf(f, u).pos === m.pos).length;
   return pot.ovr * 1.2 + m.ovr * 0.3 - pot.level * 1.5 + (have === 0 ? 6 : have === 1 ? 2 : 0)
-    + (t.types?.some((ty) => m.types.includes(ty)) ? 5 : 0) + Math.random() * 3;
+    + (t.types?.length && m.types.some((ty) => t.types!.includes(ty))
+      && !t.roster.some((u) => monOf(f, u).types.some((ty) => t.types!.includes(ty))) ? 5 : 0) + Math.random() * 3;
 }
 
 /** Makes the current pick: `uid` for the team on the clock, or the CPU's choice when omitted. */
