@@ -23,19 +23,19 @@ function pulse(ctx: BaseAudioContext, duty: number): PeriodicWave {
 
 /**
  * Builds the music bus: song gain -> soft low-pass (keeps the square waves mellow) -> `dest`,
- * plus a dotted-eighth echo on the lead for the chill feel.
+ * plus an echo on the lead.
  */
-export function makeKit(ctx: BaseAudioContext, dest: AudioNode, stepDur: number): Kit {
+export function makeKit(ctx: BaseAudioContext, dest: AudioNode, echoTime: number, cutoff = 3400): Kit {
   const out = ctx.createGain();
   const lp = ctx.createBiquadFilter();
   lp.type = 'lowpass';
-  lp.frequency.value = 3400;
+  lp.frequency.value = cutoff;
   lp.Q.value = 0.5;
   out.connect(lp).connect(dest);
   const echo = ctx.createGain();
   echo.gain.value = 0.22;
   const delay = ctx.createDelay(2);
-  delay.delayTime.value = stepDur * 3;
+  delay.delayTime.value = echoTime;
   const fb = ctx.createGain();
   fb.gain.value = 0.32;
   const dlp = ctx.createBiquadFilter();
@@ -127,6 +127,78 @@ export function playNote(k: Kit, ev: NoteEv, t: number, stepDur: number) {
       o.stop(t + 0.16);
       break;
     }
+    case 'slap': {
+      // Funky slap: a bright pulse snapped shut by a fast filter sweep, over a clean sub.
+      const o = ctx.createOscillator();
+      o.setPeriodicWave(k.pulse25);
+      o.frequency.value = ev.freq;
+      const f = ctx.createBiquadFilter();
+      f.type = 'lowpass';
+      f.Q.value = 6;
+      f.frequency.setValueAtTime(2400, t);
+      f.frequency.exponentialRampToValueAtTime(260, t + 0.12);
+      const sub = ctx.createOscillator();
+      sub.type = 'triangle';
+      sub.frequency.value = ev.freq;
+      const sg = ctx.createGain();
+      sg.gain.value = 0.9;
+      const end = t + Math.min(dur, 0.6);
+      env.setValueAtTime(0.0001, t);
+      env.linearRampToValueAtTime(0.13, t + 0.005);
+      env.exponentialRampToValueAtTime(0.08, t + 0.1);
+      env.setValueAtTime(0.08, Math.max(t + 0.11, end - 0.03));
+      env.exponentialRampToValueAtTime(0.0001, end + 0.02);
+      o.connect(f).connect(g);
+      sub.connect(sg).connect(g);
+      o.start(t); sub.start(t);
+      o.stop(end + 0.05); sub.stop(end + 0.05);
+      break;
+    }
+    case 'punch': {
+      // Punchy breakbeat kick: pitch drop plus a short click.
+      const o = ctx.createOscillator();
+      o.type = 'sine';
+      o.frequency.setValueAtTime(160, t);
+      o.frequency.exponentialRampToValueAtTime(48, t + 0.09);
+      env.setValueAtTime(0.2, t);
+      env.exponentialRampToValueAtTime(0.0001, t + 0.22);
+      o.connect(g);
+      o.start(t);
+      o.stop(t + 0.24);
+      noiseHit(k, g, t, 0.012, 0.06, 'lowpass', 3000);
+      break;
+    }
+    case 'snare':
+    case 'ghost': {
+      const ghost = ev.voice === 'ghost';
+      const o = ctx.createOscillator();
+      o.type = 'triangle';
+      o.frequency.setValueAtTime(220, t);
+      o.frequency.exponentialRampToValueAtTime(150, t + 0.06);
+      env.setValueAtTime(ghost ? 0.02 : 0.07, t);
+      env.exponentialRampToValueAtTime(0.0001, t + 0.08);
+      o.connect(g);
+      o.start(t);
+      o.stop(t + 0.1);
+      noiseHit(k, g, t, ghost ? 0.05 : 0.14, ghost ? 0.025 : 0.09, 'bandpass', 2200);
+      break;
+    }
+    case 'ohat':
+      noiseHit(k, g, t, 0.16, 0.025, 'highpass', 6500);
+      break;
+    case 'stab': {
+      // Short brassy chord hit (one call per chord tone).
+      const o = ctx.createOscillator();
+      o.setPeriodicWave(k.pulse25);
+      o.frequency.value = ev.freq;
+      env.setValueAtTime(0.0001, t);
+      env.linearRampToValueAtTime(0.03, t + 0.005);
+      env.exponentialRampToValueAtTime(0.0001, t + 0.13);
+      o.connect(g);
+      o.start(t);
+      o.stop(t + 0.15);
+      break;
+    }
     case 'hat': {
       const src = ctx.createBufferSource();
       src.buffer = k.noise;
@@ -141,4 +213,19 @@ export function playNote(k: Kit, ev: NoteEv, t: number, stepDur: number) {
       break;
     }
   }
+}
+
+/** A filtered burst of noise (snare body, hats, kick click). */
+function noiseHit(k: Kit, out: AudioNode, t: number, dur: number, vol: number, type: BiquadFilterType, freq: number) {
+  const src = k.ctx.createBufferSource();
+  src.buffer = k.noise;
+  const f = k.ctx.createBiquadFilter();
+  f.type = type;
+  f.frequency.value = freq;
+  const g = k.ctx.createGain();
+  g.gain.setValueAtTime(vol, t);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  src.connect(f).connect(g).connect(out);
+  src.start(t);
+  src.stop(t + dur + 0.02);
 }

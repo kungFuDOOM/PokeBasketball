@@ -1,25 +1,40 @@
 /**
  * Original chiptune loops for the background music. Written for PokéJam, not taken from any game:
- * mellow, Game Boy-style parts (pulse lead, soft pulse arpeggio, triangle bass, light noise hats).
+ * Game Boy-style parts (pulse lead, pulse arpeggio, triangle or slap bass, synthesized drums).
  *
- * Each bar is 8 eighth-note steps. In a melody bar a note name starts a note, `-` holds the previous
- * one and `.` is a rest.
+ * A bar is `steps` steps long (8 eighth notes unless the song says 16). Any part's bar may be written with
+ * fewer tokens than steps (8 tokens on a 16-step grid = eighth notes); each token then spans the rest.
+ * In a melody bar a note name starts a note, `-` holds the previous one and `.` is a rest.
+ * A part given as an array has one pattern per bar (cycled); a single string repeats every bar.
  */
 export interface Song {
   id: TrackId;
   title: string;
   bpm: number;
-  /** 0 = straight eighths, ~0.15 = lazy swing. */
+  /** Steps per bar: 8 (eighth notes, the default) or 16 (sixteenths). */
+  steps?: 8 | 16;
+  /** Swing on the off-steps: 0 = straight, ~0.15 = lazy. */
   swing: number;
-  /** One chord per bar, low to high (used for the arpeggio and the bass). */
+  /** One chord per bar, low to high (used for the arpeggio, stabs and the bass). */
   chords: string[][];
   melody: string[];
-  /** Bass rhythm per bar: R = root, F = fifth, O = root up an octave, - = hold, . = rest. */
-  bass: string;
-  /** Arpeggio pattern per bar: chord-tone indexes, `.` = rest. */
-  arp: string;
-  /** Hat and kick pattern per bar: k = soft kick, h = hat, . = nothing. */
-  drums: string;
+  /** Bass rhythm: R = root, F = fifth, O = root up an octave, S = flat seventh, - = hold, . = rest. */
+  bass: string | string[];
+  /** Bass sound: soft triangle (default) or a funky slap. */
+  bassVoice?: 'tri' | 'slap';
+  /** Arpeggio pattern: chord-tone indexes, `.` = rest. */
+  arp: string | string[];
+  /**
+   * Drums, one token per slot, letters combine ("Kh" = kick and hat): k = soft kick, K = punchy kick,
+   * s = snare, g = ghost snare, h = closed hat, o = open hat, . = nothing.
+   */
+  drums: string | string[];
+  /** Chord stabs (call and response): x = stab, . = nothing. */
+  stabs?: string | string[];
+  /** Low-pass on the whole track, in Hz (default 3400, mellow). */
+  cutoff?: number;
+  /** Echo time on the lead, in beats (default 1.5). */
+  echoBeats?: number;
 }
 
 export type TrackId = 'menu' | 'draft' | 'season';
@@ -27,29 +42,57 @@ export type TrackId = 'menu' | 'draft' | 'season';
 const ch = (s: string) => s.split(' ');
 
 export const SONGS: Record<TrackId, Song> = {
-  // Title screen, Quick Play setup and the roster: an easy-going walk to the gym.
+  // Title screen, Quick Play setup and the roster: 90s arcade hoops meets a Game Boy adventure.
+  // A section: lead calls, chord stabs answer. B section: the lead soars over a running arpeggio.
   menu: {
     id: 'menu',
-    title: 'Pallet Court',
-    bpm: 86,
-    swing: 0.14,
+    title: 'Fast Break Route',
+    bpm: 110,
+    steps: 16,
+    swing: 0.1,
+    cutoff: 7500,
+    echoBeats: 0.75,
+    bassVoice: 'slap',
     chords: [
-      ch('F3 A3 C4 E4'), ch('E3 G3 B3 D4'), ch('D3 F3 A3 C4'), ch('G3 B3 D4 F4'),
-      ch('F3 A3 C4 E4'), ch('E3 G3 B3 D4'), ch('D3 F3 A3 C4'), ch('G3 B3 D4 F4'),
+      ch('G3 B3 D4 F4'), ch('G3 B3 D4 F4'), ch('C3 E3 G3 Bb3'), ch('C3 E3 G3 Bb3'),
+      ch('G3 B3 D4 F4'), ch('E3 G3 B3 D4'), ch('A3 C4 E4 G4'), ch('D3 F#3 A3 C4'),
+      ch('C3 E3 G3 B3'), ch('D3 F#3 A3 D4'), ch('B3 D4 F#4 A4'), ch('E3 G3 B3 D4'),
+      ch('C3 E3 G3 B3'), ch('D3 F#3 A3 D4'), ch('A3 C4 E4 G4'), ch('D3 F#3 A3 C4'),
     ],
     melody: [
-      'A4 - C5 - E5 - D5 C5',
-      'B4 - G4 - . . E4 G4',
-      'A4 - - C5 F5 - E5 D5',
-      'D5 - - - . . B4 C5',
-      'A4 - C5 - E5 - G5 -',
-      'F5 E5 D5 - B4 - G4 -',
-      'A4 - F4 A4 C5 - D5 -',
-      'B4 - - - . . . .',
+      'D5 - G5 - A5 B5 . G5',
+      'F5 - D5 - . . . .',
+      'E5 - G5 - Bb5 - A5 G5',
+      'E5 - C5 - . . . .',
+      'D5 - G5 - A5 B5 . D6',
+      'B5 - A5 G5 E5 - G5 -',
+      'A5 - C6 - B5 A5 G5 E5',
+      'F#5 - - - A5 - D5 -',
+      'E5 - - G5 - - C6 -',
+      'B5 - A5 - F#5 - D5 -',
+      'D5 - F#5 - B5 - A5 -',
+      'G5 - - - E5 - D5 E5',
+      'G5 - E5 G5 C6 - B5 C6',
+      'D6 - - - A5 - F#5 A5',
+      'C6 - B5 - A5 - G5 -',
+      'F#5 - A5 - D6 - C6 -',
     ],
-    bass: 'R - - F O - F -',
-    arp: '0 1 2 3 2 1 2 1',
-    drums: 'k . h . . k h .',
+    bass: ['R - . R O . . R . S . R F . O .', 'R . R . O . R F . R . S O . F R', 'R - . R O . . R . S . R F . O .', 'R . R . O . R F . R . S O . F R', 'R - . R O . . R . S . R F . O .', 'R . R . O . R F . R . S O . F R', 'R - . R O . . R . S . R F . O .', 'R . R . O . R F . R . S O . F R',
+      'R - . R O . . R . S . R F . O .', 'R . R . O . R F . R . S O . F R', 'R - . R O . . R . S . R F . O .', 'R . R . O . R F . R . S O . F R', 'R - . R O . . R . S . R F . O .', 'R . R . O . R F . R . S O . F R', 'R - . R O . . R . S . R F . O .', 'R . R . O . R . S . O . F . R .'],
+    arp: ['. . . . . . . .', '. . . . . . . .', '. . . . . . . .', '. . . . . . . .',
+      '. . . . . . . .', '. . . . . . . .', '. . . . . . . .', '. . . . . . . .',
+      '0 1 2 3 2 1 2 3', '0 1 2 3 2 1 2 3', '0 1 2 3 2 1 2 3', '0 1 2 3 2 1 2 3',
+      '0 1 2 3 2 1 2 3', '0 1 2 3 2 1 2 3', '0 1 2 3 2 1 2 3', '0 2 1 3 0 2 1 3'],
+    drums: ['Kh . h . sh . h K . Kh h . sh . h g', 'Kh . h K sh . h . . Kh h K sh g o .', 'Kh . h . sh . h K . Kh h . sh . h g', 'Kh . h K sh . h . . Kh h K sh g o .', 'Kh . h . sh . h K . Kh h . sh . h g', 'Kh . h K sh . h . . Kh h K sh g o .', 'Kh . h . sh . h K . Kh h . sh . h g', 'Kh . h . sh . h K . Kh h . s g s s',
+      'Kh . h . sh . h K . Kh h . sh . h g', 'Kh . h K sh . h . . Kh h K sh g o .', 'Kh . h . sh . h K . Kh h . sh . h g', 'Kh . h K sh . h . . Kh h K sh g o .', 'Kh . h . sh . h K . Kh h . sh . h g', 'Kh . h K sh . h . . Kh h K sh g o .', 'Kh . h . sh . h K . Kh h . sh . h g', 'Kh . h K sh . h . Kh . s . s s s s'],
+    stabs: ['. . . . . . . . . . . . . . . .', '. . . . . . . . x . . x . . x .',
+      '. . . . . . . . . . . . . . . .', '. . . . . . . . x . . x . x . .',
+      '. . . . . . . . . . . . . . . .', '. . . . . . . . . . . . . . x .',
+      '. . . . . . . . . . . . . . . .', 'x . . x . . x . . . . . . . . .',
+      'x . . . . . . . . . . . . . . .', '. . . . . . . . . . . . . . . .',
+      'x . . . . . . . . . . . . . . .', '. . . . . . . . . . . . x . x .',
+      'x . . . . . . . . . . . . . . .', '. . . . . . . . . . . . . . . .',
+      'x . . . . . . . . . . . . . . .', '. . . . . . . . x . . x . . . .'],
   },
   // Draft boards (Quick Play, Season, Franchise and the rookie draft): a little more bounce.
   draft: {
@@ -111,42 +154,50 @@ export function hz(name: string): number {
   return 440 * 2 ** ((semi - 69) / 12);
 }
 
-export type Voice = 'lead' | 'arp' | 'bass' | 'kick' | 'hat';
+export type Voice = 'lead' | 'arp' | 'bass' | 'slap' | 'kick' | 'punch' | 'snare' | 'ghost' | 'hat' | 'ohat' | 'stab';
 export interface NoteEv { step: number; len: number; voice: Voice; freq: number }
 
-/** Every note of one loop, as steps (eighth notes) from the loop start. Pure, so it can be tested. */
+const DRUM: Record<string, Voice> = { k: 'kick', K: 'punch', s: 'snare', g: 'ghost', h: 'hat', o: 'ohat' };
+
+/** Every note of one loop, as steps from the loop start. Pure, so it can be tested. */
 export function loopNotes(s: Song): { steps: number; notes: NoteEv[] } {
+  const per = s.steps ?? 8;
   const notes: NoteEv[] = [];
   const bars = s.melody.length;
-  s.melody.forEach((bar, b) => {
-    const toks = bar.split(' ');
-    if (toks.length !== 8) throw new Error(`${s.id} bar ${b + 1} needs 8 steps`);
+  const barOf = (part: string | string[] | undefined, b: number) =>
+    part === undefined ? [] : (typeof part === 'string' ? part : part[b % part.length]).split(' ');
+  /** Walks one bar of a part: `on(token, step, span)` for each token; `-` extends the last note of `voice`. */
+  const walk = (toks: string[], b: number, voice: Voice | null, on: (t: string, step: number, span: number) => void) => {
+    if (!toks.length) return;
+    if (per % toks.length) throw new Error(`${s.id} bar ${b + 1}: ${toks.length} tokens don't fit ${per} steps`);
+    const span = per / toks.length;
     toks.forEach((t, i) => {
-      const step = b * 8 + i;
-      if (t === '-') {
-        const last = notes[notes.length - 1];
-        if (last && last.voice === 'lead' && last.step + last.len === step) last.len++;
-      } else if (t !== '.') notes.push({ step, len: 1, voice: 'lead', freq: hz(t) });
+      const step = b * per + i * span;
+      if (t === '-' && voice) {
+        const last = [...notes].reverse().find((n) => n.voice === voice);
+        if (last && last.step + last.len === step) last.len += span;
+      } else if (t !== '.' && t !== '-') on(t, step, span);
     });
-  });
+  };
   for (let b = 0; b < bars; b++) {
     const chord = s.chords[b].map(hz);
     const root = chord[0] / 2;
-    const fifth = root * 1.5;
-    s.bass.split(' ').forEach((t, i) => {
-      const step = b * 8 + i;
-      if (t === '-') {
-        const last = notes[notes.length - 1];
-        if (last && last.voice === 'bass' && last.step + last.len === step) last.len++;
-      } else if (t !== '.') notes.push({ step, len: 1, voice: 'bass', freq: t === 'F' ? fifth : t === 'O' ? root * 2 : root });
+    walk(s.melody[b].split(' '), b, 'lead', (t, step, len) => notes.push({ step, len, voice: 'lead', freq: hz(t) }));
+    const bv: Voice = s.bassVoice === 'slap' ? 'slap' : 'bass';
+    walk(barOf(s.bass, b), b, bv, (t, step, len) => notes.push({
+      step, len, voice: bv, freq: t === 'F' ? root * 1.5 : t === 'O' ? root * 2 : t === 'S' ? root * 2 ** (10 / 12) : root,
+    }));
+    walk(barOf(s.arp, b), b, null, (t, step, len) => notes.push({ step, len, voice: 'arp', freq: chord[Number(t)] * 2 }));
+    walk(barOf(s.drums, b), b, null, (t, step, len) => {
+      for (const c of t) {
+        const v = DRUM[c];
+        if (!v) throw new Error(`${s.id} bar ${b + 1}: bad drum ${c}`);
+        notes.push({ step, len, voice: v, freq: v === 'kick' ? 110 : 0 });
+      }
     });
-    s.arp.split(' ').forEach((t, i) => {
-      if (t !== '.') notes.push({ step: b * 8 + i, len: 1, voice: 'arp', freq: chord[Number(t)] * 2 });
-    });
-    s.drums.split(' ').forEach((t, i) => {
-      if (t === 'k') notes.push({ step: b * 8 + i, len: 1, voice: 'kick', freq: 110 });
-      else if (t === 'h') notes.push({ step: b * 8 + i, len: 1, voice: 'hat', freq: 0 });
+    walk(barOf(s.stabs, b), b, null, (_t, step, len) => {
+      for (const f of chord.slice(1)) notes.push({ step, len, voice: 'stab', freq: f * 2 });
     });
   }
-  return { steps: bars * 8, notes: notes.sort((a, b) => a.step - b.step) };
+  return { steps: bars * per, notes: notes.sort((a, b) => a.step - b.step) };
 }
