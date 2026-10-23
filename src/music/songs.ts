@@ -7,6 +7,8 @@
  * In a melody bar a note name starts a note, `-` holds the previous one and `.` is a rest.
  * A part given as an array has one pattern per bar (cycled); a single string repeats every bar.
  */
+import { MENU_VARIANTS } from './menuSongs';
+
 export interface Song {
   id: TrackId;
   title: string;
@@ -18,7 +20,7 @@ export interface Song {
   /** One chord per bar, low to high (used for the arpeggio, stabs and the bass). */
   chords: string[][];
   melody: string[];
-  /** Bass rhythm: R = root, F = fifth, O = root up an octave, S = flat seventh, - = hold, . = rest. */
+  /** Bass rhythm: R = root, F = fifth, O = root up an octave, S = flat seventh, a note name ("A2"), - = hold, . = rest. */
   bass: string | string[];
   /** Bass sound: soft triangle (default) or a funky slap. */
   bassVoice?: 'tri' | 'slap';
@@ -26,7 +28,7 @@ export interface Song {
   arp: string | string[];
   /**
    * Drums, one token per slot, letters combine ("Kh" = kick and hat): k = soft kick, K = punchy kick,
-   * s = snare, g = ghost snare, h = closed hat, o = open hat, . = nothing.
+   * s = snare, n = rounder snare, g = ghost snare, h = closed hat, o = open hat, . = nothing.
    */
   drums: string | string[];
   /** Chord stabs (call and response): x = stab, . = nothing. */
@@ -39,67 +41,26 @@ export interface Song {
   lowCut?: number;
   /** Drum bus level relative to the melody (default 1). */
   drumLevel?: number;
+  /** Drums bypass the track's low-pass (crisper hats, still low-cut). */
+  crispDrums?: boolean;
+  /** Bass level relative to the melody (default 1). */
+  bassLevel?: number;
+  /** Lead sound: Game Boy pulse (default) or a wobbly, filtered synth lead. */
+  leadVoice?: 'pulse' | 'wobble';
+  /** Doubles the lead with synth brass an octave down (the big arcade hook). */
+  brassDouble?: boolean;
+  /** Electric piano chord hits: x = play the bar's chord. */
+  keys?: string | string[];
 }
 
-export type TrackId = 'menu' | 'draft' | 'season';
+/** 'menu' is the menu and franchise screens' playlist (menuSongs.ts); 'draft' is every draft board. */
+export type TrackId = 'menu' | 'draft';
 
 const ch = (s: string) => s.split(' ');
 
 export const SONGS: Record<TrackId, Song> = {
-  // Title screen, Quick Play setup and the roster: 90s arcade hoops meets a Game Boy adventure.
-  // A section: lead calls, chord stabs answer. B section: the lead soars over a running arpeggio.
-  menu: {
-    id: 'menu',
-    title: 'Fast Break Route',
-    bpm: 110,
-    steps: 16,
-    swing: 0.1,
-    cutoff: 7500,
-    echoBeats: 0.75,
-    lowCut: 80,
-    drumLevel: 0.75,
-    bassVoice: 'slap',
-    chords: [
-      ch('G3 B3 D4 F4'), ch('G3 B3 D4 F4'), ch('C3 E3 G3 Bb3'), ch('C3 E3 G3 Bb3'),
-      ch('G3 B3 D4 F4'), ch('E3 G3 B3 D4'), ch('A3 C4 E4 G4'), ch('D3 F#3 A3 C4'),
-      ch('C3 E3 G3 B3'), ch('D3 F#3 A3 D4'), ch('B3 D4 F#4 A4'), ch('E3 G3 B3 D4'),
-      ch('C3 E3 G3 B3'), ch('D3 F#3 A3 D4'), ch('A3 C4 E4 G4'), ch('D3 F#3 A3 C4'),
-    ],
-    melody: [
-      'D5 - G5 - A5 B5 . G5',
-      'F5 - D5 - . . . .',
-      'E5 - G5 - Bb5 - A5 G5',
-      'E5 - C5 - . . . .',
-      'D5 - G5 - A5 B5 . D6',
-      'B5 - A5 G5 E5 - G5 -',
-      'A5 - C6 - B5 A5 G5 E5',
-      'F#5 - - - A5 - D5 -',
-      'E5 - - G5 - - C6 -',
-      'B5 - A5 - F#5 - D5 -',
-      'D5 - F#5 - B5 - A5 -',
-      'G5 - - - E5 - D5 E5',
-      'G5 - E5 G5 C6 - B5 C6',
-      'D6 - - - A5 - F#5 A5',
-      'C6 - B5 - A5 - G5 -',
-      'F#5 - A5 - D6 - C6 -',
-    ],
-    bass: ['R - . R O . . R . S . R F . O .', 'R . R . O . R F . R . S O . F R', 'R - . R O . . R . S . R F . O .', 'R . R . O . R F . R . S O . F R', 'R - . R O . . R . S . R F . O .', 'R . R . O . R F . R . S O . F R', 'R - . R O . . R . S . R F . O .', 'R . R . O . R F . R . S O . F R',
-      'R - . R O . . R . S . R F . O .', 'R . R . O . R F . R . S O . F R', 'R - . R O . . R . S . R F . O .', 'R . R . O . R F . R . S O . F R', 'R - . R O . . R . S . R F . O .', 'R . R . O . R F . R . S O . F R', 'R - . R O . . R . S . R F . O .', 'R . R . O . R . S . O . F . R .'],
-    arp: ['. . . . . . . .', '. . . . . . . .', '. . . . . . . .', '. . . . . . . .',
-      '. . . . . . . .', '. . . . . . . .', '. . . . . . . .', '. . . . . . . .',
-      '0 1 2 3 2 1 2 3', '0 1 2 3 2 1 2 3', '0 1 2 3 2 1 2 3', '0 1 2 3 2 1 2 3',
-      '0 1 2 3 2 1 2 3', '0 1 2 3 2 1 2 3', '0 1 2 3 2 1 2 3', '0 2 1 3 0 2 1 3'],
-    drums: ['Kh . h . sh . h K . Kh h . sh . h g', 'Kh . h K sh . h . . Kh h K sh g o .', 'Kh . h . sh . h K . Kh h . sh . h g', 'Kh . h K sh . h . . Kh h K sh g o .', 'Kh . h . sh . h K . Kh h . sh . h g', 'Kh . h K sh . h . . Kh h K sh g o .', 'Kh . h . sh . h K . Kh h . sh . h g', 'Kh . h . sh . h K . Kh h . s g s s',
-      'Kh . h . sh . h K . Kh h . sh . h g', 'Kh . h K sh . h . . Kh h K sh g o .', 'Kh . h . sh . h K . Kh h . sh . h g', 'Kh . h K sh . h . . Kh h K sh g o .', 'Kh . h . sh . h K . Kh h . sh . h g', 'Kh . h K sh . h . . Kh h K sh g o .', 'Kh . h . sh . h K . Kh h . sh . h g', 'Kh . h K sh . h . Kh . s . s s s s'],
-    stabs: ['. . . . . . . . . . . . . . . .', '. . . . . . . . x . . x . . x .',
-      '. . . . . . . . . . . . . . . .', '. . . . . . . . x . . x . x . .',
-      '. . . . . . . . . . . . . . . .', '. . . . . . . . . . . . . . x .',
-      '. . . . . . . . . . . . . . . .', 'x . . x . . x . . . . . . . . .',
-      'x . . . . . . . . . . . . . . .', '. . . . . . . . . . . . . . . .',
-      'x . . . . . . . . . . . . . . .', '. . . . . . . . . . . . x . x .',
-      'x . . . . . . . . . . . . . . .', '. . . . . . . . . . . . . . . .',
-      'x . . . . . . . . . . . . . . .', '. . . . . . . . x . . x . . . .'],
-  },
+  // Menu and franchise screens rotate through MENU_PLAYLIST (see Music); this is the first track, used for previews.
+  menu: MENU_VARIANTS.hype,
   // Draft boards (Quick Play, Season, Franchise and the rookie draft): a little more bounce.
   draft: {
     id: 'draft',
@@ -124,30 +85,6 @@ export const SONGS: Record<TrackId, Song> = {
     arp: '0 2 1 3 0 2 1 3',
     drums: 'k h . h k h . h',
   },
-  // Franchise hub, Season results and box scores: slow, warm, late-evening.
-  season: {
-    id: 'season',
-    title: 'Evening League',
-    bpm: 78,
-    swing: 0.16,
-    chords: [
-      ch('G3 B3 D4 F#4'), ch('F#3 A3 C#4 E4'), ch('E3 G3 B3 D4'), ch('A3 C#4 E4 G4'),
-      ch('G3 B3 D4 F#4'), ch('F#3 A3 C#4 E4'), ch('B3 D4 F#4 A4'), ch('A3 C#4 E4 G4'),
-    ],
-    melody: [
-      'F#5 - - E5 D5 - B4 -',
-      'C#5 - A4 - . . F#4 A4',
-      'B4 - D5 - G5 - F#5 E5',
-      'E5 - - - . C#5 D5 E5',
-      'F#5 - A5 - G5 F#5 D5 -',
-      'E5 - C#5 - A4 - . .',
-      'D5 - F#5 - B5 - A5 F#5',
-      'A5 - G5 - E5 - C#5 -',
-    ],
-    bass: 'R - . F R - O -',
-    arp: '0 1 2 3 . 2 1 .',
-    drums: 'k . h . k . h h',
-  },
 };
 
 const NOTE: Record<string, number> = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
@@ -160,10 +97,10 @@ export function hz(name: string): number {
   return 440 * 2 ** ((semi - 69) / 12);
 }
 
-export type Voice = 'lead' | 'arp' | 'bass' | 'slap' | 'kick' | 'punch' | 'snare' | 'ghost' | 'hat' | 'ohat' | 'stab';
+export type Voice = 'lead' | 'wobble' | 'brass' | 'ep' | 'arp' | 'bass' | 'slap' | 'kick' | 'punch' | 'snare' | 'snap' | 'ghost' | 'hat' | 'ohat' | 'stab';
 export interface NoteEv { step: number; len: number; voice: Voice; freq: number }
 
-const DRUM: Record<string, Voice> = { k: 'kick', K: 'punch', s: 'snare', g: 'ghost', h: 'hat', o: 'ohat' };
+const DRUM: Record<string, Voice> = { k: 'kick', K: 'punch', s: 'snare', n: 'snap', g: 'ghost', h: 'hat', o: 'ohat' };
 
 /** Every note of one loop, as steps from the loop start. Pure, so it can be tested. */
 export function loopNotes(s: Song): { steps: number; notes: NoteEv[] } {
@@ -188,10 +125,12 @@ export function loopNotes(s: Song): { steps: number; notes: NoteEv[] } {
   for (let b = 0; b < bars; b++) {
     const chord = s.chords[b].map(hz);
     const root = chord[0] / 2;
-    walk(s.melody[b].split(' '), b, 'lead', (t, step, len) => notes.push({ step, len, voice: 'lead', freq: hz(t) }));
+    const lv: Voice = s.leadVoice === 'wobble' ? 'wobble' : 'lead';
+    walk(s.melody[b].split(' '), b, lv, (t, step, len) => notes.push({ step, len, voice: lv, freq: hz(t) }));
     const bv: Voice = s.bassVoice === 'slap' ? 'slap' : 'bass';
     walk(barOf(s.bass, b), b, bv, (t, step, len) => notes.push({
-      step, len, voice: bv, freq: t === 'F' ? root * 1.5 : t === 'O' ? root * 2 : t === 'S' ? root * 2 ** (10 / 12) : root,
+      step, len, voice: bv,
+      freq: t === 'F' ? root * 1.5 : t === 'O' ? root * 2 : t === 'S' ? root * 2 ** (10 / 12) : t === 'R' ? root : hz(t),
     }));
     walk(barOf(s.arp, b), b, null, (t, step, len) => notes.push({ step, len, voice: 'arp', freq: chord[Number(t)] * 2 }));
     walk(barOf(s.drums, b), b, null, (t, step, len) => {
@@ -204,6 +143,12 @@ export function loopNotes(s: Song): { steps: number; notes: NoteEv[] } {
     walk(barOf(s.stabs, b), b, null, (_t, step, len) => {
       for (const f of chord.slice(1)) notes.push({ step, len, voice: 'stab', freq: f * 2 });
     });
+    walk(barOf(s.keys, b), b, null, (_t, step, len) => {
+      for (const f of chord) notes.push({ step, len, voice: 'ep', freq: f });
+    });
+  }
+  if (s.brassDouble) {
+    for (const n of notes.filter((x) => x.voice === 'lead')) notes.push({ ...n, voice: 'brass', freq: n.freq / 2 });
   }
   return { steps: bars * per, notes: notes.sort((a, b) => a.step - b.step) };
 }
