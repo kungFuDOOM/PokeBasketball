@@ -1,8 +1,11 @@
 /** Content for the viewport meta: no pinch or double-tap zoom anywhere (the game is a fixed-size screen). */
 export const VIEWPORT = 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover';
 
-/** Taps on the court and the on-screen controls; two quick touchends here would be a double-tap zoom. */
-const CONTROLS = '.touch, .stick-zone, .tb, .pause-btn, canvas.court';
+/**
+ * Taps on the court and the held on-screen controls (they use pointer events, which a cancelled touchend leaves alone).
+ * Not click-driven buttons like pause: cancelling a touchend suppresses the click that follows it.
+ */
+const CONTROLS = '.touch, .stick-zone, .tb, canvas.court';
 const DOUBLE_TAP_MS = 350;
 
 interface Target {
@@ -35,7 +38,7 @@ export function guardZoom(win: Target & { visualViewport?: Target | null } = win
   let last = 0;
   doc.addEventListener('touchend', (e) => {
     if (!(e.target as HTMLElement | null)?.closest?.(CONTROLS)) return;
-    if (isDoubleTap(last, e.timeStamp)) e.preventDefault();
+    if (e.cancelable && isDoubleTap(last, e.timeStamp)) e.preventDefault();
     last = e.timeStamp;
   }, { passive: false });
   const reset = () => { resetZoom(doc as unknown as Document); };

@@ -1,3 +1,4 @@
+import './compat';
 import './fonts.css';
 import './style.css';
 import { monByDex, spriteUrl, type Mon } from './data/pokemon';
