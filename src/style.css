@@ -16,7 +16,7 @@
 }
 
 * { box-sizing: border-box; }
-html, body { height: 100%; margin: 0; }
+html, body { height: 100%; margin: 0; touch-action: manipulation; }
 /* Stop iOS Safari from enlarging text when the phone turns landscape (it blew up the scoreboard digits). */
 html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
 body {
@@ -579,8 +579,10 @@ li.empty { color: var(--muted); }
   place-items: center;
   user-select: none;
   -webkit-user-select: none;
+  -webkit-touch-callout: none;
   touch-action: none;
 }
+.game canvas, .game .touch, .game .tb, .game .pause-btn { touch-action: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
 .stage { width: min(100vw, calc(100dvh * 16 / 9)); aspect-ratio: 16 / 9; max-width: 100%; }
 .court { width: 100%; height: 100%; display: block; image-rendering: pixelated; image-rendering: crisp-edges; }
 .loading { position: absolute; font: 0.8rem var(--pixel); color: var(--muted); }
@@ -650,14 +652,14 @@ li.empty { color: var(--muted); }
 }
 .bug-team {
   /* Both team boxes are the same fixed width (in em, so they scale with the bug): name left, score right. */
-  display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; column-gap: 10px;
-  width: 7.4em; box-sizing: border-box; flex: none;
-  padding: 5px 12px 5px 10px; border-left: 4px solid var(--tc);
+  display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; column-gap: 10px;
+  width: 8.2em; box-sizing: border-box; flex: none;
+  padding: 5px 10px 5px 10px; border-left: 4px solid var(--tc);
 }
-.bug-team .abbr { min-width: 0; overflow: hidden; text-align: left; letter-spacing: 0.06em; }
-/* Fixed 3-digit slot in a monospace pixel font: 0, 2, 48 and 112 all sit flush right without moving the box. */
+.bug-team .abbr { min-width: 3ch; text-align: left; letter-spacing: 0.06em; }
+/* Fixed 3-digit slot (the name is always 3 letters, so it never needs to clip) in a monospace pixel font: 0, 2, 48 and 112 all sit flush right without moving the box. */
 .bug-team .pts {
-  display: block; width: 3em; font: 0.95rem/1 var(--pixel); text-align: right;
+  display: block; width: 3em; min-width: 0; font: 0.95rem/1 var(--pixel); text-align: right;
   font-variant-numeric: tabular-nums; color: var(--fg); text-shadow: none;
 }
 .bug-clock, .bug-shot { flex: none; }
@@ -665,7 +667,7 @@ li.empty { color: var(--muted); }
 .pts.pop { animation: pop 0.5s ease-out; }
 @keyframes pop { 30% { color: var(--accent); } }
 /* Narrow portrait phones: shrink the whole bug (team boxes are in em, so they stay identical) so it never clips. */
-@media (max-width: 480px) { .bug { font-size: 0.92rem; } .bug-team .pts { font-size: 0.78rem; } .bug-shot { min-width: 28px; } }
+@media (max-width: 480px) { .bug { font-size: 0.84rem; } .bug-team .pts { font-size: 0.72rem; } .bug-shot { min-width: 28px; } }
 .bug-clock { display: flex; gap: 8px; align-items: center; padding: 5px 10px; background: var(--panel-2); font-variant-numeric: tabular-nums; }
 .bug-shot { display: grid; place-items: center; min-width: 34px; padding: 0 6px; background: var(--accent); color: #1a1400; font: 0.7rem var(--pixel); }
 .bug-shot.low { background: var(--red); color: #fff; }
@@ -790,6 +792,7 @@ li.empty { color: var(--muted); }
   padding: 0;
   touch-action: none;
   -webkit-user-select: none;
+  -webkit-touch-callout: none;
   user-select: none;
 }
 /* Xbox face buttons: A green (bottom), B red (right), X blue (left), Y yellow (top) */
@@ -1303,6 +1306,8 @@ button.gl-row:hover { border-color: var(--muted); }
 .fc-abbr { width: 6.5em; flex: none; }
 .fc-abbr input { text-transform: uppercase; text-align: center; font-family: var(--pixel); letter-spacing: 0.1em; }
 .fc-field input { width: 100%; box-sizing: border-box; }
+.fc-hint { margin: 6px 0 0; text-align: right; color: var(--red); font-size: 0.85rem; }
+.fc-hint[hidden] { display: none; }
 .fc-warn { margin: 12px 0 0; padding: 10px 12px; border: 1px solid var(--red); border-radius: 10px; background: color-mix(in srgb, var(--red) 14%, transparent); font-size: 0.95rem; line-height: 1.35; }
 .fc-box .actions { margin-top: 16px; }
 .rn-text { overflow-wrap: break-word; word-break: normal; }

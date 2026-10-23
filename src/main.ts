@@ -25,6 +25,7 @@ import { confirmNewDraft } from './ui/newDraft';
 import { confirmFranchiseName } from './ui/teamName';
 import { gamesScreen } from './screens/games';
 import { badgeSvg } from './ui/badges';
+import { guardZoom } from './ui/noZoom';
 import { abbr, esc, guardNameInputs, lettersName, shuffle } from './util';
 
 const app = document.querySelector<HTMLElement>('#app')!;
@@ -60,6 +61,7 @@ document.addEventListener('error', (e) => {
 
 // Browsers only allow audio after a gesture.
 guardNameInputs();
+guardZoom();
 // iPhone Safari only unlocks Web Audio inside certain gestures, so every kind of tap tries.
 const unlock = () => {
   audio.unlock();

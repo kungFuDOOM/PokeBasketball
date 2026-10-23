@@ -3,7 +3,7 @@
 import { POKEMON, monByDex, type Mon } from '../data/pokemon';
 import { bestLineup } from '../game/game';
 import { cpuPick, type DraftTeam } from '../screens/draft';
-import { abbr, shuffle } from '../util';
+import { abbr, fixAbbr, shuffle } from '../util';
 import { cleanName } from './share';
 
 export const DRAFTED_KEY = 'pokejam.draftedTeam';
@@ -53,7 +53,7 @@ export function loadDrafted(): DraftedTeam | null {
     const rec = t.record;
     return {
       v: 1, name, dex: t.dex, starters: t.starters, colors: { color: t.colors.color, color2: t.colors.color2 },
-      abbr: typeof t.abbr === 'string' ? t.abbr.slice(0, 4).toUpperCase() : undefined,
+      abbr: typeof t.abbr === 'string' ? fixAbbr(t.abbr, name) : undefined,
       record: rec && Number.isInteger(rec.w) && Number.isInteger(rec.l) && rec.w >= 0 && rec.l >= 0 ? { w: rec.w, l: rec.l } : undefined,
       rank: Number.isInteger(t.rank) && t.rank! > 0 ? t.rank : undefined,
       savedAt: typeof t.savedAt === 'number' ? t.savedAt : 0,
