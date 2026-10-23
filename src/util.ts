@@ -2,10 +2,20 @@ export function esc(s: string): string {
   return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 }
 
-/** Three-letter scorebug abbreviation from a team name. */
-/** Scoreboard abbreviation typed by the player: A-Z and 0-9 only, uppercase, at most 3. */
+/** Scoreboard abbreviation as typed: A-Z only, uppercase, at most 3. */
 export const cleanAbbr = (v: string) => v.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 3);
-export const abbr = (name: string) => (name.replace(/[^a-z]/gi, '').slice(0, 3) || 'YOU').toUpperCase();
+/** A valid scoreboard abbreviation is exactly three letters A-Z. */
+export const isAbbr = (v: string) => /^[A-Z]{3}$/.test(v);
+/** Three-letter scorebug abbreviation from a team name: its first three letters, padded with X when shorter ('YOU' when it has none). */
+export const abbr = (name: string) => {
+  const l = name.replace(/[^a-z]/gi, '').slice(0, 3).toUpperCase();
+  return l ? l.padEnd(3, 'X') : 'YOU';
+};
+/** A stored abbreviation if it is already valid, else three letters derived from the team name (old saves held 1-2 or 4 letters). */
+export const fixAbbr = (saved: unknown, name: string) => {
+  const v = typeof saved === 'string' ? saved.trim().toUpperCase() : '';
+  return isAbbr(v) ? v : abbr(name);
+};
 
 /** Longest team name. */
 export const TEAM_NAME_MAX = 20;

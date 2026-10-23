@@ -16,7 +16,7 @@ describe('letters-only team names', () => {
   it('abbreviations are letters only, uppercase, max 3', () => {
     expect(cleanAbbr('d0#om!')).toBe('DOM');
     expect(cleanAbbr('ab1c2d')).toBe('ABC');
-    expect(abbr('D00m #1!')).toBe('DM');
+    expect(abbr('D00m #1!')).toBe('DMX');
     expect(abbr('42')).toBe('YOU');
   });
 });

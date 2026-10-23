@@ -1,6 +1,6 @@
 // Team-name editing after a draft: an inline rename (tap the name or the pencil) and the
 // "Are you sure you want this name?" confirm shown before any new franchise starts.
-import { TEAM_NAME_MAX, abbr, cleanAbbr, esc, lettersName as cleanName } from '../util';
+import { TEAM_NAME_MAX, abbr, cleanAbbr, esc, isAbbr, lettersName as cleanName } from '../util';
 
 export const NAME_MAX = TEAM_NAME_MAX;
 
@@ -64,6 +64,7 @@ export function confirmFranchiseName(opts: { name: string; abbr?: string; replac
             <input id="fc-abbr" maxlength="3" autocomplete="off" autocapitalize="characters" spellcheck="false" aria-label="Scoreboard abbreviation, 3 letters" value="${esc(cleanAbbr(opts.abbr ?? '') || abbr(opts.name))}">
           </label>
         </div>
+        <p class="fc-hint" hidden>Pick 3 letters</p>
         ${opts.replacing ? '<p class="fc-warn"><b>This replaces your saved franchise.</b> Its season, roster and progress will be erased. This can\'t be undone.</p>' : ''}
         <div class="actions center">
           <button class="btn primary big" data-fc="yes">Yes, start franchise</button>
@@ -74,14 +75,22 @@ export function confirmFranchiseName(opts: { name: string; abbr?: string; replac
     const ab = el.querySelector<HTMLInputElement>('#fc-abbr')!;
     // Follows the name (the old derived abbreviation) until the player types their own.
     let abEdited = !!opts.abbr && cleanAbbr(opts.abbr) !== abbr(opts.name);
-    const result = () => ({ name: cleanName(input.value), abbr: cleanAbbr(ab.value) || abbr(cleanName(input.value)) });
+    const result = () => ({ name: cleanName(input.value), abbr: cleanAbbr(ab.value) });
+    const hint = el.querySelector<HTMLElement>('.fc-hint')!;
     const big = el.querySelector<HTMLElement>('.fc-big')!;
     const yes = el.querySelector<HTMLButtonElement>('[data-fc="yes"]')!;
     const sync = () => {
       const n = cleanName(input.value);
       if (!abEdited) ab.value = abbr(n);
       big.textContent = n || '—';
-      yes.disabled = !n;
+      check();
+    };
+    /** Start stays off until there is a name and exactly three scoreboard letters. */
+    const check = () => {
+      const ok = isAbbr(ab.value);
+      hint.hidden = ok;
+      ab.setAttribute('aria-invalid', String(!ok));
+      yes.disabled = !cleanName(input.value) || !ok;
     };
     const done = (v: { name: string; abbr: string } | null) => {
       el.remove();
@@ -98,8 +107,9 @@ export function confirmFranchiseName(opts: { name: string; abbr?: string; replac
       if (ab.value !== v) ab.value = v;
       abEdited = v !== '';
       if (!abEdited) ab.value = '';
+      check();
     });
-    ab.addEventListener('blur', () => { if (!ab.value) { abEdited = false; ab.value = abbr(cleanName(input.value)); } });
+    ab.addEventListener('blur', () => { if (!ab.value) { abEdited = false; ab.value = abbr(cleanName(input.value)); check(); } });
     el.addEventListener('click', (e) => {
       const a = (e.target as HTMLElement).closest<HTMLElement>('[data-fc]')?.dataset.fc;
       if (a === 'yes' && !yes.disabled) done(result());
