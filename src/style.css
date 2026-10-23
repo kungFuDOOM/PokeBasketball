@@ -651,23 +651,34 @@ li.empty { color: var(--muted); }
   box-shadow: 0 4px 0 rgba(0, 0, 0, 0.4);
 }
 .bug-team {
-  /* Both team boxes are the same fixed width (in em, so they scale with the bug): name left, score right. */
-  display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; column-gap: 10px;
-  width: 8.2em; box-sizing: border-box; flex: none;
-  padding: 5px 10px 5px 10px; border-left: 4px solid var(--tc);
+  /* Abbreviation and score are separate flex boxes with a guaranteed gap; nothing is absolutely positioned or fixed-width. */
+  display: flex; align-items: center; justify-content: space-between; gap: 0.6em;
+  min-width: 7.4em; box-sizing: border-box; flex: none;
+  padding: 5px 10px; border-left: 4px solid var(--tc);
 }
-.bug-team .abbr { min-width: 3ch; text-align: left; letter-spacing: 0.06em; }
-/* Fixed 3-digit slot (the name is always 3 letters, so it never needs to clip) in a monospace pixel font: 0, 2, 48 and 112 all sit flush right without moving the box. */
+.bug-team .abbr { flex: none; letter-spacing: 0.06em; }
+/* Pixel font, tabular digits, room for 3 digits; grows (never overlaps) if a score ever needs more. */
 .bug-team .pts {
-  display: block; width: 3em; min-width: 0; font: 0.95rem/1 var(--pixel); text-align: right;
-  font-variant-numeric: tabular-nums; color: var(--fg); text-shadow: none;
+  flex: none; min-width: 3ch; text-align: right; position: static;
+  font: 0.95rem/1 var(--pixel); font-variant-numeric: tabular-nums; color: var(--fg); text-shadow: none;
 }
 .bug-clock, .bug-shot { flex: none; }
-/* Score flash: color only, so it can never grow over the divider. */
-.pts.pop { animation: pop 0.5s ease-out; }
-@keyframes pop { 30% { color: var(--accent); } }
+/* Score flash: color only (own class: the generic .pop is an absolutely positioned floating "+N"). */
+.pts.pts-flash { animation: pts-flash 0.5s ease-out; }
+@keyframes pts-flash { 30% { color: var(--accent); } }
 /* Narrow portrait phones: shrink the whole bug (team boxes are in em, so they stay identical) so it never clips. */
 @media (max-width: 480px) { .bug { font-size: 0.84rem; } .bug-team .pts { font-size: 0.72rem; } .bug-shot { min-width: 28px; } }
+/* Portrait touch: the player card and pause button take the top row, so the bug sits just below them. */
+@media (orientation: portrait) and (max-width: 480px) { .has-touch .bug { top: calc(max(8px, env(safe-area-inset-top, 0px)) + 62px); } }
+/* Short landscape phones: the bug sits between the player card (left) and pause button (right), so shrink it to fit. */
+@media (orientation: landscape) and (max-height: 500px) {
+  .bug { font-size: 0.8rem; top: max(6px, env(safe-area-inset-top, 0px)); max-width: calc(100vw - 2 * (210px + max(10px, env(safe-area-inset-left, 0px)))); }
+  .bug-team { min-width: 6.4em; padding: 4px 6px; gap: 0.5em; }
+  .bug-team .pts { font-size: 0.66rem; }
+  .bug-clock { padding: 4px 6px; gap: 5px; }
+  .bug-shot { min-width: 26px; padding: 0 4px; font-size: 0.6rem; }
+  .has-touch .pcard { top: max(6px, env(safe-area-inset-top, 0px)); }
+}
 .bug-clock { display: flex; gap: 8px; align-items: center; padding: 5px 10px; background: var(--panel-2); font-variant-numeric: tabular-nums; }
 .bug-shot { display: grid; place-items: center; min-width: 34px; padding: 0 6px; background: var(--accent); color: #1a1400; font: 0.7rem var(--pixel); }
 .bug-shot.low { background: var(--red); color: #fff; }
