@@ -1438,3 +1438,54 @@ body:has(.pause-btn) .music-btn:not(.docked) {
   .roster-tbl tr.pickable:hover { background: var(--panel); }
   .fc-warn { background: var(--panel-2); }
 }
+
+/* Franchise moments: championship cutscene and new-season preview. Full-screen overlays, tap to dismiss. */
+.moment {
+  position: fixed; inset: 0; z-index: 60; display: flex; align-items: center; justify-content: center;
+  padding: 10px 16px; overflow-y: auto; cursor: pointer; color: var(--fg);
+  background: radial-gradient(ellipse at 30% 40%, #1d2660 0%, #0a0d1f 70%);
+  animation: fade-in-all 0.35s ease-out;
+}
+@keyframes fade-in-all { from { opacity: 0; } to { opacity: 1; } }
+.moment .confetti { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.mo-body { position: relative; width: 100%; max-width: 860px; margin: auto; }
+.moment.champion .mo-body { display: flex; align-items: center; gap: clamp(14px, 4vw, 40px); }
+.mo-art { flex: 0 0 auto; display: flex; align-items: center; justify-content: center; width: clamp(120px, 40vh, 300px); aspect-ratio: 1; border-radius: 50%; background: radial-gradient(circle, var(--tc) 0%, var(--tc2) 62%, rgba(0, 0, 0, 0) 72%); animation: mo-pop 0.7s cubic-bezier(0.2, 1.4, 0.4, 1) both; }
+.mo-art:empty { display: none; }
+.trophy-img { width: 86%; height: 86%; object-fit: contain; image-rendering: pixelated; filter: drop-shadow(0 4px 0 rgba(0, 0, 0, 0.45)); }
+@keyframes mo-pop { from { transform: scale(0.3); opacity: 0; } to { transform: none; opacity: 1; } }
+.mo-text { min-width: 0; flex: 1; text-align: left; }
+.mo-text .eyebrow, .mo-head .eyebrow { margin: 0 0 6px; }
+.moment h1 { margin: 0; font: 800 clamp(1.7rem, 7vh, 3.2rem)/1.02 var(--sport); text-transform: uppercase; letter-spacing: 0.02em; text-wrap: balance; overflow-wrap: anywhere; }
+.mo-team { margin: 8px 0 0; font: 700 clamp(1rem, 3.6vh, 1.5rem)/1.2 var(--sport); color: var(--muted); display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.mo-team .abbr { font: 0.8rem var(--pixel); padding: 5px 8px; border-radius: 6px; color: #fff; background: var(--tc); border: 2px solid var(--fg); text-shadow: 0 1px 0 rgba(0, 0, 0, 0.6); }
+.mo-final, .mo-mvp, .mo-you { margin: 10px 0 0; font: 600 clamp(0.95rem, 3.2vh, 1.2rem)/1.3 var(--sport); }
+.mo-final { font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase; }
+.mo-final i { font-style: normal; color: var(--muted); }
+.mo-final .win { color: var(--accent); }
+.mo-mvp .lbl { font: 0.55rem var(--pixel); color: var(--accent); text-transform: uppercase; margin-right: 4px; }
+.mo-you { color: var(--muted); }
+.mo-hint { margin: 14px 0 0; font: 0.55rem var(--pixel); color: var(--muted); animation: mo-blink 1.4s steps(2) infinite; }
+@keyframes mo-blink { 50% { opacity: 0.35; } }
+.moment.newseason .mo-body { display: flex; flex-direction: column; gap: 10px; }
+.mo-head { text-align: center; }
+.mo-sub { margin: 6px 0 0; font: 700 clamp(1rem, 3.4vh, 1.3rem) var(--sport); color: var(--muted); }
+.ns-cols { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.ns-cols section { background: var(--panel); border: 1px solid var(--line); border-top: 4px solid var(--tc); border-radius: 8px; padding: 8px 10px; min-width: 0; }
+.ns-cols h3 { margin: 0 0 6px; font: 0.55rem var(--pixel); color: var(--accent); text-transform: uppercase; letter-spacing: 0.05em; }
+.ns-mons, .ns-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.ns-mons li, .ns-list li { display: flex; align-items: center; gap: 6px; font: 700 clamp(0.9rem, 3vh, 1.05rem)/1.1 var(--sport); min-width: 0; }
+.ns-mons li span, .ns-list li span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ns-mons img { width: 30px; height: 30px; image-rendering: pixelated; object-fit: contain; flex: none; }
+.ns-mons em { font: normal 0.45rem var(--pixel); color: #1a1400; background: var(--accent); padding: 2px 4px; border-radius: 3px; flex: none; }
+.ns-mons b, .ns-list b { color: var(--tier2, var(--fg)); flex: none; }
+.ns-list i { width: 8px; height: 18px; background: var(--tc); border-radius: 2px; flex: none; }
+.ns-list small { color: var(--muted); font-weight: 700; flex: none; }
+.moment.newseason .mo-hint { text-align: center; margin-top: 4px; }
+@media (max-width: 640px) {
+  .moment.champion .mo-body { flex-direction: column; text-align: center; }
+  .moment.champion .mo-text { text-align: center; }
+  .mo-team { justify-content: center; }
+  .ns-cols { grid-template-columns: minmax(0, 1fr); }
+}
+@media (prefers-reduced-motion: reduce) { .moment, .mo-art, .mo-hint { animation: none; } }

@@ -130,6 +130,12 @@ export interface Franchise {
   seed?: number;
   /** Recent rookie classes (dex numbers), newest last, so the same prospects don't come back year after year. */
   classes?: { season: number; dexes: number[] }[];
+  /** Season whose championship cutscene has been shown. Missing in older saves. */
+  titleShown?: number;
+  /** Season whose new-season preview has been shown. Missing in older saves. */
+  introShown?: number;
+  /** The user's pick in the last rookie draft, for the new-season preview. */
+  draftedRookie?: string;
 }
 
 /**
@@ -871,7 +877,8 @@ export function finishRookieDraft(f: Franchise, release: string) {
   const mine = r.picks[r.order.indexOf(0)];
   delete f.rookies;
   nextSeason(f);
-  if (mine && me.roster.includes(mine)) f.news.push(`${me.name} drafted ${monOf(f, mine).name} in the rookie draft.`);
+  f.draftedRookie = mine && me.roster.includes(mine) ? mine : undefined;
+  if (mine &&me.roster.includes(mine)) f.news.push(`${me.name} drafted ${monOf(f, mine).name} in the rookie draft.`);
   const top = r.picks[0];
   f.news.push(`${f.teams[r.order[0]].name} took ${monOf(f, top).name} first overall.`);
 }

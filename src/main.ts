@@ -12,7 +12,9 @@ import { musicToggle } from './ui/musicToggle';
 import { DIFFICULTIES, type Difficulty } from './game/types';
 import type { Game } from './game/game';
 import { draftScreen, type DraftState } from './screens/draft';
+import { shouldShowChampionship, shouldShowNewSeason } from './franchise/moments';
 import { hubScreen } from './screens/hub';
+import { championshipScreen, newSeasonScreen } from './screens/moments';
 import { menuScreen, type Settings } from './screens/menu';
 import { playGame } from './screens/play';
 import { quickPlay } from './screens/quick';
@@ -239,6 +241,20 @@ function hub() {
   if (!f) return menu();
   app.className = 'screen-hub';
   window.scrollTo(0, 0);
+  // Once per season: the title cutscene after the final, then the preview when the new season starts.
+  if (shouldShowChampionship(f)) {
+    championshipScreen(f, () => {
+      f.titleShown = f.season;
+      saveFranchise(f);
+      hub();
+    });
+  } else if (shouldShowNewSeason(f)) {
+    newSeasonScreen(f, () => {
+      f.introShown = f.season;
+      saveFranchise(f);
+      hub();
+    });
+  }
   hubScreen(app, f, settings, {
     play: (g) => playUserGame(f, g),
     simMine: (g) => void simUserGame(f, g),
