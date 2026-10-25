@@ -101,11 +101,18 @@ describe('where the user finished', () => {
 describe('new-season preview trigger', () => {
   it('counts the season label up each year', () => {
     const f = league();
-    expect(seasonLabel(f.season)).toBe('Season 1');
+    expect(seasonLabel(f.season)).toBe('2026–27');
     nextSeason(f);
-    expect(seasonLabel(f.season)).toBe('Season 2');
+    expect(seasonLabel(f.season)).toBe('2027–28');
     nextSeason(f);
-    expect(seasonLabel(f.season)).toBe('Season 3');
+    expect(seasonLabel(f.season)).toBe('2028–29');
+  });
+
+  it('keeps the end year to two digits across decade and century boundaries', () => {
+    expect(seasonLabel(4)).toBe('2029–30');
+    expect(seasonLabel(73)).toBe('2098–99');
+    expect(seasonLabel(74)).toBe('2099–00');
+    expect(seasonLabel(75)).toBe('2100–01');
   });
 
   it('does not show in the first season, shows at the start of later ones, and only once', () => {

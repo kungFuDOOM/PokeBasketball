@@ -135,7 +135,7 @@ export function newSeasonScreen(f: Franchise, done: () => void) {
     <div class="mo-body ns" style="--tc:${me.color};--tc2:${me.color2}">
       <div class="mo-head">
         <p class="eyebrow">${esc(me.name)} · ${esc(me.abbr)}</p>
-        <h1>${esc(seasonLabel(f.season))}</h1>
+        <h1>Season ${esc(seasonLabel(f.season))}</h1>
         <p class="mo-sub">${teamOvrOf(f, me)} OVR · ${ordinal(mine.rank)} of ${ranking.length} in the league</p>
       </div>
       <div class="ns-cols">

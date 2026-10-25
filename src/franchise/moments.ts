@@ -3,8 +3,15 @@
 import { monOf, standings, teamOvrOf, type FGame, type FTeam, type Franchise } from './league';
 import { ordinal } from '../screens/draft.logic';
 
-/** Saves count seasons 1, 2, 3...: that is the label the hub, menu and news already use. */
-export const seasonLabel = (season: number) => `Season ${season}`;
+/** Season 1 starts in this year's autumn: 2025 + 1 = 2026. */
+export const BASE_YEAR = 2025;
+
+/** Saves count seasons 1, 2, 3...; shown as a year range: season 1 = "2026–27", season 74 = "2099–00". */
+export const seasonLabel = (season: number) => {
+  const start = BASE_YEAR + season;
+  const end = (start + 1) % 100;
+  return `${start}–${end < 10 ? '0' : ''}${end}`;
+};
 
 /** The cutscene plays once per season, right after the final ends and before the rookie draft. */
 export const shouldShowChampionship = (f: Franchise) =>
