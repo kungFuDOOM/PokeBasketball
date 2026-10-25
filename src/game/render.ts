@@ -105,6 +105,20 @@ export class Renderer {
     return { x: p.x, y: p.y };
   }
 
+  /** Where a court point lands on the canvas, with the sprite scale (pixels per foot) there. */
+  view(x: number, y: number, z = 0): Pt {
+    return this.proj(x, y, z);
+  }
+
+  /** Just the arena and floor, no game: used for cutscenes. `hype` lights up the stands and the LED board. */
+  backdrop(court: CourtStyle, dt: number, hype: boolean) {
+    if (this.court !== court) this.useCourt(court);
+    this.t += dt;
+    this.hype = hype ? 1 : 0;
+    this.drawArena(this.ctx);
+    this.drawFloor(this.ctx);
+  }
+
   /** Jumps the camera straight to the action instead of easing toward it. */
   snap(g: Game) {
     this.camX = clamp(g.focusX(), 21, COURT_L - 21);
