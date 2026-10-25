@@ -19,6 +19,11 @@ export class Audio {
     return this.ctx;
   }
 
+  /** Where sound effects go (its gain is 0 while muted), for sounds that build their own nodes. */
+  get output(): AudioNode | null {
+    return this.master;
+  }
+
   /** Must be called from a user gesture. */
   unlock() {
     if (this.ctx) {

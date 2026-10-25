@@ -7,6 +7,8 @@ import {
   simulate, weekGames, weekLabel, type FGame, type Franchise, type Progress,
 } from './franchise/league';
 import { Audio } from './game/audio';
+import { sharedVoice } from './game/voice';
+import { CelebrationSound } from './music/celebration';
 import { Music, trackFor } from './music/music';
 import { musicToggle } from './ui/musicToggle';
 import { DIFFICULTIES, type Difficulty } from './game/types';
@@ -247,7 +249,7 @@ function hub() {
       f.titleShown = f.season;
       saveFranchise(f);
       hub();
-    });
+    }, new CelebrationSound({ audio, music, voice: sharedVoice(audio) }, f.teams[f.champion!].name));
   } else if (shouldShowNewSeason(f)) {
     newSeasonScreen(f, () => {
       f.introShown = f.season;

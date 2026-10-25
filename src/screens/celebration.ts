@@ -41,7 +41,8 @@ function bumpAt(t: number, side: number) {
   return { k, u };
 }
 
-export function startCelebration(host: HTMLElement, f: Franchise, champ: FTeam): () => void {
+/** `onBump` fires each time a pair of players chest-bumps (the star pop), for the sound. */
+export function startCelebration(host: HTMLElement, f: Franchise, champ: FTeam, hooks: { onBump?: () => void } = {}): () => void {
   const canvas = host.querySelector<HTMLCanvasElement>('canvas.cel-canvas');
   const zoomEl = host.querySelector<HTMLElement>('.cel-zoom');
   if (!canvas || !zoomEl) return () => {};
@@ -96,6 +97,8 @@ export function startCelebration(host: HTMLElement, f: Franchise, champ: FTeam):
   const T0 = performance.now();
   let last = T0;
   let drawn = -1;
+  /** The bump cycle each pair last popped in, so a bump sounds once. */
+  const bumped = new Map<number, number>();
   let raf = 0;
 
   /** x, z, and facing for one actor at time t. */
@@ -176,6 +179,11 @@ export function startCelebration(host: HTMLElement, f: Franchise, champ: FTeam):
         if (a.mate < 0 || a.x > crewActors[a.mate].x) continue;
         const { u } = bumpAt(t, a.side);
         if (u < 0.45 || u > 0.75) continue;
+        const cycle = Math.floor((t + a.side * 1.3) / 2.6);
+        if (bumped.get(i) !== cycle) {
+          bumped.set(i, cycle);
+          hooks.onBump?.();
+        }
         const at = rd.view((a.x + crewActors[a.mate].x) / 2, a.y, ft(a) * 0.8);
         const r = (u - 0.45) / 0.3;
         ctx.strokeStyle = `rgba(255,236,150,${1 - r})`;

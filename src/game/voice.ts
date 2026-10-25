@@ -18,6 +18,8 @@ export class Voice {
   private loading = new Set<string>();
   private src: AudioBufferSourceNode | null = null;
   private out: GainNode | null = null;
+  private speakTimer = 0;
+  private spoke = false;
 
   constructor(private audio: Audio) {
     try {
@@ -82,10 +84,48 @@ export class Voice {
     this.src = src;
   }
 
+  /**
+   * Speaks a line with the browser's own voice (for words no recorded clip has, like a team name), `delay` seconds
+   * from now. Needs the Web Speech API (missing on some browsers: then it's skipped) and follows the same on/off and
+   * mute as the recorded lines. `stop()` cancels it, queued or mid-sentence.
+   */
+  speak(text: string, delay = 0) {
+    if (!this.live || typeof speechSynthesis === 'undefined' || typeof SpeechSynthesisUtterance === 'undefined') return;
+    this.stop();
+    const go = () => {
+      this.speakTimer = 0;
+      if (!this.live) return;
+      try {
+        const u = new SpeechSynthesisUtterance(text);
+        u.lang = 'en-US';
+        u.rate = 1.02;
+        u.pitch = 0.85;
+        this.spoke = true;
+        speechSynthesis.speak(u);
+      } catch { /* speech blocked: the title card still reads */ }
+    };
+    if (delay > 0) this.speakTimer = window.setTimeout(go, delay * 1000);
+    else go();
+  }
+
   stop() {
     try {
       this.src?.stop();
     } catch { /* not started */ }
     this.src = null;
+    window.clearTimeout(this.speakTimer);
+    this.speakTimer = 0;
+    if (this.spoke) {
+      this.spoke = false;
+      try {
+        speechSynthesis.cancel();
+      } catch { /* nothing to cancel */ }
+    }
   }
+}
+
+/** One announcer voice for the whole visit, so his clips load once and games and cutscenes share him. */
+let shared: Voice | null = null;
+export function sharedVoice(audio: Audio): Voice {
+  return (shared ??= new Voice(audio));
 }

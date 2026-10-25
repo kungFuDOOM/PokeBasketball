@@ -8,15 +8,12 @@ import { preload } from '../game/sprites';
 import type { GameConfig, Player } from '../game/types';
 import { spriteUrl } from '../data/pokemon';
 import { esc } from '../util';
-import { Voice } from '../game/voice';
+import { Voice, sharedVoice } from '../game/voice';
 import { controlsHtml } from './menu';
 
 const STEP = 1 / 60;
 /** Dev aid: ?speed=4 runs the simulation four times faster. */
 const SPEED = Math.max(1, Math.min(8, Number(new URLSearchParams(location.search).get('speed')) || 1));
-
-/** One announcer voice for the whole visit, so his clips load once. */
-let sharedVoice: Voice | null = null;
 
 export interface PlayHandle {
   stop(): void;
@@ -68,7 +65,7 @@ export function playGame(
 
   // Arena announcer: display only (never touches the sim). His clips load in the background now that audio is unlocked.
   const announcer = new Announcer();
-  const voice = (sharedVoice ??= new Voice(audio));
+  const voice = sharedVoice(audio);
   voice.load(CLIPS);
 
   let running = true;
