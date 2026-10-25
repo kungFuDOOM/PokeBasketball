@@ -34,6 +34,19 @@ export function spotlightOf(f: Franchise, champ: FTeam): Spotlight | null {
   return best ? { uid: best, label: 'Top player' } : null;
 }
 
+export interface Cast { mvp: string | null; crew: string[] }
+
+/** Who celebrates on the court: the MVP (centre, trophy overhead) plus the champion's best players, up to `max` in all. */
+export function celebrationCast(f: Franchise, champ: FTeam, max = 8): Cast {
+  const spot = spotlightOf(f, champ);
+  const mvp = spot ? spot.uid : null;
+  const crew = champ.roster
+    .filter((u) => u !== mvp && f.players[u])
+    .sort((a, b) => monOf(f, b).ovr - monOf(f, a).ovr)
+    .slice(0, Math.max(0, max - (mvp ? 1 : 0)));
+  return { mvp, crew };
+}
+
 /** Where the user's team finished, from the playoff games and the final standings. */
 export function userFinish(f: Franchise): string {
   if (f.champion === 0) return 'You won the title.';

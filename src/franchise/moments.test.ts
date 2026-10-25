@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { POKEMON, type Mon } from '../data/pokemon';
-import { LEAGUE, createFranchise, finishRookieDraft, loadFranchise, nextSeason, rookiePick, rookieOnClock, startRookieDraft, tradeValue, type Franchise } from './league';
+import { LEAGUE, createFranchise, finishRookieDraft, loadFranchise, monOf, nextSeason, rookiePick, rookieOnClock, startRookieDraft, tradeValue, type Franchise } from './league';
 import {
-  firstGames, ovrRanking, rosterHighlights, seasonLabel, shouldShowChampionship, shouldShowNewSeason, spotlightOf, topContenders, userFinish,
+  celebrationCast, firstGames, ovrRanking, rosterHighlights, seasonLabel, shouldShowChampionship, shouldShowNewSeason, spotlightOf, topContenders, userFinish,
 } from './moments';
 
 function league(): Franchise {
@@ -66,6 +66,35 @@ describe('championship cutscene trigger', () => {
     expect(spotlightOf(f, champ)).toEqual({ uid: champ.roster[2], label: 'Season MVP' });
     f.mvp = undefined;
     expect(spotlightOf(f, champ)!.label).toBe('Top player');
+  });
+});
+
+describe('who celebrates on the court', () => {
+  it('puts the Finals MVP in the middle and the best of the rest around them', () => {
+    const f = league();
+    finish(f, [3, 4, 5, 6], 3);
+    const champ = f.teams[3];
+    const cast = celebrationCast(f, champ);
+    expect(cast.mvp).toBe(champ.roster[0]);
+    expect(cast.crew).not.toContain(cast.mvp);
+    expect(cast.crew.length + 1).toBe(Math.min(8, champ.roster.length));
+    expect(new Set(cast.crew).size).toBe(cast.crew.length);
+    const ovrs = cast.crew.map((u) => monOf(f, u).ovr);
+    expect(ovrs).toEqual([...ovrs].sort((a, b) => b - a));
+    cast.crew.forEach((u) => expect(champ.roster).toContain(u));
+  });
+
+  it('copes with a short roster and respects the cap', () => {
+    const f = league();
+    finish(f, [3, 4, 5, 6], 3);
+    const champ = f.teams[3];
+    expect(celebrationCast(f, champ, 3).crew).toHaveLength(2);
+    champ.roster = champ.roster.slice(0, 2);
+    const cast = celebrationCast(f, champ);
+    expect(cast.mvp).toBe(champ.roster[0]);
+    expect(cast.crew).toEqual([champ.roster[1]]);
+    champ.roster = [];
+    expect(celebrationCast(f, champ)).toEqual({ mvp: null, crew: [] });
   });
 });
 

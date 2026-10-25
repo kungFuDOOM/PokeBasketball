@@ -74,8 +74,12 @@ async function makeSaves(page) {
   });
 }
 
-async function shot(save, size, name, wait = 1800) {
-  const ctx = await browser.newContext({ viewport: size, deviceScaleFactor: 2, hasTouch: size.width < 900, isMobile: size.width < 900 });
+/** Opens the saved franchise's moment. `extra` = more shots to take on the way: [[name, ms after opening]] (before the title card). */
+async function shot(save, size, name, wait = 1800, extra = [], video = null) {
+  const ctx = await browser.newContext({
+    viewport: size, deviceScaleFactor: video ? 1 : 2, hasTouch: size.width < 900, isMobile: size.width < 900,
+    ...(video ? { recordVideo: { dir: video, size } } : {}),
+  });
   const page = await ctx.newPage();
   await page.addInitScript((s) => {
     localStorage.setItem('pokejam.franchise.v1', JSON.stringify(s));
@@ -86,8 +90,21 @@ async function shot(save, size, name, wait = 1800) {
   // The menu offers "Continue" for the saved franchise.
   await page.getByRole('button', { name: /continue/i }).first().click();
   await page.waitForSelector('.moment', { timeout: 10000 });
-  await page.waitForTimeout(wait);
+  let at = 0;
+  for (const [n, ms] of extra) {
+    await page.waitForTimeout(ms - at);
+    at = ms;
+    await page.screenshot({ path: `${out}/${n}.png` });
+  }
+  await page.waitForTimeout(Math.max(0, wait - at));
   await page.screenshot({ path: `${out}/${name}.png` });
+  if (video) {
+    await page.waitForTimeout(2500);
+    const v = page.video();
+    await ctx.close();
+    await v.saveAs(`${out}/cutscene-844x390.webm`);
+    return;
+  }
   const overflow = await page.evaluate(() => {
     const m = document.querySelector('.moment');
     return { scrollH: m.scrollHeight, clientH: m.clientHeight, scrollW: m.scrollWidth, clientW: m.clientWidth };
@@ -103,14 +120,18 @@ await boot.close();
 console.log('natural champion was', saves.baseChampion === 0 ? 'the user (rigged variants used)' : `team ${saves.baseChampion}`);
 
 const iphone = { width: 844, height: 390 };
-await shot(saves.mine, iphone, 'user-champion-844x390');
-await shot(saves.other, iphone, 'other-champion-844x390');
+// Title card lands at ~6.2 s; the celebration shots are taken mid-scene.
+await shot(saves.mine, iphone, 'user-champion-844x390', 8200, [['celebration-user-844x390', 3200]]);
+await shot(saves.other, iphone, 'other-champion-844x390', 8200, [['celebration-other-844x390', 3200]]);
+await shot(saves.mine, iphone, 'titlecard-trophy-844x390', 7600);
 await shot(saves.next, iphone, 'new-season-844x390', 800);
-await shot(saves.mine, { width: 932, height: 430 }, 'user-champion-932x430');
-await shot(saves.mine, { width: 1440, height: 900 }, 'user-champion-desktop');
+await shot(saves.mine, { width: 932, height: 430 }, 'user-champion-932x430', 8200);
+await shot(saves.mine, { width: 1440, height: 900 }, 'user-champion-desktop', 8200);
+// The full cutscene as a video (not committed): scene, title card, then the page stays put until the clip ends.
+await shot(saves.other, iphone, 'video-last-frame', 9500, [], '/tmp/cutscene-video');
 await browser.close();
 
 // The three main shots also live in the repo so they render in the PR.
 const docs = new URL('../docs/screenshots/championship-cutscene/', import.meta.url).pathname;
 mkdirSync(docs, { recursive: true });
-for (const n of ['user-champion-844x390', 'other-champion-844x390', 'new-season-844x390']) copyFileSync(`${out}/${n}.png`, `${docs}${n}.png`);
+for (const n of ['user-champion-844x390', 'other-champion-844x390', 'new-season-844x390', 'celebration-user-844x390', 'celebration-other-844x390', 'titlecard-trophy-844x390']) copyFileSync(`${out}/${n}.png`, `${docs}${n}.png`);

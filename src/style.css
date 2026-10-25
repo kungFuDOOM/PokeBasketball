@@ -1449,10 +1449,23 @@ body:has(.pause-btn) .music-btn:not(.docked) {
 @keyframes fade-in-all { from { opacity: 0; } to { opacity: 1; } }
 .moment .confetti { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
 .mo-body { position: relative; width: 100%; max-width: 860px; margin: auto; }
+/* The on-court celebration: the game's court and sprites on a 480x270 canvas, pushed in slowly by a CSS transform. */
+.cel { position: absolute; inset: 0; overflow: hidden; background: #0b0e22; }
+.cel-zoom { position: absolute; inset: 0; transform-origin: 50% 62%; will-change: transform; }
+.cel-canvas { width: 100%; height: 100%; display: block; object-fit: cover; object-position: 50% 78%; image-rendering: pixelated; image-rendering: crisp-edges; }
+.cel-shade { position: absolute; inset: 0; background: radial-gradient(ellipse at 50% 60%, rgba(0, 0, 0, 0) 55%, rgba(0, 0, 0, 0.55) 100%); transition: background 0.6s; }
+.moment.show-card .cel-shade { background: rgba(6, 8, 22, 0.5); }
+.cel-skip { position: absolute; left: 0; right: 0; bottom: 8px; margin: 0; text-align: center; font: 0.55rem var(--pixel); color: #fff; text-shadow: 0 1px 0 #000, 0 0 6px #000; opacity: 0.8; pointer-events: none; transition: opacity 0.3s; }
+.moment.show-card .cel-skip { opacity: 0; }
+.moment.champion .mo-body {
+  width: auto; opacity: 0; transform: translateY(36px); pointer-events: none; padding: 14px 24px; border-radius: 14px;
+  background: rgba(8, 10, 28, 0.84); border: 2px solid var(--tc); box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
+}
+.moment.champion.show-card .mo-body { opacity: 1; transform: none; transition: opacity 0.55s ease-out, transform 0.55s cubic-bezier(0.2, 1, 0.3, 1); }
 .moment.champion .mo-body { display: flex; align-items: center; gap: clamp(14px, 4vw, 40px); }
 .mo-art { flex: 0 0 auto; display: flex; align-items: center; justify-content: center; width: clamp(120px, 40vh, 300px); aspect-ratio: 1; border-radius: 50%; background: radial-gradient(circle, var(--tc) 0%, var(--tc2) 62%, rgba(0, 0, 0, 0) 72%); animation: mo-pop 0.7s cubic-bezier(0.2, 1.4, 0.4, 1) both; }
 .mo-art:empty { display: none; }
-.trophy-img { width: 86%; height: 86%; object-fit: contain; image-rendering: pixelated; filter: drop-shadow(0 4px 0 rgba(0, 0, 0, 0.45)); }
+.trophy-img { width: 86%; height: 86%; object-fit: contain; filter: drop-shadow(0 4px 0 rgba(0, 0, 0, 0.45)); }
 @keyframes mo-pop { from { transform: scale(0.3); opacity: 0; } to { transform: none; opacity: 1; } }
 .mo-text { min-width: 0; flex: 1; text-align: left; }
 .mo-text .eyebrow, .mo-head .eyebrow { margin: 0 0 6px; }
@@ -1488,4 +1501,8 @@ body:has(.pause-btn) .music-btn:not(.docked) {
   .mo-team { justify-content: center; }
   .ns-cols { grid-template-columns: minmax(0, 1fr); }
 }
-@media (prefers-reduced-motion: reduce) { .moment, .mo-art, .mo-hint { animation: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .moment, .mo-art, .mo-hint { animation: none; }
+  .moment.champion .mo-body { transform: none; }
+  .moment.champion.show-card .mo-body { transition: opacity 0.8s ease-out; }
+}
