@@ -111,6 +111,8 @@ export class Music {
   private ctx: AudioContext | null = null;
   private bus: GainNode | null = null;
   private want: TrackId | null = null;
+  /** True while a cutscene plays its own music: the screen's track waits. */
+  private held = false;
   private player: Player | null = null;
   /** Menu and franchise screens: a shuffled rotation. */
   private playlist = new Playlist(menuPlaylist(typeof location === 'undefined' ? null : new URLSearchParams(location.search).get('menu')));
@@ -148,6 +150,12 @@ export class Music {
     this.sync();
   }
 
+  /** Silences the background track while a cutscene plays its own music; the screen's track returns on release. */
+  hold(on: boolean) {
+    this.held = on;
+    this.sync();
+  }
+
   setEnabled(on: boolean) {
     this.enabled = on;
     try {
@@ -167,7 +175,7 @@ export class Music {
 
   private sync() {
     const ctx = this.ctx;
-    const target = ctx && this.bus && this.enabled && !document.hidden && ctx.state !== 'closed' ? this.want : null;
+    const target = ctx && this.bus && this.enabled && !document.hidden && ctx.state !== 'closed' && !this.held ? this.want : null;
     // Moving between screens in the same group keeps the song going.
     if (target === this.playing) return;
     clearTimeout(this.rotateTimer);

@@ -9,6 +9,7 @@ import { TROPHY_IMG } from '../ui/trophy';
 import { esc, tier } from '../util';
 import { reducedMotion, SCENE_MS, SCENE_MS_CALM, startCelebration } from './celebration';
 import { ordinal } from './draft.logic';
+import type { CelebrationSound } from '../music/celebration';
 
 /** Taps this soon after the screen opens are the tap that opened it, not a skip. */
 const GUARD_MS = 450;
@@ -45,7 +46,7 @@ function mount(html: string, cls: string, done: () => void, onClose?: () => void
 }
 
 /** Code confetti, streamers and camera-flash sparkles on a canvas; returns a stop function. Off for people who ask for less motion. */
-function confetti(host: HTMLElement, colors: string[]): () => void {
+function confetti(host: HTMLElement, colors: string[], onFlash: () => void = () => {}): () => void {
   const canvas = host.querySelector<HTMLCanvasElement>('canvas.confetti');
   const ctx = canvas && canvas.getContext('2d');
   if (!canvas || !ctx || reducedMotion()) return () => {};
@@ -107,6 +108,7 @@ function confetti(host: HTMLElement, colors: string[]): () => void {
     }
     if (onCourt && Math.random() < dt * 9) {
       flashes.push({ x: Math.random() * w, y: (0.04 + Math.random() * 0.2) * h, life: 0.3, r: (7 + Math.random() * 9) * dpr });
+      onFlash();
     }
     ctx.strokeStyle = '#fff';
     ctx.fillStyle = '#fff';
@@ -133,7 +135,8 @@ function confetti(host: HTMLElement, colors: string[]): () => void {
   return () => cancelAnimationFrame(raf);
 }
 
-export function championshipScreen(f: Franchise, done: () => void) {
+/** `sound` is the celebration's audio (fanfare, crowd, announcer); omitted, the cutscene is silent. */
+export function championshipScreen(f: Franchise, done: () => void, sound?: CelebrationSound) {
   const champ = f.teams[f.champion!];
   const mine = champ.human;
   const spot = spotlightOf(f, champ);
@@ -165,14 +168,16 @@ export function championshipScreen(f: Franchise, done: () => void) {
     cardAt = Date.now();
     window.clearTimeout(timer);
     el.classList.add('show-card');
+    sound?.card();
   };
   const intercept = () => {
     if (!cardAt) { showCard(); return true; }
     return Date.now() - cardAt < 350;
   };
-  const el = mount(html, 'champion', done, () => { window.clearTimeout(timer); stopConfetti(); stopScene(); }, intercept);
-  const stopScene = startCelebration(el, f, champ);
-  const stopConfetti = confetti(el, [champ.color, '#ffcb05', '#f2f0e6', champ.color2 === '#16224a' ? '#3b6fd8' : champ.color2, '#e3350d']);
+  const el = mount(html, 'champion', done, () => { window.clearTimeout(timer); stopConfetti(); stopScene(); sound?.stop(); }, intercept);
+  sound?.start();
+  const stopScene = startCelebration(el, f, champ, { onBump: () => sound?.bump() });
+  const stopConfetti = confetti(el, [champ.color, '#ffcb05', '#f2f0e6', champ.color2 === '#16224a' ? '#3b6fd8' : champ.color2, '#e3350d'], () => sound?.flash());
   timer = window.setTimeout(showCard, reducedMotion() ? SCENE_MS_CALM : SCENE_MS);
 }
 
