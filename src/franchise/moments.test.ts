@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { POKEMON, type Mon } from '../data/pokemon';
 import { LEAGUE, createFranchise, finishRookieDraft, loadFranchise, monOf, nextSeason, rookiePick, rookieOnClock, startRookieDraft, tradeValue, type Franchise } from './league';
 import {
-  celebrationCast, firstGames, ovrRanking, rosterHighlights, seasonLabel, shouldShowChampionship, shouldShowNewSeason, spotlightOf, topContenders, userFinish,
+  allBadgesEarned, celebrationCast, firstGames, ovrRanking, rosterHighlights, seasonLabel, shouldPlayMasterCutscene, shouldShowChampionship, shouldShowNewSeason, spotlightOf, topContenders, userFinish,
 } from './moments';
 
 function league(): Franchise {
@@ -209,5 +209,65 @@ describe('preview data', () => {
     expect(g.titleShown).toBeUndefined();
     expect(g.introShown).toBeUndefined();
     expect(rosterHighlights(g).some((h) => h.rookie)).toBe(false);
+  });
+});
+
+describe('PokeJam Master cutscene trigger', () => {
+  /** A finished season with the gym/Elite Four flags set; the user has beaten the teams in `beaten`. */
+  function season(beaten: number[], champion: number) {
+    const f = league();
+    LEAGUE.forEach((t, i) => Object.assign(f.teams[i + 1], { gym: t.gym, badge: t.badge, elite: t.elite }));
+    f.games = beaten.map((opp, i) => ({ week: i + 1, home: 0, away: opp, score: [60, 50] as [number, number] }));
+    finish(f, [0, 1, 2, 3], champion);
+    return f;
+  }
+  const all = [1, 2, 3, 4, 5, 6, 7, 8, 9];
+
+  it('plays when the user wins the title with all eight gym badges and the Elite Four', () => {
+    const f = season(all, 0);
+    expect(allBadgesEarned(f)).toBe(true);
+    expect(shouldPlayMasterCutscene(f)).toBe(true);
+  });
+
+  it('does not play with the title but a badge missing (gym or Elite Four), or after a loss to that team', () => {
+    expect(shouldPlayMasterCutscene(season(all.filter((x) => x !== 5), 0))).toBe(false);
+    expect(shouldPlayMasterCutscene(season(all.filter((x) => x !== 9), 0))).toBe(false);
+    const f = season(all, 0);
+    f.games[4].score = [50, 60]; // lost to team 5, the only game against them
+    expect(shouldPlayMasterCutscene(f)).toBe(false);
+  });
+
+  it('does not play with every badge but no title', () => {
+    expect(shouldPlayMasterCutscene(season(all, 3))).toBe(false);
+    const f = season(all, 0);
+    f.phase = 'playoffs';
+    f.champion = undefined;
+    expect(shouldPlayMasterCutscene(f)).toBe(false);
+  });
+
+  it('does not play when a CPU team wins, even with every badge', () => {
+    expect(shouldPlayMasterCutscene(season(all, 9))).toBe(false);
+  });
+
+  it('does not play in a league with no badges at all', () => {
+    const f = league();
+    finish(f, [0, 1, 2, 3], 0);
+    expect(allBadgesEarned(f)).toBe(false);
+    expect(shouldPlayMasterCutscene(f)).toBe(false);
+  });
+
+  it('plays only the first time: once the flag is set, a later title with every badge does not replay it', () => {
+    const f = season(all, 0);
+    expect(shouldPlayMasterCutscene(f)).toBe(true);
+    f.pokejamMaster = f.season;
+    expect(shouldPlayMasterCutscene(f)).toBe(false);
+    f.season++;
+    expect(shouldPlayMasterCutscene(f)).toBe(false);
+  });
+
+  it('survives a save round trip with the flag', () => {
+    const f = season(all, 0);
+    f.pokejamMaster = 2;
+    expect(JSON.parse(JSON.stringify(f)).pokejamMaster).toBe(2);
   });
 });

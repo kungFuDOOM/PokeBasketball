@@ -132,6 +132,8 @@ export interface Franchise {
   classes?: { season: number; dexes: number[] }[];
   /** Season whose championship cutscene has been shown. Missing in older saves. */
   titleShown?: number;
+  /** Season the user became a PokeJam Master (won the title with every badge); its cutscene has played. Permanent. */
+  pokejamMaster?: number;
   /** Season whose new-season preview has been shown. Missing in older saves. */
   introShown?: number;
   /** The user's pick in the last rookie draft, for the new-season preview. */

@@ -1,6 +1,6 @@
 // The two franchise "moments": the championship cutscene after the final, and the new-season preview after
 // the rookie draft. Everything here reads the save; nothing is invented.
-import { monOf, standings, teamOvrOf, type FGame, type FTeam, type Franchise } from './league';
+import { badgesEarned, monOf, standings, teamOvrOf, type FGame, type FTeam, type Franchise } from './league';
 import { ordinal } from '../screens/draft.logic';
 
 /** Season 1 starts in this year's autumn: 2025 + 1 = 2026. */
@@ -20,6 +20,21 @@ export const shouldShowChampionship = (f: Franchise) =>
 /** The preview shows once, at the start of every season after the first, before anyone has played. */
 export const shouldShowNewSeason = (f: Franchise) =>
   f.phase === 'season' && f.season > 1 && f.week === 1 && f.introShown !== f.season && !f.games.some((g) => g.score);
+
+/** Every badge of the season: the eight gym badges plus the Elite Four emblem. */
+export function allBadgesEarned(f: Franchise): boolean {
+  const need = f.teams.filter((t) => t.gym || t.elite);
+  if (!need.length) return false;
+  const got = badgesEarned(f);
+  return need.every((t) => got.has(t.id));
+}
+
+/**
+ * The PokeJam Master cutscene: the user's own team won the title and the user beat every gym and the Elite Four
+ * that season. It plays the first time only (`pokejamMaster` is set once it has), right after the championship scene.
+ */
+export const shouldPlayMasterCutscene = (f: Franchise) =>
+  f.phase === 'done' && f.champion !== undefined && !!f.teams[f.champion]?.human && f.pokejamMaster === undefined && allBadgesEarned(f);
 
 export const finalGame = (f: Franchise): FGame | undefined => f.games.find((g) => g.round === 'final' && g.score);
 

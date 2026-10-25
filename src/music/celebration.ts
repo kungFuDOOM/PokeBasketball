@@ -171,7 +171,7 @@ function snare(r: Rig, t: number, vol: number) {
   hiss(r, t, 0.12, false, (t * 7.3) % 0.5).connect(f).connect(g).connect(r.out);
 }
 
-function kick(r: Rig, t: number, vol: number) {
+export function kick(r: Rig, t: number, vol: number) {
   const o = osc(r, 'sine', t, 0.3);
   o.frequency.setValueAtTime(130, t);
   o.frequency.exponentialRampToValueAtTime(45, t + 0.18);
