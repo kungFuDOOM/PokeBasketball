@@ -15,7 +15,7 @@ import type { CelebrationSound } from '../music/celebration';
 const GUARD_MS = 450;
 
 /** `intercept` runs on a tap that would close the screen; return true to swallow it. */
-function mount(html: string, cls: string, done: () => void, onClose?: () => void, intercept?: () => boolean): HTMLElement {
+export function mount(html: string, cls: string, done: () => void, onClose?: () => void, intercept?: () => boolean): HTMLElement {
   const el = document.createElement('div');
   el.className = `moment ${cls}`;
   el.setAttribute('role', 'dialog');
@@ -46,7 +46,7 @@ function mount(html: string, cls: string, done: () => void, onClose?: () => void
 }
 
 /** Code confetti, streamers and camera-flash sparkles on a canvas; returns a stop function. Off for people who ask for less motion. */
-function confetti(host: HTMLElement, colors: string[], onFlash: () => void = () => {}): () => void {
+export function confetti(host: HTMLElement, colors: string[], onFlash: () => void = () => {}): () => void {
   const canvas = host.querySelector<HTMLCanvasElement>('canvas.confetti');
   const ctx = canvas && canvas.getContext('2d');
   if (!canvas || !ctx || reducedMotion()) return () => {};

@@ -9,14 +9,16 @@ import {
 import { Audio } from './game/audio';
 import { sharedVoice } from './game/voice';
 import { CelebrationSound } from './music/celebration';
+import { MasterSound } from './music/master';
 import { Music, trackFor } from './music/music';
 import { musicToggle } from './ui/musicToggle';
 import { DIFFICULTIES, type Difficulty } from './game/types';
 import type { Game } from './game/game';
 import { draftScreen, type DraftState } from './screens/draft';
-import { shouldShowChampionship, shouldShowNewSeason } from './franchise/moments';
+import { shouldPlayMasterCutscene, shouldShowChampionship, shouldShowNewSeason } from './franchise/moments';
 import { hubScreen } from './screens/hub';
 import { championshipScreen, newSeasonScreen } from './screens/moments';
+import { masterScreen } from './screens/master';
 import { menuScreen, type Settings } from './screens/menu';
 import { playGame } from './screens/play';
 import { quickPlay } from './screens/quick';
@@ -250,6 +252,13 @@ function hub() {
       saveFranchise(f);
       hub();
     }, new CelebrationSound({ audio, music, voice: sharedVoice(audio) }, f.teams[f.champion!].name));
+  } else if (shouldPlayMasterCutscene(f)) {
+    // The user won the title with every badge: the PokeJam Master scene, once, then it is theirs for good.
+    masterScreen(f, () => {
+      f.pokejamMaster = f.season;
+      saveFranchise(f);
+      hub();
+    }, new MasterSound({ audio, music, voice: sharedVoice(audio) }, f.teams[0].name));
   } else if (shouldShowNewSeason(f)) {
     newSeasonScreen(f, () => {
       f.introShown = f.season;
