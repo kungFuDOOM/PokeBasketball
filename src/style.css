@@ -1054,6 +1054,7 @@ button.gl-row:hover { border-color: var(--muted); }
 .tk-item { display: inline-flex; align-items: center; gap: 8px; white-space: nowrap; padding: 0 28px; border-right: 1px solid var(--line); color: var(--fg); }
 .tk-item b { color: var(--accent); }
 .tk-tag { font: 0.6rem var(--pixel); background: var(--red); color: #fff !important; padding: 3px 5px; border-radius: 3px; }
+.tk-ad { text-transform: uppercase; }
 .tk-live-item .tk-live { color: #fff; }
 .ticker.static { justify-content: center; gap: 0; }
 @keyframes tk-scroll { to { transform: translateX(-50%); } }

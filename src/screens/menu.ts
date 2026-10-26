@@ -115,6 +115,8 @@ const TEASERS = [
   'Franchise: 9-week seasons, badges, level-ups and evolutions',
   'Quick Play: draft five, pick a gym leader, tip off',
 ];
+// Sponsor slots for the ticker: swap in a real sponsor here.
+const ADS = ['Your ad here'];
 
 /** Bottom ticker: live score, tips and mode teasers. A static single line when motion is off. */
 function tickerHtml(isStatic: boolean): string {
@@ -131,6 +133,7 @@ function tickerHtml(isStatic: boolean): string {
     item('', `<b class="tk-tag">TIP</b>${TIPS[3]}`),
     item('', `<b class="tk-tag">TIP</b>${TIPS[4]}`),
     item('', `<b class="tk-tag">TIP</b>${TIPS[5]}`),
+    item('tk-ad', `<b class="tk-tag">AD</b>${ADS[0]}`),
   ].join('');
   // Two copies, so the loop has no seam; the second is hidden from screen readers.
   return `<div class="ticker" role="marquee" aria-label="Live score, tips and game modes"><div class="tk-track"><div class="tk-run">${run}</div><div class="tk-run" aria-hidden="true">${run}</div></div></div>`;
