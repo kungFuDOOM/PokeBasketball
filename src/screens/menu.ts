@@ -228,7 +228,6 @@ export function menuScreen(root: HTMLElement, settings: Settings, onChange: () =
           <p class="foot-status" role="status"></p>
         </footer>
       </div>
-      <a class="ad-link" href="contact.html">Contact us for your ad</a>
       ${tickerHtml(isStatic)}
     </div>`;
 

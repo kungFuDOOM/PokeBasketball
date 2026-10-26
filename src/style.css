@@ -1048,9 +1048,7 @@ button.gl-row:hover { border-color: var(--muted); }
 .controls-fold .controls { padding-bottom: 12px; }
 .controls-fold .controls h3 { display: none; }
 .menu-in .foot { text-shadow: 0 1px 4px #000; }
-.ticker { position: fixed; z-index: 3; left: 0; right: 0; bottom: calc(32px + env(safe-area-inset-bottom, 0px)); height: 36px; display: flex; align-items: center; overflow: hidden; background: rgba(10, 13, 31, 0.95); border-top: 2px solid var(--accent); padding-bottom: 0; box-sizing: content-box; font: 700 0.95rem var(--sport); letter-spacing: 0.06em; text-transform: uppercase; }
-.ad-link { position: fixed; z-index: 3; left: 0; right: 0; bottom: 0; display: flex; align-items: center; justify-content: center; box-sizing: content-box; height: 32px; padding: 0 8px env(safe-area-inset-bottom, 0px); font: 400 0.7rem var(--sport); letter-spacing: 0.02em; color: var(--muted); opacity: 0.6; background: rgba(10, 13, 31, 0.95); text-decoration: none; }
-.menu { padding-bottom: calc(132px + env(safe-area-inset-bottom, 0px)); }
+.ticker { position: fixed; z-index: 3; left: 0; right: 0; bottom: 0; height: 36px; display: flex; align-items: center; overflow: hidden; background: rgba(10, 13, 31, 0.95); border-top: 2px solid var(--accent); padding-bottom: env(safe-area-inset-bottom, 0px); box-sizing: content-box; font: 700 0.95rem var(--sport); letter-spacing: 0.06em; text-transform: uppercase; }
 .tk-track { display: flex; width: max-content; animation: tk-scroll 80s linear infinite; }
 .tk-run { display: flex; flex: none; }
 .tk-item { display: inline-flex; align-items: center; gap: 8px; white-space: nowrap; padding: 0 28px; border-right: 1px solid var(--line); color: var(--fg); }
