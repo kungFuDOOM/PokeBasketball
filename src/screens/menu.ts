@@ -222,11 +222,13 @@ export function menuScreen(root: HTMLElement, settings: Settings, onChange: () =
           <p class="foot-links">
             <a href="privacy.html">Privacy</a>
             <a href="terms.html">Terms</a>
+            <a href="contact.html">Contact</a>
             <button class="link-btn" data-go="delete">Delete saved data</button>
           </p>
           <p class="foot-status" role="status"></p>
         </footer>
       </div>
+      <a class="ad-link" href="contact.html">Contact us for your ad</a>
       ${tickerHtml(isStatic)}
     </div>`;
 
