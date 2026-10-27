@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; img-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
   <meta name="referrer" content="no-referrer">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <link rel="icon" href="icon.svg" type="image/svg+xml">
@@ -43,7 +43,18 @@
     }
     .addr { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px 16px; overflow-wrap: anywhere; }
     .ad-line { color: var(--muted); margin: 18px 0 0; padding-top: 12px; border-top: 1px solid var(--line); }
+    h2 { font-size: 1.4rem; line-height: 1.25; margin: 22px 0 8px; }
+    .ads { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 16px; margin: 10px 0; }
+    .prices { width: 100%; border-collapse: collapse; }
+    .prices th, .prices td { padding: 6px 0; border-bottom: 1px solid var(--line); text-align: left; }
+    .prices td.price { text-align: right; font-weight: 700; color: var(--accent); white-space: nowrap; padding-left: 12px; }
+    .prices tr:last-child td { border-bottom: 0; }
+    .note { color: var(--muted); font-size: 0.9rem; }
+    .wallet { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 8px 0 0; }
+    .wallet code { flex: 1 1 260px; min-width: 0; overflow-wrap: anywhere; font-size: 0.85rem; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
+    .copy { min-height: 44px; padding: 8px 16px; border-radius: 10px; border: 2px solid var(--accent); background: transparent; color: var(--accent); font: inherit; font-weight: 700; cursor: pointer; }
   </style>
+  <script src="contact.js" defer></script>
 </head>
 <body>
 <main>
@@ -59,6 +70,25 @@
   <p class="addr">Email: <strong>kungfudoom@mail.grokbot.com</strong></p>
 
   <a class="btn tertiary" href="https://x.com/CryptoDOOM5" target="_blank" rel="noopener">Or DM me on X: @CryptoDOOM5</a>
+
+  <section aria-labelledby="advertise">
+    <h2 id="advertise">Advertise on PokeJam</h2>
+    <p>Ad spots open. Prices in USD, paid in SOL.</p>
+    <div class="ads">
+      <table class="prices">
+        <tr><td>Ticker, 1 week</td><td class="price">$75</td></tr>
+        <tr><td>Ticker, 1 month</td><td class="price">$250</td></tr>
+        <tr><td>Courtside banner half, 1 week</td><td class="price">$150</td></tr>
+        <tr><td>Courtside banner half, 1 month</td><td class="price">$500</td></tr>
+        <tr><td>Ticker + courtside, 1 month</td><td class="price">$650</td></tr>
+      </table>
+    </div>
+    <p><strong>How to book:</strong> DM <a href="https://x.com/CryptoDOOM5" target="_blank" rel="noopener">@CryptoDOOM5</a> on X first to book a spot, then pay up front for the full run in SOL to <strong>kungfudoom.sns</strong> or this address:</p>
+    <div class="wallet">
+      <code id="sol-addr">FPwoDYkHTFef4Fg45o1wzReXiVoYGP6KXEgRyfqqBpyk</code>
+      <button type="button" class="copy" id="copy-addr" data-copy="FPwoDYkHTFef4Fg45o1wzReXiVoYGP6KXEgRyfqqBpyk" aria-label="Copy SOL address">Copy</button>
+    </div>
+  </section>
 
   <a class="back" href="./">← Back to the game</a>
   <p class="ad-line">Want your ad in PokeJam? <a href="mailto:kungfudoom@mail.grokbot.com?subject=PokeJam%20advertising">Contact us</a></p>
