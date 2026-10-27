@@ -24,6 +24,14 @@ type Hs = { k: 'hi'; v: number; n: number; side: 0 | 1; ack?: true };
 
 export class NetError extends Error {}
 
+/** The match is no longer on (the other player left, or the server called it off): there is nobody to connect to. */
+export class MatchOverError extends Error {
+  name = 'MatchOverError';
+}
+
+/** Realtime refused the channel because this player may not use it (RLS: the match isn't active), not for capacity. */
+export const isRefusal = (why: string) => /unauthori[sz]ed|permission|not allowed|forbidden|denied/i.test(why);
+
 const HS_EVERY = 400;
 /** Waiting for the other player once we're on the channel; a failed join is retried inside this (each try can take up to 10 s to time out). */
 const CONNECT_TIMEOUT = 40_000;
@@ -150,30 +158,51 @@ export class MatchLink implements Transport {
  */
 export async function iceFor(sb: SupabaseClient, matchId: string, now: () => number = Date.now): Promise<{ iceServers: RTCIceServer[]; policy: RTCIceTransportPolicy } | null> {
   if (import.meta.env.DEV && typeof location !== 'undefined' && new URLSearchParams(location.search).get('p2p') === 'local') return { iceServers: [], policy: 'all' };
-  // One attempt per match, and none for a while after a failure (TURN not set up, or the function is down): quiet, no retries.
+  // One try per match (plus one retry after a timeout, e.g. the function's cold start), and none for a minute after a
+  // failure (TURN not set up, or the function is down): quiet. Every game that misses the direct link runs on Realtime,
+  // which is billed per message, so a short pause matters.
   if (iceTried.has(matchId) || now() < iceDownUntil) return null;
   iceTried.add(matchId);
   if (iceTried.size > 50) iceTried.delete(iceTried.values().next().value!);
   const down = () => { iceDownUntil = now() + ICE_PAUSE_MS; return null; };
-  try {
-    const call = sb.functions.invoke('pokejam-ice', { body: { match: matchId } });
-    const { data, error } = await Promise.race([call, new Promise<never>((_, rej) => setTimeout(() => rej(new Error('pokejam-ice timed out')), ICE_TIMEOUT_MS))]);
-    const servers = (data as { iceServers?: unknown } | null)?.iceServers;
-    if (error || !Array.isArray(servers) || !servers.length) return down();
-    return { iceServers: servers as RTCIceServer[], policy: 'relay' };
-  } catch {
-    return down();
+  for (let attempt = 1; ; attempt++) {
+    // The server hands out credentials ICE_MAX times per ICE_WINDOW_MS per player (pokejam_ice_ok); past that it
+    // would only refuse, so don't ask.
+    if (!iceBudget(now())) return null;
+    try {
+      const call = sb.functions.invoke('pokejam-ice', { body: { match: matchId } });
+      const { data, error } = await Promise.race([call, new Promise<never>((_, rej) => setTimeout(() => rej(new IceTimeout()), ICE_TIMEOUT_MS))]);
+      const servers = (data as { iceServers?: unknown } | null)?.iceServers;
+      if (error || !Array.isArray(servers) || !servers.length) return down();
+      return { iceServers: servers as RTCIceServer[], policy: 'relay' };
+    } catch (e) {
+      if (!(e instanceof IceTimeout) || attempt >= ICE_TRIES) return down();
+    }
   }
 }
 
-const ICE_PAUSE_MS = 10 * 60_000;
+class IceTimeout extends Error {}
+const ICE_PAUSE_MS = 60_000;
 const ICE_TIMEOUT_MS = 6000;
+const ICE_TRIES = 2;
+/** pokejam_ice_ok (migration 20261026): 6 credential requests per player per 10 minutes. */
+export const ICE_MAX = 6;
+export const ICE_WINDOW_MS = 10 * 60_000;
 const iceTried = new Set<string>();
 let iceDownUntil = 0;
+let iceAsked: number[] = [];
+/** Records a request to pokejam-ice at `t`; false (nothing recorded) if the server's limit is used up. */
+function iceBudget(t: number): boolean {
+  iceAsked = iceAsked.filter((h) => t - h < ICE_WINDOW_MS);
+  if (iceAsked.length >= ICE_MAX) return false;
+  iceAsked.push(t);
+  return true;
+}
 /** Forget what iceFor has learned (tests). */
 export function resetIce() {
   iceTried.clear();
   iceDownUntil = 0;
+  iceAsked = [];
 }
 
 /**
@@ -278,9 +307,16 @@ export function connect(sb: SupabaseClient, match: OnlineMatch, quarterLen: numb
     // report "online is busy" rather than a vague connection error.
     const attempt = (n: number) => {
       const joining = ch;
-      const fail = (why = '') => {
+      const fail = async (why = '') => {
         if (done || joining !== ch) return;
-        if (n >= JOIN_ATTEMPTS) return finish(new BusyError(why || 'channel join failed'));
+        // Refused rather than full: if the match is over (the other player left), say so instead of retrying. Only
+        // capacity problems are "online is busy"; a refusal that persists is a connection problem.
+        if (isRefusal(why) && service) {
+          const status = await service.matchStatus(match.id).catch(() => null);
+          if (done || joining !== ch) return;
+          if (status && status !== 'active') return finish(new MatchOverError(`match ${status}`));
+        }
+        if (n >= JOIN_ATTEMPTS) return finish(isRefusal(why) ? new NetError('Could not join the match.') : new BusyError(why || 'channel join failed'));
         void sb.removeChannel(joining);
         retry = setTimeout(() => {
           if (done) return;
@@ -295,8 +331,8 @@ export function connect(sb: SupabaseClient, match: OnlineMatch, quarterLen: numb
       void sb.realtime.setAuth().then(() => joining.subscribe((status, err) => {
         if (joining !== ch || done) return;
         if (status === 'SUBSCRIBED') { subscribed = true; hi(); }
-        else if (isChannelFailure(status)) fail(err?.message ?? status);
-      }), () => fail('auth'));
+        else if (isChannelFailure(status)) void fail(err?.message ?? status);
+      }), () => void fail('auth'));
     };
     attempt(1);
   });

@@ -2,7 +2,7 @@ import type { RealtimeChannel, SupabaseClient } from '@supabase/supabase-js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { BusyError } from './capacity';
 import { ensureHuman, type HumanDeps } from './human';
-import { JOIN_ATTEMPTS, connect, iceFor, resetIce } from './netplay';
+import { ICE_MAX, ICE_WINDOW_MS, JOIN_ATTEMPTS, MatchOverError, NetError, connect, iceFor, resetIce } from './netplay';
 import { SupabaseMatchService, type OnlineMatch, type RpcClient } from './onlineMatchService';
 
 beforeEach(() => vi.useFakeTimers());
@@ -90,24 +90,43 @@ describe('online requests are throttled', () => {
 
 describe('pokejam-ice degrades quietly', () => {
   const sbWith = (invoke: () => Promise<unknown>) => ({ functions: { invoke: vi.fn(invoke) } }) as unknown as SupabaseClient & { functions: { invoke: ReturnType<typeof vi.fn> } };
-  it('an error answer is null, makes no noise, and is not retried for this or later matches for a while', async () => {
+  it('an error answer is null, makes no noise, and is not retried for this or later matches for a minute', async () => {
     const sb = sbWith(async () => ({ data: null, error: { message: 'TURN not configured' } }));
     expect(await iceFor(sb, 'm1', () => 0)).toBeNull();
     expect(await iceFor(sb, 'm1', () => 1)).toBeNull();
-    expect(await iceFor(sb, 'm2', () => 60_000)).toBeNull();
-    expect(sb.functions.invoke).toHaveBeenCalledTimes(1);
-    expect(await iceFor(sb, 'm3', () => 11 * 60_000)).toBeNull(); // pause over: one new attempt
+    expect(await iceFor(sb, 'm2', () => 59_000)).toBeNull();
+    expect(sb.functions.invoke).toHaveBeenCalledTimes(1); // a refusal is not retried
+    expect(await iceFor(sb, 'm3', () => 61_000)).toBeNull(); // pause over: one new attempt
     expect(sb.functions.invoke).toHaveBeenCalledTimes(2);
   });
-  it('a thrown call or a hang is also just null; success returns relay servers', async () => {
+  it('a thrown call is null; a hang (cold start) is tried once more, then null; success returns relay servers', async () => {
     expect(await iceFor(sbWith(async () => { throw new Error('net'); }), 'a', () => 0)).toBeNull();
     resetIce();
-    const hang = iceFor(sbWith(() => new Promise(() => {})), 'b', () => 0);
+    const hanging = sbWith(() => new Promise(() => {}));
+    const hang = iceFor(hanging, 'b', () => 0);
+    await vi.advanceTimersByTimeAsync(7000);
+    expect(hanging.functions.invoke).toHaveBeenCalledTimes(2); // the retry
     await vi.advanceTimersByTimeAsync(7000);
     expect(await hang).toBeNull();
+    expect(hanging.functions.invoke).toHaveBeenCalledTimes(2);
+    resetIce();
+    // A cold start: the first call hangs, the retry answers.
+    let n = 0;
+    const cold = sbWith(() => (++n === 1 ? new Promise(() => {}) : Promise.resolve({ data: { iceServers: [{ urls: 'turn:y' }] }, error: null })));
+    const warm = iceFor(cold, 'c0', () => 0);
+    await vi.advanceTimersByTimeAsync(7000);
+    expect(await warm).toEqual({ iceServers: [{ urls: 'turn:y' }], policy: 'relay' });
     resetIce();
     const ok = await iceFor(sbWith(async () => ({ data: { iceServers: [{ urls: 'turn:x' }] }, error: null })), 'c', () => 0);
     expect(ok).toEqual({ iceServers: [{ urls: 'turn:x' }], policy: 'relay' });
+  });
+  it("never asks more often than the server's limit (6 per 10 minutes), retries included", async () => {
+    const sb = sbWith(async () => ({ data: { iceServers: [{ urls: 'turn:x' }] }, error: null }));
+    for (let i = 0; i < ICE_MAX; i++) expect(await iceFor(sb, `m${i}`, () => i * 1000)).not.toBeNull();
+    expect(await iceFor(sb, 'one-too-many', () => 9 * 60_000)).toBeNull(); // straight to Realtime, no request
+    expect(sb.functions.invoke).toHaveBeenCalledTimes(ICE_MAX);
+    expect(await iceFor(sb, 'later', () => ICE_WINDOW_MS + 1000)).not.toBeNull(); // the oldest has aged out
+    expect(sb.functions.invoke).toHaveBeenCalledTimes(ICE_MAX + 1);
   });
 });
 
@@ -144,6 +163,53 @@ describe('joining the match channel', () => {
     // 1 s, 2 s, 4 s pauses (a millisecond of fake-timer slack per join)
     expect(f.subs.map((s) => Math.round((s - t0) / 10) * 10)).toEqual([0, 1000, 3000, 7000]);
     expect(f.sends).toEqual([]);
+  });
+
+  describe('a channel refused because the match is over is "opponent left", never "busy" (#6)', () => {
+    const refusing = () => {
+      const subs: number[] = [];
+      const sb = {
+        realtime: { setAuth: async () => {} },
+        removeChannel: vi.fn(async () => 'ok'),
+        channel: () => {
+          const ch = {
+            on: () => ch, send: async () => 'ok',
+            subscribe: (cb: (s: string, e?: Error) => void) => {
+              subs.push(Date.now());
+              setTimeout(() => cb('CHANNEL_ERROR', new Error('Unauthorized: You do not have permissions to read from this Channel topic: pokejam:match:m')), 0);
+              return ch;
+            },
+          };
+          return ch as unknown as RealtimeChannel;
+        },
+      } as unknown as SupabaseClient;
+      return { sb, subs };
+    };
+    const svcWith = (status: string | null) => {
+      const d = db((fn) => (fn === 'pokejam_match_status' ? { data: status ? { status } : null, error: null } : { data: null, error: null }));
+      return { svc: new SupabaseMatchService(d.client, 'a'), counts: d.counts };
+    };
+
+    it('the other player left: MatchOverError on the first refusal, no retries', async () => {
+      const f = refusing();
+      const { svc } = svcWith('void');
+      const p = connect(f.sb, match, undefined, undefined, svc).catch((e) => e);
+      await vi.advanceTimersByTimeAsync(100);
+      expect(await p).toBeInstanceOf(MatchOverError);
+      expect(f.subs.length).toBe(1);
+    });
+
+    it('refused while the match is still on: retried, then a connection error, not "busy"', async () => {
+      const f = refusing();
+      const { svc, counts } = svcWith('active');
+      const p = connect(f.sb, match, undefined, undefined, svc).catch((e) => e);
+      await vi.advanceTimersByTimeAsync(30_000);
+      const err = await p;
+      expect(err).toBeInstanceOf(NetError);
+      expect(err).not.toBeInstanceOf(BusyError);
+      expect(f.subs.length).toBe(JOIN_ATTEMPTS);
+      expect(counts.pokejam_match_status).toBe(JOIN_ATTEMPTS);
+    });
   });
 
   it('a join that never answers ends as busy, not "could not reach the other player"', async () => {
