@@ -115,14 +115,19 @@ const TEASERS = [
   'Franchise: 9-week seasons, badges, level-ups and evolutions',
   'Quick Play: draft five, pick a gym leader, tip off',
 ];
-// Sponsor slots for the ticker: swap in a real sponsor here.
-const ADS = ['Your ad here'];
+// Sponsor slots for the ticker: the $PJAM ad leads the run; swap OPEN_AD for a real sponsor, it repeats every couple of items.
+const PJAM_AD = '<a href="https://pump.fun/coin/GQe9QiBBV4G6bRUCxx2JgKrzT7G7RD17FJquBWgVpump" target="_blank" rel="noopener noreferrer">$PJAM, the official PokeJam token</a>';
+const CA = 'GQe9QiBBV4G6bRUCxx2JgKrzT7G7RD17FJquBWgVpump';
+const OPEN_AD = 'Your ad here';
+// The loop took 80s for the original 11 items; keep that pace per item as the run grows.
+const TICKER_SECONDS_PER_ITEM = 80 / 11;
 
 /** Bottom ticker: live score, tips and mode teasers. A static single line when motion is off. */
 function tickerHtml(isStatic: boolean): string {
   if (isStatic) return `<div class="ticker static" aria-label="Game modes"><span class="tk-item">Season Draft</span><span class="tk-item">Franchise</span><span class="tk-item">Quick Play</span></div>`;
   const item = (cls: string, html: string) => `<span class="tk-item ${cls}">${html}</span>`;
-  const run = [
+  const ad = (html: string) => item('tk-ad', `<b class="tk-tag">AD</b>${html}`);
+  const content = [
     item('tk-live-item', '<b class="tk-tag">LIVE</b><span class="tk-live">warming up…</span>'),
     item('', `<b class="tk-tag">TIP</b>${TIPS[0]}`),
     item('', TEASERS[0]),
@@ -133,10 +138,17 @@ function tickerHtml(isStatic: boolean): string {
     item('', `<b class="tk-tag">TIP</b>${TIPS[3]}`),
     item('', `<b class="tk-tag">TIP</b>${TIPS[4]}`),
     item('', `<b class="tk-tag">TIP</b>${TIPS[5]}`),
-    item('tk-ad', `<b class="tk-tag">AD</b>${ADS[0]}`),
-  ].join('');
+  ];
+  // $PJAM first, then an open ad slot after every two content items.
+  const items = [ad(PJAM_AD)];
+  content.forEach((c, i) => {
+    items.push(c);
+    if (i % 2 === 1) items.push(ad(OPEN_AD));
+  });
+  const run = items.join('');
+  const seconds = Math.round(items.length * TICKER_SECONDS_PER_ITEM);
   // Two copies, so the loop has no seam; the second is hidden from screen readers.
-  return `<div class="ticker" role="marquee" aria-label="Live score, tips and game modes"><div class="tk-track"><div class="tk-run">${run}</div><div class="tk-run" aria-hidden="true">${run}</div></div></div>`;
+  return `<div class="ticker" role="marquee" aria-label="Live score, tips and game modes"><div class="tk-track" style="animation-duration:${seconds}s"><div class="tk-run">${run}</div><div class="tk-run" aria-hidden="true">${run}</div></div></div>`;
 }
 
 /** Title screen: a silent CPU game behind the menu, Season Draft as the big call to action, then the other modes. */
@@ -226,6 +238,10 @@ export function menuScreen(root: HTMLElement, settings: Settings, onChange: () =
             <a href="https://github.com/kungFuDOOM/PokeBasketball" target="_blank" rel="noopener">GitHub</a>
             <button class="link-btn" data-go="delete">Delete saved data</button>
           </p>
+          <p class="foot-ca">
+            <a href="https://pump.fun/coin/${CA}" target="_blank" rel="noopener noreferrer" title="${CA}" aria-label="Contract address ${CA}">CA: <span class="ca-full">${CA}</span><span class="ca-short">${CA.slice(0, 4)}…${CA.slice(-4)}</span></a>
+            <button class="link-btn ca-copy" type="button" data-go="copy-ca" aria-label="Copy contract address">Copy</button>
+          </p>
           <p class="foot-status" role="status"></p>
         </footer>
       </div>
@@ -277,6 +293,17 @@ export function menuScreen(root: HTMLElement, settings: Settings, onChange: () =
   startNew.addEventListener('click', tryNew);
   $('[data-go="continue"]')?.addEventListener('click', leave(opts.onContinue));
   $('[data-go="resume-draft"]')?.addEventListener('click', leave(opts.onResumeDraft));
+  const copy = $<HTMLButtonElement>('[data-go="copy-ca"]')!;
+  let copyTimer = 0;
+  copy.addEventListener('click', () => {
+    const done = (text: string) => {
+      copy.textContent = text;
+      clearTimeout(copyTimer);
+      copyTimer = window.setTimeout(() => (copy.textContent = 'Copy'), 1500);
+    };
+    if (!navigator.clipboard) return done('Copy failed');
+    navigator.clipboard.writeText(CA).then(() => done('Copied'), () => done('Copy failed'));
+  });
   const del = $<HTMLButtonElement>('[data-go="delete"]')!;
   let delArmed = false;
   del.addEventListener('click', () => {

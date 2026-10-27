@@ -191,6 +191,13 @@ kbd {
 .foot a, .link-btn { color: var(--muted); text-decoration: underline; text-underline-offset: 3px; }
 .link-btn { background: none; border: 0; padding: 0; font: inherit; }
 .link-btn.warn { color: #ffb3a1; }
+.foot-ca { display: flex; gap: 10px; justify-content: center; align-items: center; white-space: nowrap; font-size: 0.8rem; }
+.foot-ca .ca-short { display: none; }
+.ca-copy { border: 1px solid var(--muted); border-radius: 4px; padding: 1px 6px; font-size: 0.7rem; text-decoration: none; min-width: 3.6rem; }
+@media (max-width: 700px), (max-height: 500px) {
+  .foot-ca .ca-full { display: none; }
+  .foot-ca .ca-short { display: inline; }
+}
 .foot-status { color: var(--good); font-weight: 700; min-height: 1.2em; }
 
 /* ---------- draft ---------- */
@@ -1055,6 +1062,7 @@ button.gl-row:hover { border-color: var(--muted); }
 .tk-item b { color: var(--accent); }
 .tk-tag { font: 0.6rem var(--pixel); background: var(--red); color: #fff !important; padding: 3px 5px; border-radius: 3px; }
 .tk-ad { text-transform: uppercase; }
+.tk-ad a { color: inherit; }
 .tk-live-item .tk-live { color: #fff; }
 .ticker.static { justify-content: center; gap: 0; }
 @keyframes tk-scroll { to { transform: translateX(-50%); } }
