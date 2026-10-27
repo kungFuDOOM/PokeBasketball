@@ -1,17 +1,22 @@
-import { defineConfig, type Plugin } from 'vite';
+import { defineConfig, loadEnv, type Plugin } from 'vite';
 
 /**
  * Content Security Policy for the deployed site. GitHub Pages can't send response headers, so the policy
  * ships as a <meta> tag (build only: the dev server needs inline scripts and websockets for hot reload).
  * Everything the game uses comes from its own origin; inline style attributes carry team colors.
  */
-const CSP = [
+const TURNSTILE = 'https://challenges.cloudflare.com';
+const CF_ANALYTICS = 'https://static.cloudflareinsights.com';
+const csp = (supabaseUrl: string | undefined, captcha: boolean) => [
   "default-src 'none'",
-  "script-src 'self' https://static.cloudflareinsights.com",
+  // The bot check before a first online sign-in (Cloudflare Turnstile) loads its script and widget frame. Cloudflare Web Analytics loads its beacon script and reports to cloudflareinsights.com.
+  `script-src 'self' ${CF_ANALYTICS}${captcha ? ` ${TURNSTILE}` : ''}`,
+  ...(captcha ? [`frame-src ${TURNSTILE}`] : []),
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data:",
   "font-src 'self'",
-  "connect-src 'self' https://cloudflareinsights.com",
+  // Online play talks to the configured Supabase project only (REST over https, Realtime over wss), plus the analytics beacon.
+  `connect-src 'self' https://cloudflareinsights.com${supabaseUrl ? ` ${new URL(supabaseUrl).origin} ${new URL(supabaseUrl).origin.replace(/^https:/, 'wss:')}` : ''}`,
   "manifest-src 'self'",
   "base-uri 'none'",
   "form-action 'none'",
@@ -19,18 +24,21 @@ const CSP = [
   'upgrade-insecure-requests',
 ].join('; ');
 
-const securityHeaders = (): Plugin => ({
+const securityHeaders = (supabaseUrl: string | undefined, captcha: boolean): Plugin => ({
   name: 'security-meta',
   apply: 'build',
   transformIndexHtml: () => [
-    { tag: 'meta', attrs: { 'http-equiv': 'Content-Security-Policy', content: CSP }, injectTo: 'head-prepend' },
+    { tag: 'meta', attrs: { 'http-equiv': 'Content-Security-Policy', content: csp(supabaseUrl, captcha) }, injectTo: 'head-prepend' },
     { tag: 'meta', attrs: { name: 'referrer', content: 'no-referrer' }, injectTo: 'head-prepend' },
   ],
 });
 
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
   base: './',
-  plugins: [securityHeaders()],
+  plugins: [(() => {
+    const env = loadEnv(mode, process.cwd(), 'VITE_');
+    return securityHeaders(env.VITE_SUPABASE_URL, !!env.VITE_TURNSTILE_SITE_KEY);
+  })()],
   build: {
     // Older iPads (iPadOS 13/14, Safari 12-14) and Android WebViews: lower ?. ?? ??= instead of shipping them as written.
     target: ['es2019', 'chrome70', 'safari12', 'firefox68', 'edge79'],
@@ -41,4 +49,4 @@ export default defineConfig({
       },
     },
   },
-});
+}));

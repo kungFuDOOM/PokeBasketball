@@ -63,6 +63,15 @@ export interface TeamDef {
   coach?: string;
 }
 
+/**
+ * Version of the simulation rules. Bump it whenever a change makes the same config, seed and inputs play out
+ * differently (new rolls, retuned odds, physics), so a stored seed and inputs are only ever replayed by the
+ * engine that produced them.
+ */
+export const ENGINE_VERSION = 3;
+// v1: the live pokejam.xyz odds, first seeded (#6). v2: pure skill, no rolls (#7). v3: back to the live game's
+// odds and CPU, every roll still on the match's seeded RNG, plus the live lineup rule and shot-clock horn.
+
 export interface GameConfig {
   home: TeamDef;
   away: TeamDef;
@@ -78,6 +87,16 @@ export interface GameConfig {
   autoSwitch?: boolean;
   /** Franchise rule: hard knockdowns and big landings can injure, more often when tired. */
   injuries?: boolean;
+  /**
+   * Seeds every random roll in the simulation. Two games with the same config, seed and per-tick inputs
+   * play out identically, which is what lets the server replay and judge online games. Omit for a random game.
+   */
+  seed?: number;
+  /**
+   * The engine version a replay was recorded with. Omit to use the current ENGINE_VERSION; a game built for
+   * any other version throws instead of silently playing out differently.
+   */
+  engineVersion?: number;
 }
 
 export interface Intent {
@@ -237,11 +256,25 @@ export type GameEvent =
 
 export const clamp = (v: number, a: number, b: number) => (v < a ? a : v > b ? b : v);
 export const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
+/** Cosmetic randomness only (particles, crowd). The simulation uses Game.rng so it can be replayed. */
 export const rand = (a: number, b: number) => a + Math.random() * (b - a);
-export function randn(): number {
-  // Box-Muller
-  const u = 1 - Math.random();
-  const v = Math.random();
-  return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+
+/** A seeded random source whose position can be saved and restored (for snapshots). */
+export interface Rng {
+  (): number;
+  state: number;
+}
+
+/** Small, fast seeded PRNG (mulberry32). Integer-only, so it gives the same sequence on every JS engine. */
+export function seededRng(seed: number): Rng {
+  const f = (() => {
+    f.state = (f.state + 0x6d2b79f5) >>> 0;
+    let t = f.state;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  }) as Rng;
+  f.state = seed >>> 0;
+  return f;
 }
 export const dist = (ax: number, ay: number, bx: number, by: number) => Math.hypot(ax - bx, ay - by);

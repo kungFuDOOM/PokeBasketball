@@ -1,0 +1,159 @@
+// The moderation page (admin.html): reported players, suspensions and the moderators' action log, with suspend,
+// lift and reset-name actions. Not linked from the game. Moderators sign in with an email link to an existing
+// account listed in pokejam_admins (migration 20261031); every call is checked on the server, so the page shows
+// nothing to anyone else. Its session is kept apart from the game's anonymous one (its own storage key).
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import '../fonts.css';
+import '../style.css';
+import './admin.css';
+import { CAPTCHA_ON, captchaToken } from '../multiplayer/shared/captcha';
+import { esc } from '../util';
+
+const URL = import.meta.env.VITE_SUPABASE_URL;
+const KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+const root = document.querySelector<HTMLElement>('#admin')!;
+
+interface Reported {
+  user_id: string; name: string | null; reporters: number; reports: number; reasons: Record<string, number> | null;
+  latest: { reason: string; note: string | null; at: string; from: string | null }[] | null; last_at: string; banned_until: string | null;
+}
+interface Ban { user_id: string; name: string | null; until: string; reason: string | null; auto: boolean; since: string }
+interface LogRow { at: string; action: string; detail: string | null; target: string | null; by: string | null }
+
+const when = (iso: string) => new Date(iso).toLocaleString();
+const forever = (iso: string) => new Date(iso).getFullYear() > new Date().getFullYear() + 50;
+
+function shell(inner: string) {
+  root.innerHTML = `<main class="admin"><header><h1>Poké Jam moderation</h1><span data-who></span></header>${inner}</main>`;
+}
+
+async function main() {
+  if (!URL || !KEY) {
+    shell('<p class="note">Online play isn\'t configured in this build, so there is nothing to moderate here.</p>');
+    return;
+  }
+  const sb = createClient(URL, KEY, { auth: { storageKey: 'pokejam.admin.auth', persistSession: true, detectSessionInUrl: true } });
+  const { data } = await sb.auth.getSession();
+  const user = data.session?.user;
+  if (!user || user.is_anonymous) return signIn(sb);
+  const { data: isAdmin } = await sb.rpc('pokejam_is_admin');
+  if (isAdmin !== true) {
+    shell(`<p class="note">${esc(user.email ?? 'This account')} isn't a moderator.</p><button class="btn" data-out>Sign out</button>`);
+    root.querySelector('[data-out]')!.addEventListener('click', () => void sb.auth.signOut().then(() => location.reload()));
+    return;
+  }
+  dashboard(sb, user.email ?? '');
+}
+
+function signIn(sb: SupabaseClient) {
+  shell(`<form class="card" data-form>
+      <p>Moderators only. Enter your email and we'll send you a sign-in link.</p>
+      <input type="email" name="email" required autocomplete="email" placeholder="you@example.com" aria-label="Email">
+      <button class="btn primary" type="submit">Send link</button>
+      <p class="note" data-msg hidden></p>
+    </form>`);
+  const form = root.querySelector<HTMLFormElement>('[data-form]')!;
+  const msg = root.querySelector<HTMLElement>('[data-msg]')!;
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const email = new FormData(form).get('email') as string;
+    const captcha = CAPTCHA_ON ? await captchaToken('Quick check before we send the link.').catch(() => undefined) : undefined;
+    const { error } = await sb.auth.signInWithOtp({
+      email, options: { shouldCreateUser: false, emailRedirectTo: location.origin + location.pathname, captchaToken: captcha },
+    });
+    msg.hidden = false;
+    msg.textContent = error ? `Couldn't send it: ${error.message}` : 'Check your email for the sign-in link.';
+  });
+}
+
+function dashboard(sb: SupabaseClient, email: string) {
+  shell(`<nav class="tabs">
+      <button class="on" data-tab="reports">Reported</button><button data-tab="bans">Suspended</button><button data-tab="log">History</button>
+      <label>Last <select data-days><option>1</option><option selected>7</option><option>30</option></select> days</label>
+    </nav><section data-body><p class="note">Loading…</p></section>`);
+  root.querySelector('[data-who]')!.innerHTML = `${esc(email)} · <button class="link" data-out>Sign out</button>`;
+  root.querySelector('[data-out]')!.addEventListener('click', () => void sb.auth.signOut().then(() => location.reload()));
+  const body = root.querySelector<HTMLElement>('[data-body]')!;
+  const days = root.querySelector<HTMLSelectElement>('[data-days]')!;
+  let tab = 'reports';
+  const call = async <T>(fn: string, args?: Record<string, unknown>): Promise<T> => {
+    const { data, error } = await sb.rpc(fn, args);
+    if (error) throw new Error(error.message);
+    return data as T;
+  };
+
+  const show = async () => {
+    root.querySelectorAll<HTMLButtonElement>('[data-tab]').forEach((b) => b.classList.toggle('on', b.dataset.tab === tab));
+    days.parentElement!.hidden = tab !== 'reports';
+    try {
+      if (tab === 'reports') body.innerHTML = reportsHtml(await call<Reported[]>('pokejam_admin_reports', { p_days: Number(days.value) }));
+      else if (tab === 'bans') body.innerHTML = bansHtml(await call<Ban[]>('pokejam_admin_bans'));
+      else body.innerHTML = logHtml(await call<LogRow[]>('pokejam_admin_history', { p_limit: 100 }));
+    } catch (e) {
+      body.innerHTML = `<p class="note">Couldn't load: ${esc((e as Error).message)}</p>`;
+    }
+  };
+  root.querySelectorAll<HTMLButtonElement>('[data-tab]').forEach((b) => b.addEventListener('click', () => { tab = b.dataset.tab!; void show(); }));
+  days.addEventListener('change', () => void show());
+  body.addEventListener('click', async (e) => {
+    const b = (e.target as HTMLElement).closest<HTMLButtonElement>('[data-act]');
+    if (!b) return;
+    const user = b.dataset.user!;
+    const name = b.dataset.name ?? 'this player';
+    const act = b.dataset.act!;
+    const ask = act === 'unban' ? `Lift the suspension on ${name}?` : act === 'name' ? `Reset ${name}'s name to "Trainer"?`
+      : `Suspend ${name} ${act === '0' ? 'permanently' : `for ${Number(act) >= 168 ? `${Number(act) / 24} days` : `${act} hours`}`}?`;
+    if (!confirm(ask)) return;
+    b.disabled = true;
+    try {
+      if (act === 'unban') await call('pokejam_admin_unban', { p_user: user });
+      else if (act === 'name') await call('pokejam_admin_reset_name', { p_user: user });
+      else await call('pokejam_admin_ban', { p_user: user, p_hours: Number(act), p_reason: prompt('Reason (kept in the log):', 'reports reviewed') ?? 'reports reviewed' });
+      await show();
+    } catch (x) {
+      alert(`Didn't work: ${(x as Error).message}`);
+      b.disabled = false;
+    }
+  });
+  void show();
+}
+
+const actions = (r: { user_id: string; name: string | null }, banned: boolean) => {
+  const d = `data-user="${esc(r.user_id)}" data-name="${esc(r.name ?? 'Trainer')}"`;
+  return banned
+    ? `<button class="btn small" data-act="unban" ${d}>Lift</button>`
+    : `<button class="btn small" data-act="24" ${d}>24 h</button><button class="btn small" data-act="168" ${d}>7 days</button>
+       <button class="btn small danger" data-act="0" ${d}>Ban</button><button class="btn small ghost" data-act="name" ${d}>Reset name</button>`;
+};
+
+function reportsHtml(rows: Reported[]): string {
+  if (!rows.length) return '<p class="note">No reports in this period.</p>';
+  return `<div class="scroll"><table><thead><tr><th>Player</th><th>Reporters</th><th>Reasons</th><th>Latest</th><th>Status</th><th></th></tr></thead><tbody>
+    ${rows.map((r) => `<tr>
+      <td><strong>${esc(r.name ?? '?')}</strong><small>${esc(r.user_id.slice(0, 8))}</small></td>
+      <td class="num">${r.reporters}<small>${r.reports} reports</small></td>
+      <td>${Object.entries(r.reasons ?? {}).map(([k, n]) => `<span class="tag">${esc(k)} ${n}</span>`).join(' ')}</td>
+      <td><ul>${(r.latest ?? []).slice(0, 4).map((l) => `<li><b>${esc(l.from ?? '?')}</b>: ${esc(l.reason)}${l.note ? ` · “${esc(l.note)}”` : ''} <small>${esc(when(l.at))}</small></li>`).join('')}</ul></td>
+      <td>${r.banned_until ? `<span class="tag bad">suspended ${forever(r.banned_until) ? 'permanently' : `until ${esc(when(r.banned_until))}`}</span>` : '—'}</td>
+      <td class="acts">${actions(r, !!r.banned_until)}</td></tr>`).join('')}
+  </tbody></table></div>`;
+}
+
+function bansHtml(rows: Ban[]): string {
+  if (!rows.length) return '<p class="note">Nobody is suspended.</p>';
+  return `<div class="scroll"><table><thead><tr><th>Player</th><th>Until</th><th>Why</th><th>Since</th><th></th></tr></thead><tbody>
+    ${rows.map((b) => `<tr><td><strong>${esc(b.name ?? '?')}</strong><small>${esc(b.user_id.slice(0, 8))}</small></td>
+      <td>${forever(b.until) ? 'permanent' : esc(when(b.until))}</td>
+      <td>${b.auto ? '<span class="tag">automatic</span> ' : ''}${esc(b.reason ?? '')}</td><td>${esc(when(b.since))}</td>
+      <td class="acts">${actions(b, true)}</td></tr>`).join('')}
+  </tbody></table></div>`;
+}
+
+function logHtml(rows: LogRow[]): string {
+  if (!rows.length) return '<p class="note">No moderator actions yet.</p>';
+  return `<div class="scroll"><table><thead><tr><th>When</th><th>Who</th><th>Did</th><th>To</th><th>Detail</th></tr></thead><tbody>
+    ${rows.map((l) => `<tr><td>${esc(when(l.at))}</td><td>${esc(l.by ?? '')}</td><td>${esc(l.action)}</td><td>${esc(l.target ?? '')}</td><td>${esc(l.detail ?? '')}</td></tr>`).join('')}
+  </tbody></table></div>`;
+}
+
+void main();

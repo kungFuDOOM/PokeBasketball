@@ -43,10 +43,10 @@
 <main>
   <p><a href="./">← Back to the game</a> · <a href="terms.html">Terms of use</a></p>
   <h1>Poké Jam privacy policy and terms</h1>
-  <p class="meta">Last updated: October 20, 2026</p>
+  <p class="meta">Last updated: October 27, 2026</p>
 
   <div class="summary">
-    <p><strong>The short version:</strong> Poké Jam is a free browser game with no accounts, no payments, no ads, no ad tracking and no cookies. We only count visits with Cloudflare's cookieless analytics. Your saved games stay on your own device. Nobody, including us, can see them.</p>
+    <p><strong>The short version:</strong> Poké Jam is a free browser game with no payments, no ad network, no ad tracking and no cookies. We only count visits with Cloudflare's cookieless analytics. Playing on your own (Quick Play, Franchise, drafts) needs no account, and those saves stay on your own device. If you choose to <a href="#online">play online</a>, the game makes you an anonymous account and keeps what online play needs, listed below. The only other thing the game sends is a short <a href="#crash">crash report</a> if it breaks.</p>
   </div>
 
   <h2 id="privacy">Privacy policy</h2>
@@ -60,17 +60,44 @@
         <tr><td>Team name, difficulty and quarter length</td><td>Remembers your settings</td></tr>
         <tr><td>Franchise save (rosters, schedule, standings, stats, levels)</td><td>Lets you continue your season</td></tr>
         <tr><td>Draft in progress</td><td>Lets you leave and resume a draft</td></tr>
-        <tr><td>Sound on or off</td><td>Remembers your audio choice</td></tr>
+        <tr><td>Sound, music and announcer on or off</td><td>Remembers your audio choices</td></tr>
+        <tr><td>Online sign-in (only if you play online)</td><td>Keeps your anonymous online account on this device</td></tr>
       </tbody>
     </table>
   </div>
-  <p>This data never leaves your device and is never sent to us or anyone else. It is not used to identify or track you.</p>
+  <p>Your saves and settings never leave your device. They are not used to identify or track you.</p>
+
+  <h3 id="online">Online play (only if you choose it)</h3>
+  <p>Online play is optional. When you first open it, the game makes an anonymous account for you (no email, no password, no real name). Then it keeps:</p>
+  <div class="scroll">
+    <table>
+      <thead><tr><th>What</th><th>Why</th><th>How long</th></tr></thead>
+      <tbody>
+        <tr><td>A random account ID, and the trainer name you pick</td><td>So you can be matched. Your opponent sees your trainer name. Names are checked for slurs and impersonation, and one that isn't allowed becomes "Trainer".</td><td>While the account exists</td></tr>
+        <tr><td>Your matches: who played, when, the result</td><td>To run matches, record results, and settle disputes</td><td>While the account exists</td></tr>
+        <tr><td>Reports you make or receive, players you block, and any suspension</td><td>To stop cheating and harassment. Reports are read only by the game's moderators, and the player you report isn't told who reported them.</td><td>While the account exists</td></tr>
+        <tr><td>Short-lived counters, and a pass from the bot check</td><td>To stop spam and bots (for example, how many rooms you made in the last 10 minutes)</td><td>Minutes to a day</td></tr>
+        <tr><td>Lobby and match data: room codes, the teams each player picks, scores and results</td><td>To run the match, show the result to both players, and settle disputes</td><td>While the account exists</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p>During a match, your game and your opponent's exchange controller inputs, either directly (WebRTC), through a relay (TURN) server, or through Supabase, so the two games stay in step. A direct connection shows your IP address to your opponent's device; a relay keeps it hidden. Nothing you type is sent to the other player except your trainer name.</p>
+  <p>Your IP address and browser details are also processed by Supabase, Cloudflare (bot check) and the relay provider whenever online play connects to them, as described under third-party services. We do not use them to identify you.</p>
+
+  <h3 id="crash">Crash reports</h3>
+  <p>If the game crashes (even if you never use online play), it sends a short crash report to our Supabase project: the error message and where in the code it happened, the page, which version of the game, and your browser's user agent (its name and version). No account, name or game data is included. We use reports only to fix bugs, and delete them after 30 days.</p>
 
   <h3>Deleting your data</h3>
-  <p>Press <strong>Delete saved data</strong> at the bottom of the title screen to erase everything the game has stored. Clearing this site's data in your browser settings does the same. There is no account to close because there are no accounts.</p>
+  <p>Press <strong>Delete saved data</strong> at the bottom of the title screen to erase everything the game has stored on your device, including the online sign-in. Clearing this site's data in your browser settings does the same. To have an online account's records deleted from our servers, email us at the address below and say which trainer name it was (use the same device if you can, so we can match the account). We delete the account and its match records within 30 days of confirming the request. Crash reports hold no account information and are deleted after 30 days anyway.</p>
 
   <h3>Third-party services</h3>
-  <p>None while you play. This site uses Cloudflare Web Analytics, which is cookieless and does not track people across sites, to count visits. The game's code, fonts, sprites and sounds are all served by this website itself. The game does not load advertising, social media widgets, payment processors or session recording tools.</p>
+  <p>Playing on your own uses none, apart from the crash reports above and Cloudflare Web Analytics. This site uses Cloudflare Web Analytics, which is cookieless and does not track people across sites, to count visits. The game's code, fonts, sprites and sounds are all served by this website itself. The game does not load advertising, social media widgets, payment processors or session recording tools.</p>
+  <p>Online play uses these services, which receive your IP address and browser information as part of providing them:</p>
+  <ul>
+    <li><strong>Supabase</strong> runs the online accounts, the database and the match messages (<a href="https://supabase.com/privacy" rel="noopener">Supabase privacy policy</a>).</li>
+    <li><strong>Cloudflare Turnstile</strong> is a bot check that may run before you sign in or start a match. Cloudflare checks your browser and IP address to tell people from bots (<a href="https://www.cloudflare.com/turnstile-privacy-policy/" rel="noopener">Turnstile privacy addendum</a>).</li>
+    <li><strong>Cloudflare TURN relay</strong> passes match traffic between you and your opponent, so neither of you sees the other's IP address. It doesn't keep the game data (<a href="https://www.cloudflare.com/privacypolicy/" rel="noopener">Cloudflare privacy policy</a>).</li>
+  </ul>
 
   <h3>Hosting</h3>
   <p>This website is hosted on GitHub Pages. Like any web host, GitHub receives standard technical information when your browser loads the site, such as your IP address and browser type, and may keep it in server logs for security. See the <a href="https://docs.github.com/en/pages/getting-started-with-github-pages/about-github-pages#data-collection" rel="noopener">GitHub Pages data collection notice</a> and <a href="https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement" rel="noopener">GitHub's privacy statement</a>.</p>
@@ -79,10 +106,10 @@
   <p>Poké Jam does not set cookies. The local storage described above is used only for features you choose to use, such as saving your franchise.</p>
 
   <h3>Children</h3>
-  <p>The game is suitable for all ages. Because it collects no personal information, it collects none from children.</p>
+  <p>The game is suitable for all ages. Playing on your own collects no personal information. Online play uses an anonymous account, a trainer name and the match records above, and asks for no email, real name or contact details.</p>
 
   <h3>Changes</h3>
-  <p>If this policy changes, the new version will be posted on this page with a new date. If the game ever adds features that collect data, such as online accounts, this page will list every service involved before those features go live.</p>
+  <p>If this policy changes, the new version will be posted on this page with a new date. Before any new feature collects data, this page will list what it collects and every service involved.</p>
 
   <h2 id="terms">Terms of use</h2>
   <p>The full terms are on the <a href="terms.html">Terms of use page</a>. In short:</p>
@@ -98,6 +125,9 @@
 
   <h3>Fair use</h3>
   <p>Don't use the game or this website to break the law, attack or overload the site, or pass the game off as an official product.</p>
+
+  <h3>Playing online</h3>
+  <p>Play fair and be decent. Don't cheat, use bots or modified game clients, exploit bugs, harass other players, or pick a name that is offensive or pretends to be someone else, including the game's staff or partners. We may rename, suspend or ban an online account that breaks these rules. Players reported by several opponents may be suspended automatically while a person reviews it. Online play can be unavailable at times, and results that can't be confirmed may not be recorded.</p>
 
   <h3>Fan project and trademarks</h3>
   <p>Poké Jam is an unofficial, non-commercial fan project. It is not affiliated with, endorsed by or sponsored by Nintendo, Creatures Inc., GAME FREAK inc. or The Pokémon Company. Pokémon, Pokémon character names and sprites are trademarks and copyrights of their respective owners. Sprites come from the community <a href="https://github.com/PokeAPI/sprites" rel="noopener">PokeAPI sprites</a> collection. If you are a rights holder and want something changed or removed, contact us using the details below and we will respond promptly.</p>

@@ -4,3 +4,8 @@ dist-artifact
 .DS_Store
 trailer-out
 public/sprites
+.env
+.env.*
+!.env.production
+e2e-shots
+checks-out
