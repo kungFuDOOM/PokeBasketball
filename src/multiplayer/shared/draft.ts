@@ -17,6 +17,8 @@ export interface DraftView {
   seconds_left: number;
   /** Seconds since the other player last checked in (null before they ever have). */
   opponent_seen_ago: number | null;
+  /** The match's status (migration 20261105; missing from an older server): 'void' once a player has left. */
+  status?: string;
 }
 
 /** Ten picks: five each. */
@@ -25,6 +27,26 @@ export const DRAFT_PICKS = 10;
 export const PICK_SECONDS = 12;
 /** After this long without word from the other player, the draft is called off. */
 export const GONE_AFTER = 25;
+/**
+ * A room's players wait this long for each other before the first pick: the host has often just left for Messages
+ * to send the code when the friend joins. The server holds the pick clock until both are there.
+ */
+export const ROOM_WAIT = 120;
+
+/** The match is over on the server (the other player left, or it was called off): the draft can't go on. */
+export const matchOver = (v: Pick<DraftView, 'status'>) => v.status !== undefined && v.status !== 'active';
+
+/** The other player has never opened this draft yet. */
+export const waitingForOpponent = (v: Pick<DraftView, 'opponent_seen_ago' | 'turn'>) => v.opponent_seen_ago === null && v.turn === 0;
+
+/**
+ * Has the other player gone? `sinceStart` is how long I've been in the draft (seconds), used until they first show up.
+ * A room waits ROOM_WAIT before the first pick; otherwise GONE_AFTER.
+ */
+export function opponentGone(v: Pick<DraftView, 'opponent_seen_ago' | 'turn'>, sinceStart: number, room = false): boolean {
+  const quiet = v.opponent_seen_ago ?? sinceStart;
+  return quiet > (room && v.turn === 0 ? ROOM_WAIT : GONE_AFTER);
+}
 
 /** Who makes the i-th pick: snake order A B B A A B B A A B, the same rule as pokejam_draft_side on the server. */
 export function draftSide(first: 0 | 1, i: number): 0 | 1 {

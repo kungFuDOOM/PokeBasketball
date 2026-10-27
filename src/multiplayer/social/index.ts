@@ -7,8 +7,9 @@ import { message, playOnline } from '../shared/onlineGame';
 import { runDraft } from './draftScreen';
 import { ensureHuman, humanDeps } from '../shared/human';
 import { classify } from '../shared/capacity';
-import { SupabaseMatchService, type OnlineMatch } from '../shared/onlineMatchService';
-import { ONLINE_CONFIGURED, ensureSignedIn, supabase } from '../shared/supabase';
+import { RoomGoneError, SupabaseMatchService, type OnlineMatch } from '../shared/onlineMatchService';
+import { onPageExit, searchWhileVisible } from '../shared/pageExit';
+import { ONLINE_CONFIGURED, ensureSignedIn, keepaliveRpc, supabase } from '../shared/supabase';
 import { tapGuard } from '../shared/throttle';
 import type { ModeContext } from '../shared/types';
 
@@ -23,7 +24,7 @@ async function online(ctx: ModeContext): Promise<SupabaseMatchService> {
   const sb = supabase();
   const uid = await ensureSignedIn(sb);
   // A cleared or expired session signs in as a new anonymous account: the old service would still think it is the old user.
-  if (!service || service.userId !== uid) service = new SupabaseMatchService(sb, uid, ['social'], (force) => ensureHuman(humanDeps(sb), force));
+  if (!service || service.userId !== uid) service = new SupabaseMatchService(sb, uid, ['social'], (force) => ensureHuman(humanDeps(sb), force), keepaliveRpc);
   await service.setName(ctx.settings.teamName || 'Trainer');
   return service;
 }
@@ -73,9 +74,12 @@ function failed(ctx: ModeContext, e: unknown, retry?: () => void) {
   ctx.root.querySelector('[data-a="back"]')!.addEventListener('click', () => openSocial(ctx));
 }
 
-/** A Social match: the quick draft between the two players first (#28), then the game with the drafted teams. */
-async function start(ctx: ModeContext, svc: SupabaseMatchService, match: OnlineMatch, again: () => void) {
-  const drafted = await runDraft(home(ctx), svc, match);
+/**
+ * A Social match: the quick draft between the two players first (#28), then the game with the drafted teams.
+ * `room`: a "Play a friend" match (the players wait longer for each other before the first pick).
+ */
+async function start(ctx: ModeContext, svc: SupabaseMatchService, match: OnlineMatch, again: () => void, room = false) {
+  const drafted = await runDraft(home(ctx), svc, match, { room });
   if ('failed' in drafted) return failed(ctx, drafted.failed);
   if ('left' in drafted) {
     message(home(ctx), drafted.left === 'them' ? 'OPPONENT LEFT' : 'LEFT THE DRAFT',
@@ -96,21 +100,37 @@ async function quickMatch(ctx: ModeContext) {
       <button class="btn ghost" data-a="cancel">Cancel</button>
     </div>`);
   const cpuBtn = root.querySelector<HTMLButtonElement>('[data-a="cpu"]')!;
+  const tag = root.querySelector('.tag');
   const offer = setTimeout(() => {
+    if (abort.signal.aborted) return;
     cpuBtn.hidden = false;
-    root.querySelector('.tag')!.textContent = 'No one is around yet. Keep waiting or play the CPU.';
+    if (tag) tag.textContent = 'No one is around yet. Keep waiting or play the CPU.';
   }, CPU_OFFER_MS);
+  // Cancel and "Play CPU instead" win over a search still in flight: the service never hands back a match after this.
+  abort.signal.addEventListener('abort', () => clearTimeout(offer));
   root.querySelector('[data-a="cancel"]')!.addEventListener('click', () => { abort.abort(); openSocial(ctx); });
   cpuBtn.addEventListener('click', () => { abort.abort(); playCpu(ctx); });
+  let svc: SupabaseMatchService | null = null;
+  // Closing the tab mid-search leaves the queue at once (the server also drops a queue row that stops polling).
+  const offExit = onPageExit(() => svc?.leaveOnExit(null));
   try {
-    const svc = await online(ctx);
-    const match = await svc.quickMatch('social', abort.signal);
+    svc = await online(ctx);
+    if (abort.signal.aborted) return;
+    const s = svc;
+    // In the background (another app, a locked phone) the search pauses and leaves the queue, so nobody is matched
+    // with a player who isn't looking; back on this screen, it carries on by itself.
+    const match = await searchWhileVisible(abort.signal, (signal) => s.quickMatch('social', signal), {
+      onHide: () => s.leaveOnExit(null),
+      onResume: () => { if (tag && !abort.signal.aborted) tag.textContent = 'Looking for a social opponent…'; },
+    });
     clearTimeout(offer);
-    start(ctx, svc, match, () => void quickMatch(ctx));
+    if (abort.signal.aborted) return void s.leave(match.id); // belt and braces: never start a cancelled search
+    start(ctx, s, match, () => void quickMatch(ctx));
   } catch (e) {
     clearTimeout(offer);
-    if ((e as Error).name !== 'AbortError') failed(ctx, e, () => void quickMatch(ctx));
+    if ((e as Error).name !== 'AbortError' && !abort.signal.aborted) failed(ctx, e, () => void quickMatch(ctx));
   } finally {
+    offExit();
     if (searching === abort) searching = null;
   }
 }
@@ -129,8 +149,10 @@ function friendMenu(ctx: ModeContext) {
   const err = root.querySelector<HTMLElement>('[data-a="err"]')!;
   const input = root.querySelector<HTMLInputElement>('input[name="code"]')!;
   input.addEventListener('input', () => { input.value = input.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6); });
-  root.querySelector('[data-a="back"]')!.addEventListener('click', () => openSocial(ctx));
-  root.querySelector('[data-a="create"]')!.addEventListener('click', () => void hostRoom(ctx));
+  // Leaving this screen while a join is in flight: the join, if it lands, is left instead of starting a draft.
+  const away = new AbortController();
+  root.querySelector('[data-a="back"]')!.addEventListener('click', () => { away.abort(); openSocial(ctx); });
+  root.querySelector('[data-a="create"]')!.addEventListener('click', () => { away.abort(); void hostRoom(ctx); });
   // One join at a time: the button is off while a try is running, so a double-tap is one request.
   const joinBtn = root.querySelector<HTMLButtonElement>('form button')!;
   let joining = false;
@@ -142,9 +164,10 @@ function friendMenu(ctx: ModeContext) {
     err.hidden = true;
     try {
       const svc = await online(ctx);
-      const match = await svc.joinRoom(input.value);
-      start(ctx, svc, match, () => friendMenu(ctx));
+      const match = await svc.joinRoom(input.value, away.signal);
+      start(ctx, svc, match, () => friendMenu(ctx), true);
     } catch (x) {
+      if (away.signal.aborted) return;
       const p = classify(x);
       if (p.kind === 'busy') return failed(ctx, x);
       err.hidden = false;
@@ -185,11 +208,18 @@ async function hostRoomOnce(ctx: ModeContext, abort: AbortController) {
     void svc.closeRoom(code);
     friendMenu(ctx);
   });
+  // Going to another app to send the code is expected (the room stays open); closing the tab closes the room.
+  const offExit = onPageExit(() => svc.closeRoomOnExit(code));
   try {
     const match = await svc.waitForFriend(code, abort.signal);
-    start(ctx, svc, match, () => friendMenu(ctx));
+    if (abort.signal.aborted) return void svc.leave(match.id);
+    start(ctx, svc, match, () => friendMenu(ctx), true);
   } catch (e) {
-    if ((e as Error).name !== 'AbortError') failed(ctx, e);
+    if ((e as Error).name === 'AbortError' || abort.signal.aborted) return;
+    if (e instanceof RoomGoneError) return message(home(ctx), 'ROOM CLOSED', e.message);
+    failed(ctx, e);
+  } finally {
+    offExit();
   }
 }
 

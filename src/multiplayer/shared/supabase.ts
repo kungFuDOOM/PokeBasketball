@@ -10,15 +10,40 @@ const KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 export const ONLINE_CONFIGURED = !!URL && !!KEY;
 
 let client: SupabaseClient | null = null;
+/** The player's current access token, kept at hand so a request can go out while the page is closing (keepaliveRpc). */
+let accessToken: string | null = null;
 
 export function supabase(): SupabaseClient {
   if (!ONLINE_CONFIGURED) throw new Error('Online play is not configured for this build.');
-  client ??= createClient(URL!, KEY!, {
-    auth: { persistSession: true, autoRefreshToken: true, storageKey: 'pokejam.auth' },
-    realtime: { params: { eventsPerSecond: 40 } },
-  });
+  if (!client) {
+    client = createClient(URL!, KEY!, {
+      auth: { persistSession: true, autoRefreshToken: true, storageKey: 'pokejam.auth' },
+      realtime: { params: { eventsPerSecond: 40 } },
+    });
+    client.auth.onAuthStateChange((_event, session) => { accessToken = session?.access_token ?? null; });
+  }
   return client;
 }
+
+/**
+ * An RPC request that outlives the page (fetch with keepalive): for leaving the queue or a match while the tab is
+ * closing or going to the background, where a normal request may never be sent. Fire and forget, never throws.
+ */
+export function rpcBeacon(base: string, key: string, token: () => string | null, send: typeof fetch = (...a) => fetch(...a)) {
+  return (fn: string, args: Record<string, unknown> = {}) => {
+    const t = token();
+    if (!t) return;
+    try {
+      void send(`${base}/rest/v1/rpc/${fn}`, {
+        method: 'POST', keepalive: true,
+        headers: { apikey: key, Authorization: `Bearer ${t}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(args),
+      }).catch(() => {});
+    } catch { /* best effort */ }
+  };
+}
+
+export const keepaliveRpc = ONLINE_CONFIGURED ? rpcBeacon(URL!, KEY!, () => accessToken) : () => {};
 
 /** What signing in needs from the page: whether Auth CAPTCHA is on for this build, and a fresh Turnstile token. */
 export interface SignInDeps {

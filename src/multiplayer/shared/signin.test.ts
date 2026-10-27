@@ -1,7 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { describe, expect, it } from 'vitest';
 import { BotCheckError } from './capacity';
-import { ensureSignedIn, type SignInDeps } from './supabase';
+import { ensureSignedIn, rpcBeacon, type SignInDeps } from './supabase';
 
 type Resp = { data: { user: { id: string } | null }; error: { message: string; code?: string; status?: number } | null };
 function fake(opts: { session?: string | null; answers?: Resp[] }) {
@@ -72,5 +72,27 @@ describe('anonymous sign-in and Auth CAPTCHA', () => {
     const g = fake({});
     await Promise.all([ensureSignedIn(g.sb, t.d), ensureSignedIn(g.sb, t.d)]);
     expect([g.calls.length, t.count()]).toEqual([1, 1]);
+  });
+});
+
+describe('requests that outlive the page (leaving on pagehide, #8)', () => {
+  it('posts the RPC with keepalive and the player token; nothing without a session; never throws', async () => {
+    const sent: [string, RequestInit][] = [];
+    let token: string | null = 'jwt';
+    const beacon = rpcBeacon('https://x.supabase.co', 'pub', () => token, (async (url: string, init: RequestInit) => { sent.push([url, init]); return new Response(); }) as typeof fetch);
+    beacon('pokejam_leave_match', { p_match: 'm1' });
+    expect(sent).toHaveLength(1);
+    const [url, init] = sent[0];
+    expect(url).toBe('https://x.supabase.co/rest/v1/rpc/pokejam_leave_match');
+    expect(init).toMatchObject({ method: 'POST', keepalive: true, body: '{"p_match":"m1"}' });
+    expect(init.headers).toMatchObject({ apikey: 'pub', Authorization: 'Bearer jwt' });
+    token = null;
+    beacon('pokejam_leave_queue');
+    expect(sent).toHaveLength(1);
+    token = 'jwt';
+    const throwing = rpcBeacon('https://x', 'k', () => token, (() => { throw new Error('closing'); }) as typeof fetch);
+    expect(() => throwing('pokejam_leave_queue')).not.toThrow();
+    const rejecting = rpcBeacon('https://x', 'k', () => token, (() => Promise.reject(new Error('offline'))) as typeof fetch);
+    expect(() => rejecting('pokejam_leave_queue')).not.toThrow();
   });
 });

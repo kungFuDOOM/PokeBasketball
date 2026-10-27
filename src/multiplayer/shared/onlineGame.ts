@@ -9,8 +9,9 @@ import { Lockstep } from './lockstep';
 import { panel } from './matchFlow';
 import type { ReportOutcome } from './matchService';
 import { pack } from './evidence';
-import { connect, iceFor, type Connected, type MatchLink } from './netplay';
+import { MatchOverError, connect, iceFor, type Connected, type MatchLink } from './netplay';
 import type { OnlineMatch, OnlineOpponent, ReportReason, SupabaseMatchService } from './onlineMatchService';
+import { onPageExit } from './pageExit';
 import type { ModeContext } from './types';
 
 /** No word from the other player for this long ends the game. */
@@ -42,6 +43,10 @@ export async function playOnline(ctx: ModeContext, o: OnlineGameOptions) {
   root.innerHTML = panel('CONNECTING', `Connecting to ${match.opponent.name}…`, `
     <div class="actions center"><button class="btn ghost" data-a="cancel">Cancel</button></div>`);
   root.querySelector('[data-a="cancel"]')!.addEventListener('click', () => abort.abort());
+  // Closing the tab while connecting or playing: say bye and leave the match at once (the other player otherwise
+  // waits out the connection timeout). Off once the game has finished, so a result being settled isn't voided.
+  let sayBye = () => {};
+  const offExit = onPageExit(() => { sayBye(); service.leaveOnExit(match.id); });
 
   let link: MatchLink;
   let cfg;
@@ -50,8 +55,14 @@ export async function playOnline(ctx: ModeContext, o: OnlineGameOptions) {
     conn = await connect(o.sb, match, quarterLenOverride(), abort.signal, service);
     ({ cfg, link } = conn);
   } catch (e) {
+    // Before leaving (which voids the match): did the other player already leave? Then that's what happened, not a
+    // busy server (the channel refuses a match that's over).
+    const gone = e instanceof MatchOverError
+      || ((e as Error).name !== 'AbortError' && (await service.matchStatus(match.id).catch(() => 'active')) !== 'active');
+    offExit();
     await service.leave(match.id);
     if ((e as Error).name === 'AbortError') return ctx.back();
+    if (gone) return message(ctx, 'OPPONENT LEFT', `${match.opponent.name} left before the game started. No result was recorded.`);
     const p = classify(e);
     return message(ctx, p.kind === 'busy' ? 'ONLINE IS BUSY' : 'NO CONNECTION', p.message);
   }
@@ -70,9 +81,11 @@ export async function playOnline(ctx: ModeContext, o: OnlineGameOptions) {
   let ls: Lockstep | null = null;
   let handle: PlayHandle | null = null;
   let over = false;
+  sayBye = () => ls?.bye();
   const end = async (title: string, note: string) => {
     if (over) return;
     over = true;
+    offExit();
     clearInterval(watch);
     handle?.stop();
     ls?.bye();
@@ -102,6 +115,7 @@ export async function playOnline(ctx: ModeContext, o: OnlineGameOptions) {
   async function finish(g: Game) {
     if (over) return;
     over = true;
+    offExit();
     clearInterval(watch);
     const mine = g.score[match.side];
     const theirs = g.score[1 - match.side];
