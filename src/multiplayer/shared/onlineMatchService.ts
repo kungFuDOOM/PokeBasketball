@@ -3,11 +3,13 @@
 import { MODE_RANKED } from '../../config/features';
 import type { DraftView } from './draft';
 import { counted, outcomeBetween, parseProfile, type ServerRank } from '../ranked/serverRank';
+import { isBusy } from './capacity';
+import { RateLimit, backoffMs, jitter, singleFlight, sleep } from './throttle';
 import type { MatchResult, MatchService, Opponent, Queue, ReportOutcome } from './matchService';
 
 /** The slice of the Supabase client this service uses (lets tests pass a fake). */
 export interface RpcClient {
-  rpc(fn: string, args?: Record<string, unknown>): PromiseLike<{ data: unknown; error: { message: string } | null }>;
+  rpc(fn: string, args?: Record<string, unknown>): PromiseLike<{ data: unknown; error: { message: string; code?: string } | null; status?: number }>;
 }
 
 export interface OnlineMatch {
@@ -35,22 +37,28 @@ export interface OnlineOpponent extends Opponent {
   mySide: 0 | 1;
 }
 
-export class OnlineError extends Error {}
+/** A refusal from the server. `code` and `status` (HTTP) are kept so capacity limits can be told from real errors (capacity.ts). */
+export class OnlineError extends Error {
+  constructor(message: string, public code?: string, public status?: number) {
+    super(message);
+  }
+}
 
 const POLL_MS = 2000;
 /** After reporting a Ranked result, wait this long for the other player's report before giving up on showing the rating change. */
 const SETTLE_MS = 30_000;
-const sleep = (ms: number, signal?: AbortSignal) => new Promise<void>((res, rej) => {
-  const t = setTimeout(res, ms);
-  signal?.addEventListener('abort', () => { clearTimeout(t); rej(new DOMException('aborted', 'AbortError')); }, { once: true });
-});
+/** A poll that hits a capacity limit is retried this many times (backoff with jitter) before it is reported. */
+const POLL_RETRIES = 2;
+/** Room-code tries allowed per minute, so a code can't be guessed by hammering the join button. */
+const JOIN_TRIES = 6;
+const JOIN_WINDOW_MS = 60_000;
 
 export class SupabaseMatchService implements MatchService {
   /**
    * @param queues the queues this service may play. Social builds pass ['social'] only, so this code path can
    * never submit a rated result (the server enforces the same: Social matches never reach the rating RPC).
    */
-  constructor(private db: RpcClient, private userId: string, private queues: readonly Queue[] = ['social'],
+  constructor(private db: RpcClient, readonly userId: string, private queues: readonly Queue[] = ['social'],
     /** Runs the human check when the server asks for one (human.ts); `force` after a "human check needed" refusal. */
     private human: (force: boolean) => Promise<void> = async () => {}) {}
 
@@ -69,11 +77,36 @@ export class SupabaseMatchService implements MatchService {
     }
   }
 
-  private async call<T>(fn: string, args?: Record<string, unknown>): Promise<T> {
-    const { data, error } = await this.db.rpc(fn, args);
-    if (error) throw new OnlineError(error.message);
-    return data as T;
+  /** One RPC. With `retries`, a capacity refusal (429/503, too many connections) is retried after a growing, jittered pause. */
+  private async call<T>(fn: string, args?: Record<string, unknown>, o: { retries?: number; signal?: AbortSignal } = {}): Promise<T> {
+    for (let n = 1; ; n++) {
+      const { data, error, status } = await this.db.rpc(fn, args);
+      if (!error) return data as T;
+      const err = new OnlineError(error.message, error.code, status);
+      if (n > (o.retries ?? 0) || !isBusy(err)) throw err;
+      await sleep(backoffMs(n, 1000, 6000), o.signal);
+    }
   }
+
+  private lastName: { want: string; kept: string } | null = null;
+  private naming = singleFlight(async (want: string) => {
+    const p = await this.call<{ trainer_name?: string } | null>('pokejam_ensure_profile', { p_name: want });
+    const kept = p?.trainer_name ?? 'Trainer';
+    this.lastName = { want, kept };
+    return kept;
+  }, (want) => want);
+  private reporting = singleFlight((matchId: string, reason: ReportReason, note?: string) =>
+    this.call<boolean>('pokejam_report_player', { p_match: matchId, p_reason: reason, p_note: note?.slice(0, 200) ?? null }), (matchId) => matchId);
+  private blocking = singleFlight((matchId: string) => this.call('pokejam_block_player', { p_match: matchId }), (matchId) => matchId);
+  private roomMaking = singleFlight((quarterLen: number) =>
+    this.gated(() => this.call<string>('pokejam_create_room', { p_quarter_len: quarterLen <= 60 ? 60 : 120 })));
+  private codeTries = new RateLimit(JOIN_TRIES, JOIN_WINDOW_MS);
+  private joining = singleFlight(async (clean: string) => {
+    if (!this.codeTries.take()) throw new OnlineError(`Too many tries. Wait ${this.codeTries.waitSeconds()} seconds and try again.`);
+    const id = await this.gated(() => this.call<string | null>('pokejam_join_room', { p_code: clean }));
+    if (!id) throw new OnlineError('room not found');
+    return this.matchInfo(id);
+  }, (clean) => clean);
 
   private allow(queue: Queue) {
     if (!this.queues.includes(queue)) throw new OnlineError(`${queue} online play is not enabled`);
@@ -81,8 +114,9 @@ export class SupabaseMatchService implements MatchService {
 
   /** Sets my trainer name; returns the name the server kept (a name it doesn't allow becomes "Trainer"). */
   async setName(name: string): Promise<string> {
-    const p = await this.call<{ trainer_name?: string } | null>('pokejam_ensure_profile', { p_name: name.trim().slice(0, 40) || 'Trainer' });
-    return p?.trainer_name ?? 'Trainer';
+    const want = name.trim().slice(0, 40) || 'Trainer';
+    // Already set to this name on this account: no request (every Social action used to repeat it).
+    return this.lastName?.want === want ? this.lastName.kept : this.naming(want);
   }
 
   /** My rating as the server holds it (my profile row; nothing here is computed on the client). */
@@ -96,7 +130,7 @@ export class SupabaseMatchService implements MatchService {
     const m = await this.call<{
       id: string; queue: Queue; host: string; guest: string | null; host_name: string; guest_name: string | null; seed: number | null; quarter_len: number | null;
       host_key?: string | null; guest_key?: string | null; host_roster?: number[] | null; guest_roster?: number[] | null;
-    } | null>('pokejam_match_info', { p_match: id });
+    } | null>('pokejam_match_info', { p_match: id }, { retries: POLL_RETRIES });
     if (!m || !m.guest) throw new OnlineError('match not found');
     if (m.seed === null || m.seed === undefined) throw new OnlineError('This match was made by an older server. Refresh to update.');
     const side: 0 | 1 = m.host === this.userId ? 0 : 1;
@@ -114,7 +148,7 @@ export class SupabaseMatchService implements MatchService {
 
   /** The Social draft as I see it (the server starts it on the first look, and settles any picks whose time ran out). */
   draftState(matchId: string): Promise<DraftView> {
-    return this.call<DraftView>('pokejam_draft_state', { p_match: matchId });
+    return this.call<DraftView>('pokejam_draft_state', { p_match: matchId }, { retries: POLL_RETRIES });
   }
 
   /** Make my draft pick; the server checks it's my turn, it's free, and I still need its position. */
@@ -139,9 +173,9 @@ export class SupabaseMatchService implements MatchService {
     try {
       // The pass is checked before the first search; later polls only re-check if the server refuses.
       for (let first = true; ; first = false) {
-        const id = await this.gated(() => this.call<string | null>('pokejam_find_match', { p_queue: queue }), first);
+        const id = await this.gated(() => this.call<string | null>('pokejam_find_match', { p_queue: queue }, { retries: POLL_RETRIES, signal }), first);
         if (id) return await this.matchInfo(id);
-        await sleep(POLL_MS, signal);
+        await sleep(jitter(POLL_MS), signal);
       }
     } catch (e) {
       if (signal?.aborted) await this.call('pokejam_leave_queue').catch(() => {});
@@ -151,7 +185,7 @@ export class SupabaseMatchService implements MatchService {
 
   /** Play a friend: make a room (1- or 2-minute quarters) and get its 6-character code. */
   createRoom(quarterLen = 120): Promise<string> {
-    return this.gated(() => this.call<string>('pokejam_create_room', { p_quarter_len: quarterLen <= 60 ? 60 : 120 }));
+    return this.roomMaking(quarterLen <= 60 ? 60 : 120);
   }
 
   /** Host: give up on a room nobody has joined yet. */
@@ -162,28 +196,26 @@ export class SupabaseMatchService implements MatchService {
   /** Host: wait for a friend to join the room. */
   async waitForFriend(code: string, signal?: AbortSignal): Promise<OnlineMatch> {
     for (;;) {
-      const id = await this.call<string | null>('pokejam_room_match', { p_code: code });
+      const id = await this.call<string | null>('pokejam_room_match', { p_code: code }, { retries: POLL_RETRIES, signal });
       if (id) return this.matchInfo(id);
-      await sleep(POLL_MS, signal);
+      await sleep(jitter(POLL_MS), signal);
     }
   }
 
   async joinRoom(code: string): Promise<OnlineMatch> {
     const clean = code.toUpperCase().replace(/[^A-Z0-9]/g, '');
     if (clean.length !== 6) throw new OnlineError('Room codes are 6 letters and numbers.');
-    const id = await this.gated(() => this.call<string | null>('pokejam_join_room', { p_code: clean }));
-    if (!id) throw new OnlineError('room not found');
-    return this.matchInfo(id);
+    return this.joining(clean);
   }
 
-  /** Report the other player in a match. False if this match was already reported. */
+  /** Report the other player in a match. False if this match was already reported. A double-tap sends one request. */
   report(matchId: string, reason: ReportReason, note?: string): Promise<boolean> {
-    return this.call<boolean>('pokejam_report_player', { p_match: matchId, p_reason: reason, p_note: note?.slice(0, 200) ?? null });
+    return this.reporting(matchId, reason, note);
   }
 
   /** Block the other player in a match: you won't be matched with them again. */
   async block(matchId: string) {
-    await this.call('pokejam_block_player', { p_match: matchId });
+    await this.blocking(matchId);
   }
 
   /** Leave a match or room without a result. */
@@ -219,8 +251,8 @@ export class SupabaseMatchService implements MatchService {
   private async settle(matchId: string): Promise<ReportOutcome> {
     const until = Date.now() + SETTLE_MS;
     for (;;) {
-      await sleep(POLL_MS);
-      const s = await this.call<{ status?: string } | null>('pokejam_match_status', { p_match: matchId });
+      await sleep(jitter(POLL_MS));
+      const s = await this.call<{ status?: string } | null>('pokejam_match_status', { p_match: matchId }, { retries: POLL_RETRIES });
       if (s?.status === 'done') return this.rated();
       if (!s || s.status === 'void') return { queue: 'ranked', status: 'void' };
       if (Date.now() >= until) return { queue: 'ranked', status: 'pending' };

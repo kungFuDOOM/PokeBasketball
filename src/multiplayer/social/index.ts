@@ -6,8 +6,10 @@ import { LocalMockMatchService } from '../shared/matchService';
 import { message, playOnline } from '../shared/onlineGame';
 import { runDraft } from './draftScreen';
 import { ensureHuman, humanDeps } from '../shared/human';
-import { OnlineError, SupabaseMatchService, type OnlineMatch } from '../shared/onlineMatchService';
+import { classify } from '../shared/capacity';
+import { SupabaseMatchService, type OnlineMatch } from '../shared/onlineMatchService';
 import { ONLINE_CONFIGURED, ensureSignedIn, supabase } from '../shared/supabase';
+import { tapGuard } from '../shared/throttle';
 import type { ModeContext } from '../shared/types';
 
 const cpuService = new LocalMockMatchService(); // no rating store: social can't change rank
@@ -20,10 +22,16 @@ let service: SupabaseMatchService | null = null;
 async function online(ctx: ModeContext): Promise<SupabaseMatchService> {
   const sb = supabase();
   const uid = await ensureSignedIn(sb);
-  service ??= new SupabaseMatchService(sb, uid, ['social'], (force) => ensureHuman(humanDeps(sb), force));
+  // A cleared or expired session signs in as a new anonymous account: the old service would still think it is the old user.
+  if (!service || service.userId !== uid) service = new SupabaseMatchService(sb, uid, ['social'], (force) => ensureHuman(humanDeps(sb), force));
   await service.setName(ctx.settings.teamName || 'Trainer');
   return service;
 }
+
+/** The search or room in progress: tapping Quick match or Make a room again meanwhile does nothing (until it is cancelled). */
+let searching: AbortController | null = null;
+let hosting: AbortController | null = null;
+const idle = (c: AbortController | null) => !c || c.signal.aborted;
 
 const playCpu = (ctx: ModeContext) =>
   runMatch({ ...ctx, back: () => openSocial(ctx) }, { queue: 'social', service: cpuService, outcomeHtml: () => SOCIAL_NOTE });
@@ -47,13 +55,20 @@ export function openSocial(ctx: ModeContext) {
 
 const home = (ctx: ModeContext): ModeContext => ({ ...ctx, back: () => openSocial(ctx) });
 
-function failed(ctx: ModeContext, e: unknown) {
-  const msg = e instanceof OnlineError || e instanceof Error ? e.message : 'Something went wrong.';
-  const nice = /anonymous/i.test(msg) ? 'Online sign-in is switched off on the server right now.' : msg;
+/**
+ * An online step failed. Never a dead end: a busy server or a failed bot check says so plainly (capacity.ts), a bot
+ * check or expired session offers "Try again", and solo play (CPU) and Back are always there.
+ */
+function failed(ctx: ModeContext, e: unknown, retry?: () => void) {
+  const p = classify(e);
+  const title = p.kind === 'busy' ? 'ONLINE IS BUSY' : p.kind === 'botcheck' ? 'BOT CHECK' : 'OFFLINE';
+  const canRetry = !!retry && (p.kind === 'botcheck' || p.kind === 'session');
   ctx.root.className = 'screen-menu';
-  ctx.root.innerHTML = panel('OFFLINE', nice, `<div class="actions center">
-      <button class="btn primary" data-a="cpu">Play CPU instead</button>
+  ctx.root.innerHTML = panel(title, p.message, `<div class="actions center">
+      ${canRetry ? '<button class="btn primary" data-a="retry">Try again</button>' : ''}
+      <button class="btn${canRetry ? '' : ' primary'}" data-a="cpu">Play CPU instead</button>
       <button class="btn ghost" data-a="back">Back</button></div>`);
+  ctx.root.querySelector('[data-a="retry"]')?.addEventListener('click', tapGuard(() => retry!()));
   ctx.root.querySelector('[data-a="cpu"]')!.addEventListener('click', () => playCpu(ctx));
   ctx.root.querySelector('[data-a="back"]')!.addEventListener('click', () => openSocial(ctx));
 }
@@ -61,6 +76,7 @@ function failed(ctx: ModeContext, e: unknown) {
 /** A Social match: the quick draft between the two players first (#28), then the game with the drafted teams. */
 async function start(ctx: ModeContext, svc: SupabaseMatchService, match: OnlineMatch, again: () => void) {
   const drafted = await runDraft(home(ctx), svc, match);
+  if ('failed' in drafted) return failed(ctx, drafted.failed);
   if ('left' in drafted) {
     message(home(ctx), drafted.left === 'them' ? 'OPPONENT LEFT' : 'LEFT THE DRAFT',
       drafted.left === 'them' ? `${match.opponent.name} left during the draft. No result was recorded.` : 'You left the draft. No result was recorded.');
@@ -70,8 +86,9 @@ async function start(ctx: ModeContext, svc: SupabaseMatchService, match: OnlineM
 }
 
 async function quickMatch(ctx: ModeContext) {
+  if (!idle(searching)) return; // a double-tap
   const { root } = ctx;
-  const abort = new AbortController();
+  const abort = searching = new AbortController();
   root.className = 'screen-menu';
   root.innerHTML = panel('SEARCHING', 'Looking for a social opponent…', `
     <div class="actions center">
@@ -92,7 +109,9 @@ async function quickMatch(ctx: ModeContext) {
     start(ctx, svc, match, () => void quickMatch(ctx));
   } catch (e) {
     clearTimeout(offer);
-    if ((e as Error).name !== 'AbortError') failed(ctx, e);
+    if ((e as Error).name !== 'AbortError') failed(ctx, e, () => void quickMatch(ctx));
+  } finally {
+    if (searching === abort) searching = null;
   }
 }
 
@@ -112,30 +131,50 @@ function friendMenu(ctx: ModeContext) {
   input.addEventListener('input', () => { input.value = input.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6); });
   root.querySelector('[data-a="back"]')!.addEventListener('click', () => openSocial(ctx));
   root.querySelector('[data-a="create"]')!.addEventListener('click', () => void hostRoom(ctx));
+  // One join at a time: the button is off while a try is running, so a double-tap is one request.
+  const joinBtn = root.querySelector<HTMLButtonElement>('form button')!;
+  let joining = false;
   root.querySelector('form')!.addEventListener('submit', async (e) => {
     e.preventDefault();
+    if (joining) return;
+    joining = true;
+    joinBtn.disabled = true;
     err.hidden = true;
     try {
       const svc = await online(ctx);
       const match = await svc.joinRoom(input.value);
       start(ctx, svc, match, () => friendMenu(ctx));
     } catch (x) {
+      const p = classify(x);
+      if (p.kind === 'busy') return failed(ctx, x);
       err.hidden = false;
-      err.textContent = /room not found/i.test((x as Error).message) ? 'No open room with that code.' : (x as Error).message;
+      err.textContent = /room not found/i.test(p.message) ? 'No open room with that code.' : p.message;
+    } finally {
+      joining = false;
+      joinBtn.disabled = false;
     }
   });
 }
 
 async function hostRoom(ctx: ModeContext) {
+  if (!idle(hosting)) return; // a double-tap
+  const abort = hosting = new AbortController();
+  try {
+    await hostRoomOnce(ctx, abort);
+  } finally {
+    if (hosting === abort) hosting = null;
+  }
+}
+
+async function hostRoomOnce(ctx: ModeContext, abort: AbortController) {
   const { root } = ctx;
-  const abort = new AbortController();
   let svc: SupabaseMatchService;
   let code: string;
   try {
     svc = await online(ctx);
     code = await svc.createRoom(ctx.settings.quarterLen);
   } catch (e) {
-    return failed(ctx, e);
+    return failed(ctx, e, () => void hostRoom(ctx));
   }
   root.className = 'screen-menu';
   root.innerHTML = panel('YOUR ROOM', 'Send this code to your friend. The game starts when they join.', `

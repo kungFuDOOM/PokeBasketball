@@ -4,6 +4,7 @@ import type { Game } from '../../game/game';
 import { playGame, type PlayHandle } from '../../screens/play';
 import { resultsScreen } from '../../screens/results';
 import { esc } from '../../util';
+import { classify } from './capacity';
 import { Lockstep } from './lockstep';
 import { panel } from './matchFlow';
 import type { ReportOutcome } from './matchService';
@@ -51,7 +52,8 @@ export async function playOnline(ctx: ModeContext, o: OnlineGameOptions) {
   } catch (e) {
     await service.leave(match.id);
     if ((e as Error).name === 'AbortError') return ctx.back();
-    return message(ctx, 'NO CONNECTION', (e as Error).message);
+    const p = classify(e);
+    return message(ctx, p.kind === 'busy' ? 'ONLINE IS BUSY' : 'NO CONNECTION', p.message);
   }
 
   // Move gameplay to a relayed direct link if the server hands out TURN credentials (stays on Realtime otherwise).
@@ -166,16 +168,19 @@ function reportScreen(ctx: ModeContext, service: SupabaseMatchService, match: On
     try {
       say((await service.report(match.id, b.dataset.r as ReportReason)) ? `Thanks. ${name} was reported and a person will look at it.` : 'You already reported this match.');
     } catch (e) {
-      say((e as Error).message);
+      root.querySelectorAll<HTMLButtonElement>('[data-r]').forEach((x) => (x.disabled = false));
+      say(classify(e).message);
     }
   }));
   root.querySelector<HTMLButtonElement>('[data-a="block"]')!.addEventListener('click', async (e) => {
-    (e.currentTarget as HTMLButtonElement).disabled = true;
+    const btn = e.currentTarget as HTMLButtonElement;
+    btn.disabled = true;
     try {
       await service.block(match.id);
       say(`${name} is blocked. You won't be matched with them again.`);
     } catch (x) {
-      say((x as Error).message);
+      btn.disabled = false;
+      say(classify(x).message);
     }
   });
 }

@@ -4,12 +4,16 @@
 import { monByDex, spriteUrl, POSITIONS, type Pos } from '../../data/pokemon';
 import { esc } from '../../util';
 import { DRAFT_PICKS, GONE_AFTER, PICK_SECONDS, canPick, teamOf, type DraftView } from '../shared/draft';
+import { classify } from '../shared/capacity';
 import type { OnlineMatch, SupabaseMatchService } from '../shared/onlineMatchService';
+import { backoffMs } from '../shared/throttle';
 import type { ModeContext } from '../shared/types';
 
 const POLL_MS = 700;
+/** This many polls in a row failing (each already retried on a busy server) ends the draft with the error. */
+const MAX_MISSES = 5;
 
-export type DraftEnd = { match: OnlineMatch } | { left: 'me' | 'them' };
+export type DraftEnd = { match: OnlineMatch } | { left: 'me' | 'them' } | { failed: unknown };
 
 export function runDraft(ctx: ModeContext, svc: SupabaseMatchService, match: OnlineMatch): Promise<DraftEnd> {
   const { root } = ctx;
@@ -32,6 +36,7 @@ export function runDraft(ctx: ModeContext, svc: SupabaseMatchService, match: Onl
   let view: DraftView | null = null;
   let gotAt = 0;
   let busy = false;
+  let misses = 0;
   let over = false;
   let timer = 0;
   let raf = 0;
@@ -110,10 +115,17 @@ export function runDraft(ctx: ModeContext, svc: SupabaseMatchService, match: Onl
           end({ left: 'them' });
           return;
         }
+        misses = 0;
       } catch (e) {
-        say((e as Error).message);
+        // The server is struggling: back off (with jitter) instead of polling every 0.7 s, and stop after a few misses.
+        if (++misses >= MAX_MISSES) {
+          await svc.leave(match.id);
+          end({ failed: e });
+          return;
+        }
+        say(classify(e).message);
       }
-      timer = window.setTimeout(poll, POLL_MS);
+      timer = window.setTimeout(poll, misses ? Math.max(POLL_MS, backoffMs(misses, 700, 5000)) : POLL_MS);
     };
 
     root.addEventListener('click', async (e) => {
@@ -124,7 +136,8 @@ export function runDraft(ctx: ModeContext, svc: SupabaseMatchService, match: Onl
         try {
           take(await svc.draftPick(match.id, Number(card.dataset.dex)));
         } catch (x) {
-          say(/turn|picked|already have|over/i.test((x as Error).message) ? 'Too late: that pick was taken.' : (x as Error).message);
+          const p = classify(x);
+          say(p.kind !== 'busy' && /turn|picked|already have|over/i.test(p.message) ? 'Too late: that pick was taken.' : p.message);
           try { take(await svc.draftState(match.id)); } catch { /* the next poll will */ }
         }
         busy = false;

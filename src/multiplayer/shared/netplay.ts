@@ -10,11 +10,13 @@ import { monByDex } from '../../data/pokemon';
 import { USER_STYLE, contrastAway } from '../../franchise/league';
 import { ENGINE_VERSION, type GameConfig } from '../../game/types';
 import { abbr } from '../../util';
+import { BusyError, isChannelFailure } from './capacity';
 import { EvidenceLog } from './evidence';
 import type { Lockstep, NetMsg, Transport } from './lockstep';
 import { rostersFor } from './roster';
 import { RtcLink } from './rtc';
 import type { OnlineMatch, SupabaseMatchService } from './onlineMatchService';
+import { backoffMs } from './throttle';
 import { gameConfigFor, matchKey, type MatchKeys, type MatchSetup, type MatchTeam } from './winnerCheck';
 
 /** `ack` marks an answer to the other side's hi, which is never answered (so two finished sides don't echo). */
@@ -23,10 +25,12 @@ type Hs = { k: 'hi'; v: number; n: number; side: 0 | 1; ack?: true };
 export class NetError extends Error {}
 
 const HS_EVERY = 400;
-const CONNECT_TIMEOUT = 25_000;
-/** Joining the match channel: tries, and the pause after try n is n times this. */
-const JOIN_ATTEMPTS = 3;
-const JOIN_BACKOFF = 1000;
+/** Waiting for the other player once we're on the channel; a failed join is retried inside this (each try can take up to 10 s to time out). */
+const CONNECT_TIMEOUT = 40_000;
+/** Joining the match channel: tries, and the pause before retry n (backoffMs: exponential with jitter, capped). */
+export const JOIN_ATTEMPTS = 4;
+export const JOIN_BACKOFF = 1000;
+export const JOIN_BACKOFF_CAP = 8000;
 
 /**
  * The match as the winner check sees it (winnerCheck.ts): seed, quarter length and both teams, all from the server's
@@ -144,16 +148,32 @@ export class MatchLink implements Transport {
  * match only. Null when it isn't set up (or refuses), and the match stays on Realtime. Dev builds can try a plain
  * local connection with ?p2p=local (two tabs on one machine).
  */
-export async function iceFor(sb: SupabaseClient, matchId: string): Promise<{ iceServers: RTCIceServer[]; policy: RTCIceTransportPolicy } | null> {
-  if (import.meta.env.DEV && new URLSearchParams(location.search).get('p2p') === 'local') return { iceServers: [], policy: 'all' };
+export async function iceFor(sb: SupabaseClient, matchId: string, now: () => number = Date.now): Promise<{ iceServers: RTCIceServer[]; policy: RTCIceTransportPolicy } | null> {
+  if (import.meta.env.DEV && typeof location !== 'undefined' && new URLSearchParams(location.search).get('p2p') === 'local') return { iceServers: [], policy: 'all' };
+  // One attempt per match, and none for a while after a failure (TURN not set up, or the function is down): quiet, no retries.
+  if (iceTried.has(matchId) || now() < iceDownUntil) return null;
+  iceTried.add(matchId);
+  if (iceTried.size > 50) iceTried.delete(iceTried.values().next().value!);
+  const down = () => { iceDownUntil = now() + ICE_PAUSE_MS; return null; };
   try {
-    const { data, error } = await sb.functions.invoke('pokejam-ice', { body: { match: matchId } });
+    const call = sb.functions.invoke('pokejam-ice', { body: { match: matchId } });
+    const { data, error } = await Promise.race([call, new Promise<never>((_, rej) => setTimeout(() => rej(new Error('pokejam-ice timed out')), ICE_TIMEOUT_MS))]);
     const servers = (data as { iceServers?: unknown } | null)?.iceServers;
-    if (error || !Array.isArray(servers) || !servers.length) return null;
+    if (error || !Array.isArray(servers) || !servers.length) return down();
     return { iceServers: servers as RTCIceServer[], policy: 'relay' };
   } catch {
-    return null;
+    return down();
   }
+}
+
+const ICE_PAUSE_MS = 10 * 60_000;
+const ICE_TIMEOUT_MS = 6000;
+const iceTried = new Set<string>();
+let iceDownUntil = 0;
+/** Forget what iceFor has learned (tests). */
+export function resetIce() {
+  iceTried.clear();
+  iceDownUntil = 0;
 }
 
 /**
@@ -220,7 +240,9 @@ export function connect(sb: SupabaseClient, match: OnlineMatch, quarterLen: numb
     if (signed) void prepareEvidence(service!, match).then((e) => { evidence = e; ready(); });
     let done = false;
     let retry: ReturnType<typeof setTimeout> | undefined;
-    const hi = (ack?: true) => void ch.send({ type: 'broadcast', event: 'hs', payload: { k: 'hi', v: ENGINE_VERSION, n: NET_VERSION, side: match.side, ack } satisfies Hs });
+    // Nothing is sent until the channel is joined: a send on an unjoined channel goes out as an HTTP request instead.
+    let subscribed = false;
+    const hi = (ack?: true) => subscribed && void ch.send({ type: 'broadcast', event: 'hs', payload: { k: 'hi', v: ENGINE_VERSION, n: NET_VERSION, side: match.side, ack } satisfies Hs });
     const finish = (err: Error | null) => {
       if (done) return;
       done = true;
@@ -233,7 +255,8 @@ export function connect(sb: SupabaseClient, match: OnlineMatch, quarterLen: numb
     };
     const ready = () => { if (peer && evidence !== undefined) finish(null); };
     const timer = setInterval(() => hi(), HS_EVERY);
-    const timeout = setTimeout(() => finish(new NetError('Could not reach the other player.')), CONNECT_TIMEOUT);
+    // Never got onto the channel: the match server is the problem (full, rate-limited), not the other player.
+    const timeout = setTimeout(() => finish(subscribed ? new NetError('Could not reach the other player.') : new BusyError('join timed out')), CONNECT_TIMEOUT);
     signal?.addEventListener('abort', () => finish(new DOMException('aborted', 'AbortError')), { once: true });
 
     const bind = (c: RealtimeChannel) => {
@@ -250,27 +273,30 @@ export function connect(sb: SupabaseClient, match: OnlineMatch, quarterLen: numb
       c.on('broadcast', { event: 'rtc' }, ({ payload }) => link.signal(payload));
     };
     bind(ch);
-    // A cold Realtime tenant can refuse the first join (MissingPartition): retry on a fresh channel after a short backoff.
+    // A cold Realtime tenant can refuse the first join (MissingPartition), and a full one refuses with rate-limit or
+    // too-many-channels errors: retry on a fresh channel after an exponential, jittered backoff (capped), then
+    // report "online is busy" rather than a vague connection error.
     const attempt = (n: number) => {
       const joining = ch;
-      const fail = () => {
+      const fail = (why = '') => {
         if (done || joining !== ch) return;
-        if (n >= JOIN_ATTEMPTS) return finish(new NetError('Could not connect to the match server.'));
+        if (n >= JOIN_ATTEMPTS) return finish(new BusyError(why || 'channel join failed'));
         void sb.removeChannel(joining);
         retry = setTimeout(() => {
           if (done) return;
+          subscribed = false;
           ch = open();
           link.useChannel(ch);
           bind(ch);
           attempt(n + 1);
-        }, JOIN_BACKOFF * n);
+        }, backoffMs(n, JOIN_BACKOFF, JOIN_BACKOFF_CAP));
       };
       // Private channels authorize with the player's own token.
-      void sb.realtime.setAuth().then(() => joining.subscribe((status) => {
+      void sb.realtime.setAuth().then(() => joining.subscribe((status, err) => {
         if (joining !== ch || done) return;
-        if (status === 'SUBSCRIBED') hi();
-        else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') fail();
-      }), fail);
+        if (status === 'SUBSCRIBED') { subscribed = true; hi(); }
+        else if (isChannelFailure(status)) fail(err?.message ?? status);
+      }), () => fail('auth'));
     };
     attempt(1);
   });
