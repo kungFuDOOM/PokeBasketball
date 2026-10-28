@@ -3,6 +3,8 @@ import { replayOf, watchAgain } from './potg';
 import type { Game } from '../game/game';
 import type { Player, TeamId } from '../game/types';
 import { esc } from '../util';
+import { shareText } from '../ui/share';
+import { bindShare, shareButtonHtml } from '../ui/shareButton';
 
 const gameScore = (p: Player) => {
   const s = p.stats;
@@ -55,6 +57,8 @@ export interface ResultsOptions {
   headline?: string;
   /** Extra section between the player of the game and the box scores. */
   extraHtml?: string;
+  /** Who to name as the opponent when sharing; defaults to the other team's name. */
+  shareOpponent?: string;
   buttons: { id: string; label: string; kind?: 'primary' | 'ghost' }[];
   onAction: (id: string) => void;
 }
@@ -80,6 +84,7 @@ export function resultsScreen(root: HTMLElement, g: Game, opts: ResultsOptions) 
         <span class="dash">–</span>
         <span style="--tc:${a.color}"><b>${g.score[1]}</b> ${esc(a.abbr)}</span>
       </div>
+      ${h.human ? shareButtonHtml() : ''}
       <div class="pog">
         <img src="${spriteUrl(pog.mon.dex)}" alt="">
         <div>
@@ -100,5 +105,13 @@ export function resultsScreen(root: HTMLElement, g: Game, opts: ResultsOptions) 
     </div>`;
   root.querySelectorAll<HTMLButtonElement>('[data-a]').forEach((b) =>
     b.addEventListener('click', () => opts.onAction(b.dataset.a!)));
+  if (h.human) {
+    bindShare(root, shareText({
+      opponent: opts.shareOpponent ?? a.name,
+      userScore: g.score[0],
+      oppScore: g.score[1],
+      potg: { name: pog.mon.name, pts: pog.stats.pts },
+    }));
+  }
   root.querySelector('[data-replay]')?.addEventListener('click', () => watchAgain(g));
 }
