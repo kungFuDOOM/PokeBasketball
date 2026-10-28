@@ -68,6 +68,10 @@ export interface LockstepOptions {
 export const SEND_MS = 66;
 /** Most ticks of unacknowledged input one batch repeats (5 s: past that the link is dead anyway). */
 const MAX_RESEND = 300;
+/** A stall only counts as the peer's lateness after this many ticks of play (the sides start at slightly different moments). */
+const START_GRACE = 60;
+/** Most ticks a single stall can say we are short by. */
+const MAX_STALL_LEAD = 12;
 export const HASH_EVERY = 60;
 /** The peer can't be further ahead than both input delays plus a stall; anything beyond this is junk. */
 const MAX_AHEAD = 4 * MAX_DELAY + 60;
@@ -117,6 +121,7 @@ export class Lockstep {
   private leadSeq = 0;
   private lastPeerLw = -1;
   private steady = 0;
+  private hold = 0;
   private tune: Required<NonNullable<LockstepOptions['tune']>>;
   private now: () => number;
   /** Our latest hash, sent with the next input batch. */
@@ -221,7 +226,9 @@ export class Lockstep {
   receive(raw: unknown) {
     const now = this.now();
     if (now - this.rateWindow >= 1000) { this.rateWindow = now; this.rateCount = 0; }
-    if (++this.rateCount > MAX_MSGS_PER_SEC || !raw || typeof raw !== 'object') { this.stats.dropped++; return; }
+    // Snapshots and goodbyes are rare and each is guarded elsewhere (resync limits); a burst of inputs must not shut them out.
+    const rare = !!raw && typeof raw === 'object' && ((raw as { k?: unknown }).k === 'snap' || (raw as { k?: unknown }).k === 'bye');
+    if ((!rare && ++this.rateCount > MAX_MSGS_PER_SEC) || !raw || typeof raw !== 'object') { this.stats.dropped++; return; }
     const m = raw as Partial<Record<string, unknown>> & { k?: unknown };
     this.lastHeard = now;
     this.stats.received++;
@@ -263,8 +270,10 @@ export class Lockstep {
       for (let i = 0; i < n; i++, t++) {
         if (t < this.tick || this.remote.has(t)) continue;
         this.remote.set(t, { mx, my, b });
-        // Arriving while we are stuck waiting: the lead is minus how long we have waited, in ticks.
-        this.minLead = Math.min(this.minLead, this.tune.stallLead && this.waiting > 0 ? -Math.ceil(this.waiting / TICK) : t - this.tick);
+        // Arriving while we are stuck waiting: the lead is minus how long we have waited, in ticks. Not at tip-off (the
+        // two sides start a moment apart, which is no fault of the link) and capped (a hitch of our own looks the same).
+        const stalled = this.tune.stallLead && this.waiting > 0 && this.tick > START_GRACE;
+        this.minLead = Math.min(this.minLead, stalled ? -Math.min(MAX_STALL_LEAD, Math.ceil(this.waiting / TICK)) : t - this.tick);
       }
     }
     while (this.remote.has(this.remoteTop + 1)) this.remoteTop++;
@@ -279,9 +288,10 @@ export class Lockstep {
 
   /** The peer says our inputs reached it `lead` ticks before it needed them (negative: it had to wait). */
   private adaptDelay(lead: number) {
-    const next = this.tune.adapt({ delay: this.delay, steady: this.steady }, lead);
+    const next = this.tune.adapt({ delay: this.delay, steady: this.steady, hold: this.hold }, lead);
     this.delay = next.delay;
     this.steady = next.steady;
+    this.hold = next.hold ?? 0;
     this.stats.maxDelay = Math.max(this.stats.maxDelay, this.delay);
   }
 

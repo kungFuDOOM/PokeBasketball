@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { FALLBACK_RTT, MAX_DELAY, MIN_DELAY, SLACK_LEAD, STEADY_REPORTS, TARGET_LEAD, adapt, clampDelay, planRtt, rttStats, startDelay, type AdaptState } from './netDelay';
+import { FALLBACK_RTT, HOLD_REPORTS, MAX_DELAY, MIN_DELAY, SLACK_LEAD, STEADY_REPORTS, TARGET_LEAD, adapt, clampDelay, planRtt, rttStats, startDelay, type AdaptState } from './netDelay';
 import { Pinger } from './ping';
 
 describe('start delay from the measured RTT', () => {
@@ -46,8 +46,15 @@ describe('adaptation', () => {
   const at = (delay: number, steady = 0): AdaptState => ({ delay, steady });
 
   it('late inputs: jumps straight to the shortfall instead of one tick per report', () => {
-    expect(adapt(at(8), 0)).toEqual(at(8 + TARGET_LEAD));
-    expect(adapt(at(8), -6)).toEqual(at(8 + TARGET_LEAD + 6));
+    expect(adapt(at(8), 0).delay).toBe(8 + TARGET_LEAD);
+    expect(adapt(at(8), -6).delay).toBe(8 + TARGET_LEAD + 6);
+  });
+
+  it('after a jump, the next late reports (which predate it) are ignored, then adapting resumes', () => {
+    let s = adapt(at(8), -4);
+    const jumped = s.delay;
+    for (let i = 0; i < HOLD_REPORTS; i++) { s = adapt(s, -4); expect(s.delay).toBe(jumped); }
+    expect(adapt(s, -4).delay).toBe(jumped + TARGET_LEAD + 4);
   });
 
   it('never goes past the cap', () => {
@@ -60,13 +67,13 @@ describe('adaptation', () => {
     for (let i = 0; i < STEADY_REPORTS - 1; i++) s = adapt(s, SLACK_LEAD + 3);
     expect(s.delay).toBe(12);
     s = adapt(s, SLACK_LEAD + 3);
-    expect(s).toEqual(at(11));
+    expect(s).toMatchObject({ delay: 11, steady: 0 });
     expect(adapt(at(MIN_DELAY, STEADY_REPORTS - 1), 20).delay).toBe(MIN_DELAY);
   });
 
   it('a report with less slack resets the steady count; a late one resets it and goes up', () => {
     expect(adapt(at(12, 5), SLACK_LEAD).steady).toBe(0);
-    expect(adapt(at(12, 5), 0)).toEqual(at(12 + TARGET_LEAD));
+    expect(adapt(at(12, 5), 0)).toMatchObject({ delay: 12 + TARGET_LEAD, steady: 0 });
   });
 
   it('two peers fed the same reports land on the same delay (deterministic)', () => {

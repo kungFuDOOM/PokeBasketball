@@ -46,21 +46,32 @@ export function startDelay(rttMs: number, sendMs: number, jitterMs: number): num
   return clampDelay(Math.ceil((rttMs / 2 + sendMs + 2 * jitterMs) / TICK_MS) + 1);
 }
 
+/** Late reports ignored right after a jump: they still describe the window from before it took effect (about an RTT + a window). */
+export const HOLD_REPORTS = 2;
+
 export interface AdaptState {
   delay: number;
   /** Consecutive lead reports with plenty of slack. */
   steady: number;
+  /** Late reports still to ignore after the last jump. */
+  hold?: number;
 }
 
 /**
  * The peer reports the smallest lead (ticks) our inputs had in the last window; negative: it had to wait that long.
- * Late: jump straight to the shortfall (to TARGET_LEAD). Slack for STEADY_REPORTS reports in a row: ease down by 1.
+ * Late: jump straight to the shortfall (to TARGET_LEAD), then ignore the next HOLD_REPORTS late reports (they predate
+ * the jump). Slack for STEADY_REPORTS reports in a row: ease down by 1.
  */
 export function adapt(s: AdaptState, lead: number): AdaptState {
-  if (lead < 1) return { delay: clampDelay(s.delay + (TARGET_LEAD - lead)), steady: 0 };
-  if (lead > SLACK_LEAD) {
-    if (s.steady + 1 >= STEADY_REPORTS) return { delay: clampDelay(s.delay - 1), steady: 0 };
-    return { delay: s.delay, steady: s.steady + 1 };
+  const hold = s.hold ?? 0;
+  if (lead < 1) {
+    if (hold > 0) return { delay: s.delay, steady: 0, hold: hold - 1 };
+    return { delay: clampDelay(s.delay + (TARGET_LEAD - lead)), steady: 0, hold: HOLD_REPORTS };
   }
-  return { delay: s.delay, steady: 0 };
+  const rest = { hold: Math.max(0, hold - 1) };
+  if (lead > SLACK_LEAD) {
+    if (s.steady + 1 >= STEADY_REPORTS) return { delay: clampDelay(s.delay - 1), steady: 0, ...rest };
+    return { delay: s.delay, steady: s.steady + 1, ...rest };
+  }
+  return { delay: s.delay, steady: 0, ...rest };
 }
