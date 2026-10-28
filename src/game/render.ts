@@ -34,6 +34,8 @@ interface Pt { x: number; y: number; s: number }
 export class Renderer {
   private ctx: CanvasRenderingContext2D;
   private camX = 47;
+  /** The yellow ring and "P1" tag on the user's player (off in replays: nobody is playing). */
+  showUser = true;
   private crowd: HTMLCanvasElement[] = [];
   private particles: Particle[] = [];
   private flash = 0;
@@ -406,12 +408,14 @@ export class Renderer {
     ctx.fill();
     ctx.beginPath();
     ctx.ellipse(foot.x, foot.y, rx, ry, 0, 0, Math.PI * 2);
-    ctx.fillStyle = team.color + (p.human ? 'cc' : '88');
+    // Only the player this screen controls gets the yellow ring (an online opponent's pick stays plain).
+    const mine = this.showUser && p.human && p.team === g.viewTeam;
+    ctx.fillStyle = team.color + (mine ? 'cc' : '88');
     ctx.fill();
     ctx.lineWidth = 2;
-    ctx.strokeStyle = p.human ? USER_YELLOW : team.color;
+    ctx.strokeStyle = mine ? USER_YELLOW : team.color;
     ctx.stroke();
-    if (p.human) {
+    if (mine) {
       // A pulsing yellow halo around the user's ring so they stand out in a crowded paint.
       const k = 1.25 + 0.15 * Math.sin(this.t * 8);
       ctx.beginPath();
@@ -642,15 +646,16 @@ export class Renderer {
   private drawJumpMeter(ctx: CanvasRenderingContext2D, g: Game, dt: number) {
     const j = g.tipoff;
     const m = this.jumpGhost;
-    const p = j?.jumpers[0];
+    const vt = g.viewTeam;
+    const p = j?.jumpers[vt];
     if (j && p?.human && j.t >= -0.4) {
-      m.v = j.at[0] ?? g.jumpMeter();
+      m.v = j.at[vt] ?? g.jumpMeter();
       m.w = j.window;
-      m.t = j.at[0] === null ? 0.7 : m.t - dt;
+      m.t = j.at[vt] === null ? 0.7 : m.t - dt;
     } else m.t -= dt;
     if (m.t <= 0) return;
     const top = 1.5;
-    const who = j?.jumpers[0] ?? g.user;
+    const who = j?.jumpers[vt] ?? g.user;
     if (!who) return;
     const at = this.proj(who.x, who.y, who.z + spriteFt(who));
     const x = Math.round(at.x - 18);
@@ -684,7 +689,7 @@ export class Renderer {
   /** A yellow "P1" tag with a pointer over the user's player, drawn above everything else. */
   private drawUserMarker(ctx: CanvasRenderingContext2D, g: Game) {
     const u = g.user;
-    if (!u) return;
+    if (!u || !this.showUser) return;
     const head = this.proj(u.x, u.y, u.z + spriteFt(u) + 1.2);
     const x = clamp(Math.round(head.x), 11, VW - 11);
     const y = Math.max(16, Math.round(head.y - 3 + Math.sin(this.t * 6)));

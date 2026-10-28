@@ -2,14 +2,16 @@ import { Announcer, CLIPS } from '../game/announcer';
 import type { Audio } from '../game/audio';
 import { Game } from '../game/game';
 import { Hud } from '../game/hud';
+import { ReplayRecorder } from '../game/replay';
 import { Input } from '../game/input';
 import { Renderer } from '../game/render';
 import { preload } from '../game/sprites';
-import type { GameConfig, Player } from '../game/types';
+import type { GameConfig, Intent, Player, TeamId } from '../game/types';
 import { spriteUrl } from '../data/pokemon';
 import { esc } from '../util';
 import { Voice, sharedVoice } from '../game/voice';
 import { controlsHtml } from './menu';
+import { playOfTheGame, rememberReplay, type PlayOfTheGame } from './potg';
 
 const STEP = 1 / 60;
 /** Dev aid: ?speed=4 runs the simulation four times faster. */
@@ -19,13 +21,28 @@ export interface PlayHandle {
   stop(): void;
 }
 
+/**
+ * Online games: the driver owns the simulation clock (lockstep, see src/multiplayer/shared/lockstep.ts).
+ * The screen hands it the local input every frame; it steps the game when both players' inputs are in.
+ * Online games never pause, since the other player's game keeps going.
+ */
+export interface OnlineDriver {
+  /** The team this player controls (the guest plays the away team). */
+  viewTeam: TeamId;
+  start(g: Game): void;
+  /** Returns how many times the input was sampled (edge-triggered buttons are consumed then). */
+  advance(intent: Intent, dt: number): number;
+  /** A banner such as "Waiting for opponent…", or null. */
+  status(): string | null;
+}
+
 export function playGame(
   root: HTMLElement,
   cfg: GameConfig,
   audio: Audio,
   onFinal: (g: Game) => void,
   onQuit: () => void,
-  opts: { onAutoSubs?: (on: boolean) => void } = {},
+  opts: { onAutoSubs?: (on: boolean) => void; online?: OnlineDriver } = {},
 ): PlayHandle {
   root.innerHTML = `
     <div class="game">
@@ -45,6 +62,7 @@ export function playGame(
         </div>
       </div>
       <div class="loading">Warming up…</div>
+      <div class="net-status" hidden></div>
     </div>`;
   const gameEl = root.querySelector<HTMLElement>('.game')!;
   const canvas = root.querySelector<HTMLCanvasElement>('canvas')!;
@@ -54,8 +72,17 @@ export function playGame(
   const loading = root.querySelector<HTMLElement>('.loading')!;
 
   const g = new Game(cfg);
+  const online = opts.online;
+  const netStatus = root.querySelector<HTMLElement>('.net-status')!;
+  if (online) {
+    g.viewTeam = online.viewTeam;
+    online.start(g);
+  }
   const renderer = new Renderer(canvas);
   const hud = new Hud(gameEl, g);
+  // Play of the Game: offline games are recorded so the best moment can be replayed after the final buzzer.
+  const rec = online ? null : new ReplayRecorder(cfg, g.seed);
+  let potg: PlayOfTheGame | null = null;
   const input = new Input();
   const touch = window.matchMedia('(pointer: coarse)').matches || navigator.maxTouchPoints > 0;
   if (touch) {
@@ -114,6 +141,7 @@ export function playGame(
     const t = e.target as HTMLElement;
     if (t.closest('[data-a="autosubs"]')) {
       g.cfg.userAutoSubs = g.cfg.userAutoSubs === false;
+      rec?.autoSubs(g.cfg.userAutoSubs);
       opts.onAutoSubs?.(g.cfg.userAutoSubs);
       renderSubs();
       return;
@@ -130,15 +158,17 @@ export function playGame(
       const onFloor = g.players.includes(p);
       if (onFloor === g.players.includes(picked)) picked = p;
       else {
-        g.requestSub(onFloor ? p : picked, onFloor ? picked : p);
+        const [out, inn] = onFloor ? [p, picked] : [picked, p];
+        if (g.requestSub(out, inn)) rec?.sub(out, inn);
         picked = null;
       }
     }
     renderSubs();
   });
 
+  const menuOpen = () => !pauseMenu.hidden;
   const setPaused = (p: boolean) => {
-    g.paused = p;
+    g.paused = p && !online; // an online game keeps running behind the menu
     pauseMenu.hidden = !p;
     input.enabled = !p;
     if (p) {
@@ -146,7 +176,7 @@ export function playGame(
       renderSubs();
     }
   };
-  root.querySelector('.pause-btn')!.addEventListener('click', () => setPaused(!g.paused));
+  root.querySelector('.pause-btn')!.addEventListener('click', () => setPaused(!menuOpen()));
   pauseMenu.addEventListener('click', (e) => {
     const a = (e.target as HTMLElement).closest<HTMLElement>('[data-a]')?.dataset.a;
     if (a === 'resume') setPaused(false);
@@ -155,10 +185,10 @@ export function playGame(
     if (a === 'quit') { stop(); onQuit(); }
   });
   const onKey = (e: KeyboardEvent) => {
-    if (g.paused && (e.code === 'Escape' || e.code === 'KeyP')) setPaused(false);
+    if (menuOpen() && (e.code === 'Escape' || e.code === 'KeyP')) setPaused(false);
   };
   window.addEventListener('keydown', onKey);
-  const onVis = () => { if (document.hidden && g.phase !== 'final') setPaused(true); };
+  const onVis = () => { if (document.hidden && g.phase !== 'final' && !online) setPaused(true); };
   document.addEventListener('visibilitychange', onVis);
 
   void preload([...cfg.home.roster, ...cfg.away.roster, ...(cfg.home.bench ?? []), ...(cfg.away.bench ?? [])]).then(() => {
@@ -172,21 +202,43 @@ export function playGame(
     // rAF timestamps can be a hair earlier than the performance.now() taken at start; never go negative.
     const dt = Math.max(0, Math.min(0.1, (now - last) / 1000));
     last = now;
+    if (potg) {
+      // The replay: any button skips it; then the results.
+      const { intent, pause } = input.read();
+      if (pause || intent.shoot || intent.pass) potg.skip();
+      if (!potg.frame(dt)) {
+        stop();
+        onFinal(g);
+        return;
+      }
+      raf = requestAnimationFrame(frame);
+      return;
+    }
     if (ready) {
       const { intent, pause } = input.read();
-      if (pause && g.phase !== 'final') setPaused(!g.paused);
+      if (pause && g.phase !== 'final') setPaused(!menuOpen());
       // Edge-triggered buttons are held until one sim step consumes them.
       pend.shoot ||= intent.shoot;
       pend.pass ||= intent.pass;
       pend.swap ||= intent.swap;
       pend.steal ||= intent.steal;
       pend.special ||= intent.special;
-      acc += dt * SPEED;
-      while (acc >= STEP) {
-        g.userInput = { ...intent, ...pend };
-        g.update(STEP);
-        pend = { shoot: false, pass: false, swap: false, steal: false, special: false };
-        acc -= STEP;
+      if (online) {
+        if (online.advance({ ...intent, ...pend }, dt) > 0) pend = { shoot: false, pass: false, swap: false, steal: false, special: false };
+        const st = online.status();
+        netStatus.hidden = !st;
+        if (st) netStatus.textContent = st;
+      } else {
+        acc += dt * SPEED;
+        while (acc >= STEP) {
+          const want = { ...intent, ...pend };
+          g.userInput = rec ? rec.before(g, want) : want;
+          const n = g.events.length;
+          g.update(STEP);
+          rec?.after(g, g.events.slice(n));
+          pend = { shoot: false, pass: false, swap: false, steal: false, special: false };
+          acc -= STEP;
+        }
       }
       const events = g.events.splice(0);
       hud.handle(events);
@@ -206,6 +258,16 @@ export function playGame(
         if (finalT < 0) finalT = 3;
         finalT -= dt;
         if (finalT <= 0) {
+          const best = rec?.best(g);
+          const clip = best && rec!.clip(best);
+          if (best && clip) {
+            rememberReplay(g, { rec: rec!, best, teamName: g.teams[best.team].name, audio, voice });
+            hud.el.hidden = true;
+            root.querySelector<HTMLElement>('.pause-btn')!.hidden = true;
+            potg = playOfTheGame(gameEl, canvas, clip, best, g.teams[best.team].name, audio, voice);
+            raf = requestAnimationFrame(frame);
+            return;
+          }
           stop();
           onFinal(g);
           return;

@@ -24,6 +24,8 @@ export const CALLS = {
   q3: ['q3'],
   ot: ['ot'],
   final: ['final'],
+  /** The Play of the Game title card (not an event: src/screens/potg.ts says it). potg_3 is "Let's see that one again". */
+  potg: ['potg_1', 'potg_2', 'potg_3'],
 } as const;
 
 export type Call = keyof typeof CALLS;
@@ -31,7 +33,7 @@ export const CLIPS: string[] = [...new Set(Object.values(CALLS).flat())];
 
 /** How much each call matters: a bigger moment cuts off a smaller one, and goes first when several are waiting. */
 const PRIORITY: Record<Call, number> = {
-  final: 10, buzzer: 9, tipoff: 8, q1: 8, half: 8, q3: 8, ot: 8, fire: 7, heating: 6, oop: 5,
+  final: 10, potg: 10, buzzer: 9, tipoff: 8, q1: 8, half: 8, q3: 8, ot: 8, fire: 7, heating: 6, oop: 5,
   dunk: 4, three: 4, block: 4, super: 3, steal: 3, shotclock: 3, airball: 2, cooled: 1,
 };
 

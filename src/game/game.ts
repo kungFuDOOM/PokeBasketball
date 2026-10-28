@@ -1,9 +1,9 @@
 import { POSITIONS, bestEffectiveness, effectiveness, type Mon, type Pos } from '../data/pokemon';
 import { think } from './ai';
 import {
-  BALL_R, COURT_L, COURT_W, DIFFICULTIES, GRAVITY, HOOP_Y, RIM_R, RIM_Z,
-  backDir, clamp, dist, emptyIntent, hoopX, isThree, lerp, rand, randn,
-  type Ball, type GameConfig, type GameEvent, type Grade, type Intent, type Player, type TeamDef, type TeamId,
+  BALL_R, COURT_L, COURT_W, DIFFICULTIES, ENGINE_VERSION, GRAVITY, HOOP_Y, RIM_R, RIM_Z,
+  backDir, clamp, dist, emptyIntent, hoopX, isThree, lerp, seededRng,
+  type Ball, type GameConfig, type GameEvent, type Grade, type Intent, type Player, type Rng, type TeamDef, type TeamId,
 } from './types';
 
 /** Meter value (0..1 fill) at which a jump shot is released perfectly. */
@@ -88,7 +88,7 @@ export function bestLineup(mons: Mon[]): { starters: Mon[]; bench: Mon[]; slots:
   return { starters, bench: left, slots };
 }
 
-function makePlayer(id: number, team: TeamId, slot: number, mon: Mon, boost: number): Player {
+function makePlayer(id: number, team: TeamId, slot: number, mon: Mon, boost: number, rng: () => number): Player {
   const r = { ...mon.r };
   for (const k of Object.keys(r) as (keyof typeof r)[]) r[k] = clamp(r[k] + boost, 20, 99);
   return {
@@ -98,7 +98,7 @@ function makePlayer(id: number, team: TeamId, slot: number, mon: Mon, boost: num
     x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0,
     facing: team === 0 ? 1 : -1,
     back: false,
-    runPhase: Math.random() * 6,
+    runPhase: rng() * 6,
     state: 'free', stateT: 0,
     turbo: 1, turboOn: false,
     special: 0.2,
@@ -145,8 +145,20 @@ export class Game {
   private matchups = new Map<Player, Player>();
   phaseT = 0;
   time = 0;
-  user: Player | null = null;
-  userInput: Intent = emptyIntent();
+  /** Each team's human-controlled player (null for a CPU team). */
+  users: [Player | null, Player | null] = [null, null];
+  /** Each team's controller input for the next tick. */
+  inputs: [Intent, Intent] = [emptyIntent(), emptyIntent()];
+  /** Which team this screen follows: the HUD, P1 tag and `user` refer to it. Display only, never the sim. */
+  viewTeam: TeamId = 0;
+  /** The seed this game was started from (cfg.seed, or a random one). */
+  readonly seed: number;
+  /** The simulation rules this game runs on; results and snapshots carry it so replays use the same engine. */
+  readonly engineVersion = ENGINE_VERSION;
+  /** Every random roll in the simulation comes from here, so a seed and the inputs replay the game exactly. */
+  readonly rng: Rng;
+  /** True when one human plays the CPU: difficulty, catch-up and assists only apply then. */
+  private readonly vsCpu: boolean;
   events: GameEvent[] = [];
   sfx: Sfx[] = [];
   shake = 0;
@@ -158,31 +170,65 @@ export class Game {
   private dribblePh = 0;
 
   constructor(cfg: GameConfig) {
+    if (cfg.engineVersion !== undefined && cfg.engineVersion !== ENGINE_VERSION) {
+      throw new Error(`game was recorded on engine v${cfg.engineVersion}, this is engine v${ENGINE_VERSION}`);
+    }
     this.cfg = cfg;
     this.teams = [cfg.home, cfg.away];
     this.diff = DIFFICULTIES[cfg.difficulty];
+    this.seed = (cfg.seed ?? Math.floor(Math.random() * 2 ** 32)) >>> 0;
+    this.rng = seededRng(this.seed);
+    this.vsCpu = cfg.home.human !== cfg.away.human;
     let id = 0;
     for (const t of [0, 1] as TeamId[]) {
       const def = this.teams[t];
       const roster = [...def.roster].sort((a, b) => POSITIONS.indexOf(a.pos) - POSITIONS.indexOf(b.pos));
       const cpuBoost = !def.human && cfg.home.human ? this.diff.cpuBoost : 0;
       const boost = chemistry(def.roster) + cpuBoost + (def.boost ?? 0);
-      roster.forEach((mon, slot) => this.players.push(makePlayer(id++, t, slot, mon, boost)));
+      roster.forEach((mon, slot) => this.players.push(makePlayer(id++, t, slot, mon, boost, this.rng)));
       (def.bench ?? []).forEach((mon, i) => {
-        const p = makePlayer(id++, t, -1, mon, boost);
+        const p = makePlayer(id++, t, -1, mon, boost, this.rng);
         p.rotation = 5 + i;
         this.bench.push(p);
       });
     }
     this.assignMatchups();
     this.clock = cfg.quarterLen;
-    this.tipWinner = Math.random() < 0.5 ? 0 : 1;
+    this.tipWinner = this.rng() < 0.5 ? 0 : 1;
     this.ball = {
       x: 47, y: 25, z: 4, vx: 0, vy: 0, vz: 0,
       mode: 'loose', owner: null, shot: null, pass: null,
       fromShot: -1, lastTouch: 0, noPickup: 0, spin: 0,
     };
     this.startQuarter();
+  }
+
+  /** The followed team's active player (single-player screens, HUD, renderer). */
+  get user(): Player | null {
+    return this.users[this.viewTeam];
+  }
+  /** Single-player screens write the followed team's input here. */
+  get userInput(): Intent {
+    return this.inputs[this.viewTeam];
+  }
+  set userInput(i: Intent) {
+    this.inputs[this.viewTeam] = i;
+  }
+  rand(a: number, b: number): number {
+    return a + this.rng() * (b - a);
+  }
+  /** Standard normal (Box-Muller). */
+  randn(): number {
+    const u = 1 - this.rng();
+    const v = this.rng();
+    return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+  }
+  private humanTeams(): TeamId[] {
+    return ([0, 1] as TeamId[]).filter((t) => this.teams[t].human);
+  }
+  private setUser(t: TeamId, u: Player | null) {
+    for (const p of this.players) if (p.team === t) p.human = p === u;
+    this.users[t] = u;
   }
 
   // ---------- queries used by AI, renderer and HUD ----------
@@ -223,7 +269,7 @@ export class Game {
    * On Rookie and Pro the CPU eases off a blowout (shoots worse, gambles less) like NBA Jam's comeback rule.
    */
   catchup(): number {
-    if (!this.teams[0].human || !this.diff.catchup) return 0;
+    if (!this.vsCpu || !this.teams[0].human || !this.diff.catchup) return 0;
     return clamp((this.score[1] - this.score[0] - 6) / 10, 0, 1) * this.diff.catchup;
   }
 
@@ -272,11 +318,11 @@ export class Game {
   }
   /** Block reaction delay for an AI defender. */
   reactTime(p: Player): number {
-    const base = this.cfg.home.human && p.team === 1 ? this.diff.react : 0.2;
-    return base + ((100 - p.r.def) / 100) * 0.25 + rand(0, 0.08);
+    const base = this.vsCpu && this.cfg.home.human && p.team === 1 ? this.diff.react : 0.2;
+    return base + ((100 - p.r.def) / 100) * 0.25 + this.rand(0, 0.08);
   }
   aggro(p: Player): number {
-    return this.cfg.home.human && p.team === 1 ? this.diff.aggro * (1 - 0.5 * this.catchup()) : 0.85;
+    return this.vsCpu && this.cfg.home.human && p.team === 1 ? this.diff.aggro * (1 - 0.5 * this.catchup()) : 0.85;
   }
 
   // ---------- flow ----------
@@ -284,7 +330,7 @@ export class Game {
   private startQuarter() {
     const q = this.quarter;
     // Jump balls open each half; the team that lost the tip starts the next quarter.
-    const start: TeamId = q > 4 ? (Math.random() < 0.5 ? 0 : 1) : ((1 - this.tipWinner) as TeamId);
+    const start: TeamId = q > 4 ? (this.rng() < 0.5 ? 0 : 1) : ((1 - this.tipWinner) as TeamId);
     this.clock = q > 4 ? Math.max(30, Math.round(this.cfg.quarterLen / 2)) : this.cfg.quarterLen;
     this.shotClock = 24;
     if (this.cfg.stamina && q > 1) {
@@ -344,8 +390,8 @@ export class Game {
     }
     const human = [this.isHumanTeam(0), this.isHumanTeam(1)];
     // CPU timing: a noisy guess around the peak, sharper on higher difficulties.
-    const sd = (t: TeamId) => (this.teams[0].human && !human[t] ? 0.2 - this.diff.cpuBoost * 0.012 : 0.2);
-    const guess = (t: TeamId) => 1 + (Math.random() + Math.random() + Math.random() - 1.5) * sd(t) * 1.4;
+    const sd = (t: TeamId) => (this.vsCpu && this.teams[0].human && !human[t] ? 0.2 - this.diff.cpuBoost * 0.012 : 0.2);
+    const guess = (t: TeamId) => 1 + (this.rng() + this.rng() + this.rng() - 1.5) * sd(t) * 1.4;
     this.tipoff = { t: -JUMP_PRE, jumpers: [a, b], at: [null, null], plan: [guess(0), guess(1)], window: 0.08 * this.diff.green, to: null, fly: 0 };
     const ball = this.ball;
     ball.owner = null;
@@ -354,10 +400,7 @@ export class Game {
     ball.vx = 0; ball.vy = 0; ball.vz = 0;
     ball.noPickup = 99;
     this.phaseT = 99;
-    if (this.teams[0].human) {
-      this.user = a;
-      for (const p of this.players) p.human = p === a;
-    }
+    for (const t of this.humanTeams()) this.setUser(t, t === 0 ? a : b);
   }
 
   /** Meter value right now (1.0 = ball at its peak). */
@@ -400,7 +443,7 @@ export class Game {
       if (j.at[t] !== null) continue;
       const p = j.jumpers[t];
       const human = this.teams[t].human && p.human;
-      const go = human ? this.userInput.shoot || m >= 1.7 : m >= j.plan[t];
+      const go = human ? this.inputs[t].shoot || m >= 1.7 : m >= j.plan[t];
       if (!go) continue;
       j.at[t] = m;
       p.vz = 15;
@@ -418,7 +461,7 @@ export class Game {
     if (m < Math.max(1.3, last + 0.3)) return;
     const quality = (t: TeamId) => Math.max(0, 1 - Math.abs(j.at[t]! - 1) / 0.45);
     const ability = (p: Player) => (p.r.blk * 0.5 + p.r.reb * 0.3 + p.r.spd * 0.2) / 100 + (p.size - 1) * 0.4;
-    const score = (t: TeamId) => quality(t) * 0.65 + ability(j.jumpers[t]) * 0.35 + Math.random() * 0.06;
+    const score = (t: TeamId) => quality(t) * 0.65 + ability(j.jumpers[t]) * 0.35 + this.rng() * 0.06;
     const win: TeamId = score(0) >= score(1) ? 0 : 1;
     const w = j.jumpers[win];
     const mates = this.teamPlayers(win).filter((p) => p !== w);
@@ -460,32 +503,35 @@ export class Game {
     b.pass = null;
     b.lastTouch = p.team;
     p.lastCatch = this.time;
-    p.ai.think = Math.min(p.ai.think, rand(0.1, 0.3));
+    p.ai.think = Math.min(p.ai.think, this.rand(0.1, 0.3));
     if (p.team !== this.offense) this.setOffense(p.team);
-    if (p.team === 1) this.autoSwitch(p);
+    const d = (1 - p.team) as TeamId;
+    if (this.teams[d].human) this.autoSwitch(d, p);
     if (!silent) this.sfx.push('catch');
   }
 
-  /** Picks the user's active player: the ball handler on offense, otherwise the current pick or a swap. */
-  private updateUser(possessionChanged = false, swap = false) {
-    if (!this.teams[0].human) return;
+  /** Picks each human team's active player: the ball handler on offense, otherwise the current pick or a swap. */
+  private updateUser(possessionChanged = false, swap = false, only?: TeamId) {
+    for (const t of this.humanTeams()) if (only === undefined || only === t) this.updateTeamUser(t, possessionChanged, swap);
+  }
+
+  private updateTeamUser(t: TeamId, possessionChanged: boolean, swap: boolean) {
     const b = this.ball;
-    let u = this.user;
-    const ourBall = b.owner && b.owner.team === 0;
+    let u = this.users[t];
+    const ourBall = b.owner && b.owner.team === t;
     if (ourBall) u = b.owner;
     else if (!u || possessionChanged || swap) {
       const exclude = swap && !possessionChanged ? u : null;
       let best: Player | null = null;
       let bd = Infinity;
-      for (const p of this.teamPlayers(0)) {
+      for (const p of this.teamPlayers(t)) {
         if (p === exclude) continue;
         const d = dist(p.x, p.y, b.x, b.y) + (p.state === 'stun' ? 20 : 0);
         if (d < bd) { bd = d; best = p; }
       }
       if (best) u = best;
     }
-    for (const p of this.players) p.human = p === u;
-    this.user = u;
+    this.setUser(t, u);
   }
 
   /**
@@ -493,20 +539,19 @@ export class Game {
    * matchup if that defender is close enough to recover, otherwise the nearest one on his feet.
    * Leaves the user alone if they're already on the ball.
    */
-  private autoSwitch(handler: Player) {
-    if (!this.teams[0].human || this.cfg.autoSwitch === false) return;
-    const u = this.user;
+  private autoSwitch(t: TeamId, handler: Player) {
+    if (this.cfg.autoSwitch === false) return;
+    const u = this.users[t];
     const ok = (p: Player) => p.state !== 'stun';
     if (u && ok(u) && dist(u.x, u.y, handler.x, handler.y) < 6) return;
-    const ours = this.teamPlayers(0).filter(ok);
+    const ours = this.teamPlayers(t).filter(ok);
     if (!ours.length) return;
     const d = (p: Player) => dist(p.x, p.y, handler.x, handler.y);
     const man = ours.find((p) => this.manOf(p) === handler);
     const near = ours.reduce((a, b) => (d(b) < d(a) ? b : a));
     const pick = man && d(man) < d(near) + 8 ? man : near;
     if (pick === u) return;
-    for (const p of this.players) p.human = p === pick;
-    this.user = pick;
+    this.setUser(t, pick);
   }
 
   /**
@@ -514,10 +559,10 @@ export class Game {
    * team has the ball (or it's loose), the user's player keeps guarding their man and crashes the boards.
    */
   private userIntent(p: Player, dt: number): Intent {
-    const u = this.userInput;
+    const u = this.inputs[p.team];
     const b = this.ball;
     const defending = b.owner ? b.owner.team !== p.team : b.mode !== 'held';
-    if (!this.diff.assist || !defending || Math.hypot(u.mx, u.my) > 0.15 || p.state !== 'free') return u;
+    if (!this.vsCpu || !this.diff.assist || !defending || Math.hypot(u.mx, u.my) > 0.15 || p.state !== 'free') return u;
     const ai = think(this, p, dt);
     return { ...u, mx: ai.mx, my: ai.my, turbo: u.turbo || ai.turbo };
   }
@@ -561,8 +606,10 @@ export class Game {
       if (this.phaseT <= 0) this.inbound();
     }
 
-    if (this.userInput.swap && !(b.owner && b.owner === this.user)) this.updateUser(false, true);
-    else if (b.owner?.team === 0 && this.user !== b.owner) this.updateUser();
+    for (const t of this.humanTeams()) {
+      if (this.inputs[t].swap && !(b.owner && b.owner === this.users[t])) this.updateUser(false, true, t);
+      else if (b.owner?.team === t && this.users[t] !== b.owner) this.updateUser(false, false, t);
+    }
 
     for (const p of this.players) {
       p.intent = p.human ? this.userIntent(p, dt) : think(this, p, dt);
@@ -716,8 +763,8 @@ export class Game {
     }
     this.players[this.players.indexOf(out)] = sub;
     this.bench[this.bench.indexOf(sub)] = out;
-    if (this.user === out) {
-      this.user = sub;
+    if (this.users[out.team] === out) {
+      this.users[out.team] = sub;
       out.human = false;
       sub.human = true;
     }
@@ -796,9 +843,9 @@ export class Game {
     p.vx *= 0.25;
     p.vy *= 0.25;
     if (!p.human) {
-      const vsUser = p.team === 1 && this.teams[0].human;
+      const vsUser = this.vsCpu && p.team === 1 && this.teams[0].human;
       const sigma = Math.max(0.05, 0.09 + (100 - p.r.sht) * 0.0018 - (vsUser ? this.diff.cpuShot - 0.06 * this.catchup() : 0));
-      p.releaseAt = clamp(IDEAL_RELEASE + randn() * sigma, 0.3, 1.2);
+      p.releaseAt = clamp(IDEAL_RELEASE + this.randn() * sigma, 0.3, 1.2);
     }
   }
 
@@ -852,8 +899,8 @@ export class Game {
     prob *= 0.7 + 0.3 * this.effort(p);
     if (p.fire) prob = Math.min(0.97, prob + 0.25);
     if (d > 35) prob = Math.min(prob, grade === 'perfect' ? 0.25 : 0.04);
-    const make = Math.random() < prob;
-    const airball = !make && grade.startsWith('very') && Math.random() < 0.4;
+    const make = this.rng() < prob;
+    const airball = !make && grade.startsWith('very') && this.rng() < 0.4;
     this.events.push({ kind: 'release', player: p, grade });
     this.launchShot(p, make, airball, three ? 3 : 2, 'jump');
     p.state = 'free';
@@ -865,7 +912,7 @@ export class Game {
     let prob = (0.55 + p.r.ins * 0.004) * (0.45 + 0.55 * contest) * (0.7 + 0.3 * this.effort(p));
     if (p.fx.lockin) { prob = 0.97; p.fx.lockin = false; }
     if (p.fire) prob = Math.min(0.97, prob + 0.2);
-    this.launchShot(p, Math.random() < prob, false, 2, 'layup');
+    this.launchShot(p, this.rng() < prob, false, 2, 'layup');
     p.state = 'free';
   }
 
@@ -882,12 +929,12 @@ export class Game {
       const bx = p.x - hx;
       const by = p.y - HOOP_Y;
       const l = Math.hypot(bx, by) || 1;
-      const short = rand(3, 6);
+      const short = this.rand(3, 6);
       tx = hx + (bx / l) * short;
-      ty = HOOP_Y + (by / l) * short + rand(-2, 2);
+      ty = HOOP_Y + (by / l) * short + this.rand(-2, 2);
       tz = 6.5;
     } else if (!make) {
-      const a = rand(0, Math.PI * 2);
+      const a = this.rand(0, Math.PI * 2);
       tx += Math.cos(a) * RIM_R * 1.25;
       ty += Math.sin(a) * RIM_R * 1.25;
     }
@@ -923,8 +970,8 @@ export class Game {
       x1: hx + Math.cos(ang) * 1.2, y1: HOOP_Y + Math.sin(ang) * 1.2,
       t: 0, T: clamp(0.42 + d * 0.04, 0.45, 1.0),
       peak: 3 + d * 0.3,
-      spin: d > 9 && Math.random() < 0.65,
-      make: Math.random() < prob,
+      spin: d > 9 && this.rng() < 0.65,
+      make: this.rng() < prob,
       oop,
       tested: new Set(),
     };
@@ -950,7 +997,7 @@ export class Game {
         if (q.z + q.heightFt + 1.6 < p.z + p.heightFt) continue;
         dk.tested.add(q.id);
         const chance = clamp(0.25 + q.r.blk * 0.004 - p.r.ins * 0.0025 + (q.size - p.size) * 0.3, 0.08, 0.55);
-        if (Math.random() < chance) {
+        if (this.rng() < chance) {
           p.dunk = null;
           p.state = 'free';
           p.vz = 0;
@@ -982,10 +1029,10 @@ export class Game {
         b.owner = null;
         b.mode = 'loose';
         b.x = dk.x1; b.y = dk.y1; b.z = RIM_Z + 0.4;
-        const a = Math.atan2(dk.y0 - HOOP_Y, dk.x0 - hoopX(p.team)) + rand(-1, 1);
-        b.vx = Math.cos(a) * rand(6, 11);
-        b.vy = Math.sin(a) * rand(6, 11);
-        b.vz = rand(8, 13);
+        const a = Math.atan2(dk.y0 - HOOP_Y, dk.x0 - hoopX(p.team)) + this.rand(-1, 1);
+        b.vx = Math.cos(a) * this.rand(6, 11);
+        b.vy = Math.sin(a) * this.rand(6, 11);
+        b.vz = this.rand(8, 13);
         b.fromShot = p.team;
         b.noPickup = 0.25;
         this.sfx.push('rim');
@@ -996,13 +1043,13 @@ export class Game {
 
   private recordBlock(blocker: Player, victim: Player) {
     const b = this.ball;
-    const a = Math.atan2(b.y - blocker.y, b.x - blocker.x) + rand(-0.6, 0.6);
+    const a = Math.atan2(b.y - blocker.y, b.x - blocker.x) + this.rand(-0.6, 0.6);
     b.owner = null;
     b.shot = null;
     b.mode = 'loose';
-    b.vx = Math.cos(a) * rand(10, 18);
-    b.vy = Math.sin(a) * rand(10, 18);
-    b.vz = rand(2, 8);
+    b.vx = Math.cos(a) * this.rand(10, 18);
+    b.vy = Math.sin(a) * this.rand(10, 18);
+    b.vz = this.rand(2, 8);
     b.fromShot = victim.team;
     b.lastTouch = blocker.team;
     b.noPickup = 0.2;
@@ -1081,7 +1128,7 @@ export class Game {
       let chance = 0.55 + (p.size - target.size) * 0.8 + (p.r.def - target.r.hnd) / 250;
       chance *= mult === 0 ? 0 : mult >= 2 ? 1.5 : mult < 1 ? 0.6 : 1;
       if (target.fx.phase > 0) chance = 0;
-      const ok = Math.random() < clamp(chance, 0, 0.95);
+      const ok = this.rng() < clamp(chance, 0, 0.95);
       const l = dist(p.x, p.y, target.x, target.y) || 1;
       p.vx += ((target.x - p.x) / l) * 8;
       p.vy += ((target.y - p.y) / l) * 8;
@@ -1096,7 +1143,7 @@ export class Game {
     let chance = clamp(0.1 + (p.r.def - owner.r.hnd) / 220, 0.03, 0.38);
     if (owner.state === 'shoot' || owner.state === 'layup') chance *= 0.4;
     if (owner.fx.phase > 0) chance = 0;
-    if (Math.random() < chance) {
+    if (this.rng() < chance) {
       owner.state = 'free';
       owner.meter = 0;
       this.giveBall(p);
@@ -1109,8 +1156,8 @@ export class Game {
 
   /** Injury chance grows as a player tires: up to 3x when fully gassed. */
   private maybeInjure(p: Player, base: number) {
-    if (!this.cfg.injuries || p.hurt || Math.random() >= base * (1 + (1 - p.energy) * 2)) return;
-    const r = Math.random();
+    if (!this.cfg.injuries || p.hurt || this.rng() >= base * (1 + (1 - p.energy) * 2)) return;
+    const r = this.rng();
     p.hurt = r < 0.6 ? 1 : r < 0.9 ? 2 : 3;
     p.energy = Math.min(p.energy, 0.15);
     this.events.push({ kind: 'injury', player: p, weeks: p.hurt });
@@ -1133,8 +1180,8 @@ export class Game {
     if (b.owner === target) {
       b.owner = null;
       b.mode = 'loose';
-      b.vx = nx * 8 + rand(-3, 3);
-      b.vy = ny * 8 + rand(-3, 3);
+      b.vx = nx * 8 + this.rand(-3, 3);
+      b.vy = ny * 8 + this.rand(-3, 3);
       b.vz = 7;
       b.noPickup = 0.25;
       b.fromShot = -1;
@@ -1318,7 +1365,7 @@ export class Game {
         let dy = c.y - a.y;
         let d = Math.hypot(dx, dy);
         if (d >= min) continue;
-        if (d < 0.001) { dx = rand(-1, 1); dy = rand(-1, 1); d = Math.hypot(dx, dy) || 1; }
+        if (d < 0.001) { dx = this.rand(-1, 1); dy = this.rand(-1, 1); d = Math.hypot(dx, dy) || 1; }
         const push = (min - d) / 2;
         a.x -= (dx / d) * push; a.y -= (dy / d) * push;
         c.x += (dx / d) * push; c.y += (dy / d) * push;
@@ -1340,8 +1387,8 @@ export class Game {
         b.z -= 9 * dt;
         if (b.z <= 6.8) {
           b.mode = 'loose';
-          b.vx = rand(-1.5, 1.5);
-          b.vy = rand(-1.5, 1.5);
+          b.vx = this.rand(-1.5, 1.5);
+          b.vy = this.rand(-1.5, 1.5);
           b.vz = -4;
           b.fromShot = -1;
         }
@@ -1393,7 +1440,7 @@ export class Game {
       ps.tested.add(q.id);
       let chance = clamp(0.08 + (q.r.def - ps.from.r.pas) / 200 + (q.human && q.intent.steal ? 0.2 : 0), 0.03, 0.4);
       if (ps.oop && q.z < 1) chance *= 0.2;
-      if (Math.random() < chance) {
+      if (this.rng() < chance) {
         this.giveBall(q);
         q.stats.stl++;
         q.special = Math.min(1, q.special + 0.3);
@@ -1441,7 +1488,7 @@ export class Game {
         if (q.z + q.heightFt + 1.4 < b.z - 0.5) continue;
         s.tested.add(q.id);
         const chance = clamp(0.15 + q.r.blk * 0.004 - s.shooter.r.sht * 0.002 - (s.kind === 'layup' ? 0 : 0.05), 0.05, 0.6);
-        if (Math.random() < chance) {
+        if (this.rng() < chance) {
           this.recordBlock(q, s.shooter);
           return;
         }
@@ -1465,11 +1512,11 @@ export class Game {
     } else {
       b.mode = 'loose';
       const hx = hoopX(s.shooter.team);
-      const a = Math.atan2(s.y0 - HOOP_Y, s.x0 - hx) + rand(-1.3, 1.3);
-      const sp = rand(5, 12);
+      const a = Math.atan2(s.y0 - HOOP_Y, s.x0 - hx) + this.rand(-1.3, 1.3);
+      const sp = this.rand(5, 12);
       b.vx = Math.cos(a) * sp;
       b.vy = Math.sin(a) * sp;
-      b.vz = rand(7, 13);
+      b.vz = this.rand(7, 13);
       b.fromShot = s.shooter.team;
       b.noPickup = 0.25;
       this.rimShake[hoopIdx] = 0.6;
@@ -1512,7 +1559,7 @@ export class Game {
       if (p.state === 'stun' || p.state === 'dunk' || p.state === 'hang') continue;
       if (dist(p.x, p.y, b.x, b.y) > 1.4 + p.size * 0.6) continue;
       if (b.z > p.z + p.heightFt + 1.6) continue;
-      const s = p.r.reb + Math.random() * 35 + (p.z > 0.5 ? 10 : 0);
+      const s = p.r.reb + this.rng() * 35 + (p.z > 0.5 ? 10 : 0);
       if (s > bs) { bs = s; best = p; }
     }
     if (!best) return;

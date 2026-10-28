@@ -31,9 +31,15 @@ import { autoDraft, draftedMons, loadDrafted, renameDrafted, type TeamSource } f
 import { confirmNewDraft } from './ui/newDraft';
 import { confirmFranchiseName } from './ui/teamName';
 import { gamesScreen } from './screens/games';
+import { ANY_MULTIPLAYER } from './config/features';
 import { badgeSvg } from './ui/badges';
 import { guardZoom } from './ui/noZoom';
 import { abbr, esc, guardNameInputs, lettersName, shuffle } from './util';
+import { initErrorReports } from './telemetry/errors';
+import { installTouchGuard } from './ui/touchGuard';
+
+initErrorReports();
+installTouchGuard();
 
 const app = document.querySelector<HTMLElement>('#app')!;
 const audio = new Audio();
@@ -138,6 +144,11 @@ function menu() {
       app.className = 'screen-roster';
       window.scrollTo(0, 0);
       rosterScreen(app, menu);
+    },
+    onMultiplayer: !ANY_MULTIPLAYER ? undefined : () => {
+      app.className = 'screen-menu';
+      window.scrollTo(0, 0);
+      void import('./multiplayer/hub').then((h) => h.multiplayerHub({ root: app, settings, audio }, menu));
     },
     onQuick: () => quick('draft'),
     onSeason: season,

@@ -100,6 +100,8 @@ export interface TitleOptions {
   /** Before a Season Draft: resolves to what to run after leaving the menu, or null to stay put. */
   confirmSeason?: () => Promise<(() => void) | null>;
   onRoster: () => void;
+  /** Only set when at least one multiplayer mode is enabled at build time. */
+  onMultiplayer?: () => void;
 }
 
 const TIPS = [
@@ -185,6 +187,7 @@ export function menuScreen(root: HTMLElement, settings: Settings, onChange: () =
             <input id="team-name" maxlength="20" autocomplete="off" value="${esc(lettersName(settings.teamName))}">
           </label>
           <button class="btn play-btn" data-go="season" aria-label="Season Draft: draft 10, sim a season, get your grade">DRAFT &amp; GET GRADED<small>Draft 10 · sim a season · get your grade</small></button>
+          ${opts.onMultiplayer ? `<button class="btn online-btn" data-go="multiplayer" aria-label="Play online: quick match or a room code with a friend">PLAY ONLINE<small>Quick match · room code</small></button>` : ''}
         </div>
         ${opts.drafted ? `<p class="mode-saved hero-saved"><span class="lbl">My drafted team</span> ${esc(opts.drafted)}</p>` : ''}
         <div class="mode-grid">
@@ -290,6 +293,7 @@ export function menuScreen(root: HTMLElement, settings: Settings, onChange: () =
     if (go) leave(go)();
   });
   $('[data-go="roster"]')!.addEventListener('click', leave(opts.onRoster));
+  if (opts.onMultiplayer) $('[data-go="multiplayer"]')!.addEventListener('click', leave(opts.onMultiplayer));
   startNew.addEventListener('click', tryNew);
   $('[data-go="continue"]')?.addEventListener('click', leave(opts.onContinue));
   $('[data-go="resume-draft"]')?.addEventListener('click', leave(opts.onResumeDraft));

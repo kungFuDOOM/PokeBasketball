@@ -82,6 +82,35 @@ export class Audio {
     this.crowd.gain.exponentialRampToValueAtTime(0.04, t + 2.2);
   }
 
+  /**
+   * Arena horn for time running out: two slightly detuned square waves through a low-pass so it buzzes
+   * without screeching, a quick fade-in, a short hold and a soft fade-out. Goes through the master gain, so mute applies.
+   */
+  private horn(dur: number, vol: number) {
+    if (!this.ctx || !this.master) return;
+    const t = this.ctx.currentTime;
+    const f = this.ctx.createBiquadFilter();
+    f.type = 'lowpass';
+    f.frequency.value = 1400;
+    f.Q.value = 0.7;
+    const g = this.ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.linearRampToValueAtTime(vol, t + 0.04);
+    g.gain.setValueAtTime(vol, t + dur * 0.55);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    f.connect(g).connect(this.master);
+    for (const [hz, mix] of [[196, 1], [233, 0.7]] as const) {
+      const o = this.ctx.createOscillator();
+      const m = this.ctx.createGain();
+      o.type = 'square';
+      o.frequency.value = hz;
+      m.gain.value = mix * 0.5;
+      o.connect(m).connect(f);
+      o.start(t);
+      o.stop(t + dur + 0.05);
+    }
+  }
+
   private tone(type: OscillatorType, f0: number, f1: number, dur: number, vol: number, delay = 0) {
     if (!this.ctx || !this.master) return;
     const t = this.ctx.currentTime + delay;
@@ -143,35 +172,6 @@ export class Audio {
       case 'special':
         [392, 523, 659, 784, 1047].forEach((f, i) => this.tone('square', f, f * 1.01, 0.09, 0.09, i * 0.05));
         break;
-    }
-  }
-
-  /**
-   * Arena horn for time running out: two slightly detuned square waves through a low-pass so it buzzes
-   * without screeching, a quick fade-in, a short hold and a soft fade-out. Goes through the master gain, so mute applies.
-   */
-  private horn(dur: number, vol: number) {
-    if (!this.ctx || !this.master) return;
-    const t = this.ctx.currentTime;
-    const f = this.ctx.createBiquadFilter();
-    f.type = 'lowpass';
-    f.frequency.value = 1400;
-    f.Q.value = 0.7;
-    const g = this.ctx.createGain();
-    g.gain.setValueAtTime(0.0001, t);
-    g.gain.linearRampToValueAtTime(vol, t + 0.04);
-    g.gain.setValueAtTime(vol, t + dur * 0.55);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-    f.connect(g).connect(this.master);
-    for (const [hz, mix] of [[196, 1], [233, 0.7]] as const) {
-      const o = this.ctx.createOscillator();
-      const m = this.ctx.createGain();
-      o.type = 'square';
-      o.frequency.value = hz;
-      m.gain.value = mix * 0.5;
-      o.connect(m).connect(f);
-      o.start(t);
-      o.stop(t + dur + 0.05);
     }
   }
 

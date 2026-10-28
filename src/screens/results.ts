@@ -1,4 +1,5 @@
 import { spriteUrl, type Pos } from '../data/pokemon';
+import { replayOf, watchAgain } from './potg';
 import type { Game } from '../game/game';
 import type { Player, TeamId } from '../game/types';
 import { esc } from '../util';
@@ -63,6 +64,7 @@ export function resultsScreen(root: HTMLElement, g: Game, opts: ResultsOptions) 
   const winner: TeamId = g.score[0] > g.score[1] ? 0 : 1;
   const pog = [...g.rosterOf(winner)].sort((x, y) => gameScore(y) - gameScore(x))[0];
   const userWon = h.human && winner === 0;
+  const play = replayOf(g);
   const headline = opts.headline ?? (!h.human ? `${g.teams[winner].name} win` : userWon ? 'You win!' : `${a.name} win`);
 
   const withBench = g.bench.length > 0;
@@ -86,6 +88,10 @@ export function resultsScreen(root: HTMLElement, g: Game, opts: ResultsOptions) 
           <span>${pog.stats.pts} PTS · ${pog.stats.reb} REB · ${pog.stats.ast} AST · ${pog.stats.stl} STL · ${pog.stats.blk} BLK</span>
         </div>
       </div>
+      ${play ? `<button class="potg-again" type="button" data-replay>
+        <span class="lbl">▶ Watch the play of the game</span>
+        <strong>${esc(play.name)}</strong><span>${esc(play.title)}</span>
+      </button>` : ''}
       ${opts.extraHtml ?? ''}
       <div class="boxes">${table(0)}${table(1)}</div>
       <div class="actions center">
@@ -94,4 +100,5 @@ export function resultsScreen(root: HTMLElement, g: Game, opts: ResultsOptions) 
     </div>`;
   root.querySelectorAll<HTMLButtonElement>('[data-a]').forEach((b) =>
     b.addEventListener('click', () => opts.onAction(b.dataset.a!)));
+  root.querySelector('[data-replay]')?.addEventListener('click', () => watchAgain(g));
 }
