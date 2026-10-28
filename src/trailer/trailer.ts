@@ -20,8 +20,8 @@ import { tier } from '../util';
 export const FPS = 30;
 /**
  * Which cut to render (?cut=…): 'main' (the launch trailer), 'vertical' (9:16 for TikTok / Reels / Shorts),
- * 'franchise' (the season story), 'top5' (a countdown of the best plays) or 'online' (the multiplayer
- * announcement: Social is live, Ranked is coming, Pack Battles teased).
+ * 'franchise' (the season story), 'top5' (a countdown of the best plays) or 'online' (a sub-30-second
+ * multiplayer announcement: Social is live, Ranked is coming, Pack Battles teased).
  */
 type Cut = 'main' | 'vertical' | 'franchise' | 'top5' | 'online';
 const CUT: Cut = (['vertical', 'franchise', 'top5', 'online'] as const).find((c) => c === new URLSearchParams(location.search).get('cut')) ?? 'main';
@@ -172,7 +172,7 @@ type Scene = 'tipoff' | 'logo' | 'wall' | 'clock' | 'legends' | 'badges' | 'evol
   | 'v-hook' | 'v-cards' | 'v-outro'
   | 'f-intro' | 'f-draft' | 'f-subs' | 'f-evolve' | 'f-champs'
   | 't-title' | 't-num'
-  | 'o-hook' | 'o-live' | 'o-match' | 'o-room' | 'o-draft' | 'o-ranked' | 'o-packs';
+  | 'o-live' | 'o-match' | 'o-draft' | 'o-ranked' | 'o-packs';
 type Segment =
   | { kind: Scene; t0: number; t1: number }
   | { kind: 'clip'; t0: number; t1: number; plan: ClipPlan; style: 'hero' | 'montage'; rank?: number; lower?: string };
@@ -879,14 +879,15 @@ function renderOutro(seg: Segment, t: number, a: number) {
   renderBackground(t, 0.66);
   const k = clamp01(a / 0.25);
   once('outro-hit', t, seg.t0 + 0.25, () => { flash = 0.3; cue(t, 'slam'); cue(t, 'crowd_big'); });
-  const pj = a - 2.2;
+  const pjAt = CUT === 'online' ? 1.6 : 2.2;
+  const pj = a - pjAt;
   if (pj < 0) {
     logo(W / 2, H / 2 - 150, 170, a < 0.25 ? 3 - 2 * k * k : 1);
     if (a > 0.6) jamText(CUT === 'online' ? 'PLAY ONLINE NOW. FREE.' : 'PLAY FREE IN YOUR BROWSER', W / 2, H / 2 + 40, 64, { fill: '#f8f8f0' });
     if (a > 1.0) plainText('pokejam.xyz', W / 2, H / 2 + 170, 80, '#ffcb05');
   } else {
     // $PJAM: gold, glinting, center stage.
-    once('pjam', t, seg.t0 + 2.2, () => { flash = 0.35; cue(t, 'slam'); cue(t, 'coin'); cue(t, 'crowd_big'); });
+    once('pjam', t, seg.t0 + pjAt, () => { flash = 0.35; cue(t, 'slam'); cue(t, 'coin'); cue(t, 'crowd_big'); });
     const s = pj < 0.25 ? 3.2 - 2.2 * easeOutBack(pj / 0.25) : 1 + 0.03 * Math.sin(pj * 6);
     const gold = ctx.createLinearGradient(0, -110, 0, 110);
     gold.addColorStop(0, '#fff7c2');
@@ -1360,7 +1361,6 @@ function renderROutro(seg: Segment, t: number, a: number) {
 const RANK_TIERS: [string, string][] = [
   ['BRONZE', '#b0703a'], ['SILVER', '#aab4c0'], ['GOLD', '#e6b422'], ['PLATINUM', '#3fbfb0'], ['DIAMOND', '#5aa8ff'], ['POKéMON MASTER', '#e0473f'],
 ];
-const ROOM_CODE = 'JAM7KX';
 const POSITIONS = ['PG', 'SG', 'SF', 'PF', 'C'] as const;
 
 function roundRect(x: number, y: number, w: number, h: number, r: number, fill: string, stroke?: string, lw = 6) {
@@ -1417,39 +1417,19 @@ function onlineTag(t: number) {
   ctx.restore();
 }
 
-/** The trainer-battle intro: stripes wipe in, then a rival wants to ball. */
-function renderOHook(seg: Segment, t: number, a: number) {
-  renderBackground(t, 0.55);
-  once('ohook', t, seg.t0, () => { cue(t, 'crowd_low'); cue(t + 0.1, 'whoosh'); });
-  // Alternating black bars slide away, like a wild battle starting.
-  const k = clamp01((a - 0.15) / 0.5);
-  const bars = 12;
-  const bh = H / bars;
-  ctx.fillStyle = '#000';
-  for (let i = 0; i < bars; i++) {
-    const dir = i % 2 ? 1 : -1;
-    ctx.fillRect(dir * k * W * 1.05, i * bh, W, bh + 1);
-  }
-  if (a > 0.6) {
-    once('ohook-slam', t, seg.t0 + 0.6, () => { flash = 0.15; cue(t, 'slam'); });
-    jamText('NEW CHALLENGER!', W / 2, 260, 130, { scale: easeOutBack(clamp01((a - 0.6) / 0.22)) });
-  }
-  if (a > 1.0) battleBox(['A RIVAL TRAINER', 'wants to ball!'], a - 1.0, 0.9);
-}
-
 /** MULTIPLAYER IS HERE, and the LIVE light for Social. */
 function renderOLive(seg: Segment, t: number, a: number) {
   renderBackground(t, 0.8);
   const pop = (at: number) => easeOutBack(clamp01((a - at) / 0.22));
-  once('olive1', t, seg.t0 + 0.1, () => { flash = 0.12; cue(t, 'slam'); });
-  jamText('MULTIPLAYER', W / 2, 220, 160, { scale: 0.3 + 0.7 * pop(0.1) });
-  if (a > 0.6) {
-    once('olive2', t, seg.t0 + 0.6, () => cue(t, 'slam'));
-    jamText('IS HERE.', W / 2, 400, 120, { fill: '#f8f8f0', scale: 0.3 + 0.7 * pop(0.6) });
+  once('olive1', t, seg.t0 + 0.05, () => { flash = 0.12; cue(t, 'slam'); cue(t, 'crowd_low'); });
+  jamText('MULTIPLAYER', W / 2, 220, 160, { scale: 0.3 + 0.7 * pop(0.05) });
+  if (a > 0.4) {
+    once('olive2', t, seg.t0 + 0.4, () => cue(t, 'slam'));
+    jamText('IS HERE.', W / 2, 400, 120, { fill: '#f8f8f0', scale: 0.3 + 0.7 * pop(0.4) });
   }
-  if (a > 1.2) {
-    once('olive3', t, seg.t0 + 1.2, () => { flash = 0.2; cue(t, 'slam'); cue(t, 'crowd_big'); });
-    const s = 0.3 + 0.7 * pop(1.2);
+  if (a > 0.8) {
+    once('olive3', t, seg.t0 + 0.8, () => { flash = 0.2; cue(t, 'slam'); cue(t, 'crowd_big'); });
+    const s = 0.3 + 0.7 * pop(0.8);
     ctx.save();
     ctx.translate(W / 2, 640);
     ctx.scale(s, s);
@@ -1467,7 +1447,7 @@ function renderOLive(seg: Segment, t: number, a: number) {
     ctx.restore();
     jamText('IS LIVE', W / 2, 840, 120);
   }
-  if (a > 1.9) plainText('CASUAL  ·  UNRANKED  ·  PLAY ANYONE, ANYWHERE', W / 2, 990, 54, '#ffcb05');
+  if (a > 1.3) plainText('CASUAL  ·  UNRANKED  ·  PLAY ANYONE, ANYWHERE', W / 2, 990, 54, '#ffcb05');
 }
 
 function trainerPanel(x: number, label: string, color: string, dex: number | null, alpha = 1) {
@@ -1485,11 +1465,11 @@ function trainerPanel(x: number, label: string, color: string, dex: number | nul
   if (dex) sprite(dex, x, 730, 330, { alpha });
 }
 
-/** Quick match: searching, then MATCH FOUND. */
+/** Quick match: searching, then MATCH FOUND. Room codes get a line under it. */
 function renderOMatch(seg: Segment, t: number, a: number) {
   renderBackground(t, 0.86);
   jamText('QUICK MATCH', W / 2, 140, 110, { scale: a < 0.2 ? easeOutBack(a / 0.2) : 1 });
-  const found = 1.6;
+  const found = 1.0;
   trainerPanel(W / 2 - 480, 'YOU', '#3b6fd8', 25);
   if (a < found) {
     ctx.save();
@@ -1497,56 +1477,15 @@ function renderOMatch(seg: Segment, t: number, a: number) {
     ctx.restore();
     pokeball(W / 2 + 480, 520, 90, a * 9);
     plainText(`SEARCHING${'.'.repeat(1 + (Math.floor(a * 5) % 3))}`, W / 2 + 480, 690, 56, '#f2f0e6');
-    for (let i = 0; i < 3; i++) once(`om-tick${i}`, t, seg.t0 + 0.4 + i * 0.4, () => cue(t, 'tick'));
+    for (let i = 0; i < 3; i++) once(`om-tick${i}`, t, seg.t0 + 0.2 + i * 0.3, () => cue(t, 'tick'));
   } else {
     once('om-found', t, seg.t0 + found, () => { flash = 0.25; cue(t, 'slam'); cue(t, 'crowd'); });
     const k = easeOutBack(clamp01((a - found) / 0.25));
     trainerPanel(W / 2 + 480, 'RIVAL', '#e3350d', 150, clamp01((a - found) / 0.12));
     jamText('VS', W / 2, 520, 150, { scale: 0.3 + 0.7 * k });
-    jamText('MATCH FOUND!', W / 2, 920, 96, { fill: '#f8f8f0', scale: 0.3 + 0.7 * k });
+    jamText('MATCH FOUND!', W / 2, 900, 96, { fill: '#f8f8f0', scale: 0.3 + 0.7 * k });
   }
-}
-
-/** Play a friend: a room code types in, the friend joins. */
-function renderORoom(seg: Segment, t: number, a: number) {
-  renderBackground(t, 0.86);
-  jamText('OR PLAY A FRIEND', W / 2, 140, 110, { scale: a < 0.2 ? easeOutBack(a / 0.2) : 1 });
-  plainText('ROOM CODE', W / 2, 300, 56, '#ffcb05');
-  const bw = 150;
-  const gap = 28;
-  const x0 = W / 2 - (ROOM_CODE.length * bw + (ROOM_CODE.length - 1) * gap) / 2;
-  [...ROOM_CODE].forEach((ch, i) => {
-    const at = 0.35 + i * 0.14;
-    const x = x0 + i * (bw + gap);
-    roundRect(x, 360, bw, 190, 16, 'rgba(10,13,31,0.92)', a > at ? '#ffcb05' : 'rgba(255,255,255,0.3)', 6);
-    if (a < at) return;
-    once(`or${i}`, t, seg.t0 + at, () => cue(t, 'tick'));
-    const k = easeOutBack(clamp01((a - at) / 0.15));
-    ctx.save();
-    ctx.translate(x + bw / 2, 462);
-    ctx.scale(k, k);
-    ctx.font = `100px ${PIXEL}`;
-    ctx.fillStyle = '#f8f8f0';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(ch, 4, 0);
-    ctx.restore();
-  });
-  if (a > 1.35) plainText('SEND THE CODE. YOUR FRIEND JOINS. GAME ON.', W / 2, 680, 64, '#f2f0e6');
-  if (a > 2.0) {
-    once('or-join', t, seg.t0 + 2.0, () => { flash = 0.15; cue(t, 'card'); cue(t, 'crowd'); });
-    const k = easeOutBack(clamp01((a - 2.0) / 0.22));
-    ctx.save();
-    ctx.translate(W / 2, 850);
-    ctx.scale(k, k);
-    roundRect(-330, -60, 660, 120, 60, '#21a366', '#fff', 6);
-    ctx.font = `800 64px ${SPORT}`;
-    ctx.fillStyle = '#fff';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText('FRIEND JOINED!', 0, 4);
-    ctx.restore();
-  }
+  if (a > 1.4) plainText('OR SEND A FRIEND A ROOM CODE', W / 2, 1010, 54, '#ffcb05');
 }
 
 /** The head-to-head snake draft: A B B A A B B A A B, one Pokémon per position, 12 seconds a pick. */
@@ -1555,8 +1494,8 @@ function renderODraft(seg: Segment, t: number, a: number) {
   jamText('DRAFT HEAD TO HEAD', W / 2, 110, 96, { scale: a < 0.2 ? easeOutBack(a / 0.2) : 1 });
   const order = [0, 1, 1, 0, 0, 1, 1, 0, 0, 1];
   const picks = [ONLINE_PICKS.you, ONLINE_PICKS.rival];
-  const per = 0.27;
-  const start = 0.45;
+  const per = 0.2;
+  const start = 0.3;
   const made = Math.max(0, Math.min(10, Math.floor((a - start) / per) + 1));
   const slots = [new Array<number | null>(5).fill(null), new Array<number | null>(5).fill(null)];
   const landed = [new Array<number>(5).fill(0), new Array<number>(5).fill(0)];
@@ -1616,7 +1555,7 @@ function renderODraft(seg: Segment, t: number, a: number) {
     ctx.fillText(`:${String(Math.max(0, left)).padStart(2, '0')}`, 2, 4);
     ctx.restore();
   }
-  if (a > 0.8) plainText('LIVE SNAKE DRAFT  ·  ONE PER POSITION  ·  12 SECONDS A PICK', W / 2, 950, 52, '#ffcb05');
+  if (a > 0.5) plainText('LIVE SNAKE DRAFT  ·  ONE PER POSITION  ·  12 SECONDS A PICK', W / 2, 950, 52, '#ffcb05');
 }
 
 function tierBadge(x: number, y: number, size: number, name: string, color: string, k: number) {
@@ -1670,12 +1609,12 @@ function renderORanked(seg: Segment, t: number, a: number) {
   ctx.fillRect(0, 0, W, H);
   jamText('RANKED', W / 2, 140, 150, { scale: a < 0.2 ? easeOutBack(a / 0.2) : 1 });
   RANK_TIERS.forEach(([name, color], i) => {
-    const at = 0.35 + i * 0.17;
+    const at = 0.25 + i * 0.12;
     if (a < at) return;
     once(`ork${i}`, t, seg.t0 + at, () => cue(t, i === 5 ? 'slam' : 'badge'));
     tierBadge(W / 2 + (i - 2.5) * 290, 440, 190, name, color, easeOutBack(clamp01((a - at) / 0.2)));
   });
-  const stampAt = 1.75;
+  const stampAt = 1.2;
   if (a > stampAt) {
     once('ork-stamp', t, seg.t0 + stampAt, () => { flash = 0.25; cue(t, 'slam'); cue(t, 'crowd_big'); });
     const p = clamp01((a - stampAt) / 0.18);
@@ -1699,7 +1638,7 @@ function renderORanked(seg: Segment, t: number, a: number) {
     ctx.fillText('OR LESS', 0, 52);
     ctx.restore();
   }
-  if (a > 2.4) plainText('5 PLACEMENT MATCHES. THEN CLIMB TO POKéMON MASTER.', W / 2, 980, 56, '#ffcb05');
+  if (a > 1.7) plainText('5 PLACEMENT MATCHES. THEN CLIMB TO POKéMON MASTER.', W / 2, 980, 56, '#ffcb05');
 }
 
 /** A foil booster pack: crimped ends, a holo sheen and a question mark. */
@@ -1759,13 +1698,16 @@ function boosterPack(x: number, y: number, s: number, rot: number, t: number, gl
   ctx.restore();
 }
 
-/** Pack Battles: three foil packs shake, the middle one bursts into mystery silhouettes. Coming soon. */
+/** Two preset Pack Battles teams: everyone gets an even roster, so it's down to skill. */
+const PACK_TEAMS = [[254, 448, 6, 445, 248], [65, 257, 212, 9, 149]];
+
+/** Pack Battles: two preset, evenly matched teams square off with the pack on the line. Coming soon. */
 function renderOPacks(seg: Segment, t: number, a: number) {
   ctx.fillStyle = '#05060f';
   ctx.fillRect(0, 0, W, H);
-  // Light rays turning behind the packs.
+  // Light rays turning behind the pack.
   ctx.save();
-  ctx.translate(W / 2, 520);
+  ctx.translate(W / 2, 470);
   ctx.rotate(a * 0.4);
   for (let i = 0; i < 16; i++) {
     ctx.rotate((Math.PI * 2) / 16);
@@ -1777,43 +1719,39 @@ function renderOPacks(seg: Segment, t: number, a: number) {
     ctx.fill();
   }
   ctx.restore();
-  jamText('PACK BATTLES', W / 2, 120, 140, { scale: a < 0.25 ? easeOutBack(a / 0.25) : 1 });
   once('opk', t, seg.t0 + 0.05, () => { flash = 0.12; cue(t, 'slam'); });
-  const burst = 2.0;
-  const shake = a < burst ? Math.pow(clamp01(a / burst), 2) * 22 : 0;
-  const jit = () => (Math.random() - 0.5) * shake;
-  // The side packs slide off when the middle one bursts.
-  const away = clamp01((a - burst) / 0.35);
-  ctx.save();
-  ctx.globalAlpha = 1 - away;
-  boosterPack(W / 2 - 400 - away * 500 + jit(), 540 + jit(), 0.9, -0.2 - away * 0.5, t, 0);
-  boosterPack(W / 2 + 400 + away * 500 + jit(), 540 + jit(), 0.9, 0.2 + away * 0.5, t, 0);
-  ctx.restore();
-  if (a < burst) {
-    for (let i = 0; i < 4; i++) once(`opk-r${i}`, t, seg.t0 + 0.6 + i * 0.32, () => cue(t, 'tick'));
-    boosterPack(W / 2 + jit(), 520 + jit(), 1.1, 0, t, clamp01(a / burst));
-  } else {
-    once('opk-burst', t, seg.t0 + burst, () => { flash = 0.4; cue(t, 'slam'); cue(t, 'evolve'); cue(t, 'crowd_big'); });
-    const k = easeOutBack(clamp01((a - burst) / 0.3));
-    // Three mystery Pokémon, shown only as glowing outlines.
-    [[249, -330], [150, 0], [384, 330]].forEach(([dex, dx], i) => {
-      const s = getSprite(dex, false);
-      if (!s) return;
-      const h = (i === 1 ? 340 : 280) * k;
-      const w = (s.w / Math.max(s.w, s.h)) * h;
-      const hh = (s.h / Math.max(s.w, s.h)) * h;
-      const x = W / 2 + dx * k;
-      const y = 720 - (i === 1 ? 40 : 0) * k;
+  jamText('PACK BATTLES', W / 2, 110, 140, { scale: a < 0.25 ? easeOutBack(a / 0.25) : 1 });
+  // The two teams slide in from the sides and face off.
+  const slide = 1 - easeOutBack(clamp01((a - 0.2) / 0.4));
+  once('opk-teams', t, seg.t0 + 0.4, () => cue(t, 'whoosh'));
+  PACK_TEAMS.forEach((team, side) => {
+    const dir = side ? 1 : -1;
+    team.forEach((dex, i) => {
+      const x = W / 2 + dir * (330 + i * 125) + dir * slide * 900;
+      const y = 650 - (i % 2) * 60;
       ctx.save();
-      ctx.shadowColor = '#ffcb05';
-      ctx.shadowBlur = 40;
-      ctx.filter = 'brightness(0)';
-      ctx.drawImage(s.img, x - w / 2, y - hh, w, hh);
+      ctx.strokeStyle = side ? '#e3350d' : '#3b6fd8';
+      ctx.lineWidth = 5;
+      ctx.beginPath();
+      ctx.ellipse(x, y, 60, 16, 0, 0, Math.PI * 2);
+      ctx.stroke();
       ctx.restore();
+      sprite(dex, x, y + 8, 190, { flip: !side });
     });
+  });
+  // The pack drops in between them.
+  const packAt = 0.7;
+  if (a > packAt) {
+    once('opk-pack', t, seg.t0 + packAt, () => { flash = 0.25; cue(t, 'slam'); cue(t, 'crowd'); });
+    const k = easeOutBack(clamp01((a - packAt) / 0.25));
+    boosterPack(W / 2, 450 + Math.sin(a * 3) * 8, 0.85 * k, Math.sin(a * 2) * 0.04, t, 0.8);
   }
-  if (a > 1.0) plainText('A NEW WAY TO BUILD A TEAM AND BATTLE', W / 2, 860, 56, '#f2f0e6');
-  if (a > burst + 0.3) jamText('COMING SOON', W / 2, 975, 96, { fill: '#f8f8f0' });
+  if (a > 1.0) {
+    once('opk-even', t, seg.t0 + 1.0, () => cue(t, 'slam'));
+    jamText('PRESET EVEN TEAMS', W / 2, 790, 84, { fill: '#f8f8f0', scale: 0.3 + 0.7 * easeOutBack(clamp01((a - 1.0) / 0.2)) });
+  }
+  if (a > 1.4) plainText('NO EDGE. NO EXCUSES. PURE SKILL.', W / 2, 895, 56, '#ffcb05');
+  if (a > 1.9) jamText('COMING SOON', W / 2, 995, 80);
 }
 
 // ---------- shared ----------
@@ -1866,10 +1804,8 @@ function renderSegment(seg: Segment, t: number, first: boolean) {
     case 'f-champs': renderFChamps(seg, t, a); break;
     case 't-title': renderTTitle(seg, t, a); break;
     case 't-num': renderTNum(seg as Segment & { rank?: number }, t, a); break;
-    case 'o-hook': renderOHook(seg, t, a); break;
     case 'o-live': renderOLive(seg, t, a); break;
     case 'o-match': renderOMatch(seg, t, a); break;
-    case 'o-room': renderORoom(seg, t, a); break;
     case 'o-draft': renderODraft(seg, t, a); break;
     case 'o-ranked': renderORanked(seg, t, a); break;
     case 'o-packs': renderOPacks(seg, t, a); break;
@@ -1996,21 +1932,18 @@ export async function prepare(): Promise<{ frames: number; fps: number }> {
     add({ kind: 'outro', t0: t, t1: t + 5.4 });
     musicEnd = s[s.length - 1].t0 + 2.2;
   } else if (CUT === 'online') {
-    add({ kind: 'o-hook', t0: t, t1: t + 3.0 });
-    add({ kind: 'logo', t0: t, t1: t + 2.2 });
-    musicStart = s[1].t0 + 0.3;
-    add({ kind: 'o-live', t0: t, t1: t + 3.2 });
-    add({ kind: 'o-match', t0: t, t1: t + 3.6 });
-    clip([['dunk']], 4.5, 2.8);
-    add({ kind: 'o-room', t0: t, t1: t + 3.2 });
-    add({ kind: 'o-draft', t0: t, t1: t + 3.8 });
-    clip([['block'], ['buzzer']], 3.8, 2.1);
-    add({ kind: 'o-ranked', t0: t, t1: t + 4.0 });
-    clip([['fire'], ['three']], 3.6, 1.6);
-    add({ kind: 'o-packs', t0: t, t1: t + 3.8 });
-    for (let i = 0; i < 3; i++) clip([['dunk']], 1, 0.7, false, 'montage');
-    add({ kind: 'outro', t0: t, t1: t + 5.4 });
-    musicEnd = s[s.length - 1].t0 + 2.2;
+    // Short on purpose (under 30 s): the news lands in the first second.
+    add({ kind: 'o-live', t0: t, t1: t + 2.6 });
+    musicStart = 0.1;
+    clip([['dunk']], 3.2, 2.0);
+    add({ kind: 'o-match', t0: t, t1: t + 2.4 });
+    add({ kind: 'o-draft', t0: t, t1: t + 2.8 });
+    clip([['block'], ['buzzer']], 2.8, 1.6);
+    add({ kind: 'o-ranked', t0: t, t1: t + 3.4 });
+    add({ kind: 'o-packs', t0: t, t1: t + 3.4 });
+    for (let i = 0; i < 2; i++) clip([['dunk']], 0.9, 0.6, false, 'montage');
+    add({ kind: 'outro', t0: t, t1: t + 4.2 });
+    musicEnd = s[s.length - 1].t0 + 1.6;
   } else {
     add({ kind: 'tipoff', t0: t, t1: t + 3.6 });
     add({ kind: 'logo', t0: t, t1: t + 2.2 });
