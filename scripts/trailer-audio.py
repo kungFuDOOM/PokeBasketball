@@ -73,6 +73,8 @@ STYLES = {
         },
         stab=['F2', 'F3', 'G#3', 'C4', 'F4']),
 }
+# Watch: short and punchy, so it borrows the vertical cut's groove.
+STYLES['watch'] = STYLES['vertical']
 rng = np.random.default_rng(7)
 
 

@@ -20,11 +20,12 @@ import { tier } from '../util';
 export const FPS = 30;
 /**
  * Which cut to render (?cut=…): 'main' (the launch trailer), 'vertical' (9:16 for TikTok / Reels / Shorts),
- * 'franchise' (the season story), 'top5' (a countdown of the best plays) or 'online' (a sub-30-second
- * multiplayer announcement: Social is live, Ranked is coming, Pack Battles teased).
+ * 'franchise' (the season story), 'top5' (a countdown of the best plays), 'online' (a sub-30-second
+ * multiplayer announcement: Social is live, Ranked is coming, Pack Battles teased) or 'watch' (an 18-second
+ * spot for Play / Watch / Sim: spectate at 1x, 2x or 4x, skip, or sim straight to the final).
  */
-type Cut = 'main' | 'vertical' | 'franchise' | 'top5' | 'online';
-const CUT: Cut = (['vertical', 'franchise', 'top5', 'online'] as const).find((c) => c === new URLSearchParams(location.search).get('cut')) ?? 'main';
+type Cut = 'main' | 'vertical' | 'franchise' | 'top5' | 'online' | 'watch';
+const CUT: Cut = (['vertical', 'franchise', 'top5', 'online', 'watch'] as const).find((c) => c === new URLSearchParams(location.search).get('cut')) ?? 'main';
 const VERTICAL = CUT === 'vertical';
 /** The top 5 cut is dressed as a 90s sports highlight show ("POKé CENTER"). */
 const RETRO = CUT === 'top5';
@@ -98,6 +99,7 @@ const MATCHUPS: Record<Cut, { home: TeamDef; away: TeamDef; court: CourtStyle }>
     away: { name: 'Rival', abbr: 'RVL', color: '#e3350d', color2: '#4a0d04', human: false, roster: mons(ONLINE_PICKS.rival) },
     court: COURTS['Pallet Town'],
   },
+  watch: { home: pallet([25, 6, 9, 3, 143]), away: gym('Viridian Quakes', [34, 31, 112, 51, 76]), court: COURTS['Viridian Quakes'] },
 };
 const { home: HOME, away: AWAY, court: COURT } = MATCHUPS[CUT];
 
@@ -119,6 +121,7 @@ interface Scan {
   quarterSteps: number[];
   end: number;
   highlights: Highlight[];
+  score: [number, number];
 }
 
 function scanGame(seed: number): Scan {
@@ -156,7 +159,7 @@ function scanGame(seed: number): Scan {
     }
     g.sfx.length = 0;
   }
-  return { seed, quarterSteps, end: sg.step, highlights };
+  return { seed, quarterSteps, end: sg.step, highlights, score: [g.score[0], g.score[1]] };
 }
 
 // ---------- timeline ----------
@@ -172,7 +175,8 @@ type Scene = 'tipoff' | 'logo' | 'wall' | 'clock' | 'legends' | 'badges' | 'evol
   | 'v-hook' | 'v-cards' | 'v-outro'
   | 'f-intro' | 'f-draft' | 'f-subs' | 'f-evolve' | 'f-champs'
   | 't-title' | 't-num'
-  | 'o-live' | 'o-match' | 'o-draft' | 'o-ranked' | 'o-packs';
+  | 'o-live' | 'o-match' | 'o-draft' | 'o-ranked' | 'o-packs'
+  | 'w-hook' | 'w-choice' | 'w-speed' | 'w-sim';
 type Segment =
   | { kind: Scene; t0: number; t1: number }
   | { kind: 'clip'; t0: number; t1: number; plan: ClipPlan; style: 'hero' | 'montage'; rank?: number; lower?: string };
@@ -611,6 +615,7 @@ function renderClip(seg: Segment & { kind: 'clip' }, t: number, first: boolean) 
   }, true, VERTICAL ? (slow ? 9 : 8) : slow ? 6 : 5);
   if (seg.style === 'hero' && !RETRO) scorebug(c.sg.g);
   if (CUT === 'online') onlineTag(t);
+  if (CUT === 'watch') spectatorBar(1);
   if (RETRO) {
     retroBug();
     ticker(t);
@@ -879,11 +884,11 @@ function renderOutro(seg: Segment, t: number, a: number) {
   renderBackground(t, 0.66);
   const k = clamp01(a / 0.25);
   once('outro-hit', t, seg.t0 + 0.25, () => { flash = 0.3; cue(t, 'slam'); cue(t, 'crowd_big'); });
-  const pjAt = CUT === 'online' ? 1.6 : 2.2;
+  const pjAt = CUT === 'online' || CUT === 'watch' ? 1.6 : 2.2;
   const pj = a - pjAt;
   if (pj < 0) {
     logo(W / 2, H / 2 - 150, 170, a < 0.25 ? 3 - 2 * k * k : 1);
-    if (a > 0.6) jamText(CUT === 'online' ? 'PLAY ONLINE NOW. FREE.' : 'PLAY FREE IN YOUR BROWSER', W / 2, H / 2 + 40, 64, { fill: '#f8f8f0' });
+    if (a > 0.6) jamText(CUT === 'online' ? 'PLAY ONLINE NOW. FREE.' : CUT === 'watch' ? 'PLAY IT. WATCH IT. SIM IT.' : 'PLAY FREE IN YOUR BROWSER', W / 2, H / 2 + 40, 64, { fill: '#f8f8f0' });
     if (a > 1.0) plainText('pokejam.xyz', W / 2, H / 2 + 170, 80, '#ffcb05');
   } else {
     // $PJAM: gold, glinting, center stage.
@@ -1754,6 +1759,187 @@ function renderOPacks(seg: Segment, t: number, a: number) {
   if (a > 1.9) jamText('COMING SOON', W / 2, 995, 80);
 }
 
+// ---------- cut: watch ----------
+
+/** A seeded game's real final (home, away), shown by the Sim scene. */
+let simFinal: [number, number] = [0, 0];
+
+/** The spectator HUD from the game: the speed button and Skip to result, bottom right. */
+function spectatorBar(speed: number, skipLit = false) {
+  ctx.save();
+  const y = H - 120;
+  const btn = (x: number, w: number, label: string, lit: boolean) => {
+    roundRect(x, y, w, 76, 14, lit ? '#ffcb05' : 'rgba(10,13,31,0.88)', lit ? '#fff' : 'rgba(255,255,255,0.45)', 4);
+    ctx.font = `800 44px ${SPORT}`;
+    ctx.fillStyle = lit ? '#14122a' : '#f2f0e6';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(label, x + w / 2, y + 40);
+  };
+  btn(W - 520, 120, `${speed}x`, speed > 1);
+  btn(W - 380, 330, 'SKIP TO RESULT', skipLit);
+  // "WATCHING" chip, top right.
+  roundRect(W - 300, 38, 250, 58, 29, 'rgba(5,6,15,0.85)', '#7aa2ff', 4);
+  ctx.font = `800 36px ${SPORT}`;
+  ctx.fillStyle = '#f2f0e6';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('WATCHING', W - 160, 68);
+  ctx.fillStyle = '#7aa2ff';
+  ctx.beginPath();
+  ctx.arc(W - 262, 67, 11, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
+/** "DON'T FEEL LIKE PLAYING?" then "JUST WATCH." */
+function renderWHook(seg: Segment, t: number, a: number) {
+  renderBackground(t, 0.7);
+  const pop = (at: number) => 0.3 + 0.7 * easeOutBack(clamp01((a - at) / 0.22));
+  once('wh1', t, seg.t0 + 0.05, () => { flash = 0.12; cue(t, 'slam'); cue(t, 'crowd_low'); });
+  jamText("DON'T FEEL", W / 2, 230, 130, { scale: pop(0.05), fill: '#f8f8f0' });
+  if (a > 0.4) {
+    once('wh2', t, seg.t0 + 0.4, () => cue(t, 'slam'));
+    jamText('LIKE PLAYING?', W / 2, 440, 130, { scale: pop(0.4), fill: '#f8f8f0' });
+  }
+  if (a > 1.1) {
+    once('wh3', t, seg.t0 + 1.1, () => { flash = 0.25; cue(t, 'slam'); cue(t, 'crowd_big'); });
+    const shake = a < 1.5 ? (Math.random() - 0.5) * 20 : 0;
+    jamText('JUST WATCH.', W / 2 + shake, 720 + shake, 190, { scale: pop(1.1) });
+  }
+}
+
+/** The matchup screen's three buttons; WATCH gets pressed. */
+function renderWChoice(seg: Segment, t: number, a: number) {
+  renderBackground(t, 0.86);
+  jamText('NEW ON EVERY GAME', W / 2, 140, 96, { scale: a < 0.2 ? easeOutBack(a / 0.2) : 1 });
+  const labels: [string, string][] = [['PLAY GAME', 'You take the sticks'], ['WATCH', 'Both teams on CPU'], ['SIM GAME', 'Straight to the final']];
+  const press = 1.3;
+  labels.forEach(([label, note], i) => {
+    const at = 0.25 + i * 0.18;
+    if (a < at) return;
+    once(`wc${i}`, t, seg.t0 + at, () => cue(t, 'card'));
+    const k = easeOutBack(clamp01((a - at) / 0.2));
+    const x = W / 2 + (i - 1) * 560;
+    const watch = i === 1;
+    const lit = watch && a > press;
+    const pushed = watch && a > press && a < press + 0.12 ? 0.94 : 1;
+    ctx.save();
+    ctx.translate(x, 520);
+    ctx.scale(k * pushed * (lit ? 1.08 : 1), k * pushed * (lit ? 1.08 : 1));
+    if (lit) {
+      ctx.shadowColor = 'rgba(255,203,5,0.8)';
+      ctx.shadowBlur = 60;
+    }
+    roundRect(-240, -110, 480, 220, 22, lit ? '#ffcb05' : i === 0 ? '#1d2a66' : 'rgba(10,13,31,0.92)', lit ? '#fff' : 'rgba(255,255,255,0.4)', 6);
+    ctx.shadowBlur = 0;
+    ctx.font = `800 80px ${SPORT}`;
+    ctx.fillStyle = lit ? '#14122a' : '#f2f0e6';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(label, 0, -18);
+    ctx.font = `800 40px ${SPORT}`;
+    ctx.fillStyle = lit ? '#3a2a00' : '#aab0d8';
+    ctx.fillText(note, 0, 56);
+    ctx.restore();
+  });
+  once('wc-press', t, seg.t0 + press, () => { flash = 0.15; cue(t, 'slam'); cue(t, 'crowd'); });
+  if (a > 1.6) plainText('IN QUICK PLAY AND FRANCHISE', W / 2, 860, 60, '#ffcb05');
+}
+
+/** The game on fast forward: 1x, 2x, then 4x. */
+let fast: { sg: SeededGame; r: Renderer } | null = null;
+const fastCanvas = document.createElement('canvas');
+function renderWSpeed(seg: Segment, t: number, a: number) {
+  if (!fast) {
+    const sg = new SeededGame(808);
+    sg.advance(1200);
+    sg.g.events.length = 0;
+    sg.g.sfx.length = 0;
+    const r = new Renderer(fastCanvas);
+    r.snap(sg.g);
+    fast = { sg, r };
+  }
+  const speed = a < 0.8 ? 1 : a < 1.7 ? 2 : 4;
+  drawGame(fast.r, fast.sg, fastCanvas, 2 * speed, t, undefined, false, 4);
+  scorebug(fast.sg.g);
+  spectatorBar(speed);
+  if (speed > 1) {
+    const at = speed === 2 ? 0.8 : 1.7;
+    once(`ws${speed}`, t, seg.t0 + at, () => { flash = 0.1; cue(t, 'whoosh'); cue(t, 'tick'); });
+    // Fast-forward streaks.
+    ctx.save();
+    ctx.globalAlpha = speed === 4 ? 0.22 : 0.12;
+    ctx.fillStyle = '#fff';
+    for (let i = 0; i < 14; i++) {
+      const y = ((i * 97 + Math.floor(a * 30) * 41) % H);
+      ctx.fillRect(((i * 211 + a * 4000 * speed) % (W + 600)) - 600, y, 420, 3);
+    }
+    ctx.restore();
+    jamText(`${speed}x SPEED`, W / 2, 200, 130, { scale: 0.3 + 0.7 * easeOutBack(clamp01((a - at) / 0.2)) });
+    // Fast-forward arrows: one pair per doubling.
+    const n = speed === 2 ? 2 : 4;
+    ctx.save();
+    ctx.lineJoin = 'round';
+    for (let i = 0; i < n; i++) {
+      const x = W / 2 + (i - (n - 1) / 2) * 70;
+      ctx.beginPath();
+      ctx.moveTo(x - 30, 320);
+      ctx.lineTo(x + 34, 360);
+      ctx.lineTo(x - 30, 400);
+      ctx.closePath();
+      ctx.lineWidth = 12;
+      ctx.strokeStyle = '#000';
+      ctx.stroke();
+      ctx.fillStyle = '#f8f8f0';
+      ctx.fill();
+    }
+    ctx.restore();
+  } else {
+    jamText('1x', W / 2, 200, 130, { scale: a < 0.2 ? easeOutBack(a / 0.2) : 1 });
+  }
+}
+
+/** Skip or Sim: straight to the final. */
+function renderWSim(seg: Segment, t: number, a: number) {
+  renderBackground(t, 0.88);
+  jamText('OR SIM IT.', W / 2, 150, 130, { scale: a < 0.2 ? easeOutBack(a / 0.2) : 1 });
+  const done = 1.0;
+  if (a < done) {
+    pokeball(W / 2, 520, 100, a * 10);
+    plainText(`SIMULATING YOUR GAME${'.'.repeat(1 + (Math.floor(a * 6) % 3))}`, W / 2, 700, 60, '#f2f0e6');
+    for (let i = 0; i < 3; i++) once(`wsim${i}`, t, seg.t0 + 0.15 + i * 0.28, () => cue(t, 'tick'));
+    return;
+  }
+  once('wsim-final', t, seg.t0 + done, () => { flash = 0.3; cue(t, 'buzzer'); cue(t + 0.1, 'crowd_big'); });
+  const k = easeOutBack(clamp01((a - done) / 0.25));
+  ctx.save();
+  ctx.translate(W / 2, 540);
+  ctx.scale(k, k);
+  roundRect(-560, -170, 1120, 340, 26, 'rgba(5,6,15,0.94)', '#ffcb05', 8);
+  ctx.font = `800 54px ${SPORT}`;
+  ctx.fillStyle = '#ffcb05';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('FINAL', 0, -118);
+  const side = (abbr: string, color: string, score: number, x: number, win: boolean) => {
+    ctx.fillStyle = color;
+    ctx.fillRect(x - 200, -60, 16, 160);
+    ctx.font = `800 70px ${SPORT}`;
+    ctx.fillStyle = '#f2f0e6';
+    ctx.textAlign = 'left';
+    ctx.fillText(abbr, x - 170, -34);
+    ctx.font = `110px ${PIXEL}`;
+    ctx.fillStyle = win ? '#ffcb05' : '#f2f0e6';
+    ctx.textAlign = 'left';
+    ctx.fillText(String(score), x - 170, 80);
+  };
+  side(HOME.abbr, HOME.color, simFinal[0], -260, simFinal[0] > simFinal[1]);
+  side(AWAY.abbr, AWAY.color, simFinal[1], 300, simFinal[1] > simFinal[0]);
+  ctx.restore();
+  if (a > 1.5) plainText('SKIP ANY GAME STRAIGHT TO THE RESULT', W / 2, 840, 60, '#ffcb05');
+}
+
 // ---------- shared ----------
 
 function pjam(x: number, y: number, size: number, pj: number) {
@@ -1809,6 +1995,10 @@ function renderSegment(seg: Segment, t: number, first: boolean) {
     case 'o-draft': renderODraft(seg, t, a); break;
     case 'o-ranked': renderORanked(seg, t, a); break;
     case 'o-packs': renderOPacks(seg, t, a); break;
+    case 'w-hook': renderWHook(seg, t, a); break;
+    case 'w-choice': renderWChoice(seg, t, a); break;
+    case 'w-speed': renderWSpeed(seg, t, a); break;
+    case 'w-sim': renderWSim(seg, t, a); break;
     case 'clip': renderClip(seg, t, first); break;
   }
 }
@@ -1944,6 +2134,16 @@ export async function prepare(): Promise<{ frames: number; fps: number }> {
     for (let i = 0; i < 2; i++) clip([['dunk']], 0.9, 0.6, false, 'montage');
     add({ kind: 'outro', t0: t, t1: t + 4.2 });
     musicEnd = s[s.length - 1].t0 + 1.6;
+  } else if (CUT === 'watch') {
+    add({ kind: 'w-hook', t0: t, t1: t + 2.4 });
+    musicStart = 0.1;
+    add({ kind: 'w-choice', t0: t, t1: t + 2.6 });
+    clip([['dunk']], 3.4, 2.2);
+    add({ kind: 'w-speed', t0: t, t1: t + 3.0 });
+    add({ kind: 'w-sim', t0: t, t1: t + 2.6 });
+    add({ kind: 'outro', t0: t, t1: t + 4.0 });
+    musicEnd = s[s.length - 1].t0 + 1.6;
+    simFinal = scans.reduce((best, x) => (Math.abs(x.score[0] - x.score[1]) <= 6 && x.score[0] > x.score[1] ? x : best), scans[0]).score;
   } else {
     add({ kind: 'tipoff', t0: t, t1: t + 3.6 });
     add({ kind: 'logo', t0: t, t1: t + 2.2 });
