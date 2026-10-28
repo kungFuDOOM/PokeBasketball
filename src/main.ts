@@ -408,7 +408,10 @@ async function afterUserGame(f: Franchise, g: FGame, game: Game, sides: [number,
 // A share link (#s=...) opens the shared team's card first.
 const shared = shareFromHash(location.hash);
 const clearHash = () => history.replaceState(null, '', location.pathname + location.search);
-if (shared) {
+const devFinal = import.meta.env.DEV ? await import('./screens/devResults').then((m) => m.devResultsKind()) : null;
+if (devFinal) {
+  void import('./screens/devResults').then((m) => m.devResults(app, devFinal));
+} else if (shared) {
   sharedScreen(app, shared, {
     menu: () => { clearHash(); menu(); },
     draftOwn: async () => {

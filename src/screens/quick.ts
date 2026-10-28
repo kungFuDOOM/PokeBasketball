@@ -191,6 +191,7 @@ export function quickPlay(root: HTMLElement, settings: Settings, audio: Audio, a
       window.scrollTo(0, 0);
       resultsScreen(root, g, {
         tag: `Quick Play · ${court.venue}`,
+        shareOpponent: court.venue,
         buttons: [
           { id: 'rematch', label: 'Rematch', kind: 'primary' },
           ...(drafted ? [] : [{ id: 'redraft', label: 'Redraft' }]),
