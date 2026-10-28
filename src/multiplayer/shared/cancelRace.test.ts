@@ -132,18 +132,95 @@ describe('rooms: Cancel and Back always win', () => {
 });
 
 describe('leaving when the page goes away (#8)', () => {
-  it('sends leave_queue, leave_match and close_room as keepalive beacons', () => {
+  it('sends leave_queue (searching), leave_match (in a match, nothing else) and close_room as keepalive beacons', () => {
     const sent: [string, unknown][] = [];
-    const svc = new SupabaseMatchService(heldDb([]).db, 'me', ['social'], async () => {}, (fn, args) => sent.push([fn, args]));
+    const svc = new SupabaseMatchService(heldDb([]).db, 'me', ['social'], async () => {}, (fn, args) => void sent.push([fn, args]));
     svc.leaveOnExit(null);
     svc.leaveOnExit('m1');
     svc.closeRoomOnExit('ABC123');
-    expect(sent).toEqual([['pokejam_leave_queue', undefined], ['pokejam_leave_queue', undefined], ['pokejam_leave_match', { p_match: 'm1' }],
-      ['pokejam_close_room', { p_code: 'ABC123' }]]);
+    expect(sent).toEqual([['pokejam_leave_queue', undefined], ['pokejam_leave_match', { p_match: 'm1' }], ['pokejam_close_room', { p_code: 'ABC123' }]]);
+  });
+
+  // A closing page gets a request's CORS preflight out but not the request itself (load test v2: 15 of 15 tab-closed
+  // matches stayed active). So each exit request is sent once beforehand as a no-op, while the page is alive.
+  const NIL = '00000000-0000-0000-0000-000000000000';
+  const beacons = () => {
+    const sent: [string, unknown][] = [];
+    return { sent, send: (fn: string, args?: Record<string, unknown>) => void sent.push([fn, args]) };
+  };
+
+  it('warms up leave_queue before the first search poll, and waits for it so it never lands after a pairing', async () => {
+    let answered!: () => void;
+    const sent: string[] = [];
+    const f = heldDb([], { pokejam_find_match: 'm1', pokejam_match_info: info });
+    const svc = new SupabaseMatchService(f.db, 'me', ['social'], async () => {},
+      (fn) => { sent.push(fn); return fn === 'pokejam_leave_queue' ? new Promise<void>((r) => (answered = r)) : undefined; });
+    const p = svc.quickMatch('social', new AbortController().signal);
+    await vi.waitFor(() => expect(sent).toContain('pokejam_leave_queue'));
+    await vi.advanceTimersByTimeAsync(100);
+    expect(f.fns()).not.toContain('pokejam_find_match'); // still waiting for the warm-up
+    answered();
+    expect((await p).id).toBe('m1');
+    expect(f.fns()).toEqual(['pokejam_find_match', 'pokejam_match_info']); // the warm-up is a beacon, not a normal call
+  });
+
+  it('warms up leave_match with an id no match has once a match starts (quick, room host, room guest); at most every 20 minutes', async () => {
+    const b = beacons();
+    const f = heldDb([], { pokejam_find_match: 'm1', pokejam_match_info: info, pokejam_room_state: { match: 'm1', status: 'active' }, pokejam_join_room: 'm1' });
+    const svc = new SupabaseMatchService(f.db, 'me', ['social'], async () => {}, b.send);
+    await svc.quickMatch('social');
+    expect(b.sent).toEqual([['pokejam_leave_queue', undefined], ['pokejam_leave_match', { p_match: NIL }]]);
+    await svc.waitForFriend('ABC123');
+    await svc.joinRoom('XYZ789');
+    expect(b.sent).toHaveLength(2);
+    vi.advanceTimersByTime(21 * 60_000);
+    await svc.joinRoom('XYZ780');
+    expect(b.sent[b.sent.length - 1]).toEqual(['pokejam_leave_match', { p_match: NIL }]);
+  });
+
+  it('warms up close_room with a code no room has once the room is made', async () => {
+    const b = beacons();
+    const svc = new SupabaseMatchService(heldDb([], { pokejam_create_room: 'ABC123' }).db, 'me', ['social'], async () => {}, b.send);
+    expect(await svc.createRoom(120)).toBe('ABC123');
+    expect(b.sent).toEqual([['pokejam_close_room', { p_code: '' }]]);
+  });
+
+  it('a cancelled search sends no leave_match warm-up (it never became a match)', async () => {
+    const b = beacons();
+    const f = heldDb(['pokejam_find_match'], { pokejam_match_info: info });
+    const abort = new AbortController();
+    const p = new SupabaseMatchService(f.db, 'me', ['social'], async () => {}, b.send).quickMatch('social', abort.signal).catch((e) => e);
+    await vi.waitFor(() => expect(f.fns()).toContain('pokejam_find_match'));
+    abort.abort();
+    await f.answer('pokejam_find_match', 'm1');
+    expect((await p).name).toBe('AbortError');
+    expect(b.sent.map(([fn]) => fn)).toEqual(['pokejam_leave_queue']);
   });
 
   it('reads a match status (null when it is not mine)', async () => {
     expect(await new SupabaseMatchService(heldDb([], { pokejam_match_status: { status: 'void' } }).db, 'me').matchStatus('m1')).toBe('void');
     expect(await new SupabaseMatchService(heldDb([]).db, 'me').matchStatus('m1')).toBeNull();
+  });
+});
+
+describe('in-game heartbeat (migration 20261106)', () => {
+  it('alive() calls pokejam_match_alive with the match id', async () => {
+    const f = heldDb([], { pokejam_match_alive: 'active' });
+    await new SupabaseMatchService(f.db, 'me').alive('m1');
+    expect(f.calls).toEqual([{ fn: 'pokejam_match_alive', args: { p_match: 'm1' } }]);
+  });
+
+  it('a server without it: asked once, then never again; other errors are swallowed and retried next beat', async () => {
+    const f = heldDb([], { pokejam_match_alive: { data: null, error: { message: 'not found', code: 'PGRST202' }, status: 404 } });
+    const svc = new SupabaseMatchService(f.db, 'me');
+    await svc.alive('m1');
+    await svc.alive('m1');
+    expect(f.fns()).toEqual(['pokejam_match_alive']);
+
+    const g = heldDb([], { pokejam_match_alive: { data: null, error: { message: 'boom', code: '500' }, status: 500 } });
+    const svc2 = new SupabaseMatchService(g.db, 'me');
+    await expect(svc2.alive('m1')).resolves.toBeUndefined();
+    await svc2.alive('m1');
+    expect(g.fns()).toEqual(['pokejam_match_alive', 'pokejam_match_alive']);
   });
 });

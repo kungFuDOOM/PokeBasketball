@@ -16,6 +16,8 @@ import type { ModeContext } from './types';
 
 /** No word from the other player for this long ends the game. */
 const PEER_TIMEOUT_MS = 15_000;
+/** How often a player in the game tells the server they're still there (service.alive). */
+const HEARTBEAT_MS = 30_000;
 
 /** Dev builds only: ?ql=10 plays 10-second quarters (used by the two-browser end-to-end test). Otherwise the server's. */
 function quarterLenOverride(): number | undefined {
@@ -45,8 +47,12 @@ export async function playOnline(ctx: ModeContext, o: OnlineGameOptions) {
   root.querySelector('[data-a="cancel"]')!.addEventListener('click', () => abort.abort());
   // Closing the tab while connecting or playing: say bye and leave the match at once (the other player otherwise
   // waits out the connection timeout). Off once the game has finished, so a result being settled isn't voided.
+  // The leave goes first: a send on a closing data channel can throw, and the leave is what calls the match off.
   let sayBye = () => {};
-  const offExit = onPageExit(() => { sayBye(); service.leaveOnExit(match.id); });
+  const offExit = onPageExit(() => {
+    service.leaveOnExit(match.id);
+    try { sayBye(); } catch { /* the channel is already going */ }
+  });
 
   let link: MatchLink;
   let cfg;
@@ -82,10 +88,14 @@ export async function playOnline(ctx: ModeContext, o: OnlineGameOptions) {
   let handle: PlayHandle | null = null;
   let over = false;
   sayBye = () => ls?.bye();
+  // While the game is on, a heartbeat: if both players vanish without a leave arriving, the server calls it off.
+  void service.alive(match.id);
+  const beat = setInterval(() => void service.alive(match.id), HEARTBEAT_MS);
   const end = async (title: string, note: string) => {
     if (over) return;
     over = true;
     offExit();
+    clearInterval(beat);
     clearInterval(watch);
     handle?.stop();
     ls?.bye();
@@ -116,6 +126,7 @@ export async function playOnline(ctx: ModeContext, o: OnlineGameOptions) {
     if (over) return;
     over = true;
     offExit();
+    clearInterval(beat);
     clearInterval(watch);
     const mine = g.score[match.side];
     const theirs = g.score[1 - match.side];

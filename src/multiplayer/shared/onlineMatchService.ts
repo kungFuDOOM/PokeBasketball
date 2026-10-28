@@ -62,6 +62,16 @@ const POLL_RETRIES = 2;
 /** Room-code tries allowed per minute, so a code can't be guessed by hammering the join button. */
 const JOIN_TRIES = 6;
 const JOIN_WINDOW_MS = 60_000;
+/**
+ * A page-exit request is warmed up again after this long (the browser keeps the preflight answer for an hour; a match
+ * started within 20 minutes of a warm-up still has 40 minutes of it).
+ */
+const WARM_MS = 20 * 60_000;
+/** No match has this id and no room has this code: the warm-up calls change nothing on the server. */
+const NO_MATCH = '00000000-0000-0000-0000-000000000000';
+const NO_ROOM = '';
+/** A server without the RPC (an older migration set): the client stops asking. */
+const missingRpc = (e: unknown) => e instanceof OnlineError && /PGRST202|42883/.test(e.code ?? '');
 
 export class SupabaseMatchService implements MatchService {
   /**
@@ -72,7 +82,20 @@ export class SupabaseMatchService implements MatchService {
     /** Runs the human check when the server asks for one (human.ts); `force` after a "human check needed" refusal. */
     private human: (force: boolean) => Promise<void> = async () => {},
     /** Sends an RPC that outlives the page (fetch keepalive, supabase.ts keepaliveRpc); best effort, no answer. */
-    private beacon: (fn: string, args?: Record<string, unknown>) => void = () => {}) {}
+    private beacon: (fn: string, args?: Record<string, unknown>) => void | Promise<void> = () => {}) {}
+
+  private warmedAt = new Map<string, number>();
+  /**
+   * Sends a page-exit request once now, while the page is alive, so the browser has its CORS preflight cached: a
+   * closing page gets the preflight out but not the request behind it (supabase.ts rpcBeacon; measured in Chrome).
+   * `args` must make the call a no-op. At most once per WARM_MS per RPC.
+   */
+  private warm(fn: string, args?: Record<string, unknown>): Promise<void> {
+    const at = this.warmedAt.get(fn);
+    if (at !== undefined && Date.now() - at < WARM_MS) return Promise.resolve();
+    this.warmedAt.set(fn, Date.now());
+    return Promise.resolve(this.beacon(fn, args));
+  }
 
   /** My rating as of just before the current Ranked match, so the result screen can show what the match changed. */
   private rankBefore: ServerRank | null = null;
@@ -172,7 +195,7 @@ export class SupabaseMatchService implements MatchService {
   private async claim(id: string, signal?: AbortSignal): Promise<OnlineMatch> {
     if (!signal?.aborted) {
       const m = await this.matchInfo(id);
-      if (!signal?.aborted) return m;
+      if (!signal?.aborted) return this.inMatch(m);
     }
     await this.call('pokejam_leave_match', { p_match: id }).catch(() => {});
     throw aborted();
@@ -205,6 +228,9 @@ export class SupabaseMatchService implements MatchService {
   async quickMatch(queue: Queue, signal?: AbortSignal): Promise<OnlineMatch> {
     this.allow(queue);
     if (MODE_RANKED && queue === 'ranked') this.rankBefore = await this.myRank();
+    // Gets leaving on page exit ready (warm). Before searching, leaving the queue is a no-op apart from calling off a
+    // match made for me that I never opened, which is stale by now; awaited, so it can't land after a new pairing.
+    await this.warm('pokejam_leave_queue');
     try {
       // The pass is checked before the first search; later polls only re-check if the server refuses.
       for (let first = true; ; first = false) {
@@ -223,8 +249,10 @@ export class SupabaseMatchService implements MatchService {
   }
 
   /** Play a friend: make a room (1- or 2-minute quarters) and get its 6-character code. */
-  createRoom(quarterLen = 120): Promise<string> {
-    return this.roomMaking(quarterLen <= 60 ? 60 : 120);
+  async createRoom(quarterLen = 120): Promise<string> {
+    const code = await this.roomMaking(quarterLen <= 60 ? 60 : 120);
+    void this.warm('pokejam_close_room', { p_code: NO_ROOM }); // for closeRoomOnExit
+    return code;
   }
 
   /** Host: give up on a room nobody has joined yet. */
@@ -248,7 +276,7 @@ export class SupabaseMatchService implements MatchService {
           : 'This room is closed: your friend left before the game started. Make a new room to play.');
       } catch (e) {
         // A server without pokejam_room_state (migration 20261104 not applied yet): poll the old way.
-        if (!(e instanceof OnlineError && /PGRST202|42883/.test(e.code ?? ''))) throw e;
+        if (!missingRpc(e)) throw e;
         this.oldRoomPoll = true;
       }
     }
@@ -276,6 +304,12 @@ export class SupabaseMatchService implements MatchService {
       await this.call('pokejam_leave_match', { p_match: m.id }).catch(() => {});
       throw aborted();
     }
+    return this.inMatch(m);
+  }
+
+  /** A match is starting (draft, then game): get its page-exit leave ready to be delivered. */
+  private inMatch(m: OnlineMatch): OnlineMatch {
+    void this.warm('pokejam_leave_match', { p_match: NO_MATCH });
     return m;
   }
 
@@ -296,12 +330,27 @@ export class SupabaseMatchService implements MatchService {
   }
 
   /**
-   * The page is going away (closed, or hidden mid-search): leave the queue, and this match if any, with requests that
-   * outlive the page. Best effort; the server's heartbeat and cleanup cover what doesn't arrive.
+   * The page is going away (closed, or hidden mid-search): leave the queue, or this match, with a request that
+   * outlives the page. Best effort; the server's heartbeats and cleanup cover what doesn't arrive. In a match I'm no
+   * longer queued (pairing took me out), so only the match is left: one request, already warmed up when it started.
    */
   leaveOnExit(matchId: string | null) {
-    this.beacon('pokejam_leave_queue');
-    if (matchId) this.beacon('pokejam_leave_match', { p_match: matchId });
+    if (matchId) void this.beacon('pokejam_leave_match', { p_match: matchId });
+    else void this.beacon('pokejam_leave_queue');
+  }
+
+  private noHeartbeat = false;
+  /**
+   * In-game heartbeat (migration 20261106): tells the server I'm still playing. A finished-draft match where both
+   * players have sent one and then both stopped is called off by the cleanup. A server without it: stop asking.
+   */
+  async alive(matchId: string): Promise<void> {
+    if (this.noHeartbeat) return;
+    try {
+      await this.call('pokejam_match_alive', { p_match: matchId });
+    } catch (e) {
+      if (missingRpc(e)) this.noHeartbeat = true;
+    }
   }
 
   /** MatchService: a quick match with no way to cancel (the Social screen uses quickMatch directly). */

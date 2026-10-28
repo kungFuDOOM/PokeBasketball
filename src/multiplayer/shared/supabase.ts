@@ -27,23 +27,31 @@ export function supabase(): SupabaseClient {
 
 /**
  * An RPC request that outlives the page (fetch with keepalive): for leaving the queue or a match while the tab is
- * closing or going to the background, where a normal request may never be sent. Fire and forget, never throws.
+ * closing or going to the background, where a normal request may never be sent. Never throws; the promise settles
+ * when the server answered or the request failed (callers that only fire and forget can ignore it).
+ *
+ * Every Supabase RPC carries Authorization, so the browser asks first (a CORS preflight). Chrome sends that preflight
+ * from a closing page but then drops the request itself, unless the preflight answer is already cached (Supabase
+ * lets browsers keep it for an hour, per URL). So each request meant for page exit is also sent once beforehand, as
+ * a no-op, while the page is alive (SupabaseMatchService.warm).
  */
 export function rpcBeacon(base: string, key: string, token: () => string | null, send: typeof fetch = (...a) => fetch(...a)) {
-  return (fn: string, args: Record<string, unknown> = {}) => {
+  return (fn: string, args: Record<string, unknown> = {}): Promise<void> => {
     const t = token();
-    if (!t) return;
+    if (!t) return Promise.resolve();
     try {
-      void send(`${base}/rest/v1/rpc/${fn}`, {
+      return send(`${base}/rest/v1/rpc/${fn}`, {
         method: 'POST', keepalive: true,
         headers: { apikey: key, Authorization: `Bearer ${t}`, 'Content-Type': 'application/json' },
         body: JSON.stringify(args),
-      }).catch(() => {});
-    } catch { /* best effort */ }
+      }).then(() => {}, () => {});
+    } catch {
+      return Promise.resolve(); // best effort
+    }
   };
 }
 
-export const keepaliveRpc = ONLINE_CONFIGURED ? rpcBeacon(URL!, KEY!, () => accessToken) : () => {};
+export const keepaliveRpc = ONLINE_CONFIGURED ? rpcBeacon(URL!, KEY!, () => accessToken) : async () => {};
 
 /** What signing in needs from the page: whether Auth CAPTCHA is on for this build, and a fresh Turnstile token. */
 export interface SignInDeps {
