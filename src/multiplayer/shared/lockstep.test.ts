@@ -4,7 +4,9 @@ import { monByDex } from '../../data/pokemon';
 import { Game } from '../../game/game';
 import { snapshot } from '../../game/sync';
 import { emptyIntent, seededRng, type GameConfig, type Intent, type TeamDef } from '../../game/types';
-import { Lockstep, type NetMsg } from './lockstep';
+import { Lockstep, SEND_MS, type LockstepOptions, type NetMsg } from './lockstep';
+import { rttStats, startDelay } from './netDelay';
+import { PACE_DIRECT_MS } from './netplay';
 
 const team = (name: string, dexes: number[]): TeamDef => ({
   name, abbr: name.slice(0, 3).toUpperCase(), color: '#3b6fd8', color2: '#16224a', human: true, roster: dexes.map(monByDex),
@@ -26,26 +28,42 @@ function player(seed: number) {
   };
 }
 
-interface NetOpts { latency: [number, number]; drop: number; seed: number }
+interface NetOpts {
+  latency: [number, number]; drop: number; seed: number;
+  /** Ms between input batches (default: the engine's SEND_MS). */
+  pace?: number;
+  /** Starting input delay for both sides, and the tuning (default: the engine's own). */
+  delay?: number;
+  tune?: LockstepOptions['tune'];
+  /** Stop after this many frames even if the game isn't over. */
+  maxFrames?: number;
+  /** Per-side send pace (overrides `pace`). */
+  paceBy?: [number, number];
+  /** Everything sent to `to` between `at` and `at + ms` (sim ms) is lost: a blackout on a link or a dead transport. */
+  outages?: { at: number; ms: number; to: 0 | 1 }[];
+}
 
 /** Two clients on one fake clock, connected by a lossy, jittery, reordering link. */
-function match(net: NetOpts, onFrame?: (t: number, guest: Game) => void) {
+function match(net: NetOpts, onFrame?: (t: number, guest: Game, ls: Lockstep[]) => void) {
   const rng = seededRng(net.seed);
   let now = 0;
   const queue: { at: number; to: 0 | 1; m: NetMsg }[] = [];
   const games = [new Game(config(42)), new Game(config(42))];
   const link = (from: 0 | 1) => ({
+    pace: () => net.paceBy?.[from] ?? net.pace ?? SEND_MS,
     send(m: NetMsg) {
+      const to = (1 - from) as 0 | 1;
+      if (net.outages?.some((o) => o.to === to && now >= o.at && now < o.at + o.ms)) return;
       if (m.k === 'in' && rng() < net.drop) return; // inputs are resent until acked; hashes/snapshots ride a reliable socket
       const [lo, hi] = net.latency;
       queue.push({ at: now + lo + rng() * (hi - lo), to: (1 - from) as 0 | 1, m: JSON.parse(JSON.stringify(m)) });
     },
   });
-  const ls = [0, 1].map((s) => new Lockstep(games[s], link(s as 0 | 1), { side: s as 0 | 1, now: () => now }));
+  const ls = [0, 1].map((s) => new Lockstep(games[s], link(s as 0 | 1), { side: s as 0 | 1, now: () => now, delay: net.delay, tune: net.tune }));
   const players = [player(1), player(2)];
   const held: Intent[] = [players[0](), players[1]()];
   let frames = 0;
-  while ((games[0].phase !== 'final' || games[1].phase !== 'final') && frames < 200_000) {
+  while ((games[0].phase !== 'final' || games[1].phase !== 'final') && frames < (net.maxFrames ?? 200_000)) {
     frames++;
     now += 1000 / 60 + (rng() - 0.5) * 6; // uneven frame times
     queue.sort((a, b) => a.at - b.at);
@@ -55,9 +73,9 @@ function match(net: NetOpts, onFrame?: (t: number, guest: Game) => void) {
       games[s].events.length = 0;
       games[s].sfx.length = 0;
     }
-    onFrame?.(frames, games[1]);
+    onFrame?.(frames, games[1], ls);
   }
-  return { games, ls };
+  return { games, ls, frames, seconds: now / 1000 };
 }
 
 describe('lockstep', () => {
@@ -135,13 +153,13 @@ describe('a malicious peer', () => {
     expect(ls.problem).toBeNull();
   });
 
-  it('a flood is cut off after 80 messages a second', () => {
+  it('a flood is cut off after 200 messages a second', () => {
     const { ls, tick } = fresh();
     for (let i = 0; i < 1000; i++) ls.receive({ k: 'h', t: 59, h: 1 });
-    expect(ls.stats.received).toBe(80);
+    expect(ls.stats.received).toBe(200);
     tick(1000);
     ls.receive({ k: 'h', t: 59, h: 1 });
-    expect(ls.stats.received).toBe(81);
+    expect(ls.stats.received).toBe(201);
   });
 
   it('an acknowledgement for inputs we never sent does not skip any', () => {
@@ -183,5 +201,105 @@ describe('a malicious peer', () => {
     ls.receive({ k: 'snap', t: 10, s: snapshot(new Game(config(42))) });
     expect(ls.stats.resyncs).toBe(0);
     expect(ls.stats.dropped).toBe(1);
+  });
+});
+
+describe('lag: 250 ms RTT, +/-40 ms jitter, 2% loss', () => {
+  // The old live tuning: start 8, cap 18, +1 per 1 s report (+2 if badly late), -1 when lead > 3, 66 ms send pace.
+  const oldAdapt: LockstepOptions['tune'] = {
+    windowMs: 1000,
+    stallLead: false,
+    adapt: (s, lead) => {
+      let d = s.delay;
+      if (lead < 1 && d < 18) d += lead < -3 ? 2 : 1;
+      else if (lead > 3 && d > 4) d--;
+      return { delay: Math.min(18, d), steady: 0 };
+    },
+  };
+  const latency: [number, number] = [105, 145]; // one way: RTT 210-290 ms
+  const rtt = rttStats(Array.from({ length: 200 }, (_, i) => 2 * (latency[0] + ((latency[1] - latency[0]) * i) / 199)));
+  const seeds = [1, 2, 3, 4, 5, 6];
+
+  function run(kind: 'old' | 'new') {
+    const fresh = kind === 'new';
+    let stalls = 0;
+    let seconds = 0;
+    let final = 0;
+    let max = 0;
+    const games: Game[][] = [];
+    for (const seed of seeds) {
+      const r = match({
+        latency, drop: 0.02, seed,
+        pace: fresh ? PACE_DIRECT_MS : SEND_MS,
+        delay: fresh ? startDelay(rtt.median, PACE_DIRECT_MS, rtt.jitter) : 8,
+        tune: fresh ? undefined : oldAdapt,
+      });
+      stalls += r.ls[0].stats.stalls + r.ls[1].stats.stalls;
+      seconds += 2 * r.seconds; // player-seconds
+      final += r.ls[0].delay + r.ls[1].delay;
+      max = Math.max(max, r.ls[0].stats.maxDelay, r.ls[1].stats.maxDelay);
+      games.push(r.games);
+    }
+    return { stalls, perMin: (stalls * 60) / seconds, finalDelay: final / (2 * seeds.length), maxDelay: max, games };
+  }
+
+  it('the new delay start, 60 Hz sends and fast adaptation stall far less than the old tuning', async () => {
+    const [before, after] = [run('old'), run('new')];
+    const out = {
+      scenario: '250 ms RTT (210-290), 2% input loss, 6 seeded matches',
+      old: { start_delay: 8, cap: 18, pace_ms: 66, stalls: before.stalls, stalls_per_min: +before.perMin.toFixed(2), final_delay: +before.finalDelay.toFixed(1), max_delay: before.maxDelay },
+      new: { start_delay: startDelay(rtt.median, PACE_DIRECT_MS, rtt.jitter), cap: 30, pace_ms: PACE_DIRECT_MS, stalls: after.stalls, stalls_per_min: +after.perMin.toFixed(2), final_delay: +after.finalDelay.toFixed(1), max_delay: after.maxDelay },
+    };
+    console.log(`stalls/min  OLD ${out.old.stalls_per_min}   NEW ${out.new.stalls_per_min}\n${JSON.stringify(out)}`);
+    try {
+      // (a computed specifier: the browser tsconfig has no Node types)
+      const fs = await import(/* @vite-ignore */ ['node', 'fs'].join(':'));
+      fs.writeFileSync('/workspace/social-launch/lag/sim-stalls.json', JSON.stringify(out, null, 2) + '\n');
+    } catch { /* the output folder only exists on the dev machine */ }
+    expect(after.perMin).toBeLessThan(before.perMin / 2);
+    // And both still play the same game to the end, whatever the delays.
+    for (const g of [...before.games, ...after.games]) {
+      expect(g[0].phase).toBe('final');
+      expect(JSON.stringify(snapshot(g[1]))).toBe(JSON.stringify(snapshot(g[0])));
+    }
+  });
+
+  /** Plays a match to the end and checks both sides finished identical; `worst` = the longest single wait (s). */
+  function recovers(net: NetOpts, label: string) {
+    let worst = 0;
+    const r = match({ ...net, maxFrames: 60 * 150 }, (_t, _g, ls) => { for (const l of ls) worst = Math.max(worst, l.waiting); });
+    expect(r.games[0].phase, `${label}: game finished`).toBe('final');
+    expect(JSON.stringify(snapshot(r.games[1])), `${label}: same state`).toBe(JSON.stringify(snapshot(r.games[0])));
+    return { ...r, worst };
+  }
+
+  it('asymmetric send pace (16 ms against 100 ms) finishes identical with short waits', () => {
+    const r = recovers({ latency, drop: 0.02, seed: 11, paceBy: [PACE_DIRECT_MS, 100], delay: 12 }, 'asymmetric');
+    expect(r.worst).toBeLessThan(2);
+    expect(r.ls[0].stats.stallMs + r.ls[1].stats.stallMs).toBeLessThan(20_000);
+  });
+
+  it('a 2 s one-way blackout and a 1.2 s burst loss: the game waits, then picks up where it was', () => {
+    for (const to of [0, 1] as const) {
+      const r = recovers({ latency, drop: 0.02, seed: 12 + to, pace: PACE_DIRECT_MS, delay: 12, outages: [{ at: 20_000, ms: 2000, to }, { at: 40_000, ms: 1200, to: (1 - to) as 0 | 1 }] }, `outage to ${to}`);
+      expect(r.worst).toBeGreaterThan(1); // the blackout really bit
+      expect(r.worst).toBeLessThan(4);
+      expect(r.ls[0].delay).toBeLessThanOrEqual(30);
+      expect(r.ls[0].peerLeft || r.ls[1].peerLeft).toBe(false);
+    }
+  });
+
+  it('after a long blackout in both directions the delays do not run away to the cap and stay there', () => {
+    const r = recovers({ latency, drop: 0.02, seed: 14, pace: PACE_DIRECT_MS, delay: 12, outages: [{ at: 20_000, ms: 3000, to: 0 }, { at: 20_000, ms: 3000, to: 1 }] }, 'blackout');
+    expect(r.worst).toBeLessThan(5);
+    // the late-report jump is capped (MAX_STALL_LEAD) and eases down again afterwards
+    expect(Math.max(r.ls[0].delay, r.ls[1].delay)).toBeLessThan(30);
+  });
+
+  it('delays adapt on each side by itself and need not agree; the games still finish identical', () => {
+    const { games, ls } = match({ latency, drop: 0.02, seed: 9, pace: PACE_DIRECT_MS, delay: 5 });
+    expect(Math.max(ls[0].stats.maxDelay, ls[1].stats.maxDelay)).toBeGreaterThan(5); // it climbed from a too-small start
+    expect(games[0].phase).toBe('final');
+    expect(JSON.stringify(snapshot(games[1]))).toBe(JSON.stringify(snapshot(games[0])));
   });
 });

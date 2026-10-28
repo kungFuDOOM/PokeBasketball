@@ -16,6 +16,8 @@ import type { Lockstep, NetMsg, Transport } from './lockstep';
 import { rostersFor } from './roster';
 import { RtcLink } from './rtc';
 import type { OnlineMatch, SupabaseMatchService } from './onlineMatchService';
+import { planRtt, startDelay, type RttStats } from './netDelay';
+import { Pinger } from './ping';
 import { backoffMs } from './throttle';
 import { gameConfigFor, matchKey, type MatchKeys, type MatchSetup, type MatchTeam } from './winnerCheck';
 
@@ -62,14 +64,23 @@ export function buildConfig(match: OnlineMatch, quarterLen = match.game.quarterL
   return { ...gameConfigFor(setup), court: userCourt(setup.home.name) };
 }
 
-/** Netcode protocol version: both players must match (an old tab and a new one can't play each other). */
-export const NET_VERSION = 2;
+/**
+ * Netcode protocol version: both players must match (an old tab and a new one can't play each other). The handshake
+ * ("hi") carries it and a mismatch ends the connect with "different game versions" on both sides, before any input
+ * is exchanged, so an old and a new client can never be in one game. 3 = per-tick sends, ping/pong, faster delay
+ * adaptation (a 2 client would read the new lead reports and 60 Hz traffic as junk or flood).
+ */
+export const NET_VERSION = 3;
 
-/** Ms between input batches: quick on the direct link, slower on Realtime, where every message is billed twice. */
-export const PACE_DIRECT_MS = 66;
+/** Ms between input batches: every tick (60 Hz) on the direct link, slower on Realtime, where every message is billed twice. */
+export const PACE_DIRECT_MS = 16;
 export const PACE_REALTIME_MS = 100;
 /** Give up on the direct link after this long and stay on Realtime. */
 const RTC_TIMEOUT_MS = 8000;
+/** The direct link is treated as dead (traffic goes over Realtime) after this long without hearing anything over it. */
+export const DIRECT_SILENT_MS = 2500;
+/** Unacknowledged inputs this long (ms) are also sent over Realtime. */
+const ACK_STALE_MS = 1000;
 
 /**
  * The live link to the other player: lockstep transport plus teardown. Starts on the private Realtime channel;
@@ -84,7 +95,59 @@ export class MatchLink implements Transport {
   readonly sent = { realtime: 0, direct: 0 };
   /** Signs what we send and keeps what they sent, for the winner check (null when the match has no keys). */
   evidence: EvidenceLog | null = null;
+  /** Round-trip probes over whichever transport is live. */
+  readonly pinger = new Pinger((m) => this.transmit(m));
+  /** Input batches that went over Realtime instead of the direct link (the "used the fallback" stat). */
+  realtimeInputs = 0;
+  /** How the relay carried the direct link, once known. */
+  relayProtocol: 'udp' | 'tcp' | 'tls' | 'unknown' = 'unknown';
+  private meter: ReturnType<typeof setInterval> | undefined;
   constructor(private ch: RealtimeChannel, private sb: SupabaseClient) {}
+
+  /** Wait (up to `ms`) for the direct link to open; resolves whether it did or not. */
+  waitDirect(ms: number): Promise<boolean> {
+    return new Promise((resolve) => {
+      const until = Date.now() + ms;
+      const check = () => {
+        if (this.direct) resolve(true);
+        else if (Date.now() >= until || this.gaveUp) resolve(false);
+        else setTimeout(check, 50);
+      };
+      check();
+    });
+  }
+
+  /** The direct link was never tried (no TURN credentials, no WebRTC) or has failed: nothing to wait for. */
+  gaveUp = false;
+
+  /** Ping the peer `count` times, `gapMs` apart, and give the figures (stats cover just this run). */
+  async probe(count = 10, gapMs = this.direct ? 60 : 200): Promise<RttStats> {
+    const from = this.pinger.samples.length;
+    for (let i = 0; i < count; i++) {
+      this.pinger.ping();
+      await new Promise((r) => setTimeout(r, gapMs));
+    }
+    // Stragglers: wait for the last pongs, but not long.
+    for (let i = 0; i < 20 && this.pinger.samples.length - from < count; i++) await new Promise((r) => setTimeout(r, 50));
+    return this.pinger.stats(from);
+  }
+
+  /** The delay to start with, from a probe of the live transport. */
+  startDelayFor(st: RttStats): number {
+    const { rtt, jitter } = planRtt(st, this.direct);
+    return startDelay(rtt, this.pace(), jitter);
+  }
+
+  /** Keep pinging for the in-game meter (slower on Realtime, where every message is billed) and learn the relay protocol. */
+  startMeter() {
+    if (this.meter) return;
+    let n = 0;
+    this.meter = setInterval(() => {
+      if (this.direct || n % 2 === 0) this.pinger.ping();
+      if (this.rtc?.open && this.relayProtocol === 'unknown' && n % 4 === 0) void this.rtc.relayProtocol().then((p) => { if (p !== 'unknown') this.relayProtocol = p; });
+      n++;
+    }, 1500);
+  }
 
   /** Swaps in a fresh channel after a failed join (the old one is removed by the caller). */
   useChannel(ch: RealtimeChannel) { this.ch = ch; }
@@ -93,8 +156,23 @@ export class MatchLink implements Transport {
     return !!this.rtc?.open;
   }
 
+  /** Receive times (performance.now) per transport, and when the direct link opened. */
+  private rx = { direct: -Infinity, realtime: -Infinity };
+  private openedAt = -Infinity;
+
+  /**
+   * Is the direct link carrying traffic both ways? It can read "open" on our side after the other side has dropped it
+   * (the browser takes ~30 s to notice a dead relay path); then the peer sends over Realtime only, and our inputs
+   * sent into the dead link would never arrive. So the link counts as good only while we have heard from it lately.
+   * Pings keep going over it, and a pong coming back brings it back into use.
+   */
+  private directGood(): boolean {
+    if (!this.direct) return false;
+    return performance.now() - Math.max(this.rx.direct, this.openedAt) < DIRECT_SILENT_MS;
+  }
+
   pace(): number {
-    return this.direct ? PACE_DIRECT_MS : PACE_REALTIME_MS;
+    return this.directGood() ? PACE_DIRECT_MS : PACE_REALTIME_MS;
   }
 
   send(m: NetMsg) {
@@ -107,16 +185,33 @@ export class MatchLink implements Transport {
   }
 
   private transmit(m: NetMsg) {
-    if (this.rtc?.open) {
-      this.rtc.send(m);
-      this.sent.direct++;
-    } else {
+    // Probes always try the direct link when it is open (that is how a silent link is found to be alive again).
+    const probe = m.k === 'ping' || m.k === 'pong';
+    let viaDirect = probe ? this.direct : this.directGood();
+    if (viaDirect) {
+      try {
+        this.rtc!.send(m);
+        this.sent.direct++;
+      } catch {
+        viaDirect = false; // the channel is closing or its queue is full: Realtime carries this one
+      }
+    }
+    // Inputs the peer has not acknowledged for a second: the direct path may be broken one way (we hear them, they
+    // don't hear us). Repeat them on Realtime too, at Realtime's own pace.
+    const now = performance.now();
+    const hedge = viaDirect && m.k === 'in' && (this.ls?.ackStale() ?? 0) > ACK_STALE_MS && now - this.lastHedge >= PACE_REALTIME_MS;
+    if (hedge) this.lastHedge = now;
+    if (!viaDirect || hedge) {
       void this.ch.send({ type: 'broadcast', event: 'ls', payload: m });
       this.sent.realtime++;
+      if (m.k === 'in' && !hedge) this.realtimeInputs++;
     }
   }
+  private lastHedge = 0;
   /** Lockstep messages that arrive before the game is built are held until then. */
-  deliver(m: unknown) {
+  deliver(m: unknown, via: 'direct' | 'realtime' = 'realtime') {
+    this.rx[via] = performance.now();
+    if (this.pinger.handle(m)) return;
     this.evidence?.received(m);
     if (this.ls) this.ls.receive(m);
     else if (this.early.length < 200) this.early.push(m as NetMsg); // a flood before the game starts is dropped
@@ -128,6 +223,8 @@ export class MatchLink implements Transport {
 
   /** A signalling message for the direct link (it may arrive before we've set ours up). */
   signal(raw: unknown) {
+    // The peer's direct link failed: stop sending into ours (it can read "open" for ~30 s after the other end is gone).
+    if ((raw as { k?: unknown } | null)?.k === 'down') { this.rtc?.close(); return; }
     if (this.rtc) void this.rtc.handle(raw);
     else if (this.rtcEarly.length < 60) this.rtcEarly.push(raw);
   }
@@ -137,15 +234,21 @@ export class MatchLink implements Transport {
     if (this.rtc || typeof RTCPeerConnection === 'undefined') return;
     const rtc = new RtcLink(side, iceServers, (s) => void this.ch.send({ type: 'broadcast', event: 'rtc', payload: s }), policy);
     this.rtc = rtc;
-    rtc.onMessage = (m) => this.deliver(m);
-    rtc.onClose = () => { if (this.rtc === rtc) this.rtc = null; };
+    rtc.onMessage = (m) => this.deliver(m, 'direct');
+    rtc.onClose = () => {
+      if (this.rtc !== rtc) return;
+      this.rtc = null;
+      this.gaveUp = true;
+      if (this.openedAt > -Infinity) void this.ch.send({ type: 'broadcast', event: 'rtc', payload: { k: 'down' } });
+    };
     const giveUp = setTimeout(() => { if (!rtc.open) rtc.close(); }, RTC_TIMEOUT_MS);
-    rtc.onOpen = () => clearTimeout(giveUp);
+    rtc.onOpen = () => { clearTimeout(giveUp); this.openedAt = performance.now(); };
     for (const s of this.rtcEarly.splice(0)) void rtc.handle(s);
     void rtc.start().catch(() => rtc.close());
   }
 
   close() {
+    clearInterval(this.meter);
     this.rtc?.close();
     void this.sb.removeChannel(this.ch);
   }
@@ -298,7 +401,7 @@ export function connect(sb: SupabaseClient, match: OnlineMatch, quarterLen: numb
         peer = true;
         ready();
       });
-      c.on('broadcast', { event: 'ls' }, ({ payload }) => link.deliver(payload));
+      c.on('broadcast', { event: 'ls' }, ({ payload }) => link.deliver(payload, 'realtime'));
       c.on('broadcast', { event: 'rtc' }, ({ payload }) => link.signal(payload));
     };
     bind(ch);

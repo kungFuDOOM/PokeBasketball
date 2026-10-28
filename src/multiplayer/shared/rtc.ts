@@ -93,7 +93,23 @@ export class RtcLink {
     if (!this.open) return;
     const data = JSON.stringify(m);
     // Inputs and hashes can be lost (they're resent); snapshots and goodbyes must arrive.
-    (m.k === 'in' || m.k === 'h' ? this.fast : this.ctl).send(data);
+    (m.k === 'in' || m.k === 'h' || m.k === 'ping' || m.k === 'pong' ? this.fast : this.ctl).send(data);
+  }
+
+  /** How the relay carries our traffic: 'udp', 'tcp' or 'tls' (the selected local candidate's relayProtocol), else 'unknown'. */
+  async relayProtocol(): Promise<'udp' | 'tcp' | 'tls' | 'unknown'> {
+    try {
+      const stats = await this.pc.getStats();
+      let pairId: string | undefined;
+      stats.forEach((r) => { if (r.type === 'transport' && r.selectedCandidatePairId) pairId = r.selectedCandidatePairId; });
+      let local: string | undefined;
+      stats.forEach((r) => { if (r.type === 'candidate-pair' && (r.id === pairId || (!pairId && r.nominated && r.state === 'succeeded'))) local = r.localCandidateId; });
+      let proto: string | undefined;
+      stats.forEach((r) => { if (r.type === 'local-candidate' && r.id === local) proto = r.relayProtocol; });
+      return proto === 'udp' || proto === 'tcp' || proto === 'tls' ? proto : 'unknown';
+    } catch {
+      return 'unknown';
+    }
   }
 
   close() {
