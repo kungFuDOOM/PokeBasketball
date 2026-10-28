@@ -181,7 +181,7 @@ function menu() {
 function quick(source: TeamSource) {
   audio.unlock();
   app.className = 'screen-quick';
-  quickPlay(app, settings, audio, { menu, saved: save }, source);
+  quickPlay(app, settings, audio, { menu, saved: save, overlay }, source);
 }
 
 /** Franchise with My Drafted Team (its name and colors); `onCancel` runs if the name confirm is cancelled. */

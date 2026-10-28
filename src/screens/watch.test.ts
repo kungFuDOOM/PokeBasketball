@@ -3,7 +3,7 @@ import { COURTS } from '../data/courts';
 import { monByDex } from '../data/pokemon';
 import { Game } from '../game/game';
 import type { GameConfig, TeamDef } from '../game/types';
-import { finishGame, nextSpeed, resultTag, stepHeadless } from './watch';
+import { claimUserTeam, finishGame, nextSpeed, resultTag, stepHeadless } from './watch';
 
 const team = (name: string, dexes: number[]): TeamDef => ({
   name, abbr: name.slice(0, 3).toUpperCase(), color: '#3b6fd8', color2: '#16224a', human: false, roster: dexes.map(monByDex),
@@ -53,5 +53,20 @@ describe('watch helpers', () => {
     finishGame(a);
     finishGame(b);
     expect(b.score).toEqual(a.score);
+  });
+
+  it('tags quick play results by mode', () => {
+    expect(resultTag('Quick Play · Indigo Elite', 'played')).toBe('Quick Play · Indigo Elite');
+    expect(resultTag('Quick Play · Indigo Elite', 'watched')).toBe('Quick Play · Indigo Elite · Watched');
+    expect(resultTag('Quick Play · Indigo Elite', 'simmed')).toBe('Quick Play · Indigo Elite · Simulated');
+  });
+
+  it('a headless sim finishes and the user side can be claimed for the results screen', async () => {
+    const { simulate } = await import('../franchise/league');
+    const g = await simulate(config(5));
+    expect(g.phase).toBe('final');
+    expect(g.teams[0].human).toBe(false);
+    claimUserTeam(g);
+    expect(g.teams[0].human).toBe(true);
   });
 });

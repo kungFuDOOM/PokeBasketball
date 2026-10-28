@@ -42,7 +42,7 @@ function lineup(f: Franchise, t: FTeam): string {
   }).join('')}</ul>`;
 }
 
-function nextCard(f: Franchise, settings: Settings): string {
+export function nextCard(f: Franchise, settings: Settings): string {
   if (f.phase === 'done') {
     const champ = f.teams[f.champion!];
     const mvp = f.mvp ? f.players[f.mvp] : null;

@@ -30,6 +30,11 @@ export function stepHeadless(g: Game, steps: number): boolean {
   return g.phase === 'final';
 }
 
+/** After a CPU-vs-CPU Quick Play game: mark the home side as the user's so results (headline, Share) read as theirs. */
+export function claimUserTeam(g: Game): void {
+  g.teams[0].human = true;
+}
+
 /** Finishes a game from its current state with the same step function the sim uses. */
 export function finishGame(g: Game, maxSteps = MAX_STEPS): Game {
   stepHeadless(g, maxSteps);
