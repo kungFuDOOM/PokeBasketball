@@ -34,6 +34,8 @@ export interface OnlineDriver {
   advance(intent: Intent, dt: number): number;
   /** A banner such as "Waiting for opponent…", or null. */
   status(): string | null;
+  /** Round-trip time to the other player in ms, or null while unknown (shown as a small meter). */
+  ping?(): number | null;
 }
 
 export function playGame(
@@ -63,6 +65,7 @@ export function playGame(
       </div>
       <div class="loading">Warming up…</div>
       <div class="net-status" hidden></div>
+      <div class="net-ping" hidden></div>
     </div>`;
   const gameEl = root.querySelector<HTMLElement>('.game')!;
   const canvas = root.querySelector<HTMLCanvasElement>('canvas')!;
@@ -74,6 +77,8 @@ export function playGame(
   const g = new Game(cfg);
   const online = opts.online;
   const netStatus = root.querySelector<HTMLElement>('.net-status')!;
+  const netPing = root.querySelector<HTMLElement>('.net-ping')!;
+  let pingShown = '';
   if (online) {
     g.viewTeam = online.viewTeam;
     online.start(g);
@@ -228,6 +233,14 @@ export function playGame(
         const st = online.status();
         netStatus.hidden = !st;
         if (st) netStatus.textContent = st;
+        const ms = online.ping?.() ?? null;
+        const shown = ms === null ? '' : `${Math.round(ms)} ms`;
+        if (shown !== pingShown) {
+          pingShown = shown;
+          netPing.hidden = !shown;
+          netPing.textContent = shown;
+          netPing.dataset.q = ms === null ? '' : pingQuality(ms);
+        }
       } else {
         acc += dt * SPEED;
         while (acc >= STEP) {
@@ -291,3 +304,6 @@ export function playGame(
   }
   return { stop };
 }
+
+/** Colour band of the ping meter: good under 180 ms, fair to 300, poor above. */
+export const pingQuality = (ms: number): 'good' | 'fair' | 'poor' => (ms < 180 ? 'good' : ms <= 300 ? 'fair' : 'poor');

@@ -10,12 +10,15 @@ import { panel } from './matchFlow';
 import type { ReportOutcome } from './matchService';
 import { pack } from './evidence';
 import { MatchOverError, connect, iceFor, type Connected, type MatchLink } from './netplay';
+import { netStatsRow, submitNetStats } from './netStats';
 import type { OnlineMatch, OnlineOpponent, ReportReason, SupabaseMatchService } from './onlineMatchService';
 import { onPageExit } from './pageExit';
 import type { ModeContext } from './types';
 
 /** No word from the other player for this long ends the game. */
 const PEER_TIMEOUT_MS = 15_000;
+/** How long to wait for the direct link to open before measuring the connection (it stays on Realtime if it doesn't). */
+const DIRECT_WAIT_MS = 3000;
 /** How often a player in the game tells the server they're still there (service.alive). */
 const HEARTBEAT_MS = 30_000;
 
@@ -73,8 +76,29 @@ export async function playOnline(ctx: ModeContext, o: OnlineGameOptions) {
     return message(ctx, p.kind === 'busy' ? 'ONLINE IS BUSY' : 'NO CONNECTION', p.message);
   }
 
+  let over = false;
   // Move gameplay to a relayed direct link if the server hands out TURN credentials (stays on Realtime otherwise).
-  void iceFor(o.sb, match.id).then((ice) => { if (ice && !over) link.upgrade(match.side, ice.iceServers, ice.policy); });
+  void iceFor(o.sb, match.id).then((ice) => {
+    if (ice && !over) link.upgrade(match.side, ice.iceServers, ice.policy);
+    else link.gaveUp = true;
+  });
+
+  // Before tip-off: give the direct link a moment to open, then ping the other player a few times and start with an
+  // input delay that fits this link (netDelay.ts), instead of 8 ticks and climbing.
+  root.innerHTML = panel('CONNECTING', 'Checking your connection…', `
+    <div class="actions center"><button class="btn ghost" data-a="cancel">Cancel</button></div>`);
+  root.querySelector('[data-a="cancel"]')!.addEventListener('click', () => abort.abort());
+  await link.waitDirect(DIRECT_WAIT_MS);
+  const probe = await link.probe();
+  const startDelay = link.startDelayFor(probe);
+  if (abort.signal.aborted) {
+    over = true;
+    offExit();
+    link.close();
+    await service.leave(match.id);
+    return ctx.back();
+  }
+  link.startMeter();
 
   // After the game, each player uploads everything signed they hold, for the winner check (once; best effort).
   let uploaded = false;
@@ -86,7 +110,14 @@ export async function playOnline(ctx: ModeContext, o: OnlineGameOptions) {
 
   let ls: Lockstep | null = null;
   let handle: PlayHandle | null = null;
-  let over = false;
+  let startedAt = 0;
+  // The match's network stats, once, whichever way it ends (a finished game, a quit, the opponent leaving).
+  let statsSent = false;
+  const sendNetStats = () => {
+    if (statsSent || !ls) return;
+    statsSent = true;
+    void submitNetStats(o.sb, netStatsRow(match.id, service.userId, link, ls, link.pinger.stats(), (performance.now() - startedAt) / 1000));
+  };
   sayBye = () => ls?.bye();
   // While the game is on, a heartbeat: if both players vanish without a leave arriving, the server calls it off.
   void service.alive(match.id);
@@ -99,6 +130,7 @@ export async function playOnline(ctx: ModeContext, o: OnlineGameOptions) {
     clearInterval(watch);
     handle?.stop();
     ls?.bye();
+    sendNetStats();
     uploadEvidence();
     link.close();
     await service.leave(match.id);
@@ -116,7 +148,8 @@ export async function playOnline(ctx: ModeContext, o: OnlineGameOptions) {
   handle = playGame(root, cfg, audio, (g) => void finish(g), () => void end('LEFT GAME', 'You left the game. No result was recorded.'), {
     online: {
       viewTeam: match.side,
-      start: (g) => { ls = new Lockstep(g, link, { side: match.side }); link.attach(ls); },
+      start: (g) => { ls = new Lockstep(g, link, { side: match.side, delay: startDelay }); startedAt = performance.now(); link.attach(ls); },
+      ping: () => link.pinger.smooth,
       advance: (intent, dt) => ls!.advance(intent, dt),
       status: () => (ls && ls.waiting > 0.4 ? `Waiting for ${match.opponent.name}…` : null),
     },
@@ -128,6 +161,7 @@ export async function playOnline(ctx: ModeContext, o: OnlineGameOptions) {
     offExit();
     clearInterval(beat);
     clearInterval(watch);
+    sendNetStats();
     const mine = g.score[match.side];
     const theirs = g.score[1 - match.side];
     const won = mine > theirs;

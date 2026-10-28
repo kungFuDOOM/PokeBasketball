@@ -5,10 +5,11 @@
 // peer; tick t is simulated only once both players' inputs for t are known, so both copies step through exactly
 // the same inputs. Input delay hides the network round trip; if the peer's input is late, the game waits.
 //
-// - Inputs travel in small batches (about 15 a second) and every batch repeats everything the peer has not
-//   acknowledged yet, so a lost or reordered message never loses an input.
-// - Each side adapts its own input delay: the peer reports how early our inputs arrive ("lead"), and we add
-//   delay when they arrive late and shave it when there is plenty of slack.
+// - Inputs travel in small batches (every tick on a direct link, about 10 a second on Realtime) and every batch
+//   repeats everything the peer has not acknowledged yet, so a lost or reordered message never loses an input.
+// - Each side adapts its own input delay (netDelay.ts): the peer reports how early our inputs arrive ("lead"), and
+//   we jump to the shortfall when they arrive late and ease down slowly when there is plenty of slack. The two
+//   delays need not match: inputs are tagged with their tick, so the sim is the same whatever they are.
 // - Every HASH_EVERY ticks both sides exchange a state hash. On a mismatch (floating point can differ in the last
 //   bit between browser engines) the host sends a full snapshot; the guest restores it and replays its stored
 //   inputs to catch up. The host is the authority for that.
@@ -22,6 +23,9 @@
 import type { Game } from '../../game/game';
 import { TICK, packInput, restore, snapshot, stateHash, stepGame, type Snapshot, type WireInput } from '../../game/sync';
 import type { Intent } from '../../game/types';
+import { LEAD_WINDOW_MS, MAX_DELAY, MIN_DELAY, adapt } from './netDelay';
+
+export { MAX_DELAY, MIN_DELAY };
 
 export type Side = 0 | 1;
 
@@ -40,7 +44,10 @@ export type NetMsg =
   /** Host → guest: the authoritative state after tick t. */
   | { k: 'snap'; t: number; s: Snapshot }
   /** The sender quit. */
-  | { k: 'bye' };
+  | { k: 'bye' }
+  /** Round-trip probe (answered by the link, never seen by Lockstep): n = probe number, t = the sender's clock. */
+  | { k: 'ping'; n: number; t: number }
+  | { k: 'pong'; n: number; t: number };
 
 export interface Transport {
   send(m: NetMsg): void;
@@ -54,16 +61,18 @@ export interface LockstepOptions {
   delay?: number;
   /** Clock for timeouts and send pacing (ms). */
   now?: () => number;
+  /** Replace the delay tuning (the latency simulator in the tests compares it with the old tuning). */
+  tune?: { adapt?: typeof adapt; windowMs?: number; stallLead?: boolean };
 }
 
-export const MIN_DELAY = 4;
-export const MAX_DELAY = 18;
 export const SEND_MS = 66;
+/** Most ticks of unacknowledged input one batch repeats (5 s: past that the link is dead anyway). */
+const MAX_RESEND = 300;
 export const HASH_EVERY = 60;
 /** The peer can't be further ahead than both input delays plus a stall; anything beyond this is junk. */
 const MAX_AHEAD = 4 * MAX_DELAY + 60;
-/** At most this many messages a second are read from the peer (about 16 in normal play); the rest are dropped. */
-const MAX_MSGS_PER_SEC = 80;
+/** At most this many messages a second are read from the peer (about 65 in normal play, more in a burst after a hiccup); the rest are dropped. */
+const MAX_MSGS_PER_SEC = 200;
 /** Resyncs the guest accepts per game, and how often: a host sending more is broken or cheating. */
 const MAX_RESYNCS = 12;
 const MIN_RESYNC_MS = 1500;
@@ -84,7 +93,7 @@ export class Lockstep {
   waiting = 0;
   lastHeard: number;
   peerLeft = false;
-  readonly stats = { stalls: 0, desyncs: 0, resyncs: 0, sent: 0, received: 0, dropped: 0 };
+  readonly stats = { stalls: 0, desyncs: 0, resyncs: 0, sent: 0, received: 0, dropped: 0, startDelay: 0, maxDelay: 0 };
   /** Why this game can't go on safely (a broken or malicious peer), or null. */
   problem: string | null = null;
 
@@ -107,6 +116,8 @@ export class Lockstep {
   private leadReport: { l: number; lw: number } | null = null;
   private leadSeq = 0;
   private lastPeerLw = -1;
+  private steady = 0;
+  private tune: Required<NonNullable<LockstepOptions['tune']>>;
   private now: () => number;
   /** Our latest hash, sent with the next input batch. */
   private hashOut: [number, number] | null = null;
@@ -117,7 +128,9 @@ export class Lockstep {
   constructor(private g: Game, private net: Transport, o: LockstepOptions) {
     this.side = o.side;
     this.delay = Math.max(MIN_DELAY, Math.min(MAX_DELAY, o.delay ?? 8));
+    this.stats.startDelay = this.stats.maxDelay = this.delay;
     this.now = o.now ?? (() => performance.now());
+    this.tune = { adapt, windowMs: LEAD_WINDOW_MS, stallLead: true, ...o.tune };
     this.lastHeard = this.now();
     this.leadWindowStart = this.lastHeard;
     // The first ticks have no input from anyone; both sides agree they are empty.
@@ -250,7 +263,8 @@ export class Lockstep {
       for (let i = 0; i < n; i++, t++) {
         if (t < this.tick || this.remote.has(t)) continue;
         this.remote.set(t, { mx, my, b });
-        this.minLead = Math.min(this.minLead, t - this.tick);
+        // Arriving while we are stuck waiting: the lead is minus how long we have waited, in ticks.
+        this.minLead = Math.min(this.minLead, this.tune.stallLead && this.waiting > 0 ? -Math.ceil(this.waiting / TICK) : t - this.tick);
       }
     }
     while (this.remote.has(this.remoteTop + 1)) this.remoteTop++;
@@ -265,9 +279,10 @@ export class Lockstep {
 
   /** The peer says our inputs reached it `lead` ticks before it needed them (negative: it had to wait). */
   private adaptDelay(lead: number) {
-    if (lead < 1 && this.delay < MAX_DELAY) this.delay += lead < -3 ? 2 : 1;
-    else if (lead > 3 && this.delay > MIN_DELAY) this.delay--;
-    this.delay = Math.min(MAX_DELAY, this.delay);
+    const next = this.tune.adapt({ delay: this.delay, steady: this.steady }, lead);
+    this.delay = next.delay;
+    this.steady = next.steady;
+    this.stats.maxDelay = Math.max(this.stats.maxDelay, this.delay);
   }
 
   /** Guest: adopt the host's state after tick t, then replay our stored inputs to where we were. */
@@ -301,13 +316,13 @@ export class Lockstep {
     const now = this.now();
     if (!force && now - this.lastSend < (this.net.pace?.() ?? SEND_MS)) return;
     this.lastSend = now;
-    if (now - this.leadWindowStart >= 1000) {
+    if (now - this.leadWindowStart >= this.tune.windowMs) {
       // Report the smallest lead seen this second (−delay if nothing arrived at all, which reads as "late").
       this.leadReport = { l: Number.isFinite(this.minLead) ? this.minLead : -1, lw: this.leadSeq++ };
       this.minLead = Infinity;
       this.leadWindowStart = now;
     }
-    const from = this.peerAck + 1;
+    const from = Math.max(this.peerAck + 1, this.nextLocal - MAX_RESEND);
     const runs: InputRun[] = [];
     for (let t = from; t < this.nextLocal; t++) {
       const w = this.local.get(t) ?? EMPTY;
