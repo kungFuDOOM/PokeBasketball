@@ -21,6 +21,7 @@ import { championshipScreen, newSeasonScreen } from './screens/moments';
 import { masterScreen } from './screens/master';
 import { menuScreen, type Settings } from './screens/menu';
 import { playGame } from './screens/play';
+import { resultTag, type GameMode } from './screens/watch';
 import { quickPlay } from './screens/quick';
 import { resultsScreen } from './screens/results';
 import { rookieScreen } from './screens/rookies';
@@ -281,6 +282,7 @@ function hub() {
   hubScreen(app, f, settings, {
     play: (g) => playUserGame(f, g),
     simMine: (g) => void simUserGame(f, g),
+    watchMine: (g) => watchUserGame(f, g),
     simWeek: () => void finishWeek(f).then(hub),
     games: () => {
       app.className = 'screen-results';
@@ -339,7 +341,7 @@ function playUserGame(f: Franchise, g: FGame) {
   const stat = offlineStats().start('franchise');
   playGame(app, cfg, audio, (game) => {
     stat.finish('played');
-    void afterUserGame(f, g, game, sides, uidOf, false);
+    void afterUserGame(f, g, game, sides, uidOf, 'played');
   }, hub, {
     onAutoSubs: (on) => {
       settings.autoSubs = on;
@@ -355,7 +357,15 @@ async function simUserGame(f: Franchise, g: FGame) {
   const game = await simulate(cfg);
   stat.finish('simmed');
   done();
-  void afterUserGame(f, g, game, sides, uidOf, true);
+  void afterUserGame(f, g, game, sides, uidOf, 'simmed');
+}
+
+/** Same CPU-vs-CPU game as Sim, but shown on the court (spectator mode: no controls, speed and skip in the HUD). */
+function watchUserGame(f: Franchise, g: FGame) {
+  app.className = 'screen-game';
+  audio.unlock();
+  const { cfg, sides, uidOf } = gameConfig(f, g, false, settings.quarterLen, settings.difficulty);
+  playGame(app, cfg, audio, (game) => void afterUserGame(f, g, game, sides, uidOf, 'watched'), hub, { spectator: true });
 }
 
 function progressHtml(f: Franchise, progress: Progress[]): string {
@@ -392,7 +402,7 @@ function badgeHtml(f: Franchise, teamId: number): string {
     </section>`;
 }
 
-async function afterUserGame(f: Franchise, g: FGame, game: Game, sides: [number, number], uidOf: Map<Mon, string>, simmed: boolean) {
+async function afterUserGame(f: Franchise, g: FGame, game: Game, sides: [number, number], uidOf: Map<Mon, string>, mode: GameMode) {
   const before = badgesEarned(f);
   const progress = recordGame(f, g, game, sides, uidOf);
   const newBadge = [...badgesEarned(f)].find((id) => !before.has(id));
@@ -405,7 +415,7 @@ async function afterUserGame(f: Franchise, g: FGame, game: Game, sides: [number,
     app.className = 'screen-results';
     window.scrollTo(0, 0);
     resultsScreen(app, game, {
-      tag: simmed ? `${label} · Simulated` : label,
+      tag: resultTag(label, mode),
       headline: won ? (g.round === 'final' ? 'Champions!' : 'You win!') : `${f.teams[sides[1]].name} win`,
       extraHtml: (newBadge !== undefined ? badgeHtml(f, newBadge) : '') + progressHtml(f, progress),
       buttons: [
