@@ -20,10 +20,11 @@ import { tier } from '../util';
 export const FPS = 30;
 /**
  * Which cut to render (?cut=…): 'main' (the launch trailer), 'vertical' (9:16 for TikTok / Reels / Shorts),
- * 'franchise' (the season story) or 'top5' (a countdown of the best plays).
+ * 'franchise' (the season story), 'top5' (a countdown of the best plays) or 'online' (the multiplayer
+ * announcement: Social is live, Ranked is coming, Pack Battles teased).
  */
-type Cut = 'main' | 'vertical' | 'franchise' | 'top5';
-const CUT: Cut = (['vertical', 'franchise', 'top5'] as const).find((c) => c === new URLSearchParams(location.search).get('cut')) ?? 'main';
+type Cut = 'main' | 'vertical' | 'franchise' | 'top5' | 'online';
+const CUT: Cut = (['vertical', 'franchise', 'top5', 'online'] as const).find((c) => c === new URLSearchParams(location.search).get('cut')) ?? 'main';
 const VERTICAL = CUT === 'vertical';
 /** The top 5 cut is dressed as a 90s sports highlight show ("POKé CENTER"). */
 const RETRO = CUT === 'top5';
@@ -83,12 +84,20 @@ const gym = (name: string, dexes: number[]): TeamDef => {
   return { name: t.name, abbr: t.abbr, color: t.color, color2: t.color2, human: false, roster: mons(dexes) };
 };
 const pallet = (dexes: number[]): TeamDef => ({ name: 'Pallet Town', abbr: 'PAL', color: '#3b6fd8', color2: '#16224a', human: false, roster: mons(dexes) });
+/** The online cut's head-to-head draft, in each side's pick order. */
+const ONLINE_PICKS = { you: [6, 445, 25, 448, 143], rival: [150, 149, 254, 196, 9] };
 /** Each cut has its own matchup and floor. */
 const MATCHUPS: Record<Cut, { home: TeamDef; away: TeamDef; court: CourtStyle }> = {
   main: { home: pallet([25, 381, 6, 445, 382]), away: gym('Indigo Elite', [151, 94, 150, 383, 149]), court: COURTS['Indigo Elite'] },
   vertical: { home: pallet([25, 6, 448, 445, 143]), away: gym('Saffron Psychics', [65, 94, 150, 376, 248]), court: COURTS['Saffron Psychics'] },
   franchise: { home: pallet([25, 6, 9, 3, 143]), away: gym('Cerulean Cascades', [121, 134, 131, 130, 382]), court: COURTS['Cerulean Cascades'] },
   top5: { home: pallet([151, 381, 384, 149, 249]), away: gym('Cinnabar Volcanoes', [59, 157, 146, 244, 250]), court: COURTS['Cinnabar Volcanoes'] },
+  // Two trainers online, each with the five they drafted head to head (one per position).
+  online: {
+    home: { name: 'You', abbr: 'YOU', color: '#3b6fd8', color2: '#16224a', human: false, roster: mons(ONLINE_PICKS.you) },
+    away: { name: 'Rival', abbr: 'RVL', color: '#e3350d', color2: '#4a0d04', human: false, roster: mons(ONLINE_PICKS.rival) },
+    court: COURTS['Pallet Town'],
+  },
 };
 const { home: HOME, away: AWAY, court: COURT } = MATCHUPS[CUT];
 
@@ -162,7 +171,8 @@ interface ClipPlan {
 type Scene = 'tipoff' | 'logo' | 'wall' | 'clock' | 'legends' | 'badges' | 'evolve' | 'outro'
   | 'v-hook' | 'v-cards' | 'v-outro'
   | 'f-intro' | 'f-draft' | 'f-subs' | 'f-evolve' | 'f-champs'
-  | 't-title' | 't-num';
+  | 't-title' | 't-num'
+  | 'o-hook' | 'o-live' | 'o-match' | 'o-room' | 'o-draft' | 'o-ranked' | 'o-packs';
 type Segment =
   | { kind: Scene; t0: number; t1: number }
   | { kind: 'clip'; t0: number; t1: number; plan: ClipPlan; style: 'hero' | 'montage'; rank?: number; lower?: string };
@@ -600,6 +610,7 @@ function renderClip(seg: Segment & { kind: 'clip' }, t: number, first: boolean) 
     }
   }, true, VERTICAL ? (slow ? 9 : 8) : slow ? 6 : 5);
   if (seg.style === 'hero' && !RETRO) scorebug(c.sg.g);
+  if (CUT === 'online') onlineTag(t);
   if (RETRO) {
     retroBug();
     ticker(t);
@@ -871,7 +882,7 @@ function renderOutro(seg: Segment, t: number, a: number) {
   const pj = a - 2.2;
   if (pj < 0) {
     logo(W / 2, H / 2 - 150, 170, a < 0.25 ? 3 - 2 * k * k : 1);
-    if (a > 0.6) jamText('PLAY FREE IN YOUR BROWSER', W / 2, H / 2 + 40, 64, { fill: '#f8f8f0' });
+    if (a > 0.6) jamText(CUT === 'online' ? 'PLAY ONLINE NOW. FREE.' : 'PLAY FREE IN YOUR BROWSER', W / 2, H / 2 + 40, 64, { fill: '#f8f8f0' });
     if (a > 1.0) plainText('pokejam.xyz', W / 2, H / 2 + 170, 80, '#ffcb05');
   } else {
     // $PJAM: gold, glinting, center stage.
@@ -1344,6 +1355,467 @@ function renderROutro(seg: Segment, t: number, a: number) {
   fadeOut(seg, t, 0.5);
 }
 
+// ---------- cut: online ----------
+
+const RANK_TIERS: [string, string][] = [
+  ['BRONZE', '#b0703a'], ['SILVER', '#aab4c0'], ['GOLD', '#e6b422'], ['PLATINUM', '#3fbfb0'], ['DIAMOND', '#5aa8ff'], ['POKéMON MASTER', '#e0473f'],
+];
+const ROOM_CODE = 'JAM7KX';
+const POSITIONS = ['PG', 'SG', 'SF', 'PF', 'C'] as const;
+
+function roundRect(x: number, y: number, w: number, h: number, r: number, fill: string, stroke?: string, lw = 6) {
+  ctx.beginPath();
+  ctx.roundRect(x, y, w, h, r);
+  ctx.fillStyle = fill;
+  ctx.fill();
+  if (stroke) {
+    ctx.lineWidth = lw;
+    ctx.strokeStyle = stroke;
+    ctx.stroke();
+  }
+}
+
+function pokeball(x: number, y: number, r: number, rot: number) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(rot);
+  ctx.fillStyle = '#e3350d';
+  ctx.beginPath();
+  ctx.arc(0, 0, r, Math.PI, 0);
+  ctx.fill();
+  ctx.fillStyle = '#f8f8f0';
+  ctx.beginPath();
+  ctx.arc(0, 0, r, 0, Math.PI);
+  ctx.fill();
+  ctx.lineWidth = r * 0.14;
+  ctx.strokeStyle = '#111';
+  ctx.beginPath();
+  ctx.arc(0, 0, r, 0, Math.PI * 2);
+  ctx.moveTo(-r, 0);
+  ctx.lineTo(r, 0);
+  ctx.stroke();
+  ctx.fillStyle = '#f8f8f0';
+  ctx.beginPath();
+  ctx.arc(0, 0, r * 0.3, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+  ctx.restore();
+}
+
+/** A blinking "● ONLINE" chip over the filmed games. */
+function onlineTag(t: number) {
+  ctx.save();
+  roundRect(W - 300, 38, 250, 58, 29, 'rgba(5,6,15,0.85)', '#21d07a', 4);
+  ctx.fillStyle = Math.floor(t * 2) % 2 ? '#21d07a' : '#0f6b3d';
+  ctx.beginPath();
+  ctx.arc(W - 266, 67, 11, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.font = `800 36px ${SPORT}`;
+  ctx.fillStyle = '#f2f0e6';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('ONLINE 1v1', W - 242, 68);
+  ctx.restore();
+}
+
+/** The trainer-battle intro: stripes wipe in, then a rival wants to ball. */
+function renderOHook(seg: Segment, t: number, a: number) {
+  renderBackground(t, 0.55);
+  once('ohook', t, seg.t0, () => { cue(t, 'crowd_low'); cue(t + 0.1, 'whoosh'); });
+  // Alternating black bars slide away, like a wild battle starting.
+  const k = clamp01((a - 0.15) / 0.5);
+  const bars = 12;
+  const bh = H / bars;
+  ctx.fillStyle = '#000';
+  for (let i = 0; i < bars; i++) {
+    const dir = i % 2 ? 1 : -1;
+    ctx.fillRect(dir * k * W * 1.05, i * bh, W, bh + 1);
+  }
+  if (a > 0.6) {
+    once('ohook-slam', t, seg.t0 + 0.6, () => { flash = 0.15; cue(t, 'slam'); });
+    jamText('NEW CHALLENGER!', W / 2, 260, 130, { scale: easeOutBack(clamp01((a - 0.6) / 0.22)) });
+  }
+  if (a > 1.0) battleBox(['A RIVAL TRAINER', 'wants to ball!'], a - 1.0, 0.9);
+}
+
+/** MULTIPLAYER IS HERE, and the LIVE light for Social. */
+function renderOLive(seg: Segment, t: number, a: number) {
+  renderBackground(t, 0.8);
+  const pop = (at: number) => easeOutBack(clamp01((a - at) / 0.22));
+  once('olive1', t, seg.t0 + 0.1, () => { flash = 0.12; cue(t, 'slam'); });
+  jamText('MULTIPLAYER', W / 2, 220, 160, { scale: 0.3 + 0.7 * pop(0.1) });
+  if (a > 0.6) {
+    once('olive2', t, seg.t0 + 0.6, () => cue(t, 'slam'));
+    jamText('IS HERE.', W / 2, 400, 120, { fill: '#f8f8f0', scale: 0.3 + 0.7 * pop(0.6) });
+  }
+  if (a > 1.2) {
+    once('olive3', t, seg.t0 + 1.2, () => { flash = 0.2; cue(t, 'slam'); cue(t, 'crowd_big'); });
+    const s = 0.3 + 0.7 * pop(1.2);
+    ctx.save();
+    ctx.translate(W / 2, 640);
+    ctx.scale(s, s);
+    roundRect(-470, -85, 940, 170, 85, '#c0281b', '#fff', 8);
+    const on = Math.floor(a * 3) % 2 === 0;
+    ctx.fillStyle = on ? '#fff' : 'rgba(255,255,255,0.35)';
+    ctx.beginPath();
+    ctx.arc(-370, 0, 30, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.font = `86px ${PIXEL}`;
+    ctx.fillStyle = '#fff';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('SOCIAL', 40, 6);
+    ctx.restore();
+    jamText('IS LIVE', W / 2, 840, 120);
+  }
+  if (a > 1.9) plainText('CASUAL  ·  UNRANKED  ·  PLAY ANYONE, ANYWHERE', W / 2, 990, 54, '#ffcb05');
+}
+
+function trainerPanel(x: number, label: string, color: string, dex: number | null, alpha = 1) {
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  roundRect(x - 260, 260, 520, 520, 24, 'rgba(10,13,31,0.9)', color, 8);
+  ctx.fillStyle = color;
+  ctx.fillRect(x - 256, 264, 512, 90);
+  ctx.font = `800 64px ${SPORT}`;
+  ctx.fillStyle = '#fff';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(label, x, 312);
+  ctx.restore();
+  if (dex) sprite(dex, x, 730, 330, { alpha });
+}
+
+/** Quick match: searching, then MATCH FOUND. */
+function renderOMatch(seg: Segment, t: number, a: number) {
+  renderBackground(t, 0.86);
+  jamText('QUICK MATCH', W / 2, 140, 110, { scale: a < 0.2 ? easeOutBack(a / 0.2) : 1 });
+  const found = 1.6;
+  trainerPanel(W / 2 - 480, 'YOU', '#3b6fd8', 25);
+  if (a < found) {
+    ctx.save();
+    roundRect(W / 2 + 480 - 260, 260, 520, 520, 24, 'rgba(10,13,31,0.9)', 'rgba(255,255,255,0.25)', 8);
+    ctx.restore();
+    pokeball(W / 2 + 480, 520, 90, a * 9);
+    plainText(`SEARCHING${'.'.repeat(1 + (Math.floor(a * 5) % 3))}`, W / 2 + 480, 690, 56, '#f2f0e6');
+    for (let i = 0; i < 3; i++) once(`om-tick${i}`, t, seg.t0 + 0.4 + i * 0.4, () => cue(t, 'tick'));
+  } else {
+    once('om-found', t, seg.t0 + found, () => { flash = 0.25; cue(t, 'slam'); cue(t, 'crowd'); });
+    const k = easeOutBack(clamp01((a - found) / 0.25));
+    trainerPanel(W / 2 + 480, 'RIVAL', '#e3350d', 150, clamp01((a - found) / 0.12));
+    jamText('VS', W / 2, 520, 150, { scale: 0.3 + 0.7 * k });
+    jamText('MATCH FOUND!', W / 2, 920, 96, { fill: '#f8f8f0', scale: 0.3 + 0.7 * k });
+  }
+}
+
+/** Play a friend: a room code types in, the friend joins. */
+function renderORoom(seg: Segment, t: number, a: number) {
+  renderBackground(t, 0.86);
+  jamText('OR PLAY A FRIEND', W / 2, 140, 110, { scale: a < 0.2 ? easeOutBack(a / 0.2) : 1 });
+  plainText('ROOM CODE', W / 2, 300, 56, '#ffcb05');
+  const bw = 150;
+  const gap = 28;
+  const x0 = W / 2 - (ROOM_CODE.length * bw + (ROOM_CODE.length - 1) * gap) / 2;
+  [...ROOM_CODE].forEach((ch, i) => {
+    const at = 0.35 + i * 0.14;
+    const x = x0 + i * (bw + gap);
+    roundRect(x, 360, bw, 190, 16, 'rgba(10,13,31,0.92)', a > at ? '#ffcb05' : 'rgba(255,255,255,0.3)', 6);
+    if (a < at) return;
+    once(`or${i}`, t, seg.t0 + at, () => cue(t, 'tick'));
+    const k = easeOutBack(clamp01((a - at) / 0.15));
+    ctx.save();
+    ctx.translate(x + bw / 2, 462);
+    ctx.scale(k, k);
+    ctx.font = `100px ${PIXEL}`;
+    ctx.fillStyle = '#f8f8f0';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(ch, 4, 0);
+    ctx.restore();
+  });
+  if (a > 1.35) plainText('SEND THE CODE. YOUR FRIEND JOINS. GAME ON.', W / 2, 680, 64, '#f2f0e6');
+  if (a > 2.0) {
+    once('or-join', t, seg.t0 + 2.0, () => { flash = 0.15; cue(t, 'card'); cue(t, 'crowd'); });
+    const k = easeOutBack(clamp01((a - 2.0) / 0.22));
+    ctx.save();
+    ctx.translate(W / 2, 850);
+    ctx.scale(k, k);
+    roundRect(-330, -60, 660, 120, 60, '#21a366', '#fff', 6);
+    ctx.font = `800 64px ${SPORT}`;
+    ctx.fillStyle = '#fff';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('FRIEND JOINED!', 0, 4);
+    ctx.restore();
+  }
+}
+
+/** The head-to-head snake draft: A B B A A B B A A B, one Pokémon per position, 12 seconds a pick. */
+function renderODraft(seg: Segment, t: number, a: number) {
+  renderBackground(t, 0.88);
+  jamText('DRAFT HEAD TO HEAD', W / 2, 110, 96, { scale: a < 0.2 ? easeOutBack(a / 0.2) : 1 });
+  const order = [0, 1, 1, 0, 0, 1, 1, 0, 0, 1];
+  const picks = [ONLINE_PICKS.you, ONLINE_PICKS.rival];
+  const per = 0.27;
+  const start = 0.45;
+  const made = Math.max(0, Math.min(10, Math.floor((a - start) / per) + 1));
+  const slots = [new Array<number | null>(5).fill(null), new Array<number | null>(5).fill(null)];
+  const landed = [new Array<number>(5).fill(0), new Array<number>(5).fill(0)];
+  const count = [0, 0];
+  for (let i = 0; i < made; i++) {
+    const side = order[i];
+    const dex = picks[side][count[side]++];
+    let slot = POSITIONS.indexOf(monByDex(dex).pos as typeof POSITIONS[number]);
+    if (slot < 0 || slots[side][slot] !== null) slot = slots[side].indexOf(null);
+    slots[side][slot] = dex;
+    landed[side][slot] = start + i * per;
+    once(`od${i}`, t, seg.t0 + start + i * per, () => cue(t, 'card'));
+  }
+  const onClock = made < 10 ? order[made] : -1;
+  const rows: [string, string, number][] = [['YOU', '#3b6fd8', 300], ['RIVAL', '#e3350d', 600]];
+  rows.forEach(([name, color, y], side) => {
+    ctx.save();
+    ctx.font = `800 64px ${SPORT}`;
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = color;
+    ctx.fillText(name, W / 2 - 590, y + 110);
+    ctx.restore();
+    POSITIONS.forEach((pos, i) => {
+      const x = W / 2 + (i - 2) * 230 - 100;
+      const lit = onClock === side;
+      roundRect(x, y, 200, 220, 14, 'rgba(10,13,31,0.92)', slots[side][i] !== null ? color : lit ? 'rgba(255,203,5,0.7)' : 'rgba(255,255,255,0.2)', 5);
+      ctx.font = `800 38px ${SPORT}`;
+      ctx.fillStyle = '#c9cdf0';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(pos, x + 100, y + 32);
+      const dex = slots[side][i];
+      if (dex !== null) {
+        const k = easeOutBack(clamp01((a - landed[side][i]) / 0.18));
+        sprite(dex, x + 100, y + 208, 150 * k);
+      }
+    });
+  });
+  // The pick clock rides with whoever is on the clock.
+  if (onClock >= 0) {
+    const y = rows[onClock][2] + 110;
+    const left = 12 - Math.floor(((a - start) % per) / per * 4);
+    ctx.save();
+    ctx.translate(W / 2 + 680, y);
+    ctx.fillStyle = left <= 9 ? '#c0281b' : '#1a2050';
+    ctx.beginPath();
+    ctx.arc(0, 0, 70, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.lineWidth = 6;
+    ctx.strokeStyle = '#f8f8f0';
+    ctx.stroke();
+    ctx.font = `40px ${PIXEL}`;
+    ctx.fillStyle = '#fff';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(`:${String(Math.max(0, left)).padStart(2, '0')}`, 2, 4);
+    ctx.restore();
+  }
+  if (a > 0.8) plainText('LIVE SNAKE DRAFT  ·  ONE PER POSITION  ·  12 SECONDS A PICK', W / 2, 950, 52, '#ffcb05');
+}
+
+function tierBadge(x: number, y: number, size: number, name: string, color: string, k: number) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(k, k);
+  if (name === 'POKéMON MASTER') {
+    const crown = images.get('badge-Elite');
+    if (crown) ctx.drawImage(crown, -size * 0.62, -size * 0.62, size * 1.24, size * 1.24);
+  } else {
+    // A shield in the tier's colour.
+    const s = size / 2;
+    const g = ctx.createLinearGradient(0, -s, 0, s);
+    g.addColorStop(0, '#fff');
+    g.addColorStop(0.25, color);
+    g.addColorStop(1, '#111');
+    ctx.beginPath();
+    ctx.moveTo(-s * 0.85, -s * 0.8);
+    ctx.lineTo(s * 0.85, -s * 0.8);
+    ctx.lineTo(s * 0.85, s * 0.1);
+    ctx.quadraticCurveTo(s * 0.6, s * 0.75, 0, s);
+    ctx.quadraticCurveTo(-s * 0.6, s * 0.75, -s * 0.85, s * 0.1);
+    ctx.closePath();
+    ctx.fillStyle = g;
+    ctx.fill();
+    ctx.lineWidth = 8;
+    ctx.strokeStyle = '#000';
+    ctx.stroke();
+    ctx.font = `${Math.round(size * 0.42)}px ${PIXEL}`;
+    ctx.fillStyle = '#fff';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(name[0], 4, -s * 0.05);
+  }
+  ctx.font = `800 ${Math.round(size * 0.26)}px ${SPORT}`;
+  ctx.fillStyle = color;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(name, 0, size * 0.78);
+  ctx.restore();
+}
+
+/** Ranked: the ladder from Bronze to Pokémon Master, stamped ONE WEEK OR LESS. */
+function renderORanked(seg: Segment, t: number, a: number) {
+  ctx.fillStyle = '#0a0620';
+  ctx.fillRect(0, 0, W, H);
+  const glow = ctx.createRadialGradient(W / 2, 470, 60, W / 2, 470, 900);
+  glow.addColorStop(0, 'rgba(139,92,246,0.4)');
+  glow.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = glow;
+  ctx.fillRect(0, 0, W, H);
+  jamText('RANKED', W / 2, 140, 150, { scale: a < 0.2 ? easeOutBack(a / 0.2) : 1 });
+  RANK_TIERS.forEach(([name, color], i) => {
+    const at = 0.35 + i * 0.17;
+    if (a < at) return;
+    once(`ork${i}`, t, seg.t0 + at, () => cue(t, i === 5 ? 'slam' : 'badge'));
+    tierBadge(W / 2 + (i - 2.5) * 290, 440, 190, name, color, easeOutBack(clamp01((a - at) / 0.2)));
+  });
+  const stampAt = 1.75;
+  if (a > stampAt) {
+    once('ork-stamp', t, seg.t0 + stampAt, () => { flash = 0.25; cue(t, 'slam'); cue(t, 'crowd_big'); });
+    const p = clamp01((a - stampAt) / 0.18);
+    const s = 2.6 - 1.6 * p;
+    const shake = p >= 1 && a < stampAt + 0.45 ? (Math.random() - 0.5) * 16 : 0;
+    ctx.save();
+    ctx.translate(W / 2 + shake, 745 + shake);
+    ctx.rotate(-0.05);
+    ctx.scale(s, s);
+    ctx.globalAlpha = 0.4 + 0.6 * p;
+    ctx.lineWidth = 12;
+    ctx.strokeStyle = '#e3350d';
+    ctx.strokeRect(-560, -95, 1120, 190);
+    ctx.font = `76px ${PIXEL}`;
+    ctx.fillStyle = '#ff5a3c';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('IN ONE WEEK', 0, -32);
+    ctx.font = `800 64px ${SPORT}`;
+    ctx.fillStyle = '#f8f8f0';
+    ctx.fillText('OR LESS', 0, 52);
+    ctx.restore();
+  }
+  if (a > 2.4) plainText('5 PLACEMENT MATCHES. THEN CLIMB TO POKéMON MASTER.', W / 2, 980, 56, '#ffcb05');
+}
+
+/** A foil booster pack: crimped ends, a holo sheen and a question mark. */
+function boosterPack(x: number, y: number, s: number, rot: number, t: number, glow: number) {
+  const pw = 260;
+  const ph = 400;
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(rot);
+  ctx.scale(s, s);
+  if (glow > 0) {
+    ctx.shadowColor = `rgba(255,203,5,${glow})`;
+    ctx.shadowBlur = 80 * glow;
+  }
+  const g = ctx.createLinearGradient(-pw / 2, -ph / 2, pw / 2, ph / 2);
+  const hue = (t * 120) % 360;
+  g.addColorStop(0, `hsl(${hue}, 80%, 55%)`);
+  g.addColorStop(0.35, '#2a1a5e');
+  g.addColorStop(0.65, '#14102e');
+  g.addColorStop(1, `hsl(${(hue + 140) % 360}, 80%, 50%)`);
+  ctx.beginPath();
+  // Crimped top and bottom.
+  const teeth = 13;
+  ctx.moveTo(-pw / 2, -ph / 2 + 10);
+  for (let i = 0; i <= teeth; i++) ctx.lineTo(-pw / 2 + (i * pw) / teeth, -ph / 2 + (i % 2 ? 0 : 10));
+  ctx.lineTo(pw / 2, ph / 2 - 10);
+  for (let i = teeth; i >= 0; i--) ctx.lineTo(-pw / 2 + (i * pw) / teeth, ph / 2 - (i % 2 ? 0 : 10));
+  ctx.closePath();
+  ctx.fillStyle = g;
+  ctx.fill();
+  ctx.shadowBlur = 0;
+  ctx.lineWidth = 6;
+  ctx.strokeStyle = '#000';
+  ctx.stroke();
+  // Holo sheen.
+  const sx = ((t * 260) % (pw * 2.4)) - pw * 1.2;
+  ctx.save();
+  ctx.clip();
+  ctx.globalCompositeOperation = 'lighter';
+  const sh = ctx.createLinearGradient(sx - 60, 0, sx + 60, 0);
+  sh.addColorStop(0, 'rgba(255,255,255,0)');
+  sh.addColorStop(0.5, 'rgba(255,255,255,0.35)');
+  sh.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = sh;
+  ctx.fillRect(-pw / 2, -ph / 2, pw, ph);
+  ctx.restore();
+  ctx.font = `30px ${PIXEL}`;
+  ctx.fillStyle = '#ffcb05';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('POKé JAM', 0, -ph / 2 + 60);
+  ctx.font = `150px ${PIXEL}`;
+  ctx.fillStyle = '#000';
+  ctx.fillText('?', 8, 28);
+  ctx.fillStyle = '#f8f8f0';
+  ctx.fillText('?', 0, 20);
+  ctx.restore();
+}
+
+/** Pack Battles: three foil packs shake, the middle one bursts into mystery silhouettes. Coming soon. */
+function renderOPacks(seg: Segment, t: number, a: number) {
+  ctx.fillStyle = '#05060f';
+  ctx.fillRect(0, 0, W, H);
+  // Light rays turning behind the packs.
+  ctx.save();
+  ctx.translate(W / 2, 520);
+  ctx.rotate(a * 0.4);
+  for (let i = 0; i < 16; i++) {
+    ctx.rotate((Math.PI * 2) / 16);
+    ctx.fillStyle = i % 2 ? 'rgba(122,92,246,0.10)' : 'rgba(255,203,5,0.07)';
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.lineTo(-90, -1200);
+    ctx.lineTo(90, -1200);
+    ctx.fill();
+  }
+  ctx.restore();
+  jamText('PACK BATTLES', W / 2, 120, 140, { scale: a < 0.25 ? easeOutBack(a / 0.25) : 1 });
+  once('opk', t, seg.t0 + 0.05, () => { flash = 0.12; cue(t, 'slam'); });
+  const burst = 2.0;
+  const shake = a < burst ? Math.pow(clamp01(a / burst), 2) * 22 : 0;
+  const jit = () => (Math.random() - 0.5) * shake;
+  // The side packs slide off when the middle one bursts.
+  const away = clamp01((a - burst) / 0.35);
+  ctx.save();
+  ctx.globalAlpha = 1 - away;
+  boosterPack(W / 2 - 400 - away * 500 + jit(), 540 + jit(), 0.9, -0.2 - away * 0.5, t, 0);
+  boosterPack(W / 2 + 400 + away * 500 + jit(), 540 + jit(), 0.9, 0.2 + away * 0.5, t, 0);
+  ctx.restore();
+  if (a < burst) {
+    for (let i = 0; i < 4; i++) once(`opk-r${i}`, t, seg.t0 + 0.6 + i * 0.32, () => cue(t, 'tick'));
+    boosterPack(W / 2 + jit(), 520 + jit(), 1.1, 0, t, clamp01(a / burst));
+  } else {
+    once('opk-burst', t, seg.t0 + burst, () => { flash = 0.4; cue(t, 'slam'); cue(t, 'evolve'); cue(t, 'crowd_big'); });
+    const k = easeOutBack(clamp01((a - burst) / 0.3));
+    // Three mystery Pokémon, shown only as glowing outlines.
+    [[249, -330], [150, 0], [384, 330]].forEach(([dex, dx], i) => {
+      const s = getSprite(dex, false);
+      if (!s) return;
+      const h = (i === 1 ? 340 : 280) * k;
+      const w = (s.w / Math.max(s.w, s.h)) * h;
+      const hh = (s.h / Math.max(s.w, s.h)) * h;
+      const x = W / 2 + dx * k;
+      const y = 720 - (i === 1 ? 40 : 0) * k;
+      ctx.save();
+      ctx.shadowColor = '#ffcb05';
+      ctx.shadowBlur = 40;
+      ctx.filter = 'brightness(0)';
+      ctx.drawImage(s.img, x - w / 2, y - hh, w, hh);
+      ctx.restore();
+    });
+  }
+  if (a > 1.0) plainText('A NEW WAY TO BUILD A TEAM AND BATTLE', W / 2, 860, 56, '#f2f0e6');
+  if (a > burst + 0.3) jamText('COMING SOON', W / 2, 975, 96, { fill: '#f8f8f0' });
+}
+
 // ---------- shared ----------
 
 function pjam(x: number, y: number, size: number, pj: number) {
@@ -1394,6 +1866,13 @@ function renderSegment(seg: Segment, t: number, first: boolean) {
     case 'f-champs': renderFChamps(seg, t, a); break;
     case 't-title': renderTTitle(seg, t, a); break;
     case 't-num': renderTNum(seg as Segment & { rank?: number }, t, a); break;
+    case 'o-hook': renderOHook(seg, t, a); break;
+    case 'o-live': renderOLive(seg, t, a); break;
+    case 'o-match': renderOMatch(seg, t, a); break;
+    case 'o-room': renderORoom(seg, t, a); break;
+    case 'o-draft': renderODraft(seg, t, a); break;
+    case 'o-ranked': renderORanked(seg, t, a); break;
+    case 'o-packs': renderOPacks(seg, t, a); break;
     case 'clip': renderClip(seg, t, first); break;
   }
 }
@@ -1514,6 +1993,22 @@ export async function prepare(): Promise<{ frames: number; fps: number }> {
       add({ kind: 't-num', t0: t, t1: t + 0.8, rank } as Segment);
       add({ kind: 'clip', t0: t, t1: t + sec, plan: p, style: 'hero', rank, lower: label(p) });
     }
+    add({ kind: 'outro', t0: t, t1: t + 5.4 });
+    musicEnd = s[s.length - 1].t0 + 2.2;
+  } else if (CUT === 'online') {
+    add({ kind: 'o-hook', t0: t, t1: t + 3.0 });
+    add({ kind: 'logo', t0: t, t1: t + 2.2 });
+    musicStart = s[1].t0 + 0.3;
+    add({ kind: 'o-live', t0: t, t1: t + 3.2 });
+    add({ kind: 'o-match', t0: t, t1: t + 3.6 });
+    clip([['dunk']], 4.5, 2.8);
+    add({ kind: 'o-room', t0: t, t1: t + 3.2 });
+    add({ kind: 'o-draft', t0: t, t1: t + 3.8 });
+    clip([['block'], ['buzzer']], 3.8, 2.1);
+    add({ kind: 'o-ranked', t0: t, t1: t + 4.0 });
+    clip([['fire'], ['three']], 3.6, 1.6);
+    add({ kind: 'o-packs', t0: t, t1: t + 3.8 });
+    for (let i = 0; i < 3; i++) clip([['dunk']], 1, 0.7, false, 'montage');
     add({ kind: 'outro', t0: t, t1: t + 5.4 });
     musicEnd = s[s.length - 1].t0 + 2.2;
   } else {
