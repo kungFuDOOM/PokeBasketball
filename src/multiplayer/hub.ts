@@ -17,7 +17,7 @@ if (MODE_PACK_BATTLES) MODES.push({ id: 'pack', title: 'Pack Battles', note: 'Co
 /** Modes that aren't in this build show as locked "Coming soon" tiles: no button handler, no import, no navigation. */
 const LOCKED: { title: string; note: string }[] = [];
 if (!MODE_RANKED) LOCKED.push({ title: 'Ranked', note: 'Placement matches and tiers.' });
-if (!MODE_PACK_BATTLES) LOCKED.push({ title: 'Pack Battles', note: 'A new way to build a team and battle.' });
+if (!MODE_PACK_BATTLES) LOCKED.push({ title: 'Pack Battles', note: 'Preset, evenly matched teams. Pure skill.' });
 
 // Each mode's chunk is requested once, as soon as the hub opens, so the first tap rarely waits on the network.
 const loaded = new Map<string, Promise<OpenMode>>();
