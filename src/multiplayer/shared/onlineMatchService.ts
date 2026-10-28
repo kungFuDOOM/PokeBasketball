@@ -3,11 +3,13 @@
 import { MODE_RANKED } from '../../config/features';
 import type { DraftView } from './draft';
 import { counted, outcomeBetween, parseProfile, type ServerRank } from '../ranked/serverRank';
+import { isBusy } from './capacity';
+import { RateLimit, backoffMs, jitter, singleFlight, sleep } from './throttle';
 import type { MatchResult, MatchService, Opponent, Queue, ReportOutcome } from './matchService';
 
 /** The slice of the Supabase client this service uses (lets tests pass a fake). */
 export interface RpcClient {
-  rpc(fn: string, args?: Record<string, unknown>): PromiseLike<{ data: unknown; error: { message: string } | null }>;
+  rpc(fn: string, args?: Record<string, unknown>): PromiseLike<{ data: unknown; error: { message: string; code?: string } | null; status?: number }>;
 }
 
 export interface OnlineMatch {
@@ -24,6 +26,8 @@ export interface OnlineMatch {
   game: { seed: number; quarterLen: number; rosters?: [number[], number[]] | null };
   /** Each side's registered evidence key (host, guest), or null while not registered yet. */
   keys: [string | null, string | null];
+  /** 'active' while it's on; 'void' once a player left (or the server called it off), 'done' once it has a result. */
+  status?: string;
 }
 
 /** Why a player reports an opponent (the server's list). */
@@ -35,24 +39,63 @@ export interface OnlineOpponent extends Opponent {
   mySide: 0 | 1;
 }
 
-export class OnlineError extends Error {}
+/** The room the host was waiting in is over: the friend left, it was closed, or nobody joined in time. */
+export class RoomGoneError extends Error {
+  name = 'RoomGoneError';
+}
+
+const aborted = () => new DOMException('aborted', 'AbortError');
+const stopIfAborted = (signal?: AbortSignal) => { if (signal?.aborted) throw aborted(); };
+
+/** A refusal from the server. `code` and `status` (HTTP) are kept so capacity limits can be told from real errors (capacity.ts). */
+export class OnlineError extends Error {
+  constructor(message: string, public code?: string, public status?: number) {
+    super(message);
+  }
+}
 
 const POLL_MS = 2000;
 /** After reporting a Ranked result, wait this long for the other player's report before giving up on showing the rating change. */
 const SETTLE_MS = 30_000;
-const sleep = (ms: number, signal?: AbortSignal) => new Promise<void>((res, rej) => {
-  const t = setTimeout(res, ms);
-  signal?.addEventListener('abort', () => { clearTimeout(t); rej(new DOMException('aborted', 'AbortError')); }, { once: true });
-});
+/** A poll that hits a capacity limit is retried this many times (backoff with jitter) before it is reported. */
+const POLL_RETRIES = 2;
+/** Room-code tries allowed per minute, so a code can't be guessed by hammering the join button. */
+const JOIN_TRIES = 6;
+const JOIN_WINDOW_MS = 60_000;
+/**
+ * A page-exit request is warmed up again after this long (the browser keeps the preflight answer for an hour; a match
+ * started within 20 minutes of a warm-up still has 40 minutes of it).
+ */
+const WARM_MS = 20 * 60_000;
+/** No match has this id and no room has this code: the warm-up calls change nothing on the server. */
+const NO_MATCH = '00000000-0000-0000-0000-000000000000';
+const NO_ROOM = '';
+/** A server without the RPC (an older migration set): the client stops asking. */
+const missingRpc = (e: unknown) => e instanceof OnlineError && /PGRST202|42883/.test(e.code ?? '');
 
 export class SupabaseMatchService implements MatchService {
   /**
    * @param queues the queues this service may play. Social builds pass ['social'] only, so this code path can
    * never submit a rated result (the server enforces the same: Social matches never reach the rating RPC).
    */
-  constructor(private db: RpcClient, private userId: string, private queues: readonly Queue[] = ['social'],
+  constructor(private db: RpcClient, readonly userId: string, private queues: readonly Queue[] = ['social'],
     /** Runs the human check when the server asks for one (human.ts); `force` after a "human check needed" refusal. */
-    private human: (force: boolean) => Promise<void> = async () => {}) {}
+    private human: (force: boolean) => Promise<void> = async () => {},
+    /** Sends an RPC that outlives the page (fetch keepalive, supabase.ts keepaliveRpc); best effort, no answer. */
+    private beacon: (fn: string, args?: Record<string, unknown>) => void | Promise<void> = () => {}) {}
+
+  private warmedAt = new Map<string, number>();
+  /**
+   * Sends a page-exit request once now, while the page is alive, so the browser has its CORS preflight cached: a
+   * closing page gets the preflight out but not the request behind it (supabase.ts rpcBeacon; measured in Chrome).
+   * `args` must make the call a no-op. At most once per WARM_MS per RPC.
+   */
+  private warm(fn: string, args?: Record<string, unknown>): Promise<void> {
+    const at = this.warmedAt.get(fn);
+    if (at !== undefined && Date.now() - at < WARM_MS) return Promise.resolve();
+    this.warmedAt.set(fn, Date.now());
+    return Promise.resolve(this.beacon(fn, args));
+  }
 
   /** My rating as of just before the current Ranked match, so the result screen can show what the match changed. */
   private rankBefore: ServerRank | null = null;
@@ -69,11 +112,36 @@ export class SupabaseMatchService implements MatchService {
     }
   }
 
-  private async call<T>(fn: string, args?: Record<string, unknown>): Promise<T> {
-    const { data, error } = await this.db.rpc(fn, args);
-    if (error) throw new OnlineError(error.message);
-    return data as T;
+  /** One RPC. With `retries`, a capacity refusal (429/503, too many connections) is retried after a growing, jittered pause. */
+  private async call<T>(fn: string, args?: Record<string, unknown>, o: { retries?: number; signal?: AbortSignal } = {}): Promise<T> {
+    for (let n = 1; ; n++) {
+      const { data, error, status } = await this.db.rpc(fn, args);
+      if (!error) return data as T;
+      const err = new OnlineError(error.message, error.code, status);
+      if (n > (o.retries ?? 0) || !isBusy(err)) throw err;
+      await sleep(backoffMs(n, 1000, 6000), o.signal);
+    }
   }
+
+  private lastName: { want: string; kept: string } | null = null;
+  private naming = singleFlight(async (want: string) => {
+    const p = await this.call<{ trainer_name?: string } | null>('pokejam_ensure_profile', { p_name: want });
+    const kept = p?.trainer_name ?? 'Trainer';
+    this.lastName = { want, kept };
+    return kept;
+  }, (want) => want);
+  private reporting = singleFlight((matchId: string, reason: ReportReason, note?: string) =>
+    this.call<boolean>('pokejam_report_player', { p_match: matchId, p_reason: reason, p_note: note?.slice(0, 200) ?? null }), (matchId) => matchId);
+  private blocking = singleFlight((matchId: string) => this.call('pokejam_block_player', { p_match: matchId }), (matchId) => matchId);
+  private roomMaking = singleFlight((quarterLen: number) =>
+    this.gated(() => this.call<string>('pokejam_create_room', { p_quarter_len: quarterLen <= 60 ? 60 : 120 })));
+  private codeTries = new RateLimit(JOIN_TRIES, JOIN_WINDOW_MS);
+  private joining = singleFlight(async (clean: string) => {
+    if (!this.codeTries.take()) throw new OnlineError(`Too many tries. Wait ${this.codeTries.waitSeconds()} seconds and try again.`);
+    const id = await this.gated(() => this.call<string | null>('pokejam_join_room', { p_code: clean }));
+    if (!id) throw new OnlineError('room not found');
+    return this.matchInfo(id);
+  }, (clean) => clean);
 
   private allow(queue: Queue) {
     if (!this.queues.includes(queue)) throw new OnlineError(`${queue} online play is not enabled`);
@@ -81,8 +149,9 @@ export class SupabaseMatchService implements MatchService {
 
   /** Sets my trainer name; returns the name the server kept (a name it doesn't allow becomes "Trainer"). */
   async setName(name: string): Promise<string> {
-    const p = await this.call<{ trainer_name?: string } | null>('pokejam_ensure_profile', { p_name: name.trim().slice(0, 40) || 'Trainer' });
-    return p?.trainer_name ?? 'Trainer';
+    const want = name.trim().slice(0, 40) || 'Trainer';
+    // Already set to this name on this account: no request (every Social action used to repeat it).
+    return this.lastName?.want === want ? this.lastName.kept : this.naming(want);
   }
 
   /** My rating as the server holds it (my profile row; nothing here is computed on the client). */
@@ -95,8 +164,8 @@ export class SupabaseMatchService implements MatchService {
   async matchInfo(id: string): Promise<OnlineMatch> {
     const m = await this.call<{
       id: string; queue: Queue; host: string; guest: string | null; host_name: string; guest_name: string | null; seed: number | null; quarter_len: number | null;
-      host_key?: string | null; guest_key?: string | null; host_roster?: number[] | null; guest_roster?: number[] | null;
-    } | null>('pokejam_match_info', { p_match: id });
+      host_key?: string | null; guest_key?: string | null; host_roster?: number[] | null; guest_roster?: number[] | null; status?: string;
+    } | null>('pokejam_match_info', { p_match: id }, { retries: POLL_RETRIES });
     if (!m || !m.guest) throw new OnlineError('match not found');
     if (m.seed === null || m.seed === undefined) throw new OnlineError('This match was made by an older server. Refresh to update.');
     const side: 0 | 1 = m.host === this.userId ? 0 : 1;
@@ -109,12 +178,32 @@ export class SupabaseMatchService implements MatchService {
         rosters: m.host_roster?.length === 5 && m.guest_roster?.length === 5 ? [m.host_roster, m.guest_roster] : null,
       },
       keys: [m.host_key ?? null, m.guest_key ?? null],
+      status: m.status,
     };
+  }
+
+  /** The match's status as the server has it ('active', 'void', 'done'), or null if it isn't mine. */
+  async matchStatus(id: string): Promise<string | null> {
+    const s = await this.call<{ status?: string } | null>('pokejam_match_status', { p_match: id }, { retries: POLL_RETRIES });
+    return s?.status ?? null;
+  }
+
+  /**
+   * The server handed me a match. If the search (or room) was cancelled meanwhile, the match is left on the server, so
+   * the other player isn't kept waiting, and this throws an AbortError: a cancelled search never starts a match.
+   */
+  private async claim(id: string, signal?: AbortSignal): Promise<OnlineMatch> {
+    if (!signal?.aborted) {
+      const m = await this.matchInfo(id);
+      if (!signal?.aborted) return this.inMatch(m);
+    }
+    await this.call('pokejam_leave_match', { p_match: id }).catch(() => {});
+    throw aborted();
   }
 
   /** The Social draft as I see it (the server starts it on the first look, and settles any picks whose time ran out). */
   draftState(matchId: string): Promise<DraftView> {
-    return this.call<DraftView>('pokejam_draft_state', { p_match: matchId });
+    return this.call<DraftView>('pokejam_draft_state', { p_match: matchId }, { retries: POLL_RETRIES });
   }
 
   /** Make my draft pick; the server checks it's my turn, it's free, and I still need its position. */
@@ -132,16 +221,26 @@ export class SupabaseMatchService implements MatchService {
     return this.call<boolean>('pokejam_submit_evidence', { p_match: matchId, p_evidence: packed });
   }
 
-  /** Quick match: polls the queue until paired or `signal` aborts (then leaves the queue). */
+  /**
+   * Quick match: polls the queue until paired or `signal` aborts (then leaves the queue). Every poll is the server's
+   * heartbeat for my queue row. Cancelled at any point, even with a request in flight, it never returns a match.
+   */
   async quickMatch(queue: Queue, signal?: AbortSignal): Promise<OnlineMatch> {
     this.allow(queue);
     if (MODE_RANKED && queue === 'ranked') this.rankBefore = await this.myRank();
+    // Gets leaving on page exit ready (warm). Before searching, leaving the queue is a no-op apart from calling off a
+    // match made for me that I never opened, which is stale by now; awaited, so it can't land after a new pairing.
+    await this.warm('pokejam_leave_queue');
     try {
       // The pass is checked before the first search; later polls only re-check if the server refuses.
       for (let first = true; ; first = false) {
-        const id = await this.gated(() => this.call<string | null>('pokejam_find_match', { p_queue: queue }), first);
-        if (id) return await this.matchInfo(id);
-        await sleep(POLL_MS, signal);
+        stopIfAborted(signal);
+        const id = await this.gated(() => {
+          stopIfAborted(signal); // the human check can take a while
+          return this.call<string | null>('pokejam_find_match', { p_queue: queue }, { retries: POLL_RETRIES, signal });
+        }, first);
+        if (id) return await this.claim(id, signal);
+        await sleep(jitter(POLL_MS), signal);
       }
     } catch (e) {
       if (signal?.aborted) await this.call('pokejam_leave_queue').catch(() => {});
@@ -150,8 +249,10 @@ export class SupabaseMatchService implements MatchService {
   }
 
   /** Play a friend: make a room (1- or 2-minute quarters) and get its 6-character code. */
-  createRoom(quarterLen = 120): Promise<string> {
-    return this.gated(() => this.call<string>('pokejam_create_room', { p_quarter_len: quarterLen <= 60 ? 60 : 120 }));
+  async createRoom(quarterLen = 120): Promise<string> {
+    const code = await this.roomMaking(quarterLen <= 60 ? 60 : 120);
+    void this.warm('pokejam_close_room', { p_code: NO_ROOM }); // for closeRoomOnExit
+    return code;
   }
 
   /** Host: give up on a room nobody has joined yet. */
@@ -159,37 +260,97 @@ export class SupabaseMatchService implements MatchService {
     await this.call('pokejam_close_room', { p_code: code }).catch(() => {});
   }
 
-  /** Host: wait for a friend to join the room. */
+  /** Host: the page is going away; close the room with a request that outlives it. */
+  closeRoomOnExit(code: string) {
+    this.beacon('pokejam_close_room', { p_code: code });
+  }
+
+  /** Host: has my friend joined (the match id), is the room still open (null), or is it over (RoomGoneError)? */
+  private async roomState(code: string, signal?: AbortSignal): Promise<string | null> {
+    if (!this.oldRoomPoll) {
+      try {
+        const r = await this.call<{ match?: string | null; status?: string } | null>('pokejam_room_state', { p_code: code }, { retries: POLL_RETRIES, signal });
+        if (r?.match) return r.match;
+        if (r?.status === 'waiting') return null;
+        throw new RoomGoneError(r?.status === 'expired' ? 'Nobody joined this room in 30 minutes, so it closed. Make a new room to play.'
+          : 'This room is closed: your friend left before the game started. Make a new room to play.');
+      } catch (e) {
+        // A server without pokejam_room_state (migration 20261104 not applied yet): poll the old way.
+        if (!missingRpc(e)) throw e;
+        this.oldRoomPoll = true;
+      }
+    }
+    return this.call<string | null>('pokejam_room_match', { p_code: code }, { retries: POLL_RETRIES, signal });
+  }
+  private oldRoomPoll = false;
+
+  /** Host: wait for a friend to join the room. Cancelled at any point, it never returns a match. */
   async waitForFriend(code: string, signal?: AbortSignal): Promise<OnlineMatch> {
     for (;;) {
-      const id = await this.call<string | null>('pokejam_room_match', { p_code: code });
-      if (id) return this.matchInfo(id);
-      await sleep(POLL_MS, signal);
+      stopIfAborted(signal);
+      const id = await this.roomState(code, signal);
+      if (id) return this.claim(id, signal);
+      await sleep(jitter(POLL_MS), signal);
     }
   }
 
-  async joinRoom(code: string): Promise<OnlineMatch> {
+  /** Join a friend's room. If `signal` aborts before the join comes back, the match is left and this throws AbortError. */
+  async joinRoom(code: string, signal?: AbortSignal): Promise<OnlineMatch> {
     const clean = code.toUpperCase().replace(/[^A-Z0-9]/g, '');
     if (clean.length !== 6) throw new OnlineError('Room codes are 6 letters and numbers.');
-    const id = await this.gated(() => this.call<string | null>('pokejam_join_room', { p_code: clean }));
-    if (!id) throw new OnlineError('room not found');
-    return this.matchInfo(id);
+    stopIfAborted(signal);
+    const m = await this.joining(clean);
+    if (signal?.aborted) {
+      await this.call('pokejam_leave_match', { p_match: m.id }).catch(() => {});
+      throw aborted();
+    }
+    return this.inMatch(m);
   }
 
-  /** Report the other player in a match. False if this match was already reported. */
+  /** A match is starting (draft, then game): get its page-exit leave ready to be delivered. */
+  private inMatch(m: OnlineMatch): OnlineMatch {
+    void this.warm('pokejam_leave_match', { p_match: NO_MATCH });
+    return m;
+  }
+
+  /** Report the other player in a match. False if this match was already reported. A double-tap sends one request. */
   report(matchId: string, reason: ReportReason, note?: string): Promise<boolean> {
-    return this.call<boolean>('pokejam_report_player', { p_match: matchId, p_reason: reason, p_note: note?.slice(0, 200) ?? null });
+    return this.reporting(matchId, reason, note);
   }
 
   /** Block the other player in a match: you won't be matched with them again. */
   async block(matchId: string) {
-    await this.call('pokejam_block_player', { p_match: matchId });
+    await this.blocking(matchId);
   }
 
   /** Leave a match or room without a result. */
   async leave(matchId: string | null) {
     await this.call('pokejam_leave_queue').catch(() => {});
     if (matchId) await this.call('pokejam_leave_match', { p_match: matchId }).catch(() => {});
+  }
+
+  /**
+   * The page is going away (closed, or hidden mid-search): leave the queue, or this match, with a request that
+   * outlives the page. Best effort; the server's heartbeats and cleanup cover what doesn't arrive. In a match I'm no
+   * longer queued (pairing took me out), so only the match is left: one request, already warmed up when it started.
+   */
+  leaveOnExit(matchId: string | null) {
+    if (matchId) void this.beacon('pokejam_leave_match', { p_match: matchId });
+    else void this.beacon('pokejam_leave_queue');
+  }
+
+  private noHeartbeat = false;
+  /**
+   * In-game heartbeat (migration 20261106): tells the server I'm still playing. A finished-draft match where both
+   * players have sent one and then both stopped is called off by the cleanup. A server without it: stop asking.
+   */
+  async alive(matchId: string): Promise<void> {
+    if (this.noHeartbeat) return;
+    try {
+      await this.call('pokejam_match_alive', { p_match: matchId });
+    } catch (e) {
+      if (missingRpc(e)) this.noHeartbeat = true;
+    }
   }
 
   /** MatchService: a quick match with no way to cancel (the Social screen uses quickMatch directly). */
@@ -219,8 +380,8 @@ export class SupabaseMatchService implements MatchService {
   private async settle(matchId: string): Promise<ReportOutcome> {
     const until = Date.now() + SETTLE_MS;
     for (;;) {
-      await sleep(POLL_MS);
-      const s = await this.call<{ status?: string } | null>('pokejam_match_status', { p_match: matchId });
+      await sleep(jitter(POLL_MS));
+      const s = await this.call<{ status?: string } | null>('pokejam_match_status', { p_match: matchId }, { retries: POLL_RETRIES });
       if (s?.status === 'done') return this.rated();
       if (!s || s.status === 'void') return { queue: 'ranked', status: 'void' };
       if (Date.now() >= until) return { queue: 'ranked', status: 'pending' };

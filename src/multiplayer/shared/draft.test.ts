@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { POKEMON, POSITIONS } from '../../data/pokemon';
 import { Game } from '../../game/game';
 import { stateHash } from '../../game/sync';
-import { canPick, draftSide, draftedRosters, teamOf, type DraftView } from './draft';
+import { GONE_AFTER, ROOM_WAIT, canPick, draftSide, draftedRosters, matchOver, opponentGone, teamOf, waitingForOpponent, type DraftView } from './draft';
 import { buildConfig, setupFor } from './netplay';
 import type { OnlineMatch } from './onlineMatchService';
 import { gameConfigFor } from './winnerCheck';
@@ -63,5 +63,36 @@ describe('the Social draft, client side (#28)', () => {
     const rows = [...byDex].sort((a, b) => a[0] - b[0]);
     const game = [...POKEMON].sort((a, b) => a.dex - b.dex).map((m) => [m.dex, m.pos]);
     expect(rows).toEqual(game);
+  });
+});
+
+describe('the draft and the other player (#5, #6)', () => {
+  it('a voided match ends the draft; an older server (no status) never does by itself', () => {
+    expect(matchOver(view({ status: 'void' }))).toBe(true);
+    expect(matchOver(view({ status: 'done' }))).toBe(true);
+    expect(matchOver(view({ status: 'active' }))).toBe(false);
+    expect(matchOver(view())).toBe(false);
+  });
+
+  it('quick match: gone after 25 s quiet, or 25 s without ever showing up', () => {
+    expect(opponentGone(view({ opponent_seen_ago: 10 }), 100)).toBe(false);
+    expect(opponentGone(view({ opponent_seen_ago: GONE_AFTER + 1 }), 0)).toBe(true);
+    expect(opponentGone(view({ opponent_seen_ago: null }), GONE_AFTER - 1)).toBe(false);
+    expect(opponentGone(view({ opponent_seen_ago: null }), GONE_AFTER + 1)).toBe(true);
+  });
+
+  it("a room waits 2 minutes for the host (sending the code from Messages) before the first pick, then 25 s as usual", () => {
+    expect(ROOM_WAIT).toBeGreaterThanOrEqual(120);
+    expect(opponentGone(view({ opponent_seen_ago: null }), 60, true)).toBe(false);
+    expect(opponentGone(view({ opponent_seen_ago: null }), ROOM_WAIT - 1, true)).toBe(false);
+    expect(opponentGone(view({ opponent_seen_ago: null }), ROOM_WAIT + 1, true)).toBe(true);
+    expect(opponentGone(view({ opponent_seen_ago: 90 }), 200, true)).toBe(false); // backgrounded after a first look
+    expect(opponentGone(view({ opponent_seen_ago: GONE_AFTER + 1, turn: 3 }), 200, true)).toBe(true); // mid-draft: the usual rule
+  });
+
+  it('"waiting for" shows until the other player first opens the draft', () => {
+    expect(waitingForOpponent(view({ opponent_seen_ago: null }))).toBe(true);
+    expect(waitingForOpponent(view({ opponent_seen_ago: 0.5 }))).toBe(false);
+    expect(waitingForOpponent(view({ opponent_seen_ago: null, turn: 2 }))).toBe(false);
   });
 });

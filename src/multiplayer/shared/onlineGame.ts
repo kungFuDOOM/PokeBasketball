@@ -4,16 +4,20 @@ import type { Game } from '../../game/game';
 import { playGame, type PlayHandle } from '../../screens/play';
 import { resultsScreen } from '../../screens/results';
 import { esc } from '../../util';
+import { classify } from './capacity';
 import { Lockstep } from './lockstep';
 import { panel } from './matchFlow';
 import type { ReportOutcome } from './matchService';
 import { pack } from './evidence';
-import { connect, iceFor, type Connected, type MatchLink } from './netplay';
+import { MatchOverError, connect, iceFor, type Connected, type MatchLink } from './netplay';
 import type { OnlineMatch, OnlineOpponent, ReportReason, SupabaseMatchService } from './onlineMatchService';
+import { onPageExit } from './pageExit';
 import type { ModeContext } from './types';
 
 /** No word from the other player for this long ends the game. */
 const PEER_TIMEOUT_MS = 15_000;
+/** How often a player in the game tells the server they're still there (service.alive). */
+const HEARTBEAT_MS = 30_000;
 
 /** Dev builds only: ?ql=10 plays 10-second quarters (used by the two-browser end-to-end test). Otherwise the server's. */
 function quarterLenOverride(): number | undefined {
@@ -41,6 +45,14 @@ export async function playOnline(ctx: ModeContext, o: OnlineGameOptions) {
   root.innerHTML = panel('CONNECTING', `Connecting to ${match.opponent.name}…`, `
     <div class="actions center"><button class="btn ghost" data-a="cancel">Cancel</button></div>`);
   root.querySelector('[data-a="cancel"]')!.addEventListener('click', () => abort.abort());
+  // Closing the tab while connecting or playing: say bye and leave the match at once (the other player otherwise
+  // waits out the connection timeout). Off once the game has finished, so a result being settled isn't voided.
+  // The leave goes first: a send on a closing data channel can throw, and the leave is what calls the match off.
+  let sayBye = () => {};
+  const offExit = onPageExit(() => {
+    service.leaveOnExit(match.id);
+    try { sayBye(); } catch { /* the channel is already going */ }
+  });
 
   let link: MatchLink;
   let cfg;
@@ -49,9 +61,16 @@ export async function playOnline(ctx: ModeContext, o: OnlineGameOptions) {
     conn = await connect(o.sb, match, quarterLenOverride(), abort.signal, service);
     ({ cfg, link } = conn);
   } catch (e) {
+    // Before leaving (which voids the match): did the other player already leave? Then that's what happened, not a
+    // busy server (the channel refuses a match that's over).
+    const gone = e instanceof MatchOverError
+      || ((e as Error).name !== 'AbortError' && (await service.matchStatus(match.id).catch(() => 'active')) !== 'active');
+    offExit();
     await service.leave(match.id);
     if ((e as Error).name === 'AbortError') return ctx.back();
-    return message(ctx, 'NO CONNECTION', (e as Error).message);
+    if (gone) return message(ctx, 'OPPONENT LEFT', `${match.opponent.name} left before the game started. No result was recorded.`);
+    const p = classify(e);
+    return message(ctx, p.kind === 'busy' ? 'ONLINE IS BUSY' : 'NO CONNECTION', p.message);
   }
 
   // Move gameplay to a relayed direct link if the server hands out TURN credentials (stays on Realtime otherwise).
@@ -68,9 +87,15 @@ export async function playOnline(ctx: ModeContext, o: OnlineGameOptions) {
   let ls: Lockstep | null = null;
   let handle: PlayHandle | null = null;
   let over = false;
+  sayBye = () => ls?.bye();
+  // While the game is on, a heartbeat: if both players vanish without a leave arriving, the server calls it off.
+  void service.alive(match.id);
+  const beat = setInterval(() => void service.alive(match.id), HEARTBEAT_MS);
   const end = async (title: string, note: string) => {
     if (over) return;
     over = true;
+    offExit();
+    clearInterval(beat);
     clearInterval(watch);
     handle?.stop();
     ls?.bye();
@@ -100,6 +125,8 @@ export async function playOnline(ctx: ModeContext, o: OnlineGameOptions) {
   async function finish(g: Game) {
     if (over) return;
     over = true;
+    offExit();
+    clearInterval(beat);
     clearInterval(watch);
     const mine = g.score[match.side];
     const theirs = g.score[1 - match.side];
@@ -166,16 +193,19 @@ function reportScreen(ctx: ModeContext, service: SupabaseMatchService, match: On
     try {
       say((await service.report(match.id, b.dataset.r as ReportReason)) ? `Thanks. ${name} was reported and a person will look at it.` : 'You already reported this match.');
     } catch (e) {
-      say((e as Error).message);
+      root.querySelectorAll<HTMLButtonElement>('[data-r]').forEach((x) => (x.disabled = false));
+      say(classify(e).message);
     }
   }));
   root.querySelector<HTMLButtonElement>('[data-a="block"]')!.addEventListener('click', async (e) => {
-    (e.currentTarget as HTMLButtonElement).disabled = true;
+    const btn = e.currentTarget as HTMLButtonElement;
+    btn.disabled = true;
     try {
       await service.block(match.id);
       say(`${name} is blocked. You won't be matched with them again.`);
     } catch (x) {
-      say((x as Error).message);
+      btn.disabled = false;
+      say(classify(x).message);
     }
   });
 }
