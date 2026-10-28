@@ -27,6 +27,9 @@ export interface NetStatsRow {
   client_version: string;
 }
 
+/** Input batches over Realtime (100 ms apart) that still count as "no fallback": about a second, e.g. the hand-over at tip-off. */
+const REALTIME_BATCHES = 10;
+
 const r1 = (x: number) => Math.round(x * 10) / 10;
 
 export function netStatsRow(matchId: string, userId: string, link: MatchLink, ls: Lockstep | null, rtt: RttStats, durationS: number): NetStatsRow {
@@ -37,7 +40,7 @@ export function netStatsRow(matchId: string, userId: string, link: MatchLink, ls
     rtt_median_ms: rtt.samples ? r1(rtt.median) : null,
     rtt_p95_ms: rtt.samples ? r1(rtt.p95) : null,
     relay_protocol: link.relayProtocol,
-    used_realtime_fallback: link.realtimeInputs > 0,
+    used_realtime_fallback: link.realtimeInputs > REALTIME_BATCHES,
     stalls_per_min: durationS >= 5 ? r1((stalls * 60) / durationS) : 0,
     stalls,
     duration_s: Math.round(durationS),

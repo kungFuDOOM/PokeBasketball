@@ -18,7 +18,7 @@ import type { ModeContext } from './types';
 /** No word from the other player for this long ends the game. */
 const PEER_TIMEOUT_MS = 15_000;
 /** How long to wait for the direct link to open before measuring the connection (it stays on Realtime if it doesn't). */
-const DIRECT_WAIT_MS = 3000;
+const DIRECT_WAIT_MS = 6000;
 /** How often a player in the game tells the server they're still there (service.alive). */
 const HEARTBEAT_MS = 30_000;
 
@@ -148,7 +148,13 @@ export async function playOnline(ctx: ModeContext, o: OnlineGameOptions) {
   handle = playGame(root, cfg, audio, (g) => void finish(g), () => void end('LEFT GAME', 'You left the game. No result was recorded.'), {
     online: {
       viewTeam: match.side,
-      start: (g) => { ls = new Lockstep(g, link, { side: match.side, delay: startDelay }); startedAt = performance.now(); link.attach(ls); },
+      start: (g) => {
+        const l = (ls = new Lockstep(g, link, { side: match.side, delay: startDelay }));
+        startedAt = performance.now();
+        link.attach(l);
+        // Read-only counters for the lag tests (no ids or secrets).
+        Object.defineProperty(window, '__pokejamNet', { configurable: true, get: () => ({ stalls: l.stats.stalls, stallMs: Math.round(l.stats.stallMs), delay: l.delay, rtt: Math.round(link.pinger.smooth ?? 0) }) });
+      },
       ping: () => link.pinger.smooth,
       advance: (intent, dt) => ls!.advance(intent, dt),
       status: () => (ls && ls.waiting > 0.4 ? `Waiting for ${match.opponent.name}…` : null),

@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { Game } from '../../game/game';
 import { stateHash } from '../../game/sync';
-import { buildConfig, setupFor, wantsEvidence } from './netplay';
+import type { NetMsg } from './lockstep';
+import { MatchLink, buildConfig, setupFor, wantsEvidence } from './netplay';
 import { gameConfigFor } from './winnerCheck';
 import type { OnlineMatch } from './onlineMatchService';
 import { rostersFor } from './roster';
@@ -40,6 +41,58 @@ describe('the judge rebuilds the game that was played', () => {
       if (t % 300 === 0) expect(new Set(games.map(stateHash)).size, `tick ${t}`).toBe(1);
     }
     expect(games[0].cfg.difficulty).toBe(gameConfigFor(setup).difficulty);
+  });
+});
+
+describe('hand-over between the direct link and Realtime', () => {
+  function rig() {
+    const realtime: string[] = [];
+    const direct: string[] = [];
+    const ch = { send: (x: { payload: { k: string } }) => { realtime.push(x.payload.k); return Promise.resolve('ok'); } };
+    const link = new MatchLink(ch as never, {} as never);
+    const inner = link as unknown as { rtc: unknown; openedAt: number };
+    inner.rtc = { open: true, send: (m: { k: string }) => direct.push(m.k), close() {} };
+    inner.openedAt = performance.now();
+    return { link, realtime, direct, inner };
+  }
+  const input: NetMsg = { k: 'in', s: 0, r: [], a: 0 };
+
+  it('uses the direct link while it is heard from', () => {
+    const { link, realtime, direct } = rig();
+    link.send(input);
+    expect(direct).toEqual(['in']);
+    expect(realtime).toEqual([]);
+    expect(link.pace()).toBe(16);
+  });
+
+  it('a direct link that reads open but has gone silent (the peer dropped it) falls back to Realtime; pings still try it and a pong brings it back', () => {
+    const { link, realtime, direct, inner } = rig();
+    inner.openedAt = performance.now() - 5000; // opened long ago, nothing heard since
+    link.send(input);
+    expect(realtime).toEqual(['in']);
+    expect(direct).toEqual([]);
+    expect(link.pace()).toBe(100);
+    link.pinger.ping();
+    expect(direct).toEqual(['ping']);
+    link.deliver({ k: 'pong', n: 1, t: 0 }, 'direct');
+    link.send(input);
+    expect(direct).toEqual(['ping', 'in']);
+    expect(link.pace()).toBe(16);
+  });
+
+  it('a send that throws on the direct link goes over Realtime instead', () => {
+    const { link, realtime, inner } = rig();
+    (inner.rtc as { send: () => void }).send = () => { throw new Error('closing'); };
+    link.send(input);
+    expect(realtime).toEqual(['in']);
+  });
+
+  it('the peer saying its direct link is down closes ours', () => {
+    const { link, inner } = rig();
+    let closed = false;
+    (inner.rtc as { close: () => void }).close = () => { closed = true; };
+    link.signal({ k: 'down' });
+    expect(closed).toBe(true);
   });
 });
 

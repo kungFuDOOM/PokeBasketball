@@ -77,6 +77,10 @@ export const PACE_DIRECT_MS = 16;
 export const PACE_REALTIME_MS = 100;
 /** Give up on the direct link after this long and stay on Realtime. */
 const RTC_TIMEOUT_MS = 8000;
+/** The direct link is treated as dead (traffic goes over Realtime) after this long without hearing anything over it. */
+export const DIRECT_SILENT_MS = 2500;
+/** Unacknowledged inputs this long (ms) are also sent over Realtime. */
+const ACK_STALE_MS = 1000;
 
 /**
  * The live link to the other player: lockstep transport plus teardown. Starts on the private Realtime channel;
@@ -152,8 +156,23 @@ export class MatchLink implements Transport {
     return !!this.rtc?.open;
   }
 
+  /** Receive times (performance.now) per transport, and when the direct link opened. */
+  private rx = { direct: -Infinity, realtime: -Infinity };
+  private openedAt = -Infinity;
+
+  /**
+   * Is the direct link carrying traffic both ways? It can read "open" on our side after the other side has dropped it
+   * (the browser takes ~30 s to notice a dead relay path); then the peer sends over Realtime only, and our inputs
+   * sent into the dead link would never arrive. So the link counts as good only while we have heard from it lately.
+   * Pings keep going over it, and a pong coming back brings it back into use.
+   */
+  private directGood(): boolean {
+    if (!this.direct) return false;
+    return performance.now() - Math.max(this.rx.direct, this.openedAt) < DIRECT_SILENT_MS;
+  }
+
   pace(): number {
-    return this.direct ? PACE_DIRECT_MS : PACE_REALTIME_MS;
+    return this.directGood() ? PACE_DIRECT_MS : PACE_REALTIME_MS;
   }
 
   send(m: NetMsg) {
@@ -166,17 +185,32 @@ export class MatchLink implements Transport {
   }
 
   private transmit(m: NetMsg) {
-    if (this.rtc?.open) {
-      this.rtc.send(m);
-      this.sent.direct++;
-    } else {
+    // Probes always try the direct link when it is open (that is how a silent link is found to be alive again).
+    const probe = m.k === 'ping' || m.k === 'pong';
+    let viaDirect = probe ? this.direct : this.directGood();
+    if (viaDirect) {
+      try {
+        this.rtc!.send(m);
+        this.sent.direct++;
+      } catch {
+        viaDirect = false; // the channel is closing or its queue is full: Realtime carries this one
+      }
+    }
+    // Inputs the peer has not acknowledged for a second: the direct path may be broken one way (we hear them, they
+    // don't hear us). Repeat them on Realtime too, at Realtime's own pace.
+    const now = performance.now();
+    const hedge = viaDirect && m.k === 'in' && (this.ls?.ackStale() ?? 0) > ACK_STALE_MS && now - this.lastHedge >= PACE_REALTIME_MS;
+    if (hedge) this.lastHedge = now;
+    if (!viaDirect || hedge) {
       void this.ch.send({ type: 'broadcast', event: 'ls', payload: m });
       this.sent.realtime++;
-      if (m.k === 'in') this.realtimeInputs++;
+      if (m.k === 'in' && !hedge) this.realtimeInputs++;
     }
   }
+  private lastHedge = 0;
   /** Lockstep messages that arrive before the game is built are held until then. */
-  deliver(m: unknown) {
+  deliver(m: unknown, via: 'direct' | 'realtime' = 'realtime') {
+    this.rx[via] = performance.now();
     if (this.pinger.handle(m)) return;
     this.evidence?.received(m);
     if (this.ls) this.ls.receive(m);
@@ -189,6 +223,8 @@ export class MatchLink implements Transport {
 
   /** A signalling message for the direct link (it may arrive before we've set ours up). */
   signal(raw: unknown) {
+    // The peer's direct link failed: stop sending into ours (it can read "open" for ~30 s after the other end is gone).
+    if ((raw as { k?: unknown } | null)?.k === 'down') { this.rtc?.close(); return; }
     if (this.rtc) void this.rtc.handle(raw);
     else if (this.rtcEarly.length < 60) this.rtcEarly.push(raw);
   }
@@ -198,10 +234,15 @@ export class MatchLink implements Transport {
     if (this.rtc || typeof RTCPeerConnection === 'undefined') return;
     const rtc = new RtcLink(side, iceServers, (s) => void this.ch.send({ type: 'broadcast', event: 'rtc', payload: s }), policy);
     this.rtc = rtc;
-    rtc.onMessage = (m) => this.deliver(m);
-    rtc.onClose = () => { if (this.rtc === rtc) { this.rtc = null; this.gaveUp = true; } };
+    rtc.onMessage = (m) => this.deliver(m, 'direct');
+    rtc.onClose = () => {
+      if (this.rtc !== rtc) return;
+      this.rtc = null;
+      this.gaveUp = true;
+      if (this.openedAt > -Infinity) void this.ch.send({ type: 'broadcast', event: 'rtc', payload: { k: 'down' } });
+    };
     const giveUp = setTimeout(() => { if (!rtc.open) rtc.close(); }, RTC_TIMEOUT_MS);
-    rtc.onOpen = () => clearTimeout(giveUp);
+    rtc.onOpen = () => { clearTimeout(giveUp); this.openedAt = performance.now(); };
     for (const s of this.rtcEarly.splice(0)) void rtc.handle(s);
     void rtc.start().catch(() => rtc.close());
   }
@@ -360,7 +401,7 @@ export function connect(sb: SupabaseClient, match: OnlineMatch, quarterLen: numb
         peer = true;
         ready();
       });
-      c.on('broadcast', { event: 'ls' }, ({ payload }) => link.deliver(payload));
+      c.on('broadcast', { event: 'ls' }, ({ payload }) => link.deliver(payload, 'realtime'));
       c.on('broadcast', { event: 'rtc' }, ({ payload }) => link.signal(payload));
     };
     bind(ch);

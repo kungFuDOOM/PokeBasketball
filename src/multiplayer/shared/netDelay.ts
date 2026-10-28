@@ -47,7 +47,7 @@ export function startDelay(rttMs: number, sendMs: number, jitterMs: number): num
 }
 
 /** Late reports ignored right after a jump: they still describe the window from before it took effect (about an RTT + a window). */
-export const HOLD_REPORTS = 2;
+export const HOLD_REPORTS = 3;
 
 export interface AdaptState {
   delay: number;

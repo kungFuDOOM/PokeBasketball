@@ -97,7 +97,7 @@ export class Lockstep {
   waiting = 0;
   lastHeard: number;
   peerLeft = false;
-  readonly stats = { stalls: 0, desyncs: 0, resyncs: 0, sent: 0, received: 0, dropped: 0, startDelay: 0, maxDelay: 0 };
+  readonly stats = { stalls: 0, stallMs: 0, desyncs: 0, resyncs: 0, sent: 0, received: 0, dropped: 0, startDelay: 0, maxDelay: 0 };
   /** Why this game can't go on safely (a broken or malicious peer), or null. */
   problem: string | null = null;
 
@@ -107,6 +107,8 @@ export class Lockstep {
   private nextLocal: number;
   /** Highest tick of ours the peer has confirmed. */
   private peerAck: number;
+  /** When peerAck last moved. */
+  private peerAckAt: number;
   /** Highest tick up to which we hold every remote input. */
   private remoteTop: number;
   private myHashes = new Map<number, number>();
@@ -137,7 +139,7 @@ export class Lockstep {
     this.now = o.now ?? (() => performance.now());
     this.tune = { adapt, windowMs: LEAD_WINDOW_MS, stallLead: true, ...o.tune };
     this.lastHeard = this.now();
-    this.leadWindowStart = this.lastHeard;
+    this.leadWindowStart = this.peerAckAt = this.lastHeard;
     // The first ticks have no input from anyone; both sides agree they are empty.
     for (let t = 0; t < MIN_DELAY; t++) {
       this.local.set(t, EMPTY);
@@ -167,6 +169,7 @@ export class Lockstep {
       if (!this.remote.has(this.tick)) {
         if (this.waiting === 0) this.stats.stalls++;
         this.waiting += dt;
+        this.stats.stallMs += dt * 1000;
         break;
       }
       this.waiting = 0;
@@ -278,7 +281,10 @@ export class Lockstep {
     }
     while (this.remote.has(this.remoteTop + 1)) this.remoteTop++;
     // The peer can only acknowledge inputs we've actually scheduled.
-    if (Number.isInteger(m.a) && (m.a as number) > this.peerAck) this.peerAck = Math.min(m.a as number, this.nextLocal - 1);
+    if (Number.isInteger(m.a) && (m.a as number) > this.peerAck) {
+      this.peerAck = Math.min(m.a as number, this.nextLocal - 1);
+      this.peerAckAt = this.now();
+    }
     if (Number.isFinite(m.l) && Number.isInteger(m.lw) && m.lw !== this.lastPeerLw) {
       this.lastPeerLw = m.lw as number;
       this.adaptDelay(Math.max(-MAX_DELAY, Math.min(MAX_DELAY, m.l as number)));
@@ -327,9 +333,12 @@ export class Lockstep {
     if (!force && now - this.lastSend < (this.net.pace?.() ?? SEND_MS)) return;
     this.lastSend = now;
     if (now - this.leadWindowStart >= this.tune.windowMs) {
-      // Report the smallest lead seen this second (−delay if nothing arrived at all, which reads as "late").
-      this.leadReport = { l: Number.isFinite(this.minLead) ? this.minLead : -1, lw: this.leadSeq++ };
-      this.minLead = Infinity;
+      // Report the smallest lead seen in this window. A window with no input from the peer says nothing about our delay
+      // (a dead link, or a peer that is itself stalled): no report, rather than a "late" one that would push the peer's delay up.
+      if (Number.isFinite(this.minLead)) {
+        this.leadReport = { l: this.minLead, lw: this.leadSeq++ };
+        this.minLead = Infinity;
+      }
       this.leadWindowStart = now;
     }
     const from = Math.max(this.peerAck + 1, this.nextLocal - MAX_RESEND);
@@ -345,6 +354,14 @@ export class Lockstep {
     if (this.hashOut) m.h = this.hashOut;
     this.net.send(m);
     this.stats.sent++;
+  }
+
+  /**
+   * How long (ms) our inputs have gone unacknowledged while some are outstanding (0 when all are acked). Normally under
+   * an RTT; far more means the path we send on is broken one way (the link layer then sends on both transports).
+   */
+  ackStale(): number {
+    return this.peerAck < this.nextLocal - 1 ? Math.max(0, this.now() - this.peerAckAt) : 0;
   }
 
   /** Tell the peer we are leaving. */

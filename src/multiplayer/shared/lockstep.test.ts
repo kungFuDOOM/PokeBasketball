@@ -37,17 +37,23 @@ interface NetOpts {
   tune?: LockstepOptions['tune'];
   /** Stop after this many frames even if the game isn't over. */
   maxFrames?: number;
+  /** Per-side send pace (overrides `pace`). */
+  paceBy?: [number, number];
+  /** Everything sent to `to` between `at` and `at + ms` (sim ms) is lost: a blackout on a link or a dead transport. */
+  outages?: { at: number; ms: number; to: 0 | 1 }[];
 }
 
 /** Two clients on one fake clock, connected by a lossy, jittery, reordering link. */
-function match(net: NetOpts, onFrame?: (t: number, guest: Game) => void) {
+function match(net: NetOpts, onFrame?: (t: number, guest: Game, ls: Lockstep[]) => void) {
   const rng = seededRng(net.seed);
   let now = 0;
   const queue: { at: number; to: 0 | 1; m: NetMsg }[] = [];
   const games = [new Game(config(42)), new Game(config(42))];
   const link = (from: 0 | 1) => ({
-    pace: () => net.pace ?? SEND_MS,
+    pace: () => net.paceBy?.[from] ?? net.pace ?? SEND_MS,
     send(m: NetMsg) {
+      const to = (1 - from) as 0 | 1;
+      if (net.outages?.some((o) => o.to === to && now >= o.at && now < o.at + o.ms)) return;
       if (m.k === 'in' && rng() < net.drop) return; // inputs are resent until acked; hashes/snapshots ride a reliable socket
       const [lo, hi] = net.latency;
       queue.push({ at: now + lo + rng() * (hi - lo), to: (1 - from) as 0 | 1, m: JSON.parse(JSON.stringify(m)) });
@@ -67,7 +73,7 @@ function match(net: NetOpts, onFrame?: (t: number, guest: Game) => void) {
       games[s].events.length = 0;
       games[s].sfx.length = 0;
     }
-    onFrame?.(frames, games[1]);
+    onFrame?.(frames, games[1], ls);
   }
   return { games, ls, frames, seconds: now / 1000 };
 }
@@ -256,6 +262,38 @@ describe('lag: 250 ms RTT, +/-40 ms jitter, 2% loss', () => {
       expect(g[0].phase).toBe('final');
       expect(JSON.stringify(snapshot(g[1]))).toBe(JSON.stringify(snapshot(g[0])));
     }
+  });
+
+  /** Plays a match to the end and checks both sides finished identical; `worst` = the longest single wait (s). */
+  function recovers(net: NetOpts, label: string) {
+    let worst = 0;
+    const r = match({ ...net, maxFrames: 60 * 150 }, (_t, _g, ls) => { for (const l of ls) worst = Math.max(worst, l.waiting); });
+    expect(r.games[0].phase, `${label}: game finished`).toBe('final');
+    expect(JSON.stringify(snapshot(r.games[1])), `${label}: same state`).toBe(JSON.stringify(snapshot(r.games[0])));
+    return { ...r, worst };
+  }
+
+  it('asymmetric send pace (16 ms against 100 ms) finishes identical with short waits', () => {
+    const r = recovers({ latency, drop: 0.02, seed: 11, paceBy: [PACE_DIRECT_MS, 100], delay: 12 }, 'asymmetric');
+    expect(r.worst).toBeLessThan(2);
+    expect(r.ls[0].stats.stallMs + r.ls[1].stats.stallMs).toBeLessThan(20_000);
+  });
+
+  it('a 2 s one-way blackout and a 1.2 s burst loss: the game waits, then picks up where it was', () => {
+    for (const to of [0, 1] as const) {
+      const r = recovers({ latency, drop: 0.02, seed: 12 + to, pace: PACE_DIRECT_MS, delay: 12, outages: [{ at: 20_000, ms: 2000, to }, { at: 40_000, ms: 1200, to: (1 - to) as 0 | 1 }] }, `outage to ${to}`);
+      expect(r.worst).toBeGreaterThan(1); // the blackout really bit
+      expect(r.worst).toBeLessThan(4);
+      expect(r.ls[0].delay).toBeLessThanOrEqual(30);
+      expect(r.ls[0].peerLeft || r.ls[1].peerLeft).toBe(false);
+    }
+  });
+
+  it('after a long blackout in both directions the delays do not run away to the cap and stay there', () => {
+    const r = recovers({ latency, drop: 0.02, seed: 14, pace: PACE_DIRECT_MS, delay: 12, outages: [{ at: 20_000, ms: 3000, to: 0 }, { at: 20_000, ms: 3000, to: 1 }] }, 'blackout');
+    expect(r.worst).toBeLessThan(5);
+    // the late-report jump is capped (MAX_STALL_LEAD) and eases down again afterwards
+    expect(Math.max(r.ls[0].delay, r.ls[1].delay)).toBeLessThan(30);
   });
 
   it('delays adapt on each side by itself and need not agree; the games still finish identical', () => {
