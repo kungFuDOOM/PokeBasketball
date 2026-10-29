@@ -63,6 +63,9 @@ export async function playOnline(ctx: ModeContext, o: OnlineGameOptions) {
   try {
     conn = await connect(o.sb, match, quarterLenOverride(), abort.signal, service);
     ({ cfg, link } = conn);
+    // Ranked: both players are on the channel, so the match has started. From here a leave is a forfeit, not a dodge
+    // (the heartbeat below, from the game's start, takes over).
+    if (match.queue === 'ranked') void service.alive(match.id);
   } catch (e) {
     // Before leaving (which voids the match): did the other player already leave? Then that's what happened, not a
     // busy server (the channel refuses a match that's over).
@@ -122,7 +125,7 @@ export async function playOnline(ctx: ModeContext, o: OnlineGameOptions) {
   // While the game is on, a heartbeat: if both players vanish without a leave arriving, the server calls it off.
   void service.alive(match.id);
   const beat = setInterval(() => void service.alive(match.id), HEARTBEAT_MS);
-  const end = async (title: string, note: string) => {
+  const end = async (title: string, note: string, peerLost = false) => {
     if (over) return;
     over = true;
     offExit();
@@ -133,14 +136,16 @@ export async function playOnline(ctx: ModeContext, o: OnlineGameOptions) {
     sendNetStats();
     uploadEvidence();
     link.close();
-    await service.leave(match.id);
+    // Ranked, and the other player is the one who went: I'm not a leaver, so I don't leave. The server settles it.
+    if (peerLost && match.queue === 'ranked') void service.claimForfeit(match.id);
+    else await service.leave(match.id);
     message(ctx, title, note, { service, match });
   };
   const watch = setInterval(() => {
     if (!ls || over) return;
-    if (ls.problem) void end('GAME STOPPED', `${ls.problem} No result was recorded.`);
-    else if (ls.peerLeft) void end('OPPONENT LEFT', `${match.opponent.name} left the game. No result was recorded.`);
-    else if (performance.now() - ls.lastHeard > PEER_TIMEOUT_MS) void end('CONNECTION LOST', `Lost the connection to ${match.opponent.name}. No result was recorded.`);
+    if (ls.problem) void end('GAME STOPPED', `${ls.problem} No result was recorded.`, true);
+    else if (ls.peerLeft) void end('OPPONENT LEFT', `${match.opponent.name} left the game. No result was recorded.`, true);
+    else if (performance.now() - ls.lastHeard > PEER_TIMEOUT_MS) void end('CONNECTION LOST', `Lost the connection to ${match.opponent.name}. No result was recorded.`, true);
   }, 1000);
 
   audio.unlock();

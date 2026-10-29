@@ -56,3 +56,38 @@ export function outcomeBetween(before: ServerRank, after: ServerRank): MatchOutc
 
 /** True once the server has counted a match for this player (their games played moved). */
 export const counted = (before: ServerRank, after: ServerRank) => after.wins + after.losses > before.wins + before.losses;
+
+/** What the Season 1 server says one Ranked match did to me (the `rank` of pokejam_report_result / pokejam_ranked_forfeit). */
+export interface RankedResult {
+  /** Still in placements: the numbers are withheld (null) until the placement result. */
+  placing: boolean;
+  event: 'promoted' | 'demoted' | 'shielded' | 'placed' | 'zenith' | null;
+  placementsPlayed: number | null;
+  /** Ladder scores (div_idx * 100 + points) before and after, and the change. */
+  before: number | null;
+  after: number | null;
+  delta: number | null;
+  divIdx: number | null;
+  points: number | null;
+}
+
+const EVENTS: readonly unknown[] = ['promoted', 'demoted', 'shielded', 'placed', 'zenith'];
+const nullable = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+
+/** Reads the server's rank answer; null for anything that isn't the Season 1 shape (nothing, or the old Elo columns). */
+export function parseRankResult(raw: unknown): RankedResult | null {
+  const r = raw as Record<string, unknown> | null | undefined;
+  if (!r || typeof r !== 'object' || typeof r.placing !== 'boolean') return null;
+  return {
+    placing: r.placing,
+    event: EVENTS.includes(r.event) ? (r.event as RankedResult['event']) : null,
+    placementsPlayed: nullable(r.placements_played), before: nullable(r.before), after: nullable(r.after), delta: nullable(r.delta),
+    divIdx: nullable(r.div_idx), points: nullable(r.points),
+  };
+}
+
+/** The wait left on a Ranked cooldown, from find_match's refusal ('ranked cooldown: N seconds left'); null for any other error. */
+export function cooldownSeconds(message: string): number | null {
+  const m = /ranked cooldown: (\d+) seconds? left/i.exec(message);
+  return m ? Number(m[1]) : null;
+}
