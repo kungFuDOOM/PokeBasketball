@@ -1,9 +1,9 @@
 // Matchmaking / network seam. Phase 1 ships LocalMockMatchService (CPU opponent, local storage).
 // Phase 2 swaps in a server-backed implementation (see docs/multiplayer.md) without touching the UI.
 
-import type { RankedResult } from '../ranked/serverRank';
+import type { RankedMe, RankedResult } from '../ranked/serverRank';
 
-export type Queue ='social' | 'ranked';
+export type Queue = 'social' | 'ranked';
 
 export interface Opponent {
   id: string;
@@ -34,6 +34,8 @@ export interface ReportOutcome<O = unknown> {
   rank?: O;
   /** Online Ranked (Season 1): what the server said the match did to my rank. Absent for a pending match or an older server. */
   result?: RankedResult;
+  /** Online Ranked, with `result`: my rank, season and shield right after the match (absent if the server didn't answer). */
+  me?: RankedMe;
   /** Online Ranked: where the match stands on the server. `pending` = waiting for the other player's report. */
   status?: 'done' | 'pending' | 'void';
   /** Online Ranked, when `pending`: resolves with the final outcome once the server has rated the match (or gives up). */

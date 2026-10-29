@@ -2,7 +2,7 @@
 // clients can only read their own rows. See supabase/migrations/.
 import { MODE_RANKED } from '../../config/features';
 import type { DraftView } from './draft';
-import { cooldownSeconds, counted, outcomeBetween, parseProfile, parseRankResult, type RankedResult, type ServerRank } from '../ranked/serverRank';
+import { cooldownSeconds, counted, outcomeBetween, parseMe, parseProfile, parseRankResult, type RankedMe, type RankedResult, type ServerRank } from '../ranked/serverRank';
 import { isBusy } from './capacity';
 import { RateLimit, backoffMs, jitter, singleFlight, sleep } from './throttle';
 import type { MatchResult, MatchService, Opponent, Queue, ReportOutcome } from './matchService';
@@ -166,6 +166,12 @@ export class SupabaseMatchService implements MatchService {
   async myRank(): Promise<ServerRank> {
     if (!MODE_RANKED) throw new OnlineError('Ranked is not available');
     return parseProfile(await this.call('pokejam_ensure_profile', { p_name: null }));
+  }
+
+  /** My Season 1 rank (pokejam_ranked_me): season, placements, points, shield. Null if the server answers with nothing usable. */
+  async rankedMe(): Promise<RankedMe | null> {
+    if (!MODE_RANKED) throw new OnlineError('Ranked is not available');
+    return parseMe(await this.call('pokejam_ranked_me'));
   }
 
   /** Who is in a match, from my side. */
@@ -429,7 +435,10 @@ export class SupabaseMatchService implements MatchService {
   /** The server has rated the match: read my new rating (Season 1: the answer I was given; older server: my profile). */
   private async rated(result: RankedResult | null = null): Promise<ReportOutcome> {
     if (!MODE_RANKED) return { queue: 'ranked', status: 'void' };
-    if (result) return { queue: 'ranked', status: 'done', result };
+    if (result) {
+      const me = await this.rankedMe().catch(() => null); // the shield state after the match; the screen copes without it
+      return { queue: 'ranked', status: 'done', result, me: me ?? undefined };
+    }
     const before = this.rankBefore;
     const after = await this.myRank();
     this.rankBefore = after;

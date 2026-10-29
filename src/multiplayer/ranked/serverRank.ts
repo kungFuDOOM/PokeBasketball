@@ -72,14 +72,21 @@ export interface RankedResult {
 }
 
 const EVENTS: readonly unknown[] = ['promoted', 'demoted', 'shielded', 'placed', 'zenith'];
-const nullable = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+const nullable = (v: unknown) => {
+  const n = typeof v === 'string' && v.trim() !== '' ? Number(v) : v; // some gateways send numbers as strings
+  return typeof n === 'number' && Number.isFinite(n) ? n : null;
+};
 
 /** Reads the server's rank answer; null for anything that isn't the Season 1 shape (nothing, or the old Elo columns). */
 export function parseRankResult(raw: unknown): RankedResult | null {
   const r = raw as Record<string, unknown> | null | undefined;
-  if (!r || typeof r !== 'object' || typeof r.placing !== 'boolean') return null;
+  if (!r || typeof r !== 'object') return null;
+  // `placing` is always sent by the server; if it is ever missing, placements_played < 5 on a non-placement result still says it.
+  const played = nullable(r.placements_played);
+  const placing = typeof r.placing === 'boolean' ? r.placing : played !== null && played < PLACEMENT_GAMES && r.event !== 'placed';
+  if (typeof r.placing !== 'boolean' && played === null) return null;
   return {
-    placing: r.placing,
+    placing,
     event: EVENTS.includes(r.event) ? (r.event as RankedResult['event']) : null,
     placementsPlayed: nullable(r.placements_played), before: nullable(r.before), after: nullable(r.after), delta: nullable(r.delta),
     divIdx: nullable(r.div_idx), points: nullable(r.points),
@@ -90,4 +97,44 @@ export function parseRankResult(raw: unknown): RankedResult | null {
 export function cooldownSeconds(message: string): number | null {
   const m = /ranked cooldown: (\d+) seconds? left/i.exec(message);
   return m ? Number(m[1]) : null;
+}
+
+/** Season 1 `pokejam_ranked_me()`: my rank, season and shield. Every field is optional on the wire; missing ones read as "not placed yet". */
+export interface RankedMe {
+  season: number | null;
+  daysLeft: number | null;
+  /** In placements: no rank or points are shown. */
+  placing: boolean;
+  placementsPlayed: number;
+  divIdx: number | null;
+  points: number | null;
+  zenith: boolean;
+  /** 1 = the shield can block a demotion, 0 = spent. null = unknown. */
+  shieldCharge: 0 | 1 | null;
+  /** While the shield is spent: losses until it recharges. */
+  shieldLossesLeft: number | null;
+  /** Whether the shield applies at my rank (Gold 1 and below). */
+  shieldActive: boolean;
+  wins: number;
+  losses: number;
+  cooldownUntil: string | null;
+}
+
+const PLACEMENT_GAMES = 5;
+
+/** Reads `pokejam_ranked_me()`; null for anything that isn't an object. Never throws, never returns NaN. */
+export function parseMe(raw: unknown): RankedMe | null {
+  const r = raw as Record<string, unknown> | null | undefined;
+  if (!r || typeof r !== 'object' || Array.isArray(r)) return null;
+  const played = Math.min(PLACEMENT_GAMES, Math.max(0, nullable(r.placements_played) ?? 0));
+  const divIdx = nullable(r.div_idx);
+  const placing = r.status === 'placing' || (r.status !== 'ranked' && (divIdx === null || played < PLACEMENT_GAMES));
+  const charge = nullable(r.shield_charge);
+  return {
+    season: nullable(r.season), daysLeft: nullable(r.days_left), placing, placementsPlayed: placing ? played : PLACEMENT_GAMES,
+    divIdx: placing ? null : divIdx, points: placing ? null : nullable(r.points), zenith: !placing && (r.zenith === true || divIdx === 24),
+    shieldCharge: charge === null ? null : charge > 0 ? 1 : 0, shieldLossesLeft: nullable(r.shield_losses_left),
+    shieldActive: r.shield_active === true, wins: nullable(r.wins) ?? 0, losses: nullable(r.losses) ?? 0,
+    cooldownUntil: typeof r.cooldown_until === 'string' ? r.cooldown_until : null,
+  };
 }

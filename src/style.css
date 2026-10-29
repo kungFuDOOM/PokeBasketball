@@ -1585,6 +1585,79 @@ body:has(.pause-btn) .music-btn:not(.docked) {
 .rank-badge strong { font-size: 1.3em; letter-spacing: .04em; }
 .mp-outcome { text-align: center; margin: 12px 0; }
 
+/* ---- Ranked Season 1: rank chip, placement pips, sign-in panel, post-match points. Menu and results screens only. ---- */
+:root {
+  --tier-0: #c9824a; --tier-1: #b8c2cf; --tier-2: #f2c53d; --tier-3: #5fd4c4; --tier-4: #6fb6ff;
+  --tier-5: #c58bff; --tier-6: #ff7a59; --tier-7: #ff5db1; --tier-z: #ffe27a;
+}
+.tier-0 { --rc: var(--tier-0); } .tier-1 { --rc: var(--tier-1); } .tier-2 { --rc: var(--tier-2); } .tier-3 { --rc: var(--tier-3); }
+.tier-4 { --rc: var(--tier-4); } .tier-5 { --rc: var(--tier-5); } .tier-6 { --rc: var(--tier-6); } .tier-7 { --rc: var(--tier-7); } .tier-z { --rc: var(--tier-z); }
+.rk-home { display: grid; gap: 14px; justify-items: center; }
+.rk-left, .rk-right { width: 100%; max-width: 440px; display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.rk-right .btn { width: 100%; }
+.rk-chip, .rk-post { width: 100%; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 10px 14px; border: 3px solid var(--rc, var(--muted)); border-radius: 12px; background: rgba(0, 0, 0, 0.25); color: var(--fg); }
+.rk-post { border-color: var(--line); }
+.rk-post[class*="tier-"] { border-color: var(--rc); }
+.rk-top { display: flex; align-items: center; justify-content: center; gap: 10px; flex-wrap: wrap; }
+.rk-top strong, .rk-chip > strong, .rk-big { font: 700 1.5rem var(--sport); letter-spacing: 0.05em; text-transform: uppercase; color: var(--rc, var(--fg)); }
+.rk-placing .rk-top strong, .rk-big { color: var(--accent); }
+.rk-pts { font: 700 1.05rem var(--sport); color: var(--muted); }
+.rk-season { font: 0.55rem var(--pixel); padding: 4px 6px; border-radius: 5px; background: var(--panel-2); border: 2px solid var(--line); color: var(--accent); }
+.rk-sub { font-size: 0.92rem; color: var(--muted); text-align: center; }
+.rk-bar { width: 100%; max-width: 360px; height: 10px; border-radius: 6px; background: rgba(255, 255, 255, 0.12); overflow: hidden; }
+.rk-bar i { display: block; height: 100%; background: var(--rc, var(--accent)); border-radius: 6px; transition: width 0.8s ease-out; }
+.rk-pips { display: inline-flex; gap: 8px; }
+.rk-pips i { width: 16px; height: 16px; border-radius: 50%; border: 2px solid var(--line); background: transparent; }
+.rk-pips i.on { background: var(--accent); border-color: var(--accent); }
+.rk-shield { font-size: 0.9rem; color: var(--muted); }
+.rk-shield.on, .rk-shield.used { color: var(--accent); }
+.rk-signin { width: 100%; display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.rk-why { margin: 0; text-align: center; }
+.rk-signin-btns { flex-wrap: wrap; }
+.rk-signin-btns .btn { text-decoration: none; display: inline-flex; align-items: center; justify-content: center; min-height: 44px; }
+.rk-error { color: #ff8a7a; }
+.rk-wl { font: 0.6rem var(--pixel); padding: 4px 8px; border-radius: 5px; }
+.rk-wl.w { background: var(--good); color: #04210f; }
+.rk-wl.l { background: var(--red); color: #fff; }
+.rk-delta { font: 700 2.2rem var(--sport); letter-spacing: 0.04em; animation: rk-count 0.9s ease-out; }
+.rk-delta.up { color: var(--good); }
+.rk-delta.down { color: #ff8a7a; }
+/* Rank-up / rank-down / placed reveal: a badge flip, 2 s, with a Skip button. Skip (or reduced motion) shows the end state at once. */
+.rk-anim { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.rk-flip { perspective: 600px; }
+.rk-face { padding: 8px 24px; border: 3px solid var(--rc); border-radius: 10px; color: var(--rc); background: rgba(0, 0, 0, 0.35); animation: rk-flip 2s ease-out both; box-shadow: 0 0 0 0 var(--rc); }
+.rk-face strong { font: 700 1.6rem var(--sport); letter-spacing: 0.06em; text-transform: uppercase; }
+.rk-up .rk-face { animation: rk-flip 2s ease-out both, rk-glow 2s ease-out both; }
+.rk-down .rk-face { animation: rk-flip 2s ease-out both, rk-shake 0.6s 1.4s ease-out both; }
+.rk-title { margin: 0; font: 700 1.2rem var(--sport); letter-spacing: 0.04em; text-transform: uppercase; }
+.rk-skip { padding: 2px 12px; min-height: 32px; font-size: 0.85rem; }
+.rk-anim.skipped .rk-face, .rk-anim.skipped .rk-delta { animation: none; }
+.rk-anim.skipped .rk-skip { visibility: hidden; }
+@keyframes rk-flip { 0% { transform: rotateY(90deg); opacity: 0; } 55% { transform: rotateY(-12deg); opacity: 1; } 100% { transform: rotateY(0); opacity: 1; } }
+@keyframes rk-glow { 60% { box-shadow: 0 0 0 0 var(--rc); } 80% { box-shadow: 0 0 18px 6px var(--rc); } 100% { box-shadow: 0 0 6px 1px var(--rc); } }
+@keyframes rk-shake { 25% { transform: translateX(-5px); } 50% { transform: translateX(5px); } 75% { transform: translateX(-3px); } }
+@keyframes rk-count { from { opacity: 0; transform: translateY(8px) scale(0.9); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .rk-face, .rk-delta, .rk-bar i { animation: none !important; transition: none !important; }
+  .rk-skip { display: none; }
+}
+/* A phone on its side: badge and bar on the left, the buttons on the right, so no scrolling is needed. */
+@media (orientation: landscape) and (max-height: 520px) {
+  .rk-home { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: center; gap: 12px; }
+  .rk-left, .rk-right { max-width: none; }
+  .rk-chip, .rk-post { padding: 6px 10px; gap: 4px; }
+  .rk-top strong, .rk-chip > strong, .rk-big { font-size: 1.25rem; }
+  .rk-delta { font-size: 1.7rem; }
+  .rk-signin { gap: 6px; }
+  .rk-signin .note { margin: 2px 0; font-size: 0.8rem; }
+  .rk-signin-btns .btn.big { padding: 8px 14px; font-size: 1rem; }
+  .rk-right .btn.big { padding: 9px 22px; font-size: 1.05rem; }
+  .menu:has(.rk-home) .title { margin-bottom: 6px; }
+  .menu:has(.rk-home) .logo { font-size: 1.5rem; }
+  .menu:has(.rk-home) .tag { margin-top: 2px; font-size: 0.9rem; }
+  .menu:has(.rk-home) .card.setup { padding: 8px 12px; }
+}
+
 /* Online games: "Waiting for opponent…" banner */
 .net-status { position: absolute; top: 18%; left: 50%; transform: translateX(-50%); padding: 6px 12px; border-radius: 8px;
   background: rgba(0, 0, 0, 0.7); color: #fff; font: 0.7rem var(--pixel); pointer-events: none; z-index: 5; }

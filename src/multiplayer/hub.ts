@@ -9,7 +9,7 @@ interface ModeCard { id: string; title: string; note: string; load(): Promise<Op
 const MODES: ModeCard[] = [];
 if (MODE_SOCIAL) MODES.push({ id: 'social', title: 'Social', note: 'Casual and unranked. Quick match online or play a friend with a room code.',
   load: async () => (await import('./social/index')).openSocial });
-if (MODE_RANKED) MODES.push({ id: 'ranked', title: 'Ranked', note: '5 placement matches, then climb Bronze to Pokémon Master.',
+if (MODE_RANKED) MODES.push({ id: 'ranked', title: 'Ranked', note: '5 placement matches, then climb from Bronze to Zenith.',
   load: async () => (await import('./ranked/index')).openRanked });
 if (MODE_PACK_BATTLES) MODES.push({ id: 'pack', title: 'Pack Battles', note: 'Coming soon.',
   load: async () => (await import('./packBattles/index')).openPackBattles });
@@ -31,7 +31,8 @@ function preload(m: ModeCard): Promise<OpenMode> {
   return p;
 }
 
-export function multiplayerHub(ctx: Omit<ModeContext, 'back'>, onExit: () => void) {
+/** `autoOpen`: a mode id to open straight away (coming back from a Google sign-in lands on Ranked, not the hub). */
+export function multiplayerHub(ctx: Omit<ModeContext, 'back'>, onExit: () => void, autoOpen?: string) {
   const { root } = ctx;
   const show = () => {
     root.className = 'screen-menu';
@@ -77,4 +78,5 @@ export function multiplayerHub(ctx: Omit<ModeContext, 'back'>, onExit: () => voi
     }
   };
   show();
+  if (autoOpen) root.querySelector<HTMLButtonElement>(`[data-m="${autoOpen}"]`)?.click();
 }

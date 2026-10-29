@@ -439,7 +439,21 @@ async function afterUserGame(f: Franchise, g: FGame, game: Game, sides: [number,
 const shared = shareFromHash(location.hash);
 const clearHash = () => history.replaceState(null, '', location.pathname + location.search);
 const devFinal = import.meta.env.DEV ? await import('./screens/devResults').then((m) => m.devResultsKind()) : null;
-if (devFinal) {
+const devRanked = import.meta.env.DEV ? await import('./multiplayer/ranked/devDemo').then((m) => m.devRankedScreen()) : null;
+// Back from a Google sign-in started on the Ranked screen: reopen Ranked instead of the title.
+const backToRanked = ANY_MULTIPLAYER && (() => {
+  try {
+    const v = localStorage.getItem('pokejam.signin.return');
+    if (v) localStorage.removeItem('pokejam.signin.return');
+    return v === 'ranked';
+  } catch { return false; }
+})();
+if (devRanked) {
+  void import('./multiplayer/ranked/devDemo').then((m) => m.devRanked(app, devRanked));
+} else if (backToRanked) {
+  app.className = 'screen-menu';
+  void import('./multiplayer/hub').then((h) => h.multiplayerHub({ root: app, settings, audio }, menu, 'ranked'));
+} else if (devFinal) {
   void import('./screens/devResults').then((m) => m.devResults(app, devFinal));
 } else if (shared) {
   sharedScreen(app, shared, {

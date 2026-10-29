@@ -9,9 +9,17 @@ import { ensureHuman, humanDeps } from '../shared/human';
 import { OnlineError, SupabaseMatchService } from '../shared/onlineMatchService';
 import { ONLINE_CONFIGURED, ensureSignedIn, supabase } from '../shared/supabase';
 import type { ModeContext } from '../shared/types';
+import { phantomAction, signInWithPhantom, WalletError } from '../../wallet/phantom';
+import { isGuest, signInWithGoogle } from './account';
 import { TIER_COLORS, view, type MatchOutcome, type RankView } from './rank';
 import { LocalRankStore } from './rankStore';
-import { serverView } from './serverRank';
+import { rankChipHtml, postMatchHtml, signInPanelHtml } from './view';
+
+// The Skip button on a rank-up / rank-down / placed reveal (view.ts): one listener for every reveal on the page.
+if (typeof document !== 'undefined' && !(document as unknown as { __rkSkip?: boolean }).__rkSkip) {
+  (document as unknown as { __rkSkip?: boolean }).__rkSkip = true;
+  document.addEventListener('click', (e) => (e.target as Element | null)?.closest?.('[data-rk-skip]')?.closest('.rk-anim')?.classList.add('skipped'));
+}
 
 const store = new LocalRankStore();
 const localService = new LocalMockMatchService(store);
@@ -39,6 +47,7 @@ function badge(v: RankView): string {
 const localBadge = () => badge(view(store.get()));
 
 function outcomeHtml(out: ReportOutcome): string {
+  if (out.result) return postMatchHtml(out); // Season 1 server
   const o = out.rank as MatchOutcome | undefined;
   if (!o) {
     if (out.status === 'pending') return '<p class="note center">Waiting for your opponent to confirm the result. Your rank updates when they do.</p>';
@@ -77,24 +86,64 @@ export function openRanked(ctx: ModeContext) {
     return;
   }
   root.innerHTML = panel('RANKED', intro, `
-    <div class="mp-outcome" data-rank><p class="note">Loading your rank…</p></div>
-    <div class="actions center">
-      <button class="btn primary big" data-a="find">Find ranked match</button>
-      <button class="btn" data-a="cpu">Practice vs CPU (unranked)</button>
-      <button class="btn ghost" data-a="back">Back</button>
+    <div class="rk-home">
+      <div class="rk-left" data-rank><p class="note">Loading your rank…</p></div>
+      <div class="rk-right" data-rk-actions>
+        <button class="btn" data-a="cpu">Practice vs CPU (unranked)</button>
+        <button class="btn ghost" data-a="back">Back</button>
+      </div>
     </div>`);
   root.querySelector('[data-a="back"]')!.addEventListener('click', ctx.back);
   root.querySelector('[data-a="cpu"]')!.addEventListener('click', () => playPractice(ctx));
-  root.querySelector('[data-a="find"]')!.addEventListener('click', () => void quickMatch(ctx));
+  void renderHome(ctx);
+}
+
+/** Who am I? A guest sees the sign-in panel; a signed-in player sees their rank chip and Find match. */
+async function renderHome(ctx: ModeContext) {
+  const { root } = ctx;
   const slot = root.querySelector<HTMLElement>('[data-rank]')!;
-  online(ctx).then((svc) => svc.myRank()).then(
-    (r) => { if (slot.isConnected) slot.innerHTML = badge(serverView(r)); },
-    () => { if (slot.isConnected) slot.innerHTML = '<p class="note">Could not load your rank from the server.</p>'; },
-  );
+  const actions = root.querySelector<HTMLElement>('[data-rk-actions]')!;
+  const sb = supabase();
+  try {
+    const { data } = await sb.auth.getSession();
+    if (!slot.isConnected) return;
+    if (isGuest(data.session?.user)) return renderSignIn(ctx, slot);
+    const svc = await online(ctx);
+    const me = await svc.rankedMe().catch(() => null);
+    if (!slot.isConnected) return;
+    slot.innerHTML = rankChipHtml(me);
+    actions.insertAdjacentHTML('afterbegin', '<button class="btn primary big" data-a="find">Find ranked match</button>');
+    actions.querySelector('[data-a="find"]')!.addEventListener('click', () => void quickMatch(ctx));
+  } catch {
+    if (slot.isConnected) slot.innerHTML = '<p class="note">Could not load your rank from the server.</p>';
+  }
+}
+
+/** Ranked is for signed-in accounts: Google (links the guest account so stats carry over) or a Phantom wallet. */
+function renderSignIn(ctx: ModeContext, slot: HTMLElement, error: string | null = null, busy = false) {
+  slot.innerHTML = signInPanelHtml(phantomAction(), { busy, error });
+  const sb = supabase();
+  const fail = (e: unknown) => renderSignIn(ctx, slot, e instanceof Error ? e.message : 'Could not sign in.');
+  slot.querySelector('[data-a="google"]')?.addEventListener('click', () => {
+    renderSignIn(ctx, slot, null, true);
+    signInWithGoogle(sb, location).catch(fail); // on success the browser leaves for Google and comes back to this page
+  });
+  slot.querySelector('[data-a="phantom"]')?.addEventListener('click', async () => {
+    renderSignIn(ctx, slot, null, true);
+    try {
+      await signInWithPhantom(sb);
+      service = null; // a different account now
+      openRanked(ctx);
+    } catch (e) {
+      if (e instanceof WalletError && e.cancelled) renderSignIn(ctx, slot);
+      else fail(e);
+    }
+  });
 }
 
 function failed(ctx: ModeContext, e: unknown) {
   const msg = e instanceof OnlineError || e instanceof Error ? e.message : 'Something went wrong.';
+  if (/signed-in account/i.test(msg)) return openRanked(ctx); // a guest session: back to the sign-in panel
   const nice = /anonymous/i.test(msg) ? 'Online sign-in is switched off on the server right now.' : msg;
   ctx.root.className = 'screen-menu';
   ctx.root.innerHTML = panel('OFFLINE', nice, `<div class="actions center">
