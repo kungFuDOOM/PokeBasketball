@@ -180,12 +180,14 @@ export async function playOnline(ctx: ModeContext, o: OnlineGameOptions) {
     // Let the last lockstep messages reach the other player before leaving the channel.
     setTimeout(() => { uploadEvidence(); link.close(); }, 3000);
     const names = match.queue === 'ranked' ? { me: match.me.name, opp: match.opponent.name } : undefined;
-    const show = (out: ReportOutcome) => (typeof o.outcomeHtml === 'function' ? o.outcomeHtml({ ...out, names: out.names ?? names }) : o.outcomeHtml);
+    let oppRank: ReportOutcome['oppRank'];
+    const show = (out: ReportOutcome) => (typeof o.outcomeHtml === 'function' ? o.outcomeHtml({ ...out, names: out.names ?? names, oppRank: out.oppRank !== undefined ? out.oppRank : oppRank }) : o.outcomeHtml);
     let note: string;
     let later: Promise<ReportOutcome> | undefined;
     try {
       const opp: OnlineOpponent = { ...match.opponent, matchId: match.id, mySide: match.side };
       const out = await service.reportResult(match.queue, opp, { won, score: [mine, theirs], engineVersion: g.engineVersion, seed: g.seed });
+      if (match.queue === 'ranked') oppRank = (await service.matchRanks(match.id, match.side)).opp; // fails soft: no badge on an error
       note = show(out);
       later = out.later;
     } catch {

@@ -1,5 +1,6 @@
 // Maps the server's rating rows to what the Ranked screen shows. The client never computes a rating: the numbers
 // come from pokejam_profiles (via pokejam_ensure_profile) and are only diffed here to say what the last match did.
+import type { BadgeRank } from '../../ranked/badge';
 import { DIVISIONS, PLACEMENTS, TIERS, view, type MatchOutcome, type RankView, type Tier } from './rank';
 
 /** The rating columns of a pokejam_profiles row. */
@@ -139,4 +140,29 @@ export function parseMe(raw: unknown): RankedMe | null {
     shieldActive: r.shield_active === true, wins: nullable(r.wins) ?? 0, losses: nullable(r.losses) ?? 0, peakIdx: placing ? null : nullable(r.peak_idx),
     cooldownUntil: typeof r.cooldown_until === 'string' ? r.cooldown_until : null,
   };
+}
+
+/** One player's public rank from `pokejam_match_ranks`: placed (division index), in placements, or none; undefined when unusable. */
+function parseSideRank(raw: unknown): BadgeRank | undefined {
+  const r = raw as Record<string, unknown> | null | undefined;
+  if (!r || typeof r !== 'object' || Array.isArray(r)) return undefined;
+  if (r.status === 'unranked') return null;
+  if (r.status === 'placing') {
+    const of = nullable(r.placements_total) ?? PLACEMENT_GAMES;
+    return { placing: Math.min(of, Math.max(0, nullable(r.placements_played) ?? 0)), of };
+  }
+  const d = nullable(r.div_idx);
+  return r.status === 'ranked' && d !== null && d >= 0 && d <= 24 ? { divIdx: Math.floor(d) } : undefined;
+}
+
+/** `pokejam_match_ranks(match)` for the player on `side` (0 = host, 1 = guest): my badge and my opponent's. A side the server did not describe stays undefined (no badge shown). */
+export function parseMatchRanks(raw: unknown, side: 0 | 1): { me?: BadgeRank; opp?: BadgeRank } {
+  const r = raw as Record<string, unknown> | null | undefined;
+  if (!r || typeof r !== 'object') return {};
+  const mine = parseSideRank(side === 0 ? r.host : r.guest);
+  const theirs = parseSideRank(side === 0 ? r.guest : r.host);
+  const out: { me?: BadgeRank; opp?: BadgeRank } = {};
+  if (mine !== undefined) out.me = mine;
+  if (theirs !== undefined) out.opp = theirs;
+  return out;
 }

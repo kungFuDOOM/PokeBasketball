@@ -4,10 +4,9 @@
 
 The background is removed by flood fill from the image edges only, so dark pixels inside a badge (silver, gold star centre,
 eclipse outline) stay opaque. Alpha is binary (hard pixel-art edge): the flooded region is transparent, then the opaque edge is
-eroded 1px to drop the soft glow rim. Needs numpy, scipy and Pillow.
+eroded 1px to drop the soft glow rim. The background test is navy-ish (not just dark), so black outlines are walls. Needs numpy, scipy and Pillow.
 """
 import sys
-from collections import deque
 from pathlib import Path
 
 import numpy as np
@@ -15,31 +14,30 @@ from PIL import Image
 from scipy import ndimage
 
 TIERS = ['bronze', 'silver', 'gold', 'platinum', 'diamond', 'prism', 'eclipse', 'master', 'zenith']
-TOL = 38    # max RGB distance from the sampled corner colour that still counts as background
+TOL = 18        # core background: max RGB distance from the corner colour (tight, so black outlines are walls)
+HUE = 6         # ...and the pixel must be navy-ish: blue at least this far above red, like the background
+FRINGE = 4      # then up to this many px of dim, bluish glow next to the background are removed too
+FRINGE_MAX_LUM = 70
 PAD = 0.04  # padding around the content bbox, as a fraction of its size
 OUT = Path(__file__).resolve().parent.parent / 'public' / 'ranks'
 
 
 def flood_bg(rgb: np.ndarray, tol: float) -> np.ndarray:
-    """Pixels connected to the image border whose colour is within tol of the corner colour."""
+    """Background connected to the image border. The core is navy-ish AND near the corner colour (a black outline is neither,
+    so it stops the fill); then a few px of dim bluish glow touching it are added, never crossing a non-bluish pixel."""
     h, w, _ = rgb.shape
     k = 12
     corners = np.concatenate([rgb[:k, :k].reshape(-1, 3), rgb[:k, -k:].reshape(-1, 3), rgb[-k:, :k].reshape(-1, 3), rgb[-k:, -k:].reshape(-1, 3)])
     bg = np.median(corners, axis=0)
-    near = np.linalg.norm(rgb.astype(np.float32) - bg, axis=2) <= tol
-    seen = np.zeros((h, w), bool)
-    q: deque = deque()
-    edge = [(0, x) for x in range(w)] + [(h - 1, x) for x in range(w)] + [(y, 0) for y in range(h)] + [(y, w - 1) for y in range(h)]
-    for y, x in edge:
-        if near[y, x] and not seen[y, x]:
-            seen[y, x] = True
-            q.append((y, x))
-    while q:
-        y, x = q.popleft()
-        for ny, nx in ((y + 1, x), (y - 1, x), (y, x + 1), (y, x - 1)):
-            if 0 <= ny < h and 0 <= nx < w and near[ny, nx] and not seen[ny, nx]:
-                seen[ny, nx] = True
-                q.append((ny, nx))
+    f = rgb.astype(np.float32)
+    bluish = (f[..., 2] - f[..., 0] >= HUE) & (f[..., 2] >= f[..., 1])
+    near = (np.linalg.norm(f - bg, axis=2) <= tol) & bluish
+    lab, _ = ndimage.label(near)
+    edge = np.unique(np.concatenate([lab[0], lab[-1], lab[:, 0], lab[:, -1]]))
+    seen = np.isin(lab, edge[edge > 0])
+    glow = bluish & (f.mean(axis=2) <= FRINGE_MAX_LUM)
+    for _ in range(FRINGE):
+        seen = seen | (ndimage.binary_dilation(seen) & glow)
     return seen
 
 
@@ -101,8 +99,11 @@ def main():
         one, two = process(src / f'{t}.jpg', (128, 256))
         save(one, OUT / f'{t}.png')
         save(two, OUT / f'{t}@2x.png')
-        opaque = (np.array(one.getchannel('A')) > 0).mean()
-        print(f'{t:9} opaque {opaque:.0%}  {(OUT / f"{t}.png").stat().st_size} B / {(OUT / f"{t}@2x.png").stat().st_size} B')
+        al = np.array(one.getchannel('A')) > 0
+        yy, xx = np.mgrid[:128, :128]
+        disc = al[(yy - 63.5) ** 2 + (xx - 63.5) ** 2 <= 20 ** 2].mean()  # the basketball: must be solid
+        opaque = al.mean()
+        print(f'{t:9} centre {disc:.0%} opaque {opaque:.0%}  {(OUT / f"{t}.png").stat().st_size} B / {(OUT / f"{t}@2x.png").stat().st_size} B')
 
 
 if __name__ == '__main__':

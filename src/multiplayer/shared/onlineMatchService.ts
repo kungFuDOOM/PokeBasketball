@@ -2,8 +2,9 @@
 // clients can only read their own rows. See supabase/migrations/.
 import { MODE_RANKED } from '../../config/features';
 import type { DraftView } from './draft';
-import { cooldownSeconds, counted, outcomeBetween, parseMe, parseProfile, parseRankResult, type RankedMe, type RankedResult, type ServerRank } from '../ranked/serverRank';
+import { cooldownSeconds, counted, outcomeBetween, parseMatchRanks, parseMe, parseProfile, parseRankResult, type RankedMe, type RankedResult, type ServerRank } from '../ranked/serverRank';
 import { displayName, serverNameError } from '../ranked/username';
+import type { BadgeRank } from '../../ranked/badge';
 import { isBusy } from './capacity';
 import { RateLimit, backoffMs, jitter, singleFlight, sleep } from './throttle';
 import type { MatchResult, MatchService, Opponent, Queue, ReportOutcome } from './matchService';
@@ -173,6 +174,16 @@ export class SupabaseMatchService implements MatchService {
   async rankedMe(): Promise<RankedMe | null> {
     if (!MODE_RANKED) throw new OnlineError('Ranked is not available');
     return parseMe(await this.call('pokejam_ranked_me'));
+  }
+
+  /** Both players' public rank for a Ranked match's name cards. Fails soft: any error (e.g. the server lacks the function) gives {}. */
+  async matchRanks(matchId: string, side: 0 | 1): Promise<{ me?: BadgeRank; opp?: BadgeRank }> {
+    if (!MODE_RANKED) return {};
+    try {
+      return parseMatchRanks(await this.call('pokejam_match_ranks', { p_match: matchId }), side);
+    } catch {
+      return {};
+    }
   }
 
   /** My username and when I may change it (null = now). A guest, or a player who hasn't picked, has none. */
