@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src https://static.cloudflareinsights.com; style-src 'unsafe-inline'; img-src 'self'; connect-src https://cloudflareinsights.com; base-uri 'none'; form-action 'none'; object-src 'none'">
+  <meta name="referrer" content="no-referrer">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="description" content="Patch notes for Poké Jam. Newest changes first.">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="apple-touch-icon.png">
+  <title>Poké Jam patch notes</title>
+  <style>
+    :root {
+      --bg: #0a0d1f; --panel: #121736; --line: #2a3170; --fg: #f2f0e6; --muted: #a9aed3; --accent: #ffcb05;
+      color-scheme: dark;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; background: var(--bg); color: var(--fg);
+      font: 17px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    }
+    main {
+      max-width: 720px; margin: 0 auto;
+      padding-block: 32px 64px;
+      padding-left: max(16px, env(safe-area-inset-left, 0px));
+      padding-right: max(16px, env(safe-area-inset-right, 0px));
+    }
+    a { color: var(--accent); }
+    h1 { font-size: 2rem; line-height: 1.2; margin: 0 0 4px; text-wrap: balance; }
+    h2 { font-size: 1.3rem; margin: 40px 0 8px; padding-top: 16px; border-top: 1px solid var(--line); }
+    .meta { color: var(--muted); margin: 0 0 16px; }
+    .jumps { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 0; padding: 0; list-style: none; }
+    .jumps li { margin: 0; }
+    .jumps a { min-height: 44px; display: inline-flex; align-items: center; }
+    ul { margin: 8px 0 0; padding-left: 1.2em; }
+    li { margin: 8px 0; }
+    .fine { color: var(--muted); font-size: 0.9rem; margin-top: 32px; }
+    main, li, p { overflow-wrap: anywhere; }
+    @media (max-height: 480px) {
+      main { padding-block: 12px 28px; }
+      h1 { font-size: 1.6rem; }
+      h2 { margin-top: 28px; }
+    }
+  </style>
+</head>
+<body>
+<main>
+  <p><a href="./">← Back to the game</a></p>
+  <h1>Patch notes</h1>
+  <p class="meta">Last updated: October 29, 2026. Changes already live on pokejam.xyz.</p>
+  <ul class="jumps">
+    <li><a href="#2026-10-29">Oct 29</a></li>
+    <li><a href="#2026-10-28">Oct 28</a></li>
+    <li><a href="#2026-10-27">Oct 27</a></li>
+    <li><a href="#2026-10-26">Oct 26</a></li>
+  </ul>
+
+  <h2 id="2026-10-29"><time datetime="2026-10-29">October 29, 2026</time></h2>
+  <ul>
+    <li><strong>Team names.</strong> A name that isn't allowed shows "That team name isn't allowed. Please pick another." You stay on that screen until you pick a different one. A blocked name already in a save, a share link, or an opponent's name shows as the default team name instead. Scoreboard abbreviations are checked the same way.</li>
+  </ul>
+
+  <h2 id="2026-10-28"><time datetime="2026-10-28">October 28, 2026</time></h2>
+  <ul>
+    <li><strong>Watch.</strong> Franchise and Quick Play now have Watch next to Play and Sim. Both teams are controlled by the CPU. The speed button cycles 1x, 2x and 4x, and Skip jumps to the result. The result is tagged Watched.</li>
+    <li><strong>Share.</strong> The final results screen has a Share button. On a phone it opens the share sheet. Otherwise you can post the score on X or copy a link. The text includes the score and the player of the game when there is one.</li>
+    <li><strong>Small screens.</strong> The scoreboard keeps both scores visible on a small screen, including landscape, and stays in the top strip.</li>
+  </ul>
+
+  <h2 id="2026-10-27"><time datetime="2026-10-27">October 27, 2026</time></h2>
+  <ul>
+    <li><strong>Online games.</strong> The game waits a beat based on the connection, sends controls more often, and shows a ping meter during the game. If online is busy, it says so and solo games still work. A short bot check can appear before the first sign-in or before matchmaking.</li>
+    <li><strong>Courtside and the menu.</strong> The courtside banner is split into a $PJAM half and a YOUR AD HERE half, and the text no longer clips. The menu ticker leads with $PJAM. The footer shows the contract address, with Copy.</li>
+    <li><strong>Advertise.</strong> The contact page lists ad prices and a SOL address you can copy.</li>
+  </ul>
+
+  <h2 id="2026-10-26"><time datetime="2026-10-26">October 26, 2026</time></h2>
+  <ul>
+    <li><strong>Launch.</strong> PokeJam is live! Franchise and Quick Play are open to everyone, free in your browser on phone or desktop.</li>
+    <li><strong>Contact.</strong> A Contact page is linked from the menu, with email and a way to DM on X.</li>
+    <li><strong>GitHub.</strong> The menu footer links to the game's repository.</li>
+    <li><strong>Ticker.</strong> The menu ticker has a YOUR AD HERE sponsor slot.</li>
+  </ul>
+
+  <p><a href="./">← Back to the game</a> · <a href="privacy.html">Privacy</a> · <a href="terms.html">Terms</a> · <a href="contact.html">Contact</a></p>
+  <p class="fine">Fan-made game. Pokémon and its characters are trademarks of Nintendo, Game Freak and The Pokémon Company.</p>
+</main>
+<script defer src="https://static.cloudflareinsights.com/beacon.min.js" data-cf-beacon='{"token": "0d24cfccef614409a0d8550405af103b"}'></script>
+</body>
+</html>
