@@ -14,6 +14,7 @@ import { draftScreen } from './draft';
 import { bindSettings, settingsHtml, type Settings } from './menu';
 import { playGame } from './play';
 import { resultsScreen } from './results';
+import { offlineStats } from '../telemetry/offlineStats';
 
 export interface QuickActions {
   menu(): void;
@@ -186,7 +187,9 @@ export function quickPlay(root: HTMLElement, settings: Settings, audio: Audio, a
       name: opp.name, abbr: opp.abbr, color: opp.color, color2: opp.color2,
       roster: theirs, human: false, boost: opp.boost, coach: opp.leader, ...(drafted ? { bench: drafted.oppBench } : {}),
     });
+    const stat = offlineStats().start('quick');
     playGame(root, { home, away, quarterLen: settings.quarterLen, difficulty: settings.difficulty, court, autoSwitch: settings.autoSwitch !== false, ...(drafted ? { stamina: true, userAutoSubs: settings.autoSubs !== false } : {}) }, audio, (g) => {
+      stat.finish('played');
       root.className = 'screen-results';
       window.scrollTo(0, 0);
       resultsScreen(root, g, {
