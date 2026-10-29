@@ -3,6 +3,7 @@
 import { MODE_RANKED } from '../../config/features';
 import type { DraftView } from './draft';
 import { counted, outcomeBetween, parseProfile, type ServerRank } from '../ranked/serverRank';
+import { safeName } from '../../nameFilter';
 import { isBusy } from './capacity';
 import { RateLimit, backoffMs, jitter, singleFlight, sleep } from './throttle';
 import type { MatchResult, MatchService, Opponent, Queue, ReportOutcome } from './matchService';
@@ -126,7 +127,7 @@ export class SupabaseMatchService implements MatchService {
   private lastName: { want: string; kept: string } | null = null;
   private naming = singleFlight(async (want: string) => {
     const p = await this.call<{ trainer_name?: string } | null>('pokejam_ensure_profile', { p_name: want });
-    const kept = p?.trainer_name ?? 'Trainer';
+    const kept = safeName(p?.trainer_name ?? 'Trainer', 'Trainer');
     this.lastName = { want, kept };
     return kept;
   }, (want) => want);
@@ -149,7 +150,8 @@ export class SupabaseMatchService implements MatchService {
 
   /** Sets my trainer name; returns the name the server kept (a name it doesn't allow becomes "Trainer"). */
   async setName(name: string): Promise<string> {
-    const want = name.trim().slice(0, 40) || 'Trainer';
+    // A blocked name is never sent (a modified client could try); the server would only keep what it allows anyway.
+    const want = safeName(name.trim().slice(0, 40), 'Trainer') || 'Trainer';
     // Already set to this name on this account: no request (every Social action used to repeat it).
     return this.lastName?.want === want ? this.lastName.kept : this.naming(want);
   }
@@ -169,8 +171,9 @@ export class SupabaseMatchService implements MatchService {
     if (!m || !m.guest) throw new OnlineError('match not found');
     if (m.seed === null || m.seed === undefined) throw new OnlineError('This match was made by an older server. Refresh to update.');
     const side: 0 | 1 = m.host === this.userId ? 0 : 1;
-    const opp = side === 0 ? { id: m.guest, name: m.guest_name ?? 'Trainer' } : { id: m.host, name: m.host_name };
-    const me = side === 0 ? m.host_name : m.guest_name ?? 'Trainer';
+    // Names come from the other player's profile: a blocked one (a modified client, or an old name) shows as the default.
+    const opp = side === 0 ? { id: m.guest, name: safeName(m.guest_name ?? 'Trainer', 'Trainer') } : { id: m.host, name: safeName(m.host_name ?? 'Trainer', 'Trainer') };
+    const me = safeName((side === 0 ? m.host_name : m.guest_name) ?? 'Trainer', 'Trainer');
     return {
       id: m.id, queue: m.queue, side, me: { id: this.userId, name: me }, opponent: { ...opp, mmr: 1000, simulated: false },
       game: {

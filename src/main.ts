@@ -31,6 +31,7 @@ import { shareFromHash } from './season/share';
 import { autoDraft, draftedMons, loadDrafted, renameDrafted, type TeamSource } from './season/team';
 import { confirmNewDraft } from './ui/newDraft';
 import { confirmFranchiseName } from './ui/teamName';
+import { safeName } from './nameFilter';
 import { gamesScreen } from './screens/games';
 import { ANY_MULTIPLAYER } from './config/features';
 import { badgeSvg } from './ui/badges';
@@ -53,7 +54,7 @@ try {
   const saved = JSON.parse(localStorage.getItem('pokejam.settings') ?? '{}') as Partial<Record<keyof Settings, unknown>>;
   if (typeof saved.difficulty === 'string' && saved.difficulty in DIFFICULTIES) settings.difficulty = saved.difficulty as Difficulty;
   if (typeof saved.quarterLen === 'number' && [60, 120, 180, 300].includes(saved.quarterLen)) settings.quarterLen = saved.quarterLen;
-  if (typeof saved.teamName === 'string') settings.teamName = saved.teamName.slice(0, 20);
+  if (typeof saved.teamName === 'string') settings.teamName = safeName(saved.teamName.slice(0, 20), 'Pallet Town');
   if (typeof saved.autoSubs === 'boolean') settings.autoSubs = saved.autoSubs;
   if (typeof saved.autoSwitch === 'boolean') settings.autoSwitch = saved.autoSwitch;
 } catch { /* storage unavailable */ }
