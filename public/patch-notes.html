@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src https://static.cloudflareinsights.com; style-src 'unsafe-inline'; img-src 'self'; connect-src https://cloudflareinsights.com; base-uri 'none'; form-action 'none'; object-src 'none'">
+  <meta name="referrer" content="no-referrer">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="description" content="What's new in Poké Jam. Newest changes first.">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="apple-touch-icon.png">
+  <title>Poké Jam patch notes</title>
+  <style>
+    :root {
+      --bg: #0a0d1f; --panel: #121736; --line: #2a3170; --fg: #f2f0e6; --muted: #a9aed3; --accent: #ffcb05;
+      color-scheme: dark;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; background: var(--bg); color: var(--fg);
+      font: 17px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    }
+    main {
+      max-width: 720px; margin: 0 auto;
+      padding-block: 32px 64px;
+      padding-left: max(16px, env(safe-area-inset-left, 0px));
+      padding-right: max(16px, env(safe-area-inset-right, 0px));
+    }
+    a { color: var(--accent); }
+    h1 { font-size: 2rem; line-height: 1.2; margin: 0 0 4px; text-wrap: balance; }
+    h2 { font-size: 1.3rem; margin: 40px 0 8px; padding-top: 16px; border-top: 1px solid var(--line); }
+    .meta { color: var(--muted); margin: 0 0 16px; }
+    .summary { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px 20px; }
+    .summary p { margin: 0; }
+    .jumps { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 16px 0 0; padding: 0; list-style: none; }
+    .jumps li { margin: 0; }
+    .jumps a { min-height: 44px; display: inline-flex; align-items: center; }
+    ul { margin: 8px 0 0; padding-left: 1.2em; }
+    li { margin: 8px 0; }
+    .fine { color: var(--muted); font-size: 0.9rem; margin-top: 32px; }
+  </style>
+</head>
+<body>
+<main>
+  <p><a href="./">← Back to the game</a></p>
+  <h1>Patch notes</h1>
+  <p class="meta">Last updated: October 29, 2026</p>
+
+  <div class="summary">
+    <p><strong>What's new:</strong> team names that aren't allowed are blocked, you can Watch a Franchise or Quick Play game at 1x, 2x or 4x, and the final results screen has a Share button. Online Social is live. Ranked and Pack Battles are still coming soon.</p>
+  </div>
+  <ul class="jumps">
+    <li><a href="#2026-10-29">Oct 29</a></li>
+    <li><a href="#2026-10-28">Oct 28</a></li>
+    <li><a href="#2026-10-27">Oct 27</a></li>
+    <li><a href="#2026-10-26">Oct 26</a></li>
+    <li><a href="#2026-10-25">Oct 25</a></li>
+    <li><a href="#2026-10-24">Oct 24</a></li>
+    <li><a href="#2026-10-23">Oct 23</a></li>
+    <li><a href="#2026-10-22">Oct 22</a></li>
+    <li><a href="#2026-10-21">Oct 21</a></li>
+  </ul>
+
+  <h2 id="2026-10-29"><time datetime="2026-10-29">October 29, 2026</time></h2>
+  <ul>
+    <li><strong>Team names.</strong> A name that isn't allowed shows "That team name isn't allowed. Please pick another." You stay on that screen until you pick a different one. A blocked name already in a save, a share link, or an opponent's name shows as the default team name instead. Scoreboard abbreviations are checked the same way.</li>
+  </ul>
+
+  <h2 id="2026-10-28"><time datetime="2026-10-28">October 28, 2026</time></h2>
+  <ul>
+    <li><strong>Watch.</strong> Franchise and Quick Play now have Watch next to Play and Sim. Both teams are controlled by the CPU. The speed button cycles 1x, 2x and 4x, and Skip jumps to the result. The result is tagged Watched.</li>
+    <li><strong>Share.</strong> The final results screen has a Share button. On a phone it opens the share sheet. Otherwise you can post the score on X or copy a link. The text includes the score and the player of the game when there is one.</li>
+    <li><strong>Small screens.</strong> The scoreboard keeps both scores visible on a small screen, including landscape, and stays in the top strip.</li>
+  </ul>
+
+  <h2 id="2026-10-27"><time datetime="2026-10-27">October 27, 2026</time></h2>
+  <ul>
+    <li><strong>Play online.</strong> PLAY ONLINE on the title screen opens Online Jam. Social is casual and unranked: a quick match, or a room code to play a friend. Ranked and Pack Battles show as Coming soon.</li>
+    <li><strong>Smoother online games.</strong> The game waits a beat based on the connection, sends controls more often, and shows a ping meter during the game. If online is busy, it says so and solo games still work. A short bot check can appear before the first sign-in or before matchmaking.</li>
+    <li><strong>Courtside and the menu.</strong> The courtside banner is split into a $PJAM half and a YOUR AD HERE half, and the text no longer clips. The menu ticker leads with $PJAM. The footer shows the contract address, with Copy.</li>
+    <li><strong>Advertise.</strong> The contact page lists ad prices and a SOL address you can copy.</li>
+  </ul>
+
+  <h2 id="2026-10-26"><time datetime="2026-10-26">October 26, 2026</time></h2>
+  <ul>
+    <li><strong>Contact.</strong> A Contact page is linked from the menu, with email and a way to DM on X.</li>
+    <li><strong>GitHub.</strong> The menu footer links to the game's repository.</li>
+    <li><strong>Ticker.</strong> The menu ticker has a YOUR AD HERE sponsor slot.</li>
+  </ul>
+
+  <h2 id="2026-10-25"><time datetime="2026-10-25">October 25, 2026</time></h2>
+  <ul>
+    <li><strong>PokeJam Master.</strong> Win the title with every badge and a cutscene plays once: the badges light up, and the announcer calls your team a PokeJam Master. The mark stays on your franchise hub.</li>
+  </ul>
+
+  <h2 id="2026-10-24"><time datetime="2026-10-24">October 24, 2026</time></h2>
+  <ul>
+    <li><strong>Championship.</strong> After you win the final, your squad celebrates on the court, with a victory fanfare, the crowd and the announcer. A preview of the next season follows.</li>
+  </ul>
+
+  <h2 id="2026-10-23"><time datetime="2026-10-23">October 23, 2026</time></h2>
+  <ul>
+    <li><strong>Rookie draft.</strong> Each season's rookie class is a new draw from the whole pool.</li>
+    <li><strong>Phones and tablets.</strong> Older Android phones and iPads that opened a blank page now load the game, or show a clear message if they still can't. The scoreboard no longer overlaps in landscape. Abbreviations are three letters. Pinch-zoom no longer gets stuck on iPhone.</li>
+    <li><strong>Sprites.</strong> If a sprite fails to load, the game tries again.</li>
+  </ul>
+
+  <h2 id="2026-10-22"><time datetime="2026-10-22">October 22, 2026</time></h2>
+  <ul>
+    <li><strong>Announcer.</strong> Recorded calls for the big moments. Pause and set Announcer on or off. The calls sit under the music.</li>
+    <li><strong>Music.</strong> Original tracks shuffle on the title screen, in drafts and in Franchise. A Music button turns them off, and the choice is saved. The mix is gentler on phone speakers.</li>
+    <li><strong>Terms.</strong> A terms of use page, and a way to reach the maintainer from the privacy page.</li>
+  </ul>
+
+  <h2 id="2026-10-21"><time datetime="2026-10-21">October 21, 2026</time></h2>
+  <ul>
+    <li><strong>Season Draft.</strong> The title screen leads with Draft &amp; Get Graded: draft ten, sim a season, and get a record, a grade and an All-Star team. Share the result. A live CPU game plays behind the menu. My Drafted Team can be used in Quick Play and Franchise, and starting a new draft warns you before it replaces the saved one.</li>
+    <li><strong>Roster.</strong> Browse every Pokémon from the title screen.</li>
+    <li><strong>On the court.</strong> A jump ball opens each half. A shot released before 0:00 still counts. Defenders match up by position. Rookie and Pro are more forgiving, and your player has a clearer P1 marker. The court uses the full width of the screen.</li>
+    <li><strong>Scoreboard and names.</strong> Scores sit in their own slot and no longer run into the team name. You pick a 3-letter abbreviation. Team names are letters and single spaces only.</li>
+    <li><strong>Draft.</strong> The board shows which pick you are. CPU teams vary their picks, and they don't pass a top player just to chase their type.</li>
+    <li><strong>New Pokémon.</strong> Tyrantrum, Braviary, Tinkaton and Mawile join the pool. Leafeon plays point guard.</li>
+    <li><strong>Ratings.</strong> Mewtwo stands alone at 97. Charizard, Venusaur, Pikachu and the legendary birds moved up.</li>
+  </ul>
+
+  <p><a href="./">← Back to the game</a> · <a href="privacy.html">Privacy</a> · <a href="terms.html">Terms</a> · <a href="contact.html">Contact</a></p>
+  <p class="fine">Fan-made game. Pokémon and its characters are trademarks of Nintendo, Game Freak and The Pokémon Company.</p>
+</main>
+<script defer src="https://static.cloudflareinsights.com/beacon.min.js" data-cf-beacon='{"token": "0d24cfccef614409a0d8550405af103b"}'></script>
+</body>
+</html>

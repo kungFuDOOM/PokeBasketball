@@ -242,6 +242,7 @@ export function menuScreen(root: HTMLElement, settings: Settings, onChange: () =
             <a href="privacy.html">Privacy</a>
             <a href="terms.html">Terms</a>
             <a href="contact.html">Contact</a>
+            <a href="patch-notes.html">Patch notes</a>
             <a href="https://github.com/kungFuDOOM/PokeBasketball" target="_blank" rel="noopener">GitHub</a>
             <button class="link-btn" data-go="delete">Delete saved data</button>
           </p>
