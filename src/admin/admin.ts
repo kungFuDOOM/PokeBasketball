@@ -20,6 +20,12 @@ interface Reported {
 interface Ban { user_id: string; name: string | null; until: string; reason: string | null; auto: boolean; since: string }
 interface LogRow { at: string; action: string; detail: string | null; target: string | null; by: string | null }
 
+interface Stats {
+  players_today: number; players_7d: number; players_all: number; profiles_all: number; games_today: number; games_today_finished: number;
+  games_all: number; games_all_finished: number; playing_now_matches: number; playing_now_players: number; queue_now: number;
+  today_starts: string; generated_at: string;
+}
+
 const when = (iso: string) => new Date(iso).toLocaleString();
 const forever = (iso: string) => new Date(iso).getFullYear() > new Date().getFullYear() + 50;
 
@@ -67,7 +73,9 @@ function signIn(sb: SupabaseClient) {
 }
 
 function dashboard(sb: SupabaseClient, email: string) {
-  shell(`<nav class="tabs">
+  shell(`<section class="stats"><div class="stats-head"><h2>Stats</h2><button class="btn small" data-refresh>Refresh</button></div>
+      <p class="note">Online games only — solo / vs CPU / franchise games aren't recorded on the server.</p><div data-stats-body><p class="note">Loading…</p></div></section>
+    <nav class="tabs">
       <button class="on" data-tab="reports">Reported</button><button data-tab="bans">Suspended</button><button data-tab="log">History</button>
       <label>Last <select data-days><option>1</option><option selected>7</option><option>30</option></select> days</label>
     </nav><section data-body><p class="note">Loading…</p></section>`);
@@ -115,7 +123,31 @@ function dashboard(sb: SupabaseClient, email: string) {
       b.disabled = false;
     }
   });
+  const statsBody = root.querySelector<HTMLElement>('[data-stats-body]')!;
+  const refresh = root.querySelector<HTMLButtonElement>('[data-refresh]')!;
+  const loadStats = async () => {
+    refresh.disabled = true;
+    try {
+      statsBody.innerHTML = statsHtml(await call<Stats>('pokejam_admin_stats'));
+    } catch (e) {
+      statsBody.innerHTML = `<p class="note">Couldn't load stats: ${esc((e as Error).message)}</p>`;
+    }
+    refresh.disabled = false;
+  };
+  refresh.addEventListener('click', () => void loadStats());
+  void loadStats();
   void show();
+}
+
+function statsHtml(s: Stats): string {
+  const tile = (label: string, n: number, sub = '') => `<div class="stat"><b>${n}</b><span>${esc(label)}</span>${sub ? `<small>${esc(sub)}</small>` : ''}</div>`;
+  const pt = (iso: string) => new Date(iso).toLocaleString([], { timeZone: 'America/Los_Angeles', dateStyle: 'medium', timeStyle: 'short' });
+  return `<div class="stat-grid">
+    ${tile('Players today (PT)', s.players_today)}${tile('Players, last 7 days', s.players_7d)}${tile('Players, all time', s.players_all)}
+    ${tile('Accounts gone online', s.profiles_all)}
+    ${tile('Games today (PT)', s.games_today, `${s.games_today_finished} finished`)}${tile('Games, all time', s.games_all, `${s.games_all_finished} finished`)}
+    ${tile('Playing now', s.playing_now_matches, `${s.playing_now_players} players`)}${tile('Searching now', s.queue_now)}
+  </div><p class="note">“Today” = Pacific time, since ${esc(pt(s.today_starts))} PT. Updated ${esc(pt(s.generated_at))} PT.</p>`;
 }
 
 const actions = (r: { user_id: string; name: string | null }, banned: boolean) => {

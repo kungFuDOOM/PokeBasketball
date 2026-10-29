@@ -1,5 +1,5 @@
 // The moderation page (admin.html) as its own build, so the game's bundle and file names stay exactly as they are.
-// It runs after the game build and adds admin.html and assets/admin-*.{js,css} to the same dist/.
+// npm run build runs it after the game build (postbuild) and it adds admin.html and assets/admin-*.{js,css} to the same dist/.
 // It isn't linked from the game, and it shows nothing to anyone who isn't a listed moderator.
 import { defineConfig, mergeConfig } from 'vite';
 import game from './vite.config';

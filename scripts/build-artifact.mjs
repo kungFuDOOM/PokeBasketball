@@ -32,7 +32,7 @@ for (const f of await readdir(new URL('../public/announcer/', import.meta.url)))
   await copyFile(new URL(`../public/announcer/${f}`, import.meta.url), new URL(`announcer/${f}`, out));
 }
 for (const f of await readdir(new URL('../dist/assets/', import.meta.url))) {
-  if (f.endsWith('.woff2')) await copyFile(new URL(`../dist/assets/${f}`, import.meta.url), new URL(`assets/${f}`, out));
+  if (f.endsWith('.woff2') && !f.startsWith('admin-')) await copyFile(new URL(`../dist/assets/${f}`, import.meta.url), new URL(`assets/${f}`, out));
 }
 await copyFile(new URL('../dist/privacy.html', import.meta.url), new URL('privacy.html', out));
 await copyFile(new URL('../dist/terms.html', import.meta.url), new URL('terms.html', out));

@@ -8,6 +8,7 @@
     "dev": "vite",
     "prebuild": "npm run sprites",
     "build": "tsc --noEmit && vite build",
+    "postbuild": "npm run build:admin",
     "build:admin": "vite build -c vite.admin.config.ts",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
