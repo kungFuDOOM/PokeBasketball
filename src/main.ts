@@ -365,7 +365,11 @@ function watchUserGame(f: Franchise, g: FGame) {
   app.className = 'screen-game';
   audio.unlock();
   const { cfg, sides, uidOf } = gameConfig(f, g, false, settings.quarterLen, settings.difficulty);
-  playGame(app, cfg, audio, (game) => void afterUserGame(f, g, game, sides, uidOf, 'watched'), hub, { spectator: true });
+  const stat = offlineStats().start('franchise');
+  playGame(app, cfg, audio, (game) => {
+    stat.finish('watched');
+    void afterUserGame(f, g, game, sides, uidOf, 'watched');
+  }, hub, { spectator: true });
 }
 
 function progressHtml(f: Franchise, progress: Progress[]): string {

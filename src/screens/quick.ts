@@ -196,9 +196,9 @@ export function quickPlay(root: HTMLElement, settings: Settings, audio: Audio, a
       roster: theirs, human: false, boost: opp.boost, coach: opp.leader, ...(drafted ? { bench: drafted.oppBench } : {}),
     });
     const cfg = { home, away, quarterLen: settings.quarterLen, difficulty: settings.difficulty, court, autoSwitch: settings.autoSwitch !== false, ...(drafted ? { stamina: true, userAutoSubs: settings.autoSubs !== false } : {}) };
-    const stat = mode === 'played' ? offlineStats().start('quick') : null;
+    const stat = offlineStats().start('quick');
     const done = (g: Game) => {
-      stat?.finish('played');
+      stat.finish(mode);
       // Watch and Sim are CPU-vs-CPU; the results screen still treats your side as the user's (headline, Share).
       if (cpu) claimUserTeam(g);
       root.className = 'screen-results';

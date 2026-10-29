@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import type { GameMode } from '../screens/watch';
 import { DEVICE_KEY, makeOfflineStats, randomUuid, type OfflineDeps } from './offlineStats';
 
 const memStorage = () => {
@@ -55,6 +56,17 @@ describe('offline stats', () => {
     expect(sent.map((b) => [b.p_event, b.p_resolution])).toEqual([['start', null], ['finish', 'simmed']]);
     s.start('franchise').finish();
     expect(sent[sent.length - 1]).toMatchObject({ p_event: 'finish', p_resolution: 'played' });
+  });
+
+  it('logs every Play / Watch / Sim choice as its own resolution, one start and finish each', () => {
+    const { s, sent } = setup();
+    const modes: GameMode[] = ['played', 'watched', 'simmed'];
+    for (const m of modes) {
+      const g = s.start('quick');
+      g.finish(m);
+      g.finish(m);
+    }
+    expect(sent.map((b) => [b.p_event, b.p_resolution])).toEqual(modes.flatMap((m) => [['start', null], ['finish', m]]));
   });
 
   it('sends nothing offline or without storage', () => {
