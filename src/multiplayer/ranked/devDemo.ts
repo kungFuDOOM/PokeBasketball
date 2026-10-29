@@ -4,6 +4,7 @@ import { panel } from '../shared/matchFlow';
 import type { ReportOutcome } from '../shared/matchService';
 import type { PhantomAction } from '../../wallet/phantom';
 import type { RankedMe, RankedResult } from './serverRank';
+import { renderRankBadge } from '../../ranked/badge';
 import { postMatchHtml, rankChipHtml, signInPanelHtml, usernamePickerHtml } from './view';
 import { profileHtml, type ProfileModel } from '../../screens/profile';
 import { checkUsername, nameErrorText } from './username';
@@ -15,7 +16,7 @@ const me = (o: Partial<RankedMe> = {}): RankedMe => ({
 const result = (o: Partial<RankedResult> = {}): RankedResult => ({
   placing: false, event: null, placementsPlayed: 5, before: 740, after: 762, delta: 22, divIdx: 7, points: 62, ...o,
 });
-const out = (r: RankedResult, m: RankedMe | null): ReportOutcome => ({ queue: 'ranked', status: 'done', result: r, me: m ?? undefined, names: { me: 'Ash_Ketchum', opp: 'Misty_Waterflower' } });
+const out = (r: RankedResult, m: RankedMe | null, oppRank: ReportOutcome['oppRank'] = { divIdx: 10 }): ReportOutcome => ({ queue: 'ranked', status: 'done', result: r, me: m ?? undefined, names: { me: 'Ash_Ketchum', opp: 'Misty_Waterflower' }, oppRank });
 
 const HOME_BTNS = '<button class="btn primary big" data-a="find">Find ranked match</button><button class="btn" data-a="cpu">Practice vs CPU (unranked)</button><button class="btn ghost" data-a="back">Back</button>';
 const home = (chip: string) => panel('RANKED', 'Play 5 placement matches to earn a rank.', `<div class="rk-home"><div class="rk-left">${chip}</div><div class="rk-right">${HOME_BTNS}</div></div>`);
@@ -43,6 +44,10 @@ const SCREENS: Record<string, () => string> = {
   'profile-guest': () => profile(model({ signedIn: false, username: null, me: null, social: { played: 3, won: 1 } })),
   'username-error': () => panel('RANKED', 'Play 5 placement matches to earn a rank.',
     `<div class="rk-home"><div class="rk-left">${usernamePickerHtml({ value: BAD_NAME, error: nameErrorText(checkUsername(BAD_NAME) ?? 'profanity') })}</div><div class="rk-right"><button class="btn ghost" data-a="back">Back</button></div></div>`),
+  'profile-zenith': () => profile(model({ me: me({ divIdx: 24, points: 340, zenith: true, peakIdx: 24, shieldActive: false }) })),
+  'post-opp-unranked': () => post(postMatchHtml(out(result(), me({ points: 62 }), null), true)),
+  'post-opp-placing': () => post(postMatchHtml(out(result(), me({ points: 62 }), { placing: 3 }), true)),
+  badges: () => panel('BADGES', 'Every tier, then Zenith, placement and unranked', `<div class="rk-gallery">${[0, 3, 6, 9, 12, 15, 18, 21, 24].map((d) => renderRankBadge({ divIdx: d })).join('')}${renderRankBadge({ placing: 2 })}${renderRankBadge(null)}</div>`),
   'post-win': () => post(postMatchHtml(out(result(), me({ points: 62 })), true)),
   'post-loss': () => post(postMatchHtml(out(result({ before: 762, after: 745, delta: -17, points: 45 }), me({ points: 45 })), false)),
   'post-up': () => post(postMatchHtml(out(result({ event: 'promoted', before: 790, after: 812, delta: 22, divIdx: 8, points: 12 }), me({ divIdx: 8, points: 12 })), true)),

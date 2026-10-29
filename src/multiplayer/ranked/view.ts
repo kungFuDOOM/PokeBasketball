@@ -3,6 +3,7 @@
 // over the court or the in-game HUD. Text and CSS only (index.ts wires the buttons; style.css has the look).
 import { esc } from '../../util';
 import type { PhantomAction } from '../../wallet/phantom';
+import { badgeImgHtml, badgeRankOf, renderRankBadge, type BadgeRank } from '../../ranked/badge';
 import { DIV_POINTS, ZENITH_IDX, fromLadderScore, rankName, tierIndex, tierRanges } from '../../ranked/rank';
 import type { ReportOutcome } from '../shared/matchService';
 import type { RankedMe, RankedResult } from './serverRank';
@@ -31,18 +32,19 @@ function shieldNote(me: RankedMe | null): string {
 }
 
 /** The rank chip for the Ranked home: tier + division + Zenith/points bar + shield + season badge; during placements only the progress. */
-export function rankChipHtml(me: RankedMe | null): string {
+export function rankChipHtml(me: RankedMe | null, o: { badge?: boolean } = {}): string {
+  const art = (r: BadgeRank) => (o.badge === false ? '' : renderRankBadge(r, { size: 'lg', label: false, cls: 'rk-chip-badge' }));
   if (!me) return '<div class="rk-chip rk-none"><strong>Rank unavailable</strong><span>Could not load your rank from the server.</span></div>';
   const season = seasonBadge(me.season);
   const left = me.daysLeft !== null && me.season !== null ? `<span class="rk-sub">Season ${me.season} · ${plural(me.daysLeft, 'day')} left</span>` : '';
   if (me.placing) {
-    return `<div class="rk-chip rk-placing" data-rk="placing"><div class="rk-top">${season}<strong>Placement ${me.placementsPlayed} / ${PLACEMENT_GAMES}</strong></div>
+    return `<div class="rk-chip rk-placing" data-rk="placing">${art(badgeRankOf(me))}<div class="rk-top">${season}<strong>Placement ${me.placementsPlayed} / ${PLACEMENT_GAMES}</strong></div>
       ${pips(me.placementsPlayed)}<span class="rk-sub">Your rank is revealed after match ${PLACEMENT_GAMES}. Points stay hidden until then.</span>${left}</div>`;
   }
   const d = me.divIdx ?? 0;
   const pts = me.points ?? 0;
   const bar = d >= ZENITH_IDX ? '' : `<div class="rk-bar" role="img" aria-label="${pts} of ${DIV_POINTS} points"><i style="width:${Math.max(0, Math.min(100, pts))}%"></i></div>`;
-  return `<div class="rk-chip ${tierClass(d)}" data-rk="ranked"><div class="rk-top">${season}<strong>${esc(d >= ZENITH_IDX ? 'Zenith' : rankName(d))}</strong>
+  return `<div class="rk-chip ${tierClass(d)}" data-rk="ranked">${art({ divIdx: d })}<div class="rk-top">${season}<strong>${esc(d >= ZENITH_IDX ? 'Zenith' : rankName(d))}</strong>
     <span class="rk-pts">${d >= ZENITH_IDX ? `${pts} pts` : `${pts} / ${DIV_POINTS}`}</span></div>${bar}${shieldNote(me)}${left}</div>`;
 }
 
@@ -73,7 +75,7 @@ const sign = (n: number) => (n > 0 ? `+${n}` : `${n}`);
 /** An accessible rank-up / rank-down / placed reveal: a badge flip (CSS, 2 s, off under reduced motion) with a Skip button. */
 function reveal(kind: 'up' | 'down' | 'placed', divIdx: number, title: string): string {
   return `<div class="rk-anim rk-${kind} ${tierClass(divIdx)}" data-rk="anim"><div class="rk-flip"><div class="rk-face">
-      <strong>${esc(divIdx >= ZENITH_IDX ? 'Zenith' : rankName(divIdx))}</strong></div></div>
+      ${badgeImgHtml(divIdx, 'rk-reveal-img')}<strong>${esc(divIdx >= ZENITH_IDX ? 'Zenith' : rankName(divIdx))}</strong></div></div>
     <p class="rk-title">${esc(title)}</p><button class="btn ghost rk-skip" data-rk-skip type="button">Skip</button></div>`;
 }
 
@@ -84,13 +86,17 @@ function atScore(score: number) {
 
 /** What a finished Ranked match did to my rank, for the results screen. Works with any missing field (a placing player gets no numbers). */
 export function postMatchHtml(out: ReportOutcome, won?: boolean): string {
-  return `${versusHtml(out.names)}${postBlock(out, won)}`;
+  // My badge comes from the post-match rank; the opponent's only when the outcome carries it (the server does not send it yet).
+  const mine = out.me ? badgeRankOf(out.me) : out.result?.divIdx != null ? { divIdx: out.result.divIdx } : undefined;
+  return `${versusHtml(out.names, { me: mine, opp: out.oppRank })}${postBlock(out, won)}`;
 }
 
 /** "You (Ash_K) vs Misty_9": usernames only, escaped; a missing name reads as "Player". Nothing without names (local CPU games). */
-export function versusHtml(names: ReportOutcome['names']): string {
+export function versusHtml(names: ReportOutcome['names'], ranks: { me?: BadgeRank; opp?: BadgeRank } = {}): string {
   if (!names) return '';
-  return `<p class="rk-vs"><span class="rk-you">${esc(displayName(names.me))}</span> <i>vs</i> <span class="rk-opp">${esc(displayName(names.opp))}</span></p>`;
+  const card = (cls: string, name: string | null, r: BadgeRank | undefined) =>
+    `<span class="rk-card ${cls}">${r === undefined ? '' : renderRankBadge(r, { size: 'sm', cls: 'rk-card-badge' })}<span class="rk-card-name">${esc(displayName(name))}</span></span>`;
+  return `<p class="rk-vs">${card('rk-you', names.me, ranks.me)} <i>vs</i> ${card('rk-opp', names.opp, ranks.opp)}</p>`;
 }
 
 function postBlock(out: ReportOutcome, won?: boolean): string {
@@ -131,7 +137,7 @@ function rankedBlock(r: RankedResult, me: RankedMe | null, verdict: string, seas
   if (charge && (r.event === 'shielded' || me?.shieldCharge === 0)) shield += charge;
   const anim = after && up ? reveal('up', after.divIdx, r.event === 'zenith' ? 'Welcome to Zenith!' : `Rank up! ${rankName(after.divIdx)}`)
     : after && down ? reveal('down', after.divIdx, `Demoted to ${rankName(after.divIdx)}`) : '';
-  return `<div class="rk-post ${after ? tierClass(after.divIdx) : ''}" data-rk="post">${verdict}${pts}${anim}${move}${bar}${shield}${season}</div>`;
+  return `<div class="rk-post ${after ? tierClass(after.divIdx) : ''}" data-rk="post">${verdict}${after && !anim ? badgeImgHtml(after.divIdx, 'rk-post-img') : ''}${pts}${anim}${move}${bar}${shield}${season}</div>`;
 }
 
 /** The win/loss ranges for a division's tier, for the explainer ("Gold: win 20..38, loss 11..19"). */

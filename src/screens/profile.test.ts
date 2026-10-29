@@ -48,7 +48,7 @@ describe('profileHtml', () => {
   });
 
   it('never prints an email or wallet address', () => {
-    const h = profileHtml(model(), phantom);
+    const h = profileHtml(model(), phantom).replace(/ (?:src|srcset)="[^"]*"/g, ''); // badge art URLs contain "@2x.png"
     expect(h).not.toMatch(/@[a-z0-9-]+\.[a-z]/i);
   });
 
@@ -60,7 +60,7 @@ describe('profileHtml', () => {
 
 describe('usernames are escaped wherever they render', () => {
   const clean = (h: string) => {
-    expect(h).not.toContain('<img');
+    expect(h).not.toContain('<img src=x');
     expect(h).not.toContain('onerror=alert(1)>');
   };
   it('profile', () => clean(profileHtml(model({ username: XSS }), phantom)));
@@ -70,7 +70,37 @@ describe('usernames are escaped wherever they render', () => {
     clean(postMatchHtml({ queue: 'ranked', status: 'pending', names: { me: XSS, opp: XSS } }));
   });
   it('falls back to Player', () => {
-    expect(versusHtml({ me: null, opp: '' })).toContain('Player</span> <i>vs</i> <span class="rk-opp">Player');
+    expect(versusHtml({ me: null, opp: '' })).toContain('Player</span></span> <i>vs</i> <span class="rk-card rk-opp"><span class="rk-card-name">Player');
     expect(versusHtml(undefined)).toBe('');
+  });
+});
+
+describe('rank badge beside the username', () => {
+  const near = (h: string) => h.slice(h.indexOf('pf-who'), h.indexOf('data-pf="name"'));
+  it('placed player: tier art and division', () => {
+    const b = near(profileHtml(model(), phantom));
+    expect(b).toContain('data-rk-badge="ranked"');
+    expect(b).toContain('Gold 2');
+  });
+  it('placement player: Placement x/5, no tier art', () => {
+    const b = near(profileHtml(model({ me: { ...me, placing: true, placementsPlayed: 2, divIdx: null, points: null } }), phantom));
+    expect(b).toContain('Placement 2/5');
+    expect(b).not.toContain('<img');
+  });
+  it('guest and unknown rank: Unranked', () => {
+    expect(near(profileHtml(model({ signedIn: false, username: null, me: null }), phantom))).toContain('Unranked');
+    expect(near(profileHtml(model({ me: null }), phantom))).toContain('Unranked');
+  });
+  it('not shown when Ranked is off', () => {
+    expect(profileHtml(model({ rankedOn: false }), phantom)).not.toContain('data-rk-badge');
+  });
+  it('name cards on the result screen: mine from my rank, the opponent only when known', () => {
+    const result = { placing: false, event: null, placementsPlayed: 5, before: 700, after: 710, delta: 10, divIdx: 7, points: 10 };
+    const out = { queue: 'ranked' as const, status: 'done' as const, names: { me: 'A', opp: 'B' }, me, result };
+    const h = postMatchHtml(out, true);
+    expect(h).toContain('rk-you"><span class="rk-rb');
+    expect(h).toContain('<span class="rk-card rk-opp"><span class="rk-card-name">B');
+    expect(postMatchHtml({ ...out, oppRank: null }, true)).toContain('data-rk-badge="unranked"');
+    expect(postMatchHtml({ ...out, oppRank: { placing: 1 } }, true)).toContain('Placement 1/5');
   });
 });

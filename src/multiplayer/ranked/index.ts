@@ -11,6 +11,7 @@ import { ONLINE_CONFIGURED, ensureSignedIn, supabase } from '../shared/supabase'
 import type { ModeContext } from '../shared/types';
 import { phantomAction, signInWithPhantom, WalletError } from '../../wallet/phantom';
 import { isGuest, signInWithGoogle } from './account';
+import { badgeImgForTier } from '../../ranked/badge';
 import { TIER_COLORS, view, type MatchOutcome, type RankView } from './rank';
 import { LocalRankStore } from './rankStore';
 import { rankChipHtml, postMatchHtml, signInPanelHtml } from './view';
@@ -39,10 +40,10 @@ async function online(ctx: ModeContext): Promise<SupabaseMatchService> {
   return service;
 }
 
-/** Text-and-colour badge. Placeholder: final badge art will come from the image generator. */
+/** Tier badge art with the division and points as text (the local mock). */
 function badge(v: RankView): string {
   const color = v.tier ? TIER_COLORS[v.tier] : '#888';
-  return `<div class="rank-badge" style="--rc:${color}"><strong>${esc(v.tier ? `${v.tier}${v.division ? ` ${v.division}` : ''}` : 'Unranked')}</strong><span>${esc(v.placed ? `${v.rp} RP` : v.label.replace('Unranked, ', ''))}</span></div>`;
+  return `<div class="rank-badge" style="--rc:${color}">${badgeImgForTier(v.tier, 'rank-badge-img')}<strong>${esc(v.tier ? `${v.tier}${v.division ? ` ${v.division}` : ''}` : 'Unranked')}</strong><span>${esc(v.placed ? `${v.rp} RP` : v.label.replace('Unranked, ', ''))}</span></div>`;
 }
 
 const localBadge = () => badge(view(store.get()));

@@ -1583,6 +1583,11 @@ body:has(.pause-btn) .music-btn:not(.docked) {
 
 .rank-badge { display: inline-flex; flex-direction: column; align-items: center; padding: 8px 18px; margin: 6px 0; border: 3px solid var(--rc); border-radius: 10px; color: var(--rc); background: rgba(0,0,0,.25); }
 .rank-badge strong { font-size: 1.3em; letter-spacing: .04em; }
+/* Tier badge art (public/ranks): pixel art, never smoothed. Sizes are small so a menu/results screen never needs to scroll for it. */
+.rk-badge-img { display: block; image-rendering: pixelated; object-fit: contain; flex: none; }
+.rank-badge-img, .rk-chip-img { width: 96px; height: 96px; }
+.rk-reveal-img { width: 88px; height: 88px; margin: 0 auto 4px; }
+.rk-post-img { width: 72px; height: 72px; }
 .mp-outcome { text-align: center; margin: 12px 0; }
 
 /* ---- Ranked Season 1: rank chip, placement pips, sign-in panel, post-match points. Menu and results screens only. ---- */
@@ -1646,6 +1651,9 @@ body:has(.pause-btn) .music-btn:not(.docked) {
   .rk-home { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: center; gap: 12px; }
   .rk-left, .rk-right { max-width: none; }
   .rk-chip, .rk-post { padding: 6px 10px; gap: 4px; }
+  .rank-badge-img, .rk-chip-img { width: 64px; height: 64px; }
+  .rk-reveal-img { width: 56px; height: 56px; margin-bottom: 2px; }
+  .rk-post-img { width: 48px; height: 48px; }
   .rk-top strong, .rk-chip > strong, .rk-big { font-size: 1.25rem; }
   .rk-delta { font-size: 1.7rem; }
   .rk-signin { gap: 6px; }
@@ -1955,4 +1963,28 @@ body:has(.pause-btn) .music-btn:not(.docked) {
 @media (orientation: landscape) and (max-height: 520px) {
   .un-pick { gap: 4px; }
   .un-pick .btn.big { padding: 8px 20px; font-size: 1rem; }
+}
+
+/* ---- Shared rank badge (renderRankBadge in src/ranked/badge.ts): tier art plus the division as text, or a grey Unranked / Placement placeholder. ---- */
+.rk-rb { display: inline-flex; flex-direction: column; align-items: center; gap: 2px; color: var(--rc, var(--muted)); vertical-align: middle; }
+.rk-rb-text { font: 700 0.95rem var(--sport); letter-spacing: 0.05em; text-transform: uppercase; white-space: nowrap; }
+.rk-rb-img, .rk-rb-ph { width: 72px; height: 72px; }
+.rk-rb-lg .rk-rb-img, .rk-rb-lg .rk-rb-ph { width: 96px; height: 96px; }
+.rk-rb-sm { flex-direction: row; gap: 4px; }
+.rk-rb-sm .rk-rb-img, .rk-rb-sm .rk-rb-ph { width: 28px; height: 28px; }
+.rk-rb-sm .rk-rb-text { font-size: 0.75rem; }
+.rk-rb-ph { display: grid; place-items: center; box-sizing: border-box; border: 3px dashed var(--line); border-radius: 50%; background: rgba(255, 255, 255, 0.06); font: normal 700 1.6rem var(--pixel); color: var(--muted); filter: grayscale(1); }
+.rk-rb-sm .rk-rb-ph { border-width: 2px; font-size: 0.9rem; }
+.rk-rb-none { color: var(--muted); }
+.pf-who { display: flex; align-items: center; justify-content: center; gap: 12px; max-width: 100%; }
+.pf-badge .rk-rb-img, .pf-badge .rk-rb-ph { width: 80px; height: 80px; }
+.rk-card { display: inline-flex; align-items: center; gap: 6px; vertical-align: middle; }
+.rk-card-name { overflow-wrap: anywhere; }
+.rk-gallery { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; }
+@media (orientation: landscape) and (max-height: 520px) {
+  .rk-rb-img, .rk-rb-ph, .rk-rb-lg .rk-rb-img, .rk-rb-lg .rk-rb-ph { width: 56px; height: 56px; }
+  .rk-rb-sm .rk-rb-img, .rk-rb-sm .rk-rb-ph { width: 24px; height: 24px; }
+  .pf-badge .rk-rb-img, .pf-badge .rk-rb-ph { width: 52px; height: 52px; }
+  .pf-who { gap: 8px; }
+  .rk-rb-text { font-size: 0.8rem; }
 }

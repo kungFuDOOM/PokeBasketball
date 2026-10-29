@@ -5,6 +5,7 @@ import { MODE_RANKED } from '../config/features';
 import { ONLINE_CONFIGURED } from '../multiplayer/shared/supabase';
 import { rankName, ZENITH_IDX } from '../ranked/rank';
 import { displayName } from '../multiplayer/ranked/username';
+import { badgeRankOf, renderRankBadge } from '../ranked/badge';
 import { rankChipHtml, signInPanelHtml } from '../multiplayer/ranked/view';
 import type { RankedMe } from '../multiplayer/ranked/serverRank';
 import { phantomAction, type PhantomAction } from '../wallet/phantom';
@@ -52,10 +53,10 @@ export function profileHtml(m: ProfileModel, phantom: PhantomAction, o: { error?
   const showRanked = m.rankedOn && m.signedIn;
   const name = guest ? 'Guest' : displayName(m.username);
   const wait = m.nextChangeAt ? ` title="You can change your name again on ${esc(new Date(m.nextChangeAt).toLocaleDateString())}"` : '';
-  const id = `<div class="pf-id"><span class="pf-label">${guest ? 'Playing as' : 'Username'}</span><strong class="pf-name" data-pf="name">${esc(name)}</strong>
+  const id = `<div class="pf-id"><span class="pf-label">${guest ? 'Playing as' : 'Username'}</span><div class="pf-who">${m.rankedOn ? renderRankBadge(showRanked ? badgeRankOf(m.me) : null, { size: 'md', cls: 'pf-badge' }) : ''}<strong class="pf-name" data-pf="name">${esc(name)}</strong></div>
     ${showRanked ? `<button class="btn ghost pf-edit" type="button" data-a="rename"${wait}>${m.username ? 'Change name' : 'Pick a username'}</button>` : ''}</div>`;
   const left = [id];
-  if (showRanked && m.username) left.push(rankChipHtml(m.me));
+  if (showRanked && m.username) left.push(rankChipHtml(m.me, { badge: false }));
   if (m.rankedOn && guest && m.onlineAvailable) {
     left.push(`<div class="pf-signin" data-signin>${signInPanelHtml(phantom, { ...o, why: 'Sign in to get a username and a rank that follow you. Guests can still play and keep the stats below.' })}</div>`);
   }
