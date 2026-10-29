@@ -5,7 +5,7 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src https://static.cloudflareinsights.com; style-src 'unsafe-inline'; img-src 'self'; connect-src https://cloudflareinsights.com; base-uri 'none'; form-action 'none'; object-src 'none'">
   <meta name="referrer" content="no-referrer">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <meta name="description" content="What's new in Poké Jam. Newest changes first.">
+  <meta name="description" content="Patch notes for Poké Jam. Newest changes first.">
   <link rel="icon" href="icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="apple-touch-icon.png">
   <title>Poké Jam patch notes</title>
@@ -29,25 +29,25 @@
     h1 { font-size: 2rem; line-height: 1.2; margin: 0 0 4px; text-wrap: balance; }
     h2 { font-size: 1.3rem; margin: 40px 0 8px; padding-top: 16px; border-top: 1px solid var(--line); }
     .meta { color: var(--muted); margin: 0 0 16px; }
-    .summary { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px 20px; }
-    .summary p { margin: 0; }
-    .jumps { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 16px 0 0; padding: 0; list-style: none; }
+    .jumps { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 0; padding: 0; list-style: none; }
     .jumps li { margin: 0; }
     .jumps a { min-height: 44px; display: inline-flex; align-items: center; }
     ul { margin: 8px 0 0; padding-left: 1.2em; }
     li { margin: 8px 0; }
     .fine { color: var(--muted); font-size: 0.9rem; margin-top: 32px; }
+    main, li, p { overflow-wrap: anywhere; }
+    @media (max-height: 480px) {
+      main { padding-block: 12px 28px; }
+      h1 { font-size: 1.6rem; }
+      h2 { margin-top: 28px; }
+    }
   </style>
 </head>
 <body>
 <main>
   <p><a href="./">← Back to the game</a></p>
   <h1>Patch notes</h1>
-  <p class="meta">Last updated: October 29, 2026</p>
-
-  <div class="summary">
-    <p><strong>What's new:</strong> team names that aren't allowed are blocked, you can Watch a Franchise or Quick Play game at 1x, 2x or 4x, and the final results screen has a Share button. Online Social is live. Ranked and Pack Battles are still coming soon.</p>
-  </div>
+  <p class="meta">Last updated: October 29, 2026. Changes already live on pokejam.xyz.</p>
   <ul class="jumps">
     <li><a href="#2026-10-29">Oct 29</a></li>
     <li><a href="#2026-10-28">Oct 28</a></li>
@@ -74,8 +74,7 @@
 
   <h2 id="2026-10-27"><time datetime="2026-10-27">October 27, 2026</time></h2>
   <ul>
-    <li><strong>Play online.</strong> PLAY ONLINE on the title screen opens Online Jam. Social is casual and unranked: a quick match, or a room code to play a friend. Ranked and Pack Battles show as Coming soon.</li>
-    <li><strong>Smoother online games.</strong> The game waits a beat based on the connection, sends controls more often, and shows a ping meter during the game. If online is busy, it says so and solo games still work. A short bot check can appear before the first sign-in or before matchmaking.</li>
+    <li><strong>Online games.</strong> The game waits a beat based on the connection, sends controls more often, and shows a ping meter during the game. If online is busy, it says so and solo games still work. A short bot check can appear before the first sign-in or before matchmaking.</li>
     <li><strong>Courtside and the menu.</strong> The courtside banner is split into a $PJAM half and a YOUR AD HERE half, and the text no longer clips. The menu ticker leads with $PJAM. The footer shows the contract address, with Copy.</li>
     <li><strong>Advertise.</strong> The contact page lists ad prices and a SOL address you can copy.</li>
   </ul>
