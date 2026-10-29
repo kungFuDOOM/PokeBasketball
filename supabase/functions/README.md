@@ -9,6 +9,7 @@ Step 3 of the plan on issue #4: after a battle has a winner, buy the winner's Co
 | Path | What it does |
 | --- | --- |
 | `../migrations/20261023_pokejam_pack_payouts.sql` | `pokejam_pack_machines`, `pokejam_pack_ledger`, `pokejam_pack_prizes`, and their functions. RLS is on: players read only their own prizes and ledger rows. Every write goes through service-role functions. |
+| `../migrations/20261102_pokejam_pack_fail_safe.sql` | Fail-safes: every purchase and buyback recorded before it's submitted, the kill switch and hourly cap, the append-only ledger and `pokejam_pack_post`, health for alerts (below). |
 | `../migrations/20261024_pokejam_pack_keep_or_sell.sql` | Keep it or sell it back at the reveal: the `revealed` state, `choice` / `choose_by` / `sell_estimate`, and `pokejam_pack_choose_prize`, the one prize write a player makes. |
 | `pokejam-pack-payouts/` | The prize worker. Each run recovers stuck prizes, then settles up to 5. |
 | `pokejam-ads/` | Billboard ads: book the courtside LED board by burning $PJAM (below). |
@@ -202,6 +203,53 @@ A booking keeps the price it was made at for one day. After that, and for any ex
 5. **Schedule:** POST `{"action":"sweep"}` to `pokejam-ads-live` with the service key every few minutes (pg_cron + pg_net), as for devnet.
 6. **The site's build:** `VITE_MODE_ADS=true`. The client calls `<VITE_SUPABASE_URL>/functions/v1/pokejam-ads-live`, whose origin is already in the CSP's `connect-src`. Set `VITE_ADS_API` only for a function hosted elsewhere: it must be https, and its origin is added to `connect-src`. No Solana RPC is added, and no inline script.
 
+## Fail-safes (`../migrations/20261102_pokejam_pack_fail_safe.sql`)
+
+The house wallet holds everyone's money, so every way a payout can go wrong ends in one of two places: retried safely by the worker, or parked for a person with a note. Nothing is ever bought, sent or credited twice.
+
+| What goes wrong | What happens |
+| --- | --- |
+| CC's reply to a purchase or a buyback is lost, or the run crashes after submitting | The transaction's id and blockhash are saved **before** it's submitted. The next run asks the chain: landed (resume it, or credit the buyback), failed or expired unseen (it can never land, so try again), or still landing (wait 20 s, using up no attempt). |
+| A crash at any other point | Prizes stuck in `sending` for 10 minutes go back in the queue. Nothing can be charged without a saved record, so they're all safe to retry. |
+| The house is short of USDC, or the hourly spending cap is reached | The prize is held and retried every 10 minutes without using up its attempts. |
+| A card is held by someone who's neither the house nor the winner | Parked for a person. Nothing is credited. |
+| CC hands the house a transaction it shouldn't sign | Never signed (`tx-guard.ts`); the prize is parked as a security event. |
+| A bug or a bad CC response loops | The hourly cap (`pack_max_spend_per_hour`, default 1,000 USDC) stops it, and the alert fires. |
+
+**Kill switch.** `update public.pokejam_config set value = 'true' where key = 'pack_payouts_paused';` stops every purchase, delivery and buyback on the next run. `'false'` starts them again. The cap: `update public.pokejam_config set value = '<base units>' where key = 'pack_max_spend_per_hour';`.
+
+**The ledger** is append-only (a trigger refuses any update or delete, even from the service role), and `pokejam_pack_post(user, delta, kind, ref, note)` is the one way to move a balance: idempotent on `(kind, ref)`, an error if the same `(kind, ref)` comes back with a different user or amount, one player at a time, and never below zero.
+
+**Health and alerts.** Every run returns `health` and `alerts`: what the house owes (every balance plus every pot not bought yet) against its USDC, prizes parked for a person, cards still in the house wallet after 48 hours (CC's buyback window is 72), and prizes waiting over an hour. Set `ALERT_WEBHOOK_URL` (a Slack or Discord incoming webhook) to get each alert at most hourly.
+
+On mainnet the worker won't start without `HOUSE_USDC_ACCOUNT` and `CC_SIGNER` (CC's gacha wallet, confirmed with Collector Crypt), because without them it can't check where a payment goes.
+
+### What the escrow step (entries, deposits, withdrawals) must handle
+
+Not built yet. Each of these is an edge case the escrow PR has to close, using `pokejam_pack_post` for every balance change:
+
+**Deposits**
+- Credit each on-chain transfer once: ref = transaction signature + instruction index (one transaction can carry two transfers).
+- Only `finalized` transactions, only the USDC mint, only into the house's USDC account.
+- Attribute a deposit by a wallet the player proved they own (a signed message), not just the sender: exchanges send from shared wallets. Hold unknown senders for a manual credit.
+- Page through the account's history from the last processed signature, so an outage or a backlog never skips one. Set a minimum deposit.
+
+**Entries**
+- Debit both players' entries and fees in one database transaction, both or neither. One entry per player per battle (ref = battle + player).
+- Record the fee to a house account in the ledger, so the books balance.
+- Every way a battle can end without a winner refunds both entries and fees exactly once: cancelled before accept, no-show, both players leave, a server restart mid-game, a tie at the hard stop, or a winner check that fails.
+- A battle can't be both voided and won: one locked state change in SQL. Stale battles auto-void on a database-clock cron.
+
+**Withdrawals**
+- Debit first, then send. Save the transaction id and blockhash before submitting, and settle a lost reply from the chain (the same pattern as purchases). A failed or rejected withdrawal is credited back once.
+- Only to the player's proven wallet. Changing it starts a cooldown (account takeover).
+- Daily limits, a review over a threshold, and the kill switch.
+
+**Operations**
+- Keep only working float in the hot wallet and the rest in a multisig (Squads), topped up by hand.
+- Reconcile daily: the house's USDC against the ledger plus fee revenue (`health` does this live).
+- Watch the house's SOL for fees.
+
 ## Online play: TURN credentials (`pokejam-ice/`)
 
 Online matches play over a WebRTC data channel relayed by Cloudflare TURN, so Supabase Realtime only carries the handshake (see `docs/multiplayer.md`). `pokejam-ice` mints one-hour TURN credentials for a player in an active match (`pokejam_ice_ok`, in `../migrations/20261026_pokejam_launch.sql`, which also rate-limits). Without it, games stay on Realtime.
@@ -298,6 +346,14 @@ bun supabase/functions/_shared/pack/test/devnet-smoke.ts <house keypair.json> <h
 ```
 
 It queues four prizes. Three are opened and wait at the reveal with the card in the house wallet. The winner then picks Sell it back on one and Keep it on another (over a saved preference for cash), and lets the third run out of time (preference: cash). The fourth's pot is below CC's live price, so it is refused before paying and its pot is refunded.
+
+The fail-safes on real devnet: lost replies and never-sent submits for purchases and buybacks (injected on the network between the worker and CC; CC and the chain are real), a crash, the kill switch, the hourly cap, a house short of USDC, a card that leaves the house, a pot below the price, and the health check. Seven $25 pulls, two sold back:
+
+```sh
+bun supabase/functions/_shared/pack/test/devnet-failsafe.ts <house keypair.json> <house USDC-Dev token account> <recipient wallet> <bystander wallet>
+```
+
+Run on 2026-10-29: all 32 checks passed, and the house's USDC-Dev moved by exactly seven pulls less the two buybacks.
 
 Passed on 2026-10-23:
 - **Sell it back:** a Zubat PSA 9 was sold back for $29.75, matching its estimate.

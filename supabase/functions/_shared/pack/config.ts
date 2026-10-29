@@ -27,6 +27,8 @@ export interface PackConfig {
   fallbackAfter: number;
   /** Seconds the winner has, once their card is revealed, to keep it or sell it back. Then their saved preference applies. 0 = no wait. */
   choiceSeconds: number;
+  /** Where alerts go (a Slack or Discord incoming webhook), at most hourly for the same alert. Optional. */
+  alertWebhookUrl: string | undefined;
   supabaseUrl: string;
   serviceKey: string;
 }
@@ -44,6 +46,10 @@ export function packConfig(get: (k: string) => string | undefined, opts: { needH
   if (cluster !== 'devnet' && val('PACK_ALLOW_MAINNET') !== MAINNET_APPROVAL) {
     throw new Error('Pack Battles payouts are devnet-only until kungFuDOOM approves real money');
   }
+  // With real money, the house only signs once it can check where every payment goes.
+  if (cluster === 'mainnet-beta' && (!val('HOUSE_USDC_ACCOUNT') || !(val('CC_SIGNER') ?? CC_SIGNER[cluster]))) {
+    throw new Error("Mainnet needs HOUSE_USDC_ACCOUNT and CC_SIGNER (Collector Crypt's gacha wallet, confirmed with them)");
+  }
   const fallback = Number(val('PRIZE_FALLBACK_ATTEMPTS') ?? 3);
   const choice = Number(val('PRIZE_CHOICE_SECONDS') ?? 120);
   return {
@@ -57,6 +63,7 @@ export function packConfig(get: (k: string) => string | undefined, opts: { needH
     ccSigner: val('CC_SIGNER') ?? CC_SIGNER[cluster],
     fallbackAfter: Number.isInteger(fallback) && fallback >= 1 ? fallback : 3,
     choiceSeconds: Number.isFinite(choice) && choice >= 0 ? Math.min(Math.round(choice), 86_400) : 120,
+    alertWebhookUrl: val('ALERT_WEBHOOK_URL'),
     supabaseUrl: need('SUPABASE_URL'),
     serviceKey: need('SUPABASE_SERVICE_ROLE_KEY'),
   };

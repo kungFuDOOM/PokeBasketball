@@ -12,7 +12,7 @@ import type { RpcCall } from '../store.ts';
 import { decodeTransaction } from '../tx-inspect.ts';
 import { PROGRAM } from '../tx-guard.ts';
 
-const MIGRATIONS = ['20261023_pokejam_pack_payouts.sql', '20261024_pokejam_pack_keep_or_sell.sql']
+const MIGRATIONS = ['20261023_pokejam_pack_payouts.sql', '20261024_pokejam_pack_keep_or_sell.sql', '20261102_pokejam_pack_fail_safe.sql']
   .map((f) => new URL(`../../../../migrations/${f}`, import.meta.url));
 
 /** Postgres with Supabase's roles and a stand-in auth schema, then the real migrations, in order. */
@@ -131,12 +131,24 @@ export function fakeChain() {
   const assets = new Map<string, { owner: string; collection: string | null; core: boolean }>();
   const tokenAccounts = new Map<string, { mint: string; owner: string }>();
   const transfers: { asset: string; from: string; to: string }[] = [];
+  /** Transactions that landed (by id), failed on-chain, or sit in a block unconfirmed. Anything else is unseen. */
+  const landed = new Set<string>();
+  const failedTx = new Set<string>();
+  const processing = new Set<string>();
+  const chainState = { blockhashValid: false };
   let balance = 1e12;
   const handle: Fetch = async (_url, init) => {
     const { id, method, params } = JSON.parse(String(init?.body)) as { id: number; method: string; params: unknown[] };
     if (method === 'getTokenAccountBalance') return reply(id, { value: { amount: String(balance) } });
     if (method === 'getLatestBlockhash') return reply(id, { value: { blockhash: base58Encode(randomBytes(32)) } });
-    if (method === 'getSignatureStatuses') return reply(id, { value: [{ err: null, confirmationStatus: 'confirmed' }] });
+    if (method === 'getSignatureStatuses') {
+      const sig = String((params[0] as string[])[0]);
+      if (failedTx.has(sig)) return reply(id, { value: [{ err: { InstructionError: [0, 'Custom'] }, confirmationStatus: 'confirmed' }] });
+      if (landed.has(sig)) return reply(id, { value: [{ err: null, confirmationStatus: 'confirmed' }] });
+      if (processing.has(sig)) return reply(id, { value: [{ err: null, confirmationStatus: 'processed' }] });
+      return reply(id, { value: [null] });
+    }
+    if (method === 'isBlockhashValid') return reply(id, { value: chainState.blockhashValid });
     if (method === 'getAccountInfo') {
       const t = tokenAccounts.get(String(params[0]));
       if (t) return reply(id, { value: { owner: PROGRAM.splToken, data: [base64Encode(new Uint8Array([...base58Decode(t.mint), ...base58Decode(t.owner), ...new Array(101).fill(0)])), 'base64'] } });
@@ -160,11 +172,12 @@ export function fakeChain() {
       if ((a.collection ?? MPL_CORE) !== collection) return fail(id, 'wrong collection account');
       transfers.push({ asset, from: a.owner, to });
       a.owner = to;
+      landed.add(base58Encode(tx.signatures[0]));
       return reply(id, base58Encode(tx.signatures[0]));
     }
     return fail(id, `unknown method ${method}`);
   };
-  return { url: 'https://rpc.test', handle, assets, tokenAccounts, transfers, setBalance: (b: number) => { balance = b; } };
+  return { url: 'https://rpc.test', handle, assets, tokenAccounts, transfers, landed, failedTx, processing, chainState, setBalance: (b: number) => { balance = b; } };
 }
 
 // ---------------------------------------------------------------- fake Collector Crypt
@@ -173,7 +186,10 @@ export function fakeChain() {
 export type EvilCc = 'overcharge' | 'drain-sol' | 'fee-spike' | 'set-authority' | 'unknown-program' | 'redirect' | 'lookup-table'
   | 'buyback-steal' | 'buyback-short' | 'buyback-other-card' | 'buyback-house-pays';
 
-export async function fakeCollectorCrypt(houseAddress: string, chain: ReturnType<typeof fakeChain>, opts: { failGenerate?: number; failOpenAfterPay?: number; card?: 'core' | 'pnft' } = {}) {
+/** Submits that go wrong: `lose` lands the transaction then fails the reply; `drop` fails before it lands. */
+export interface SubmitFaults { losePurchase?: number; dropPurchase?: number; loseBuyback?: number; dropBuyback?: number }
+
+export async function fakeCollectorCrypt(houseAddress: string, chain: ReturnType<typeof fakeChain>, opts: { failGenerate?: number; failOpenAfterPay?: number; card?: 'core' | 'pnft' } & SubmitFaults = {}) {
   const gacha = (await generateKeypair()).keypair;
   const rnd = () => base58Encode(randomBytes(32));
   const [houseUsdc, mint, treasury, attacker, attackerUsdc] = [rnd(), rnd(), rnd(), rnd(), rnd()];
@@ -221,6 +237,7 @@ export async function fakeCollectorCrypt(houseAddress: string, chain: ReturnType
   for (const [code, price] of [['pokemon_25', 25], ['pokemon_50', 50], ['pokemon_100', 100]] as const) {
     machines.set(code, { code, price, public: true, instantBuyback: 85, ev: price * 1.1, odds: { common: 0.75, uncommon: 0.2, rare: 0.04, epic: 0.01 }, stock: { common: 9, uncommon: 9, rare: 9, epic: 9 } });
   }
+  const faults: SubmitFaults = { losePurchase: opts.losePurchase ?? 0, dropPurchase: opts.dropPurchase ?? 0, loseBuyback: opts.loseBuyback ?? 0, dropBuyback: opts.dropBuyback ?? 0 };
   let failGenerate = opts.failGenerate ?? 0;
   let failOpen = opts.failOpenAfterPay ?? 0;
   let n = 0;
@@ -243,12 +260,23 @@ export async function fakeCollectorCrypt(houseAddress: string, chain: ReturnType
       const raw = base64Decode(String(body.signedTransaction));
       if (!(await allSignaturesValid(raw))) return ok({ error: 'bad signatures' }, 403);
       const core = decodeTransaction(raw).instructions.find((ix) => ix.program === PROGRAM.core);
+      const txid = base58Encode(parseTransaction(raw).signatures[0]);
+      const k = core ? 'Buyback' : 'Purchase';
+      if ((faults[`drop${k}`] ?? 0) > 0) { faults[`drop${k}`]!--; return ok({ error: 'upstream timeout' }, 504); }
       if (core) {
         // A buyback: the card goes back to CC once the house's signature lands.
         const a = chain.assets.get(core.accounts[0]);
         if (a) a.owner = gacha.address;
-      } else for (const m of memos.values()) if (!m.paid) { m.paid = true; break; }
-      return ok({ success: true, signature: `sig${n}` });
+      } else {
+        // The purchase pays for the memo named in its memo instruction ("<memo>:open").
+        const memoIx = decodeTransaction(raw).instructions.find((ix) => ix.program === PROGRAM.memo);
+        const named = memoIx ? new TextDecoder().decode(new Uint8Array(memoIx.data)).split(':')[0] : '';
+        const m = memos.get(named);
+        if (m) m.paid = true;
+      }
+      chain.landed.add(txid);
+      if ((faults[`lose${k}`] ?? 0) > 0) { faults[`lose${k}`]!--; return ok({ error: 'upstream timeout' }, 504); }
+      return ok({ success: true, signature: txid });
     }
     if (u.pathname === '/api/openPack') {
       const m = memos.get(String(body.memo));
@@ -277,7 +305,7 @@ export async function fakeCollectorCrypt(houseAddress: string, chain: ReturnType
     return ok({ error: 'not found' }, 404);
   };
   return {
-    url: 'https://gacha.test', handle, calls, memos, machines, gacha: gacha.address, state,
+    url: 'https://gacha.test', handle, calls, memos, machines, gacha: gacha.address, state, faults,
     /** What the house's CC client should be told it may sign. */
     guard: { houseUsdc, usdcMint: mint, ccSigner: gacha.address },
   };
