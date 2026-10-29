@@ -1665,6 +1665,22 @@ body:has(.pause-btn) .music-btn:not(.docked) {
   .menu:has(.rk-home) .tag { margin-top: 2px; font-size: 0.9rem; }
   .menu:has(.rk-home) .card.setup { padding: 8px 12px; }
 }
+/* Short landscape (844x390, 932x430): the rank-up / demoted / placed reveal on the post-match panel must fit with no scrolling.
+   Badge and tier name share one row inside the card; the title and Skip sit beside it instead of under it. */
+@media (orientation: landscape) and (max-height: 450px) {
+  .mp-outcome:has(.rk-anim) { margin: 4px 0; }
+  .mp-outcome .rk-vs { margin: 0 0 2px; }
+  .rk-post:has(.rk-anim) { gap: 2px; padding: 4px 10px; }
+  .rk-post .rk-delta { font-size: 1.3rem; }
+  .rk-anim { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 0 10px; }
+  .rk-face { display: flex; align-items: center; gap: 8px; padding: 3px 14px; }
+  .rk-face .rk-reveal-img { width: 40px; height: 40px; margin: 0; }
+  .rk-face strong { font-size: 1.15rem; }
+  .rk-title { font-size: 1rem; text-align: left; }
+  .rk-skip { min-height: 28px; padding: 0 10px; }
+  .rk-post:has(.rk-anim) .rk-sub { font-size: 0.8rem; }
+  .rk-post:has(.rk-anim) .rk-bar { height: 8px; }
+}
 
 /* Online games: "Waiting for opponent…" banner */
 .net-status { position: absolute; top: 18%; left: 50%; transform: translateX(-50%); padding: 6px 12px; border-radius: 8px;
