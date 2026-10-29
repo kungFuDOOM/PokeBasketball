@@ -4,7 +4,9 @@ import { panel } from '../shared/matchFlow';
 import type { ReportOutcome } from '../shared/matchService';
 import type { PhantomAction } from '../../wallet/phantom';
 import type { RankedMe, RankedResult } from './serverRank';
-import { postMatchHtml, rankChipHtml, signInPanelHtml } from './view';
+import { postMatchHtml, rankChipHtml, signInPanelHtml, usernamePickerHtml } from './view';
+import { profileHtml, type ProfileModel } from '../../screens/profile';
+import { checkUsername, nameErrorText } from './username';
 
 const me = (o: Partial<RankedMe> = {}): RankedMe => ({
   season: 1, daysLeft: 31, placing: false, placementsPlayed: 5, divIdx: 7, points: 40, zenith: false, shieldCharge: 1, shieldLossesLeft: null,
@@ -13,13 +15,20 @@ const me = (o: Partial<RankedMe> = {}): RankedMe => ({
 const result = (o: Partial<RankedResult> = {}): RankedResult => ({
   placing: false, event: null, placementsPlayed: 5, before: 740, after: 762, delta: 22, divIdx: 7, points: 62, ...o,
 });
-const out = (r: RankedResult, m: RankedMe | null): ReportOutcome => ({ queue: 'ranked', status: 'done', result: r, me: m ?? undefined });
+const out = (r: RankedResult, m: RankedMe | null): ReportOutcome => ({ queue: 'ranked', status: 'done', result: r, me: m ?? undefined, names: { me: 'Ash_Ketchum', opp: 'Misty_Waterflower' } });
 
 const HOME_BTNS = '<button class="btn primary big" data-a="find">Find ranked match</button><button class="btn" data-a="cpu">Practice vs CPU (unranked)</button><button class="btn ghost" data-a="back">Back</button>';
 const home = (chip: string) => panel('RANKED', 'Play 5 placement matches to earn a rank.', `<div class="rk-home"><div class="rk-left">${chip}</div><div class="rk-right">${HOME_BTNS}</div></div>`);
 const signIn = (a: PhantomAction) => panel('RANKED', 'Play 5 placement matches to earn a rank.',
   `<div class="rk-home"><div class="rk-left">${signInPanelHtml(a)}</div><div class="rk-right"><button class="btn" data-a="cpu">Practice vs CPU (unranked)</button><button class="btn ghost" data-a="back">Back</button></div></div>`);
 const post = (html: string) => `<div class="menu"><section class="card setup"><div class="mp-outcome" data-outcome>${html}</div></section></div>`;
+
+const model = (o: Partial<ProfileModel> = {}): ProfileModel => ({
+  rankedOn: true, onlineAvailable: true, signedIn: true, username: 'Ash_Ketchum', nextChangeAt: null, me: me({ peakIdx: 9, wins: 31, losses: 24 }),
+  social: { played: 18, won: 11 }, local: { franchise: 'Pallet Town · Season 2 · 6-3', drafted: 'Pallet Town · 7-3 · #12' }, ...o,
+});
+const profile = (m: ProfileModel) => panel('PROFILE', m.signedIn ? 'Your record' : 'Your record on this device', profileHtml(m, { kind: 'install', href: 'https://phantom.app/download' }));
+const BAD_NAME = 'Admin_Joe';
 
 const SCREENS: Record<string, () => string> = {
   chip: () => home(rankChipHtml(me())),
@@ -29,6 +38,11 @@ const SCREENS: Record<string, () => string> = {
   signin: () => signIn({ kind: 'install', href: 'https://phantom.app/download' }),
   'signin-phantom': () => signIn({ kind: 'sign-in' }),
   'signin-mobile': () => signIn({ kind: 'open-in-phantom', href: 'https://phantom.app/ul/browse/x?ref=y' }),
+  'profile-signedin': () => profile(model()),
+  'profile-placing': () => profile(model({ me: me({ placing: true, placementsPlayed: 2, divIdx: null, points: null }) })),
+  'profile-guest': () => profile(model({ signedIn: false, username: null, me: null, social: { played: 3, won: 1 } })),
+  'username-error': () => panel('RANKED', 'Play 5 placement matches to earn a rank.',
+    `<div class="rk-home"><div class="rk-left">${usernamePickerHtml({ value: BAD_NAME, error: nameErrorText(checkUsername(BAD_NAME) ?? 'profanity') })}</div><div class="rk-right"><button class="btn ghost" data-a="back">Back</button></div></div>`),
   'post-win': () => post(postMatchHtml(out(result(), me({ points: 62 })), true)),
   'post-loss': () => post(postMatchHtml(out(result({ before: 762, after: 745, delta: -17, points: 45 }), me({ points: 45 })), false)),
   'post-up': () => post(postMatchHtml(out(result({ event: 'promoted', before: 790, after: 812, delta: 22, divIdx: 8, points: 12 }), me({ divIdx: 8, points: 12 })), true)),

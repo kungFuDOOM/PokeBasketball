@@ -9,8 +9,11 @@ const MIGRATIONS = ['20261021_pokejam_online.sql', '20261022_pokejam_social.sql'
   '20261031_pokejam_moderation.sql', '20261101_pokejam_social_draft.sql', '20261102_pokejam_mons_sync.sql', '20261103_pokejam_match_cleanup.sql',
   '20261104_pokejam_queue_heartbeat.sql', '20261105_pokejam_draft_presence.sql', '20261106_pokejam_game_heartbeat.sql', '20261107_pokejam_requeue_stale.sql', '20261108_pokejam_net_stats.sql', '20261109_pokejam_admin_stats.sql',
   '20261110_pokejam_offline_stats.sql', '20261111_pokejam_ranked.sql',
-  '20261112_pokejam_ranked_matchmaking.sql', '20261113_pokejam_ranked_signin.sql']
+  '20261112_pokejam_ranked_matchmaking.sql', '20261113_pokejam_ranked_signin.sql', '20261114_pokejam_profiles.sql']
   .map((f) => readFileSync(new URL(`../migrations/${f}`, import.meta.url), 'utf8'));
+
+// Auto usernames are Tr1, Tr2, ...: digits only after the prefix, so they can never spell a blocked word.
+let nameSeq = 0;
 
 export async function testDb() {
   const db = new PGlite();
@@ -42,12 +45,17 @@ export async function testDb() {
     if (topic) await tx.query(`select set_config('realtime.topic', $1, true)`, [topic]);
     return (await tx.query(q, params)).rows as Record<string, unknown>[];
   });
-  /** `anonymous`: a guest session (JWT is_anonymous = true), as Supabase issues for signInAnonymously. */
-  const user = async (name = 'Trainer', anonymous = false) => {
+  /**
+   * `anonymous`: a guest session (JWT is_anonymous = true), as Supabase issues for signInAnonymously.
+   * `username`: a signed-in user gets a random valid username so Ranked works; pass null for none, or a string to choose.
+   */
+  const user = async (name = 'Trainer', anonymous = false, username?: string | null) => {
     const id = crypto.randomUUID();
     await db.query('insert into auth.users(id) values ($1)', [id]);
     const sql = as('authenticated', id, undefined, anonymous);
     await sql('select public.pokejam_ensure_profile($1)', [name]);
+    const pick = username === undefined ? (anonymous ? null : `Tr${++nameSeq}`) : username;
+    if (pick) await sql('select public.pokejam_set_username($1)', [pick]);
     const call = async <T = unknown>(fn: string, args: unknown[] = []) =>
       (await sql(`select public.${fn}(${args.map((_, i) => `$${i + 1}`).join(', ')}) as r`, args))[0].r as T;
     return { id, call, sql };

@@ -117,6 +117,8 @@ export interface RankedMe {
   shieldActive: boolean;
   wins: number;
   losses: number;
+  /** Highest division index reached this season (only once placed). */
+  peakIdx?: number | null;
   cooldownUntil: string | null;
 }
 
@@ -134,7 +136,7 @@ export function parseMe(raw: unknown): RankedMe | null {
     season: nullable(r.season), daysLeft: nullable(r.days_left), placing, placementsPlayed: placing ? played : PLACEMENT_GAMES,
     divIdx: placing ? null : divIdx, points: placing ? null : nullable(r.points), zenith: !placing && (r.zenith === true || divIdx === 24),
     shieldCharge: charge === null ? null : charge > 0 ? 1 : 0, shieldLossesLeft: nullable(r.shield_losses_left),
-    shieldActive: r.shield_active === true, wins: nullable(r.wins) ?? 0, losses: nullable(r.losses) ?? 0,
+    shieldActive: r.shield_active === true, wins: nullable(r.wins) ?? 0, losses: nullable(r.losses) ?? 0, peakIdx: placing ? null : nullable(r.peak_idx),
     cooldownUntil: typeof r.cooldown_until === 'string' ? r.cooldown_until : null,
   };
 }

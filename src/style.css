@@ -1910,3 +1910,49 @@ body:has(.pause-btn) .music-btn:not(.docked) {
 .share-menu .btn { min-height: 44px; display: flex; align-items: center; justify-content: center; font: 0.62rem var(--pixel); text-decoration: none; color: var(--fg); white-space: nowrap; }
 .share-toast { position: absolute; top: calc(100% + 6px); left: 50%; transform: translateX(-50%); z-index: 21; margin: 0; padding: 10px 14px; white-space: nowrap; background: var(--accent); color: #1a1400; border-radius: 6px; font: 0.62rem var(--pixel); }
 @media (max-height: 500px) { .share { margin: -10px auto 12px; } .share-menu { flex-direction: row; min-width: 0; } }
+
+/* Profile button on the title screen: last item of the play row, same width as the other buttons. */
+.profile-btn { min-height: 44px; }
+.play-row .profile-btn { width: min(100%, 400px); min-width: 0; box-sizing: border-box; }
+@media (min-width: 761px) { .play-row .profile-btn { width: auto; min-width: 120px; } }
+@media (max-height: 480px) { .profile-btn { min-height: 36px; padding-top: 4px; padding-bottom: 4px; } }
+
+/* Profile screen */
+.pf { display: grid; gap: 14px; justify-items: center; }
+.pf-left, .pf-right { width: 100%; max-width: 460px; display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.pf-id { display: flex; flex-direction: column; align-items: center; gap: 4px; max-width: 100%; }
+.pf-label { font: 0.55rem var(--pixel); color: var(--muted); text-transform: uppercase; }
+.pf-name { font: 700 1.9rem var(--sport); letter-spacing: 0.04em; overflow-wrap: anywhere; text-align: center; }
+.pf-edit { min-height: 36px; padding: 4px 14px; }
+.pf-signin { width: 100%; }
+.pf-stats { width: 100%; margin: 0; display: grid; gap: 6px; }
+.pf-stats > div { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 6px 12px; border: 2px solid var(--line); border-radius: 8px; background: rgba(0, 0, 0, 0.2); }
+.pf-stats dt { color: var(--muted); font-size: 0.9rem; }
+.pf-stats dd { margin: 0; font: 700 1.05rem var(--sport); text-align: right; overflow-wrap: anywhere; min-width: 0; }
+.pf .actions { margin-top: 4px; }
+@media (orientation: landscape) and (max-height: 520px) {
+  .pf { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; gap: 12px; }
+  .pf-left, .pf-right { max-width: none; gap: 6px; }
+  .pf-name { font-size: 1.4rem; }
+  .pf-stats { gap: 3px; }
+  .pf-stats > div { padding: 2px 10px; }
+  .pf-stats dd { font-size: 0.95rem; }
+  .menu:has(.pf) .title { margin-bottom: 6px; }
+  .menu:has(.pf) .logo { font-size: 1.5rem; }
+  .menu:has(.pf) .tag { margin-top: 2px; font-size: 0.9rem; }
+  .menu:has(.pf) .card.setup { padding: 8px 12px; }
+}
+
+/* Username picker and the "you vs them" line on the points screen */
+.un-pick { width: 100%; display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.un-pick .field { width: min(100%, 360px); }
+.un-pick input { text-align: center; font-size: 1.1rem; }
+.un-pick input[aria-invalid="true"] { border-color: #ff8a7a; }
+.un-pick .note { margin: 0; }
+.rk-vs { margin: 0 0 6px; text-align: center; font: 700 1.05rem var(--sport); letter-spacing: 0.03em; overflow-wrap: anywhere; }
+.rk-vs i { font: 0.55rem var(--pixel); color: var(--muted); font-style: normal; margin: 0 6px; }
+.rk-vs .rk-you { color: var(--accent); }
+@media (orientation: landscape) and (max-height: 520px) {
+  .un-pick { gap: 4px; }
+  .un-pick .btn.big { padding: 8px 20px; font-size: 1rem; }
+}

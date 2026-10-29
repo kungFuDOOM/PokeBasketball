@@ -50,9 +50,9 @@ const localStore = (): Store => { try { return typeof localStorage === 'undefine
  * Supabase refuses that (manual linking off, or this Google account already has a PokeJam account) it falls back to a plain
  * Google sign-in, which opens that account instead. Either way the browser leaves for Google and comes back to this page.
  */
-export async function signInWithGoogle(sb: AuthClient, loc: { origin: string; pathname: string; search?: string }, store: Store = localStore()): Promise<void> {
+export async function signInWithGoogle(sb: AuthClient, loc: { origin: string; pathname: string; search?: string }, store: Store = localStore(), returnTo: 'ranked' | 'profile' = 'ranked'): Promise<void> {
   const options = { redirectTo: returnUrl(loc) };
-  try { store?.setItem(RETURN_KEY, 'ranked'); } catch { /* storage unavailable: the player just lands on the menu */ }
+  try { store?.setItem(RETURN_KEY, returnTo); } catch { /* storage unavailable: the player just lands on the menu */ }
   const { data } = await sb.auth.getUser();
   if (data.user?.is_anonymous) {
     const linked = await sb.auth.linkIdentity({ provider: 'google', options });

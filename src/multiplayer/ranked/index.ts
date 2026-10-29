@@ -14,6 +14,7 @@ import { isGuest, signInWithGoogle } from './account';
 import { TIER_COLORS, view, type MatchOutcome, type RankView } from './rank';
 import { LocalRankStore } from './rankStore';
 import { rankChipHtml, postMatchHtml, signInPanelHtml } from './view';
+import { mountUsernamePicker } from './picker';
 
 // The Skip button on a rank-up / rank-down / placed reveal (view.ts): one listener for every reveal on the page.
 if (typeof document !== 'undefined' && !(document as unknown as { __rkSkip?: boolean }).__rkSkip) {
@@ -98,7 +99,7 @@ export function openRanked(ctx: ModeContext) {
   void renderHome(ctx);
 }
 
-/** Who am I? A guest sees the sign-in panel; a signed-in player sees their rank chip and Find match. */
+/** Who am I? A guest sees the sign-in panel; a signed-in player without a username picks one; then the rank chip and Find match. */
 async function renderHome(ctx: ModeContext) {
   const { root } = ctx;
   const slot = root.querySelector<HTMLElement>('[data-rank]')!;
@@ -107,8 +108,14 @@ async function renderHome(ctx: ModeContext) {
   try {
     const { data } = await sb.auth.getSession();
     if (!slot.isConnected) return;
-    if (isGuest(data.session?.user)) return renderSignIn(ctx, slot);
+    if (isGuest(data.session?.user)) return mountSignIn(slot, { returnTo: 'ranked', onSignedIn: () => openRanked(ctx) });
     const svc = await online(ctx);
+    const have = await svc.myUsername().catch(() => null);
+    if (!slot.isConnected) return;
+    // Ranked needs a username (the server refuses the queue without one): pick it before the first search.
+    if (have && !have.username) {
+      return mountUsernamePicker(slot, svc, { note: 'Pick a username for Ranked. Other players see it. 3 to 16 letters, numbers or underscores; you can change it once every 30 days.', onDone: () => openRanked(ctx) });
+    }
     const me = await svc.rankedMe().catch(() => null);
     if (!slot.isConnected) return;
     slot.innerHTML = rankChipHtml(me);
@@ -119,23 +126,32 @@ async function renderHome(ctx: ModeContext) {
   }
 }
 
-/** Ranked is for signed-in accounts: Google (links the guest account so stats carry over) or a Phantom wallet. */
-function renderSignIn(ctx: ModeContext, slot: HTMLElement, error: string | null = null, busy = false) {
-  slot.innerHTML = signInPanelHtml(phantomAction(), { busy, error });
+/** The signed-in ranked/profile service (shared with the profile screen). */
+export async function rankedAccount(): Promise<SupabaseMatchService> {
   const sb = supabase();
-  const fail = (e: unknown) => renderSignIn(ctx, slot, e instanceof Error ? e.message : 'Could not sign in.');
+  const uid = await ensureSignedIn(sb);
+  service ??= new SupabaseMatchService(sb, uid, ['ranked'], (force) => ensureHuman(humanDeps(sb), force));
+  return service;
+}
+
+/** Ranked is for signed-in accounts: Google (links the guest account so stats carry over) or a Phantom wallet. Also used by the profile screen. */
+export function mountSignIn(slot: HTMLElement, o: { returnTo: 'ranked' | 'profile'; onSignedIn(): void; error?: string | null; busy?: boolean }) {
+  slot.innerHTML = signInPanelHtml(phantomAction(), { busy: o.busy, error: o.error ?? null });
+  const sb = supabase();
+  const again = (error: string | null = null, busy = false) => mountSignIn(slot, { ...o, error, busy });
+  const fail = (e: unknown) => again(e instanceof Error ? e.message : 'Could not sign in.');
   slot.querySelector('[data-a="google"]')?.addEventListener('click', () => {
-    renderSignIn(ctx, slot, null, true);
-    signInWithGoogle(sb, location).catch(fail); // on success the browser leaves for Google and comes back to this page
+    again(null, true);
+    signInWithGoogle(sb, location, undefined, o.returnTo).catch(fail); // on success the browser leaves for Google and comes back to this page
   });
   slot.querySelector('[data-a="phantom"]')?.addEventListener('click', async () => {
-    renderSignIn(ctx, slot, null, true);
+    again(null, true);
     try {
       await signInWithPhantom(sb);
       service = null; // a different account now
-      openRanked(ctx);
+      o.onSignedIn();
     } catch (e) {
-      if (e instanceof WalletError && e.cancelled) renderSignIn(ctx, slot);
+      if (e instanceof WalletError && e.cancelled) again();
       else fail(e);
     }
   });
@@ -143,7 +159,7 @@ function renderSignIn(ctx: ModeContext, slot: HTMLElement, error: string | null 
 
 function failed(ctx: ModeContext, e: unknown) {
   const msg = e instanceof OnlineError || e instanceof Error ? e.message : 'Something went wrong.';
-  if (/signed-in account/i.test(msg)) return openRanked(ctx); // a guest session: back to the sign-in panel
+  if (/signed-in account/i.test(msg) || /username:required/.test(msg)) return openRanked(ctx); // a guest session, or no username yet: back to the sign-in / picker
   const nice = /anonymous/i.test(msg) ? 'Online sign-in is switched off on the server right now.' : msg;
   ctx.root.className = 'screen-menu';
   ctx.root.innerHTML = panel('OFFLINE', nice, `<div class="actions center">

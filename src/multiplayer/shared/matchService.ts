@@ -36,6 +36,8 @@ export interface ReportOutcome<O = unknown> {
   result?: RankedResult;
   /** Online Ranked, with `result`: my rank, season and shield right after the match (absent if the server didn't answer). */
   me?: RankedMe;
+  /** Online Ranked: the two usernames to show on the points screen (a missing one reads as "Player"). */
+  names?: { me: string | null; opp: string | null };
   /** Online Ranked: where the match stands on the server. `pending` = waiting for the other player's report. */
   status?: 'done' | 'pending' | 'void';
   /** Online Ranked, when `pending`: resolves with the final outcome once the server has rated the match (or gives up). */

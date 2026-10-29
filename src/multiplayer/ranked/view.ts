@@ -6,6 +6,7 @@ import type { PhantomAction } from '../../wallet/phantom';
 import { DIV_POINTS, ZENITH_IDX, fromLadderScore, rankName, tierIndex, tierRanges } from '../../ranked/rank';
 import type { ReportOutcome } from '../shared/matchService';
 import type { RankedMe, RankedResult } from './serverRank';
+import { displayName } from './username';
 
 const PLACEMENT_GAMES = 5;
 
@@ -46,7 +47,7 @@ export function rankChipHtml(me: RankedMe | null): string {
 }
 
 /** The sign-in panel shown to guests before Ranked. `error` is plain text. */
-export function signInPanelHtml(phantom: PhantomAction, o: { busy?: boolean; error?: string | null } = {}): string {
+export function signInPanelHtml(phantom: PhantomAction, o: { busy?: boolean; error?: string | null; why?: string } = {}): string {
   const dis = o.busy ? ' disabled' : '';
   const phantomBtn = phantom.kind === 'sign-in'
     ? `<button class="btn big" data-a="phantom"${dis}>Sign in with Phantom</button>`
@@ -56,7 +57,7 @@ export function signInPanelHtml(phantom: PhantomAction, o: { busy?: boolean; err
   const phantomNote = phantom.kind === 'open-in-phantom' ? 'Phantom was not found here. This opens PokeJam inside the Phantom app, where you can sign in.'
     : phantom.kind === 'install' ? 'Phantom was not found in this browser. Install it, then come back and tap Sign in with Phantom.' : '';
   return `<div class="rk-signin" data-rk="signin">
-    <p class="rk-why">Ranked needs a signed-in account so your rank is yours. Guests can still play Social and offline.</p>
+    <p class="rk-why">${esc(o.why ?? 'Ranked needs a signed-in account so your rank is yours. Guests can still play Social and offline.')}</p>
     <div class="actions center rk-signin-btns">
       <button class="btn primary big" data-a="google"${dis}>Sign in with Google</button>
       ${phantomBtn}
@@ -83,6 +84,16 @@ function atScore(score: number) {
 
 /** What a finished Ranked match did to my rank, for the results screen. Works with any missing field (a placing player gets no numbers). */
 export function postMatchHtml(out: ReportOutcome, won?: boolean): string {
+  return `${versusHtml(out.names)}${postBlock(out, won)}`;
+}
+
+/** "You (Ash_K) vs Misty_9": usernames only, escaped; a missing name reads as "Player". Nothing without names (local CPU games). */
+export function versusHtml(names: ReportOutcome['names']): string {
+  if (!names) return '';
+  return `<p class="rk-vs"><span class="rk-you">${esc(displayName(names.me))}</span> <i>vs</i> <span class="rk-opp">${esc(displayName(names.opp))}</span></p>`;
+}
+
+function postBlock(out: ReportOutcome, won?: boolean): string {
   if (out.status === 'pending') return '<p class="note center">Waiting for your opponent to confirm the result. Your rank updates when they do.</p>';
   if (out.status === 'void') return '<p class="note center">The two results did not match, so this match was not rated.</p>';
   const r = out.result;
@@ -127,4 +138,16 @@ function rankedBlock(r: RankedResult, me: RankedMe | null, verdict: string, seas
 export function tierRangeText(divIdx: number): string {
   const t = tierRanges(divIdx);
   return `win ${t.winMin}..${t.winMax}, loss ${t.lossMin}..${t.lossMax}`;
+}
+
+/** The username picker. `error` is plain text (escaped here). The form is wired by mountUsernamePicker (profile screen / Ranked home). */
+export function usernamePickerHtml(o: { value?: string; error?: string | null; busy?: boolean; note?: string } = {}): string {
+  return `<form class="un-pick" data-un="picker" novalidate>
+    <label class="field" for="un-input">Choose your username
+      <input id="un-input" name="username" maxlength="16" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" value="${esc(o.value ?? '')}" aria-describedby="un-note"${o.error ? ' aria-invalid="true"' : ''}>
+    </label>
+    <p class="note center" id="un-note">${esc(o.note ?? '3 to 16 letters, numbers or underscores. Other players see it. You can change it once every 30 days.')}</p>
+    ${o.error ? `<p class="note center rk-error" role="alert">${esc(o.error)}</p>` : ''}
+    <button class="btn primary big" type="submit"${o.busy ? ' disabled' : ''}>Save username</button>
+  </form>`;
 }

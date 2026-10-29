@@ -102,6 +102,8 @@ export interface TitleOptions {
   onRoster: () => void;
   /** Only set when at least one multiplayer mode is enabled at build time. */
   onMultiplayer?: () => void;
+  /** Opens the player profile. */
+  onProfile?: () => void;
 }
 
 const TIPS = [
@@ -188,6 +190,7 @@ export function menuScreen(root: HTMLElement, settings: Settings, onChange: () =
           </label>
           <button class="btn play-btn" data-go="season" aria-label="Season Draft: draft 10, sim a season, get your grade">DRAFT &amp; GET GRADED<small>Draft 10 · sim a season · get your grade</small></button>
           ${opts.onMultiplayer ? `<button class="btn online-btn" data-go="multiplayer" aria-label="Play online: quick match or a room code with a friend">PLAY ONLINE<small>Quick match · room code</small></button>` : ''}
+          ${opts.onProfile ? `<button class="btn ghost profile-btn" data-go="profile" aria-label="Your profile and stats">Profile</button>` : ''}
         </div>
         ${opts.drafted ? `<p class="mode-saved hero-saved"><span class="lbl">My drafted team</span> ${esc(opts.drafted)}</p>` : ''}
         <div class="mode-grid">
@@ -294,6 +297,7 @@ export function menuScreen(root: HTMLElement, settings: Settings, onChange: () =
   });
   $('[data-go="roster"]')!.addEventListener('click', leave(opts.onRoster));
   if (opts.onMultiplayer) $('[data-go="multiplayer"]')!.addEventListener('click', leave(opts.onMultiplayer));
+  if (opts.onProfile) $('[data-go="profile"]')!.addEventListener('click', leave(opts.onProfile));
   startNew.addEventListener('click', tryNew);
   $('[data-go="continue"]')?.addEventListener('click', leave(opts.onContinue));
   $('[data-go="resume-draft"]')?.addEventListener('click', leave(opts.onResumeDraft));

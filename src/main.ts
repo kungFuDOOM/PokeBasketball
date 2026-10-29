@@ -152,6 +152,15 @@ function menu() {
       window.scrollTo(0, 0);
       void import('./multiplayer/hub').then((h) => h.multiplayerHub({ root: app, settings, audio }, menu));
     },
+    onProfile: () => {
+      app.className = 'screen-menu';
+      window.scrollTo(0, 0);
+      const local = {
+        franchise: f ? `${f.teams[0].name} · Season ${f.season} · ${f.teams[0].w}-${f.teams[0].l}` : null,
+        drafted: dt ? `${dt.name}${dt.record ? ` · ${dt.record.w}-${dt.record.l}` : ''}${dt.rank ? ` · #${dt.rank}` : ''}` : null,
+      };
+      void import('./screens/profile').then((m) => m.openProfile({ root: app, back: menu }, local));
+    },
     onQuick: () => quick('draft'),
     onSeason: season,
     confirmSeason: () => guardNewDraft(menu),
@@ -441,18 +450,23 @@ const clearHash = () => history.replaceState(null, '', location.pathname + locat
 const devFinal = import.meta.env.DEV ? await import('./screens/devResults').then((m) => m.devResultsKind()) : null;
 const devRanked = import.meta.env.DEV ? await import('./multiplayer/ranked/devDemo').then((m) => m.devRankedScreen()) : null;
 // Back from a Google sign-in started on the Ranked screen: reopen Ranked instead of the title.
-const backToRanked = ANY_MULTIPLAYER && (() => {
+const returnTo = ANY_MULTIPLAYER ? (() => {
   try {
     const v = localStorage.getItem('pokejam.signin.return');
     if (v) localStorage.removeItem('pokejam.signin.return');
-    return v === 'ranked';
-  } catch { return false; }
-})();
+    return v === 'ranked' || v === 'profile' ? v : null;
+  } catch { return null; }
+})() : null;
+const backToRanked = returnTo === 'ranked';
 if (devRanked) {
   void import('./multiplayer/ranked/devDemo').then((m) => m.devRanked(app, devRanked));
 } else if (backToRanked) {
   app.className = 'screen-menu';
   void import('./multiplayer/hub').then((h) => h.multiplayerHub({ root: app, settings, audio }, menu, 'ranked'));
+} else if (returnTo === 'profile') {
+  // Back from a Google sign-in started on the profile: reopen the profile.
+  menu();
+  app.querySelector<HTMLButtonElement>('[data-go="profile"]')?.click();
 } else if (devFinal) {
   void import('./screens/devResults').then((m) => m.devResults(app, devFinal));
 } else if (shared) {

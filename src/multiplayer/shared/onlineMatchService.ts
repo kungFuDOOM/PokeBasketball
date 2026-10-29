@@ -3,6 +3,7 @@
 import { MODE_RANKED } from '../../config/features';
 import type { DraftView } from './draft';
 import { cooldownSeconds, counted, outcomeBetween, parseMe, parseProfile, parseRankResult, type RankedMe, type RankedResult, type ServerRank } from '../ranked/serverRank';
+import { displayName, serverNameError } from '../ranked/username';
 import { isBusy } from './capacity';
 import { RateLimit, backoffMs, jitter, singleFlight, sleep } from './throttle';
 import type { MatchResult, MatchService, Opponent, Queue, ReportOutcome } from './matchService';
@@ -174,6 +175,24 @@ export class SupabaseMatchService implements MatchService {
     return parseMe(await this.call('pokejam_ranked_me'));
   }
 
+  /** My username and when I may change it (null = now). A guest, or a player who hasn't picked, has none. */
+  async myUsername(): Promise<{ username: string | null; nextChangeAt: string | null }> {
+    const r = await this.call<{ username?: string | null; next_change_at?: string | null } | null>('pokejam_my_username');
+    return { username: typeof r?.username === 'string' ? r.username : null, nextChangeAt: typeof r?.next_change_at === 'string' ? r.next_change_at : null };
+  }
+
+  /** Pick or change my username. Throws an OnlineError with player-facing text if the server refuses it. */
+  async setUsername(name: string): Promise<string> {
+    try {
+      const r = await this.call<{ username: string }>('pokejam_set_username', { p_name: name });
+      return r.username;
+    } catch (e) {
+      const text = serverNameError((e as Error).message);
+      if (text) throw new OnlineError(text);
+      throw e;
+    }
+  }
+
   /** Who is in a match, from my side. */
   async matchInfo(id: string): Promise<OnlineMatch> {
     const m = await this.call<{
@@ -183,8 +202,14 @@ export class SupabaseMatchService implements MatchService {
     if (!m || !m.guest) throw new OnlineError('match not found');
     if (m.seed === null || m.seed === undefined) throw new OnlineError('This match was made by an older server. Refresh to update.');
     const side: 0 | 1 = m.host === this.userId ? 0 : 1;
-    const opp = side === 0 ? { id: m.guest, name: m.guest_name ?? 'Trainer' } : { id: m.host, name: m.host_name };
-    const me = side === 0 ? m.host_name : m.guest_name ?? 'Trainer';
+    let opp = side === 0 ? { id: m.guest, name: m.guest_name ?? 'Trainer' } : { id: m.host, name: m.host_name };
+    let me = side === 0 ? m.host_name : m.guest_name ?? 'Trainer';
+    if (m.queue === 'ranked') {
+      // Ranked shows usernames, not team names or ids; a player without one reads as "Player".
+      const u = await this.call<{ host?: string | null; guest?: string | null } | null>('pokejam_match_usernames', { p_match: id }).catch(() => null);
+      me = displayName(side === 0 ? u?.host : u?.guest);
+      opp = { ...opp, name: displayName(side === 0 ? u?.guest : u?.host) };
+    }
     return {
       id: m.id, queue: m.queue, side, me: { id: this.userId, name: me }, opponent: { ...opp, mmr: 1000, simulated: false },
       game: {
