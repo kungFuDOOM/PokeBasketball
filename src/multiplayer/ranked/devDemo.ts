@@ -5,7 +5,8 @@ import type { ReportOutcome } from '../shared/matchService';
 import type { PhantomAction } from '../../wallet/phantom';
 import type { RankedMe, RankedResult } from './serverRank';
 import { renderRankBadge } from '../../ranked/badge';
-import { postMatchHtml, rankChipHtml, signInPanelHtml, usernamePickerHtml } from './view';
+import { postMatchHtml, rankChipHtml, shieldItemHtml, shieldTagHtml, signInPanelHtml, usernamePickerHtml, weeklyCardHtml } from './view';
+import { parseShieldStatus } from './serverRank';
 import { profileHtml, type ProfileModel } from '../../screens/profile';
 import { checkUsername, nameErrorText } from './username';
 
@@ -20,6 +21,12 @@ const out = (r: RankedResult, m: RankedMe | null, oppRank: ReportOutcome['oppRan
 
 const HOME_BTNS = '<button class="btn primary big" data-a="find">Find ranked match</button><button class="btn" data-a="cpu">Practice vs CPU (unranked)</button><button class="btn ghost" data-a="back">Back</button>';
 const home = (chip: string) => panel('RANKED', 'Play 5 placement matches to earn a rank.', `<div class="rk-home"><div class="rk-left">${chip}</div><div class="rk-right">${HOME_BTNS}</div></div>`);
+// Rank Shield: made-up server answers (pokejam_shield_me), times relative to now so the labels read the same on every run.
+const shield = (o: Record<string, unknown> = {}, w: Record<string, unknown> = {}) => parseShieldStatus({
+  count: 3, armed: false, locked: false, next_use_at: null, arm_block: null,
+  weekly: { kind: 'games', goal: 10, progress: 6, done: false, resets_at: new Date(Date.now() + 3.4 * 86_400_000).toISOString(), ...w }, ...o })!;
+const shieldHome = (st = shield()) => panel('RANKED', 'Play 5 placement matches to earn a rank.',
+  `<div class="rk-home"><div class="rk-left">${rankChipHtml(me())}${weeklyCardHtml(st.weekly)}</div><div class="rk-right"><button class="btn primary big" data-a="find">Find ranked match</button>${shieldItemHtml(st)}<button class="btn" data-a="cpu">Practice vs CPU (unranked)</button><button class="btn ghost" data-a="back">Back</button></div></div>`);
 const signIn = (a: PhantomAction) => panel('RANKED', 'Play 5 placement matches to earn a rank.',
   `<div class="rk-home"><div class="rk-left">${signInPanelHtml(a)}</div><div class="rk-right"><button class="btn" data-a="cpu">Practice vs CPU (unranked)</button><button class="btn ghost" data-a="back">Back</button></div></div>`);
 const post = (html: string) => `<div class="menu"><section class="card setup"><div class="mp-outcome" data-outcome>${html}</div></section></div>`;
@@ -35,6 +42,13 @@ const SCREENS: Record<string, () => string> = {
   chip: () => home(rankChipHtml(me())),
   'chip-zenith': () => home(rankChipHtml(me({ divIdx: 24, points: 340, zenith: true, shieldActive: false }))),
   'chip-shield-spent': () => home(rankChipHtml(me({ shieldCharge: 0, shieldLossesLeft: 2 }))),
+  'shield-hub': () => shieldHome(),
+  'shield-hub-armed': () => shieldHome(shield({ armed: true })),
+  'shield-hub-locked': () => shieldHome(shield({ armed: true, locked: true })),
+  'shield-hub-used': () => shieldHome(shield({ arm_block: 'used_today', next_use_at: new Date(Date.now() + (5 * 60 + 12) * 60_000 + 30_000).toISOString() })),
+  'shield-hub-placing': () => shieldHome(shield({ arm_block: 'placing' })),
+  'shield-hub-done': () => shieldHome(shield({ count: 1 }, { progress: 10, done: true })),
+  'shield-queue': () => panel('SEARCHING', 'Looking for a ranked opponent near your skill…', `${shieldTagHtml(shield({ armed: true }))}<div class="actions center"><button class="btn ghost" data-a="cancel">Cancel</button></div>`),
   placing: () => home(rankChipHtml(me({ placing: true, placementsPlayed: 2, divIdx: null, points: null }))),
   signin: () => signIn({ kind: 'install', href: 'https://phantom.app/download' }),
   'signin-phantom': () => signIn({ kind: 'sign-in' }),
@@ -52,6 +66,8 @@ const SCREENS: Record<string, () => string> = {
   'post-loss': () => post(postMatchHtml(out(result({ before: 762, after: 745, delta: -17, points: 45 }), me({ points: 45 })), false)),
   'post-up': () => post(postMatchHtml(out(result({ event: 'promoted', before: 790, after: 812, delta: 22, divIdx: 8, points: 12 }), me({ divIdx: 8, points: 12 })), true)),
   'post-down': () => post(postMatchHtml(out(result({ event: 'demoted', before: 805, after: 778, delta: -27, divIdx: 7, points: 78 }), me({ divIdx: 7, points: 78, shieldCharge: 0, shieldLossesLeft: 3 })), false)),
+  'post-saved': () => post(postMatchHtml(out(result({ before: 762, after: 762, delta: 0, points: 62, shield: { armed: true, used: true, saved: 17 } }), me({ points: 62 })), false)),
+  'post-kept': () => post(postMatchHtml(out(result({ shield: { armed: true, used: false, saved: 0 } }), me({ points: 62 })), true)),
   'post-shield': () => post(postMatchHtml(out(result({ event: 'shielded', before: 700, after: 700, delta: -19, divIdx: 7, points: 0 }), me({ divIdx: 7, points: 0, shieldCharge: 0, shieldLossesLeft: 3 })), false)),
   'post-placing': () => post(postMatchHtml(out(result({ placing: true, placementsPlayed: 3, before: null, after: null, delta: null, divIdx: null, points: null }), null), true)),
   'post-placed': () => post(postMatchHtml(out(result({ placing: true, event: 'placed', placementsPlayed: 5, before: 400, after: 440, delta: 40, divIdx: 4, points: 40 }), me({ divIdx: 4, points: 40 })), true)),
