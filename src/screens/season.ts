@@ -14,6 +14,10 @@ import { bestLineup } from '../game/game';
 import { draftScreen, type DraftTeam } from './draft';
 import type { Settings } from './menu';
 import type { Mon } from '../data/pokemon';
+import { offlineStats } from '../telemetry/offlineStats';
+
+/** Season results as the offline stats' playoff_round. */
+const PLAYOFF_ROUND = { missed: 0, semis: 1, final: 2, champion: 3 } as const;
 
 export interface SeasonActions {
   menu(): void;
@@ -67,6 +71,7 @@ export function seasonMode(root: HTMLElement, settings: Settings, audio: Audio, 
 
   function simulate(rosters: Mon[][]) {
     const { input, result } = finishSeasonDraft(user, rosters, seedOf());
+    offlineStats().season('season_draft', null, PLAYOFF_ROUND[result.user.playoff]);
     ticker(input, rosters[0], result);
   }
 

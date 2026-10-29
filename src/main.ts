@@ -36,6 +36,7 @@ import { badgeSvg } from './ui/badges';
 import { guardZoom } from './ui/noZoom';
 import { abbr, esc, guardNameInputs, lettersName, shuffle } from './util';
 import { initErrorReports } from './telemetry/errors';
+import { offlineStats } from './telemetry/offlineStats';
 import { installTouchGuard } from './ui/touchGuard';
 
 initErrorReports();
@@ -317,8 +318,17 @@ async function simRestOfWeek(f: Franchise) {
 /** Sims every game still open this week, then moves the league forward. */
 async function finishWeek(f: Franchise) {
   await simRestOfWeek(f);
+  const wasDone = f.phase === 'done';
   advance(f);
   saveFranchise(f);
+  if (!wasDone && f.phase === 'done') offlineStats().season('franchise', f.season, playoffRound(f));
+}
+
+/** How far the user's team (team 0) went this season: 0 missed the playoffs, 1 semifinal, 2 lost the final, 3 champion. */
+function playoffRound(f: Franchise): number {
+  if (f.champion === 0) return 3;
+  const mine = f.games.filter((g) => g.round && (g.home === 0 || g.away === 0));
+  return mine.some((g) => g.round === 'final') ? 2 : mine.length ? 1 : 0;
 }
 
 function playUserGame(f: Franchise, g: FGame) {
@@ -326,7 +336,11 @@ function playUserGame(f: Franchise, g: FGame) {
   audio.unlock();
   const { cfg, sides, uidOf } = gameConfig(f, g, true, settings.quarterLen, settings.difficulty, settings.autoSubs !== false);
   cfg.autoSwitch = settings.autoSwitch !== false;
-  playGame(app, cfg, audio, (game) => void afterUserGame(f, g, game, sides, uidOf, false), hub, {
+  const stat = offlineStats().start('franchise');
+  playGame(app, cfg, audio, (game) => {
+    stat.finish('played');
+    void afterUserGame(f, g, game, sides, uidOf, false);
+  }, hub, {
     onAutoSubs: (on) => {
       settings.autoSubs = on;
       save();
@@ -337,7 +351,9 @@ function playUserGame(f: Franchise, g: FGame) {
 async function simUserGame(f: Franchise, g: FGame) {
   const { cfg, sides, uidOf } = gameConfig(f, g, false, settings.quarterLen, settings.difficulty);
   const done = overlay('Simulating your game…');
+  const stat = offlineStats().start('franchise');
   const game = await simulate(cfg);
+  stat.finish('simmed');
   done();
   void afterUserGame(f, g, game, sides, uidOf, true);
 }

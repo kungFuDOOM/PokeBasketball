@@ -46,7 +46,7 @@
   <p class="meta">Last updated: October 27, 2026</p>
 
   <div class="summary">
-    <p><strong>The short version:</strong> Poké Jam is a free browser game with no payments, no ad network, no ad tracking and no cookies. We only count visits with Cloudflare's cookieless analytics. Playing on your own (Quick Play, Franchise, drafts) needs no account, and those saves stay on your own device. If you choose to <a href="#online">play online</a>, the game makes you an anonymous account and keeps what online play needs, listed below. The only other thing the game sends is a short <a href="#crash">crash report</a> if it breaks.</p>
+    <p><strong>The short version:</strong> Poké Jam is a free browser game with no payments, no ad network, no ad tracking and no cookies. We only count visits with Cloudflare's cookieless analytics. Playing on your own (Quick Play, Franchise, drafts) needs no account, and those saves stay on your own device. If you choose to <a href="#online">play online</a>, the game makes you an anonymous account and keeps what online play needs, listed below. The only other things the game sends are a short <a href="#crash">crash report</a> if it breaks and anonymous <a href="#counts">gameplay counts</a>.</p>
   </div>
 
   <h2 id="privacy">Privacy policy</h2>
@@ -87,11 +87,14 @@
   <h3 id="crash">Crash reports</h3>
   <p>If the game crashes (even if you never use online play), it sends a short crash report to our Supabase project: the error message and where in the code it happened, the page, which version of the game, and your browser's user agent (its name and version). No account, name or game data is included. We use reports only to fix bugs, and delete them after 30 days.</p>
 
+  <h3 id="counts">Gameplay counts</h3>
+  <p>When you play on your own, the game sends anonymous gameplay counts to our Supabase project: that a game started or finished, the mode (Quick Play, Franchise, Season Draft), whether it was played, watched or simmed, and franchise season results (how far your team got). Each count is tagged with a random device id stored in your browser. No name, email, IP address or other personal info is stored with it. Clearing site data (or <strong>Delete saved data</strong>) resets the id. We use the counts only to see how much the game is played.</p>
+
   <h3>Deleting your data</h3>
   <p>Press <strong>Delete saved data</strong> at the bottom of the title screen to erase everything the game has stored on your device, including the online sign-in. Clearing this site's data in your browser settings does the same. To have an online account's records deleted from our servers, email us at the address below and say which trainer name it was (use the same device if you can, so we can match the account). We delete the account and its match records within 30 days of confirming the request. Crash reports hold no account information and are deleted after 30 days anyway.</p>
 
   <h3>Third-party services</h3>
-  <p>Playing on your own uses none, apart from the crash reports above and Cloudflare Web Analytics. This site uses Cloudflare Web Analytics, which is cookieless and does not track people across sites, to count visits. The game's code, fonts, sprites and sounds are all served by this website itself. The game does not load advertising, social media widgets, payment processors or session recording tools.</p>
+  <p>Playing on your own uses none, apart from the crash reports and gameplay counts above and Cloudflare Web Analytics. This site uses Cloudflare Web Analytics, which is cookieless and does not track people across sites, to count visits. The game's code, fonts, sprites and sounds are all served by this website itself. The game does not load advertising, social media widgets, payment processors or session recording tools.</p>
   <p>Online play uses these services, which receive your IP address and browser information as part of providing them:</p>
   <ul>
     <li><strong>Supabase</strong> runs the online accounts, the database and the match messages (<a href="https://supabase.com/privacy" rel="noopener">Supabase privacy policy</a>).</li>

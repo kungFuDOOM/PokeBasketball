@@ -34,6 +34,15 @@ const MOCK = {
     games_all: 4821, games_all_finished: 4377, playing_now_matches: 3, playing_now_players: 6, queue_now: 2,
     today_starts: '2026-10-28T07:00:00Z', generated_at: '2026-10-28T23:41:00Z', // midnight PDT, 4:41 PM PT
   },
+  pokejam_admin_offline_stats: {
+    players_today: 318, players_7d: 1406, players_all: 2210,
+    games_today: { quick: { started: 402, finished: 297 }, franchise: { started: 251, finished: 236 } },
+    games_all: { quick: { started: 3120, finished: 2288 }, franchise: { started: 1874, finished: 1760 } },
+    finish_today: { played: 471, watched: 0, simmed: 62 }, finish_all: { played: 3612, watched: 0, simmed: 436 },
+    seasons_today: { franchise: { seasons: 9, playoffs: 6, titles: 2 } },
+    seasons_all: { franchise: { seasons: 71, playoffs: 44, titles: 17 }, season_draft: { seasons: 512, playoffs: 301, titles: 88 } },
+    first_event_at: '2026-10-28T20:00:00Z', today_starts: '2026-10-28T07:00:00Z', generated_at: '2026-10-28T23:41:00Z',
+  },
 };
 const b64 = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');
 const exp = Math.floor(Date.now() / 1000) + 3600;
@@ -50,15 +59,16 @@ const chrome = process.env.CHROME || (() => {
 })();
 const browser = await chromium.launch({ executablePath: chrome });
 try {
-  for (const [name, viewport] of [['admin-desktop', { width: 1280, height: 800 }], ['admin-390x844', { width: 390, height: 844 }]]) {
+  for (const [name, viewport] of [['admin-desktop', { width: 1280, height: 900 }], ['admin-390x844', { width: 390, height: 844 }]]) {
     const page = await browser.newPage({ viewport });
     await page.addInitScript((s) => {
       localStorage.setItem('pokejam.admin.auth', s);
       addEventListener('DOMContentLoaded', () => {
         const tag = document.createElement('div');
         tag.textContent = 'MOCK DATA — screenshot only';
-        tag.style.cssText = 'position:fixed;right:8px;bottom:8px;z-index:9;padding:4px 10px;border-radius:6px;background:#c0262d;color:#fff;font:700 13px sans-serif';
-        document.body.append(tag);
+        // A banner at the top (not floating) so full-page shots don't cover any numbers.
+        tag.style.cssText = 'padding:6px 10px;text-align:center;background:#c0262d;color:#fff;font:700 14px sans-serif';
+        document.body.prepend(tag);
       });
     }, JSON.stringify(session));
     await page.route(`${SB}/**`, (route) => {
@@ -66,8 +76,8 @@ try {
       route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(fn && fn in MOCK ? MOCK[fn] : fn ? [] : {}) });
     });
     await page.goto(site);
-    await page.waitForSelector('.stat-grid');
-    await page.screenshot({ path: join(out, `${name}.png`) });
+    await page.waitForSelector('[data-offline-body] .stat-grid');
+    await page.screenshot({ path: join(out, `${name}.png`), fullPage: true });
     console.log(join(out, `${name}.png`));
     await page.close();
   }
