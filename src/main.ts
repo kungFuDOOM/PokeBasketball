@@ -32,7 +32,7 @@ import { autoDraft, draftedMons, loadDrafted, renameDrafted, type TeamSource } f
 import { confirmNewDraft } from './ui/newDraft';
 import { confirmFranchiseName } from './ui/teamName';
 import { gamesScreen } from './screens/games';
-import { ANY_MULTIPLAYER } from './config/features';
+import { ANY_MULTIPLAYER, MODE_SHIELD_SHOP } from './config/features';
 import { badgeSvg } from './ui/badges';
 import { guardZoom } from './ui/noZoom';
 import { abbr, esc, guardNameInputs, lettersName, shuffle } from './util';
@@ -457,7 +457,9 @@ const returnTo = ANY_MULTIPLAYER ? (() => {
     return v === 'ranked' || v === 'profile' ? v : null;
   } catch { return null; }
 })() : null;
-const backToRanked = returnTo === 'ranked';
+// Back from Stripe Checkout (?shop=success / ?shop=cancel): reopen Ranked, which opens the shop on the result.
+const backFromShop = MODE_SHIELD_SHOP && /[?&]shop=(success|cancel)\b/.test(location.search);
+const backToRanked = returnTo === 'ranked' || backFromShop;
 if (devRanked) {
   void import('./multiplayer/ranked/devDemo').then((m) => m.devRanked(app, devRanked));
 } else if (backToRanked) {

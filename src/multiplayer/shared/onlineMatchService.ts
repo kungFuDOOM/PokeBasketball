@@ -2,7 +2,7 @@
 // clients can only read their own rows. See supabase/migrations/.
 import { MODE_RANKED } from '../../config/features';
 import type { DraftView } from './draft';
-import { cooldownSeconds, counted, outcomeBetween, parseMatchRanks, parseMe, parseProfile, parseRankResult, parseShieldStatus, type RankedMe, type RankedResult, type ServerRank, type ShieldStatus } from '../ranked/serverRank';
+import { cooldownSeconds, counted, outcomeBetween, parseMatchRanks, parseMe, parseProfile, parseRankResult, parseShieldStatus, parseShopInfo, type RankedMe, type RankedResult, type ServerRank, type ShieldStatus, type ShopInfo } from '../ranked/serverRank';
 import { displayName, serverNameError } from '../ranked/username';
 import type { BadgeRank } from '../../ranked/badge';
 import { isBusy } from './capacity';
@@ -180,6 +180,12 @@ export class SupabaseMatchService implements MatchService {
   async shieldStatus(): Promise<ShieldStatus | null> {
     if (!MODE_RANKED) throw new OnlineError('Ranked is not available');
     return parseShieldStatus(await this.call('pokejam_shield_me'));
+  }
+
+  /** The Rank Shield shop (pokejam_shield_shop): products, how many I hold, how many I may still buy. Null if the server has none. */
+  async shieldShop(): Promise<ShopInfo | null> {
+    if (!MODE_RANKED) throw new OnlineError('Ranked is not available');
+    return parseShopInfo(await this.call('pokejam_shield_shop'));
   }
 
   /** Arms or disarms the Rank Shield for my next ranked match. Throws an OnlineError with player-facing text when the server refuses. */

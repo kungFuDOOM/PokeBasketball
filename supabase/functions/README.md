@@ -30,6 +30,23 @@ Online matches play over a WebRTC data channel relayed by Cloudflare TURN, so Su
 2. Set the secrets: `supabase secrets set TURN_KEY_ID=<id> TURN_KEY_API_TOKEN=<token> ICE_ALLOWED_ORIGINS=https://pokejam.xyz,<test site>`.
 3. Deploy: `supabase functions deploy pokejam-ice`. It verifies the player's JWT (the default), so keep JWT verification on.
 
+## Rank Shield shop: Stripe Checkout (`shield-create-checkout/`, `shield-stripe-webhook/`)
+
+Players can buy Rank Shields with Stripe Checkout (**test mode only** until the owner flips it; the checkout function refuses a key that isn't `sk_test_...` unless `STRIPE_LIVE_MODE=true`). No Stripe SDK: both functions use `fetch` and Web Crypto, and the logic is in `_shared/shield/` (explicit `.ts` imports, tested in vitest). Setup, test cards and the going-live checklist: [`docs/rank-shield-stripe.md`](../../docs/rank-shield-stripe.md). Migration: `../migrations/20261118_pokejam_shield_shop.sql` (after `20261117`).
+
+| Function | JWT | Secrets | What it does |
+| --- | --- | --- | --- |
+| `shield-create-checkout` | verified (default) | `STRIPE_SECRET_KEY`, `SHIELD_SITE_URL`, `SHIELD_ALLOWED_ORIGINS`; optional `STRIPE_PRICE_SHIELD_3/7/14`, `STRIPE_LIVE_MODE` | Takes `{ sku, ageConfirmed }` from a signed-in, non-guest player, runs `pokejam_shield_checkout_check` (caps, rate limit), creates a Checkout Session with the price from `pokejam_shield_products`, returns `{ url }`. |
+| `shield-stripe-webhook` | **off** (`--no-verify-jwt`) | `STRIPE_WEBHOOK_SECRET`; optional `STRIPE_LIVE_MODE` | Verifies `Stripe-Signature`, then credits (`pokejam_shield_credit_purchase`) or revokes (`pokejam_shield_revoke`). Idempotent; 400 on a bad signature, 500 on a database error so Stripe retries. |
+
+```sh
+supabase secrets set STRIPE_SECRET_KEY=sk_test_... STRIPE_WEBHOOK_SECRET=whsec_... SHIELD_SITE_URL=https://pokejam.xyz SHIELD_ALLOWED_ORIGINS=https://pokejam.xyz
+supabase functions deploy shield-create-checkout
+supabase functions deploy shield-stripe-webhook --no-verify-jwt
+```
+
+Tests: `npx vitest run supabase/functions/_shared/shield supabase/tests/shield-shop.test.ts`.
+
 ## Online play: the human check (`pokejam-human/`)
 
 When it's switched on, quick match, making a room and joining one each need a short "human" pass (issue #20). The game shows a Cloudflare Turnstile check, `pokejam-human` verifies the token with Cloudflare's Siteverify, and the function grants a 20-minute pass (`pokejam_grant_human`, in `../migrations/20261027_pokejam_human_check.sql`). It's off until all three steps are done, so local and preview builds keep working.
