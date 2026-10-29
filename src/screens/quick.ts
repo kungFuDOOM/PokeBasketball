@@ -2,9 +2,9 @@
 // Pure arcade: no stamina, no bench, nothing saved. Playing as My Drafted Team adds both benches (and stamina so subs matter).
 import { COURTS, courtFor, userCourt, type CourtStyle } from '../data/courts';
 import { POKEMON, POSITIONS, TYPE_COLORS, spriteUrl, type Mon } from '../data/pokemon';
-import { LEAGUE, USER_STYLE, contrastAway, type LeagueTeam } from '../franchise/league';
+import { LEAGUE, USER_STYLE, contrastAway, simulate, type LeagueTeam } from '../franchise/league';
 import type { Audio } from '../game/audio';
-import { bestLineup, teamOvr } from '../game/game';
+import { bestLineup, teamOvr, type Game } from '../game/game';
 import type { TeamDef } from '../game/types';
 import { cpuRoster, draftedMons, draftedStarters, loadDrafted, renameDrafted, type TeamSource } from '../season/team';
 import { inlineRename } from '../ui/teamName';
@@ -15,11 +15,14 @@ import { bindSettings, settingsHtml, type Settings } from './menu';
 import { playGame } from './play';
 import { resultsScreen } from './results';
 import { offlineStats } from '../telemetry/offlineStats';
+import { claimUserTeam, resultTag, type GameMode } from './watch';
 
 export interface QuickActions {
   menu(): void;
   /** Settings changed and should be saved. */
   saved(): void;
+  /** Shows a full-screen busy overlay; call the returned function to remove it. */
+  overlay(text: string): () => void;
 }
 
 const levelLabel = (t: LeagueTeam) =>
@@ -163,7 +166,9 @@ export function quickPlay(root: HTMLElement, settings: Settings, audio: Audio, a
           </div>
           ${settingsHtml(settings)}
           <div class="actions center">
-            <button class="btn primary big" data-a="tip">Tip off</button>
+            <button class="btn primary big" data-a="tip">Play game</button>
+            <button class="btn" data-a="watch">Watch</button>
+            <button class="btn" data-a="sim">Sim game</button>
             ${drafted ? '' : '<button class="btn" data-a="redraft">Redraft</button>'}
             <button class="btn ghost" data-a="opp">New opponent</button>
           </div>
@@ -175,25 +180,31 @@ export function quickPlay(root: HTMLElement, settings: Settings, audio: Audio, a
       matchup(opp, mine, theirs, venues[Number((e.target as HTMLSelectElement).value)]);
     });
     root.querySelector('[data-a="tip"]')!.addEventListener('click', () => play(opp, mine, theirs, court));
+    root.querySelector('[data-a="watch"]')!.addEventListener('click', () => play(opp, mine, theirs, court, 'watched'));
+    root.querySelector('[data-a="sim"]')!.addEventListener('click', () => play(opp, mine, theirs, court, 'simmed'));
     root.querySelector('[data-a="redraft"]')?.addEventListener('click', () => draft(opp));
     root.querySelector('[data-a="opp"]')!.addEventListener('click', pickOpponent);
   }
 
-  function play(opp: LeagueTeam, mine: Mon[], theirs: Mon[], court: CourtStyle) {
+  function play(opp: LeagueTeam, mine: Mon[], theirs: Mon[], court: CourtStyle, mode: GameMode = 'played') {
     root.className = 'screen-game';
     audio.unlock();
-    const home: TeamDef = { ...user(), roster: mine, ...(drafted ? { bench: drafted.bench } : {}) };
+    const cpu = mode !== 'played';
+    const home: TeamDef = { ...user(), human: !cpu, roster: mine, ...(drafted ? { bench: drafted.bench } : {}) };
     const away = contrastAway(home, {
       name: opp.name, abbr: opp.abbr, color: opp.color, color2: opp.color2,
       roster: theirs, human: false, boost: opp.boost, coach: opp.leader, ...(drafted ? { bench: drafted.oppBench } : {}),
     });
+    const cfg = { home, away, quarterLen: settings.quarterLen, difficulty: settings.difficulty, court, autoSwitch: settings.autoSwitch !== false, ...(drafted ? { stamina: true, userAutoSubs: settings.autoSubs !== false } : {}) };
     const stat = offlineStats().start('quick');
-    playGame(root, { home, away, quarterLen: settings.quarterLen, difficulty: settings.difficulty, court, autoSwitch: settings.autoSwitch !== false, ...(drafted ? { stamina: true, userAutoSubs: settings.autoSubs !== false } : {}) }, audio, (g) => {
-      stat.finish('played');
+    const done = (g: Game) => {
+      stat.finish(mode);
+      // Watch and Sim are CPU-vs-CPU; the results screen still treats your side as the user's (headline, Share).
+      if (cpu) claimUserTeam(g);
       root.className = 'screen-results';
       window.scrollTo(0, 0);
       resultsScreen(root, g, {
-        tag: `Quick Play · ${court.venue}`,
+        tag: resultTag(`Quick Play · ${court.venue}`, mode),
         shareOpponent: court.venue,
         buttons: [
           { id: 'rematch', label: 'Rematch', kind: 'primary' },
@@ -208,7 +219,13 @@ export function quickPlay(root: HTMLElement, settings: Settings, audio: Audio, a
           else act.menu();
         },
       });
-    }, () => matchup(opp, mine, theirs, court));
+    };
+    if (mode === 'simmed') {
+      const close = act.overlay('Simulating your game…');
+      void simulate(cfg).then((g) => { close(); done(g); });
+    } else {
+      playGame(root, cfg, audio, done, () => matchup(opp, mine, theirs, court), mode === 'watched' ? { spectator: true } : {});
+    }
   }
 
   pickOpponent();

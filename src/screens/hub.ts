@@ -12,6 +12,7 @@ import { countAt, posTrackHtml, targetPer, typeChips } from './draft';
 export interface HubActions {
   play(g: FGame): void;
   simMine(g: FGame): void;
+  watchMine(g: FGame): void;
   simWeek(): void;
   /** Start or resume the offseason rookie draft. */
   rookies(): void;
@@ -41,7 +42,7 @@ function lineup(f: Franchise, t: FTeam): string {
   }).join('')}</ul>`;
 }
 
-function nextCard(f: Franchise, settings: Settings): string {
+export function nextCard(f: Franchise, settings: Settings): string {
   if (f.phase === 'done') {
     const champ = f.teams[f.champion!];
     const mvp = f.mvp ? f.players[f.mvp] : null;
@@ -96,6 +97,7 @@ function nextCard(f: Franchise, settings: Settings): string {
       ${settingsHtml(settings, { subs: f.teams[0].roster.length > 5 })}
       <div class="actions center">
         <button class="btn primary big" data-a="play">Play game</button>
+        <button class="btn" data-a="watch-mine">Watch</button>
         <button class="btn" data-a="sim-mine">Sim game</button>
       </div>
     </section>`;
@@ -400,6 +402,7 @@ export function hubScreen(root: HTMLElement, f: Franchise, settings: Settings, a
     else if (a === 'menu') act.menu();
     else if (a === 'play' && g) act.play(g);
     else if (a === 'sim-mine' && g) act.simMine(g);
+    else if (a === 'watch-mine' && g) act.watchMine(g);
     else if (a === 'sim-week') act.simWeek();
     else if (a === 'rookies') act.rookies();
     else if (a === 'games') act.games();

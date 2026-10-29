@@ -6,12 +6,13 @@ import { ReplayRecorder } from '../game/replay';
 import { Input } from '../game/input';
 import { Renderer } from '../game/render';
 import { preload } from '../game/sprites';
-import type { GameConfig, Intent, Player, TeamId } from '../game/types';
+import { emptyIntent, type GameConfig, type Intent, type Player, type TeamId } from '../game/types';
 import { spriteUrl } from '../data/pokemon';
 import { esc } from '../util';
 import { Voice, sharedVoice } from '../game/voice';
 import { controlsHtml } from './menu';
 import { playOfTheGame, rememberReplay, type PlayOfTheGame } from './potg';
+import { nextSpeed, stepHeadless } from './watch';
 
 const STEP = 1 / 60;
 /** Dev aid: ?speed=4 runs the simulation four times faster. */
@@ -44,7 +45,7 @@ export function playGame(
   audio: Audio,
   onFinal: (g: Game) => void,
   onQuit: () => void,
-  opts: { onAutoSubs?: (on: boolean) => void; online?: OnlineDriver } = {},
+  opts: { onAutoSubs?: (on: boolean) => void; online?: OnlineDriver; spectator?: boolean } = {},
 ): PlayHandle {
   root.innerHTML = `
     <div class="game">
@@ -60,12 +61,13 @@ export function playGame(
             <button class="btn ghost" data-a="quit">Quit to menu</button>
           </div>
           <div class="subs-panel" hidden></div>
-          ${controlsHtml()}
+          ${opts.spectator ? '' : controlsHtml()}
         </div>
       </div>
       <div class="loading">Warming up…</div>
       <div class="net-status" hidden></div>
       <div class="net-ping" hidden></div>
+      ${opts.spectator ? '<div class="spec-bar"><button class="spec-btn" data-a="speed" aria-label="Playback speed">1x</button><button class="spec-btn" data-a="skip" aria-label="Skip to result">Skip<span class="spec-long"> to result</span></button></div>' : ''}
     </div>`;
   const gameEl = root.querySelector<HTMLElement>('.game')!;
   const canvas = root.querySelector<HTMLCanvasElement>('canvas')!;
@@ -86,11 +88,13 @@ export function playGame(
   const renderer = new Renderer(canvas);
   const hud = new Hud(gameEl, g);
   // Play of the Game: offline games are recorded so the best moment can be replayed after the final buzzer.
-  const rec = online ? null : new ReplayRecorder(cfg, g.seed);
+  const spectator = !!opts.spectator && !online;
+  gameEl.classList.toggle('spectator', spectator);
+  const rec = online || spectator ? null : new ReplayRecorder(cfg, g.seed);
   let potg: PlayOfTheGame | null = null;
   const input = new Input();
   const touch = window.matchMedia('(pointer: coarse)').matches || navigator.maxTouchPoints > 0;
-  if (touch) {
+  if (touch && !spectator) {
     input.attachTouch(gameEl);
     gameEl.classList.add('has-touch');
   }
@@ -106,6 +110,8 @@ export function playGame(
   let last = performance.now();
   let acc = 0;
   let finalT = -1;
+  let speed = SPEED;
+  let skipping = false;
   let pend = { shoot: false, pass: false, swap: false, steal: false, special: false };
 
   const setMuteLabel = () => {
@@ -171,6 +177,19 @@ export function playGame(
     renderSubs();
   });
 
+  const speedBtn = root.querySelector<HTMLButtonElement>('[data-a="speed"]');
+  speedBtn?.addEventListener('click', () => {
+    speed = nextSpeed(speed);
+    speedBtn.textContent = `${speed}x`;
+  });
+  root.querySelector('.spec-bar [data-a="skip"]')?.addEventListener('click', () => {
+    if (g.phase === 'final') return;
+    skipping = true;
+    setPaused(false);
+    loading.textContent = 'Finishing the game…';
+    gameEl.appendChild(loading);
+  });
+
   const menuOpen = () => !pauseMenu.hidden;
   const setPaused = (p: boolean) => {
     g.paused = p && !online; // an online game keeps running behind the menu
@@ -220,8 +239,11 @@ export function playGame(
       return;
     }
     if (ready) {
-      const { intent, pause } = input.read();
-      if (pause && g.phase !== 'final') setPaused(!menuOpen());
+      const read = input.read();
+      const pause = read.pause;
+      // Spectators have no player: nothing they press reaches the game.
+      const intent = spectator ? emptyIntent() : read.intent;
+      if (pause && g.phase !== 'final' && !skipping) setPaused(!menuOpen());
       // Edge-triggered buttons are held until one sim step consumes them.
       pend.shoot ||= intent.shoot;
       pend.pass ||= intent.pass;
@@ -241,8 +263,17 @@ export function playGame(
           netPing.textContent = shown;
           netPing.dataset.q = ms === null ? '' : pingQuality(ms);
         }
+      } else if (skipping) {
+        // Skip to result: same tick function, no rendering, a slice of each frame at a time.
+        const t0 = performance.now();
+        while (g.phase !== 'final' && performance.now() - t0 < 12) stepHeadless(g, 120);
+        if (g.phase === 'final') {
+          stop();
+          onFinal(g);
+          return;
+        }
       } else {
-        acc += dt * SPEED;
+        acc += dt * speed;
         while (acc >= STEP) {
           const want = { ...intent, ...pend };
           g.userInput = rec ? rec.before(g, want) : want;
