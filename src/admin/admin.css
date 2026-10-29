@@ -20,6 +20,11 @@ body:has(.admin) { background: var(--bg); color: var(--fg); }
 .admin .acts .btn { margin: 0 4px 4px 0; }
 .admin .tag { display: inline-block; padding: 1px 8px; border-radius: 999px; background: var(--panel-2); font-size: 0.85em; }
 .admin .tag.bad { background: #4a1208; color: #ffb4a3; }
+.admin td ul.latest { list-style: none; padding-left: 0; display: grid; gap: 8px; }
+.admin td ul.latest small { display: inline; }
+.admin .rep-acts { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-top: 4px; }
+.admin .rep-acts i { font-style: normal; font-size: 0.8em; color: var(--muted); margin-right: 2px; }
+.admin .btn.mini { padding: 3px 8px; font-size: 0.75rem; }
 .admin .btn.danger { border-color: var(--red); color: #ffb4a3; }
 .admin .link { background: none; border: 0; color: var(--accent); cursor: pointer; font: inherit; padding: 0; text-decoration: underline; }
 .admin .stats { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; margin-bottom: 18px; }

@@ -1363,7 +1363,10 @@ button.gl-row:hover { border-color: var(--muted); }
 .fc-box .actions { margin-top: 16px; }
 .rn-text { overflow-wrap: break-word; word-break: normal; }
 .ss-head h2 .rn-text, .ss-head h2 { overflow-wrap: break-word; }
-.rn-edit { flex-wrap: nowrap; width: 100%; }
+.rn-edit { flex-wrap: wrap; width: 100%; }
+/* "That team name isn't allowed": under whichever team-name field is blocked; takes a full row where the field sits in a flex row. */
+.name-err { flex: 1 0 100%; margin: 4px 0 0; text-align: center; color: var(--red); font: 700 0.8rem/1.25 var(--sport); letter-spacing: normal; text-transform: none; }
+input[aria-invalid="true"].rn-input, #team-name[aria-invalid="true"], #fc-input[aria-invalid="true"], #sum-name[aria-invalid="true"] { border-color: var(--red); }
 .rn-edit .btn { font: 800 0.8rem var(--sport); padding: 8px 10px; flex: none; }
 .rn-input { flex: 1 1 auto; width: auto; min-width: 6ch; }
 /* Draft complete: share beside Continue */
@@ -1412,7 +1415,7 @@ button.gl-row:hover { border-color: var(--muted); }
 /* Title hero: name your team, then draft. The name box sits above the button at the same width. */
 .play-row { flex-direction: column; align-items: center; gap: 10px; flex-wrap: nowrap; }
 .play-row .team-field, .play-row .play-btn { width: min(100%, 400px); min-width: 0; box-sizing: border-box; }
-.play-row .team-field { display: flex; flex-direction: row; align-items: center; gap: 10px; padding: 8px 12px; }
+.play-row .team-field { display: flex; flex-direction: row; flex-wrap: wrap; align-items: center; gap: 10px; padding: 8px 12px; }
 .play-row .team-field input { flex: 1; min-width: 0; text-align: center; }
 
 /* Draft-spot reveal: where you pick this draft */

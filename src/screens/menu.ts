@@ -1,7 +1,8 @@
 import { POKEMON, spriteUrl } from '../data/pokemon';
 import { DIFFICULTIES, type Difficulty } from '../game/types';
 import type { TeamSource } from '../season/team';
-import { esc, lettersName } from '../util';
+import { isNameBlocked } from '../nameFilter';
+import { esc, lettersName, showNameError } from '../util';
 import { prefersStatic, startAttract, type Attract, type AttractState } from './attract';
 
 export interface Settings {
@@ -164,6 +165,9 @@ export function menuScreen(root: HTMLElement, settings: Settings, onChange: () =
   };
   /** Every way out of the menu shuts the attract game down first. */
   const leave = <A extends unknown[]>(fn: (...a: A) => void) => (...a: A) => {
+    // A blocked team name stops every way out of the menu until it is changed (its error is already showing).
+    const typed = root.querySelector<HTMLInputElement>('#team-name');
+    if (typed && isNameBlocked(lettersName(typed.value))) { showNameError(typed); typed.focus(); return; }
     destroy();
     fn(...a);
   };
@@ -267,7 +271,9 @@ export function menuScreen(root: HTMLElement, settings: Settings, onChange: () =
 
   const name = $<HTMLInputElement>('#team-name')!;
   name.addEventListener('input', () => {
-    settings.teamName = lettersName(name.value);
+    // A blocked name is never kept: the last good one stays saved.
+    const typed = lettersName(name.value);
+    if (!isNameBlocked(typed)) settings.teamName = typed;
     onChange();
   });
   const startNew = $<HTMLButtonElement>('[data-go="new"]')!;
