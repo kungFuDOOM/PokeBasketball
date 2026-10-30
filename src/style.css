@@ -2079,6 +2079,32 @@ body:has(.pause-btn) .music-btn:not(.docked) {
   .pf-who { gap: 8px; }
   .rk-rb-text { font-size: 0.8rem; }
 }
+/* Ranked team pick (presetPick.ts): six preset cards, 3x2 in landscape, 2x3 in portrait; Lock in pinned at the bottom. */
+.menu.pp { display: flex; flex-direction: column; box-sizing: border-box; height: 100dvh; min-height: 0; padding: max(8px, env(safe-area-inset-top, 0px)) 10px 0; overflow: hidden; }
+/* Right padding keeps the clock clear of the fixed music button (40px + its 10px inset). */
+.pp-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 6px; padding-right: 48px; }
+.pp-title { margin: 0; font: normal 700 1.1rem var(--pixel); }
+.pp-clock { font: normal 700 1.1rem var(--pixel); padding: 2px 10px; border: 2px solid var(--line); border-radius: 8px; }
+.pp-clock.low { color: #ff6b6b; border-color: #ff6b6b; }
+.pp-grid { flex: 1; min-height: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); grid-template-rows: repeat(2, minmax(0, 1fr)); gap: 6px; }
+.pp-card { display: flex; flex-direction: column; min-width: 0; min-height: 0; padding: 4px 6px; border: 2px solid var(--line); border-radius: 10px; background: rgba(255, 255, 255, 0.05); color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.pp-card.on { border-color: var(--accent, #ffcb05); background: rgba(255, 203, 5, 0.14); box-shadow: 0 0 0 2px rgba(255, 203, 5, 0.35); }
+.pp-grid.locked .pp-card:not(.on) { opacity: 0.55; }
+.pp-head { display: flex; align-items: baseline; gap: 6px; font-size: 0.8rem; }
+.pp-id { font: normal 700 0.95rem var(--pixel); }
+.pp-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pp-ovr { font-weight: 700; }
+.pp-mons { flex: 1; min-height: 0; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 2px; margin: 2px 0 0; padding: 0; list-style: none; }
+.pp-mons li { display: flex; flex-direction: column; align-items: center; justify-content: center; min-width: 0; min-height: 0; }
+.pp-mons img { width: 100%; max-width: 48px; min-height: 0; flex: 0 1 auto; aspect-ratio: 1; object-fit: contain; image-rendering: pixelated; }
+.pp-pos { font-size: 0.6rem; color: var(--muted); line-height: 1.1; }
+.pp-mon { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.62rem; line-height: 1.15; }
+.pp-bar { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 6px 0 max(8px, env(safe-area-inset-bottom, 0px)); }
+.pp-bar .btn { min-width: 220px; }
+.pp-status { margin: 0; padding: 10px 0; font-weight: 700; }
+.pp-err { margin: 0; color: #ff6b6b; font-size: 0.85rem; }
+@media (orientation: portrait) { .pp-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(3, minmax(0, 1fr)); } }
+@media (orientation: landscape) and (max-height: 450px) { .pp-mons img { max-width: 34px; } .pp-top { margin-bottom: 4px; } .pp-bar .btn.big { padding-top: 6px; padding-bottom: 6px; } }
 /* Pre-game intro: both lineups, VS between, Skip pinned at thumb reach. Fits 844x390 / 932x430 / 390x844 without scrolling. */
 .screen-intro { overflow: hidden; }
 .intro { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; box-sizing: border-box; padding: max(8px, env(safe-area-inset-top, 0px)) max(10px, env(safe-area-inset-right, 0px)) calc(64px + env(safe-area-inset-bottom, 0px)) max(10px, env(safe-area-inset-left, 0px)); overflow: hidden; }

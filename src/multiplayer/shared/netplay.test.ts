@@ -3,6 +3,7 @@ import { Game } from '../../game/game';
 import { stateHash } from '../../game/sync';
 import type { NetMsg } from './lockstep';
 import { ENGINE_VERSION } from '../../game/types';
+import { RANKED_PRESETS, rosterDigest } from '../ranked/presets';
 import { MatchLink, NET_VERSION, buildConfig, connect, setupFor, wantsEvidence } from './netplay';
 import { gameConfigFor } from './winnerCheck';
 import type { OnlineMatch } from './onlineMatchService';
@@ -29,6 +30,17 @@ describe('the online game comes from the server, the same on both sides', () => 
     expect(rostersFor(42).map((r) => r.map((m) => m.dex))).toEqual(rostersFor(42).map((r) => r.map((m) => m.dex)));
     expect(rostersFor(42).map((r) => r.map((m) => m.dex))).not.toEqual(rostersFor(43).map((r) => r.map((m) => m.dex)));
     for (const r of rostersFor(7)) expect(r.map((m) => m.pos)).toEqual(['PG', 'SG', 'SF', 'PF', 'C']);
+  });
+
+  it('Ranked plays the server preset rosters and never falls back to seed teams', () => {
+    const rosters: [number[], number[]] = [RANKED_PRESETS[2].dex, RANKED_PRESETS[5].dex];
+    const ranked = (side: 0 | 1, r: [number[], number[]] | null | undefined): OnlineMatch => ({ ...match(side), queue: 'ranked', game: { seed: 9, quarterLen: 120, rosters: r } });
+    const setup = setupFor(ranked(1, rosters));
+    expect([setup.home.roster, setup.away.roster]).toEqual(rosters);
+    expect(setupFor(ranked(0, rosters))).toEqual(setup);
+    for (const r of [null, undefined]) expect(() => setupFor(ranked(0, r))).toThrow('ranked match has no preset rosters');
+    // Social keeps its seed fallback.
+    expect([setupFor(match(0)).home.roster, setupFor(match(0)).away.roster]).toEqual(rostersFor(123456789, 'social').map((t) => t.map((m) => m.dex)));
   });
 });
 
@@ -97,9 +109,61 @@ describe('hand-over between the direct link and Realtime', () => {
   });
 });
 
+describe('the ranked handshake carries a roster digest', () => {
+  type Hi = { k: string; side: number; d?: number; v: number; n: number };
+  function rankedRig(m: OnlineMatch) {
+    const sent: Hi[] = [];
+    let onHs: (e: { payload: unknown }) => void = () => {};
+    const ch = {
+      on(_t: string, f: { event: string }, cb: (e: { payload: unknown }) => void) { if (f.event === 'hs') onHs = cb; return ch; },
+      send: (x: { payload: Hi }) => { sent.push(x.payload); return Promise.resolve('ok'); },
+      subscribe(cb: (s: string) => void) { cb('SUBSCRIBED'); return ch; },
+    };
+    const sb = { channel: () => ch, removeChannel: () => Promise.resolve('ok'), realtime: { setAuth: () => Promise.resolve() } };
+    const p = connect(sb as never, m, undefined);
+    p.catch(() => {});
+    const flush = () => new Promise((r) => setTimeout(r, 0));
+    return { sent, p, flush, peer: (extra: Partial<Hi>) => onHs({ payload: { k: 'hi', v: ENGINE_VERSION, n: NET_VERSION, side: m.side === 0 ? 1 : 0, ...extra } }) };
+  }
+  const ranked = (side: 0 | 1): OnlineMatch => ({ ...match(side), queue: 'ranked', game: { seed: 1, quarterLen: 120, rosters: [RANKED_PRESETS[0].dex, RANKED_PRESETS[3].dex] } });
+  const want = rosterDigest([RANKED_PRESETS[0].dex, RANKED_PRESETS[3].dex]);
+
+  it('the digest is deterministic and tells teams apart', () => {
+    expect(rosterDigest([[1, 2, 3, 4, 5], [6, 7, 8, 9, 10]])).toBe(rosterDigest([[1, 2, 3, 4, 5], [6, 7, 8, 9, 10]]));
+    expect(rosterDigest([[1, 2, 3, 4, 5], [6, 7, 8, 9, 10]])).not.toBe(rosterDigest([[6, 7, 8, 9, 10], [1, 2, 3, 4, 5]]));
+  });
+
+  it('ranked sends the digest of both rosters; social sends none', async () => {
+    const r = rankedRig(ranked(0));
+    await r.flush();
+    expect(r.sent[0].d).toBe(want);
+    const s = rankedRig(match(0));
+    await s.flush();
+    expect(s.sent[0].d).toBeUndefined();
+  });
+
+  it('a different digest from the peer aborts like a version mismatch', async () => {
+    const r = rankedRig(ranked(1));
+    await r.flush();
+    r.peer({ d: want ^ 1 });
+    await expect(r.p).rejects.toThrow(/different game versions/);
+  });
+
+  it('a matching digest, or none (an older client), connects', async () => {
+    for (const d of [want, undefined]) {
+      const r = rankedRig(ranked(1));
+      await r.flush();
+      r.peer(d === undefined ? {} : { d });
+      const c = await r.p;
+      expect(c.setup.away.roster).toEqual(RANKED_PRESETS[3].dex);
+      c.link.close();
+    }
+  });
+});
+
 describe('the handshake says whether the peer shows the pre-game intro', () => {
   type Cb = (x: { payload: unknown }) => void;
-  function rig(side: 0 | 1) {
+  function introRig(side: 0 | 1) {
     const sent: { event: string; payload: Record<string, unknown> }[] = [];
     const handlers: Record<string, Cb> = {};
     const ch = {
@@ -115,7 +179,7 @@ describe('the handshake says whether the peer shows the pre-game intro', () => {
   }
 
   it('our hi carries i:1, and a peer hi with i:1 yields intro:true', async () => {
-    const { conn, sent, peerHi } = rig(0);
+    const { conn, sent, peerHi } = introRig(0);
     await Promise.resolve();
     await Promise.resolve();
     expect(sent.find((s) => s.event === 'hs')?.payload.i).toBe(1);
@@ -126,7 +190,7 @@ describe('the handshake says whether the peer shows the pre-game intro', () => {
   });
 
   it('an old peer (no i) yields intro:false', async () => {
-    const { conn, peerHi } = rig(1);
+    const { conn, peerHi } = introRig(1);
     await Promise.resolve();
     peerHi({});
     const c = await conn;
@@ -135,7 +199,7 @@ describe('the handshake says whether the peer shows the pre-game intro', () => {
   });
 
   it("'pre' events reach onPre and junk is dropped; sendPre goes out on the channel", async () => {
-    const { conn, sent, handlers, peerHi } = rig(0);
+    const { conn, sent, handlers, peerHi } = introRig(0);
     await Promise.resolve();
     peerHi({ i: 1 });
     const c = await conn;

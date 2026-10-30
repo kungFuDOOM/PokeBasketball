@@ -8,7 +8,7 @@ import { playGame } from '../../screens/play';
 import { resultsScreen } from '../../screens/results';
 import { abbr, esc } from '../../util';
 import type { MatchService, Opponent, Queue, ReportOutcome } from './matchService';
-import { randomFive, rostersFor, teamOvr } from './roster';
+import { flowRosters, teamOvr } from './roster';
 import type { ModeContext } from './types';
 
 export { randomFive } from './roster';
@@ -35,9 +35,8 @@ export async function runMatch(ctx: ModeContext, opts: FlowOptions) {
   root.className = 'screen-menu';
   root.innerHTML = panel('SEARCHING', opts.practice ? 'Finding a CPU opponent…' : `Finding a ${label.toLowerCase()} opponent near your skill…`);
   const opp = await opts.service.findMatch(opts.queue);
-  // Ranked: two evenly matched teams from a seed (roster.ts), shown before tip-off. Social: random fives.
   const name = ctx.settings.teamName.trim() || 'Pallet Town';
-  const rosters: [Mon[], Mon[]] = opts.queue === 'ranked' ? rostersFor((Math.random() * 2 ** 32) >>> 0, 'ranked') : [randomFive(), randomFive()];
+  const rosters = flowRosters(opts, opp);
   root.innerHTML = panel('MATCH FOUND', `${opp.name} · ${label}${opp.simulated ? ' · simulated' : ''}`, `
     ${opts.queue === 'ranked' ? teamsHtml(name, opp.name, rosters) : ''}
     <div class="actions center">
