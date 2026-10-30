@@ -3,9 +3,9 @@
 import { describe, expect, it } from 'vitest';
 import { Game } from '../../game/game';
 import { emptyIntent, seededRng, ENGINE_VERSION, type Intent } from '../../game/types';
-import { EvidenceLog, cover, pack, unpack } from './evidence';
+import { EvidenceLog, cover, mergeEvidence, pack, unpack } from './evidence';
 import { Lockstep, type NetMsg } from './lockstep';
-import { gameConfigFor, judge, matchKey, type Evidence, type MatchSetup, type SignedInputs } from './winnerCheck';
+import { gameConfigFor, judge, matchKey, signTicks, type Evidence, type MatchSetup, type SignedInputs } from './winnerCheck';
 
 const setup: MatchSetup = {
   matchId: 'evidence-it', engineVersion: ENGINE_VERSION, seed: 2026, quarterLen: 10,
@@ -122,6 +122,36 @@ describe('evidence bookkeeping', () => {
     const honest = b(1, [0, 0, 0, 0]);
     const lie = b(2, [0, 1], 'other');
     expect(cover([honest, lie])).toContain(lie);
+  });
+
+  it('mergeEvidence joins both uploads and judges them with the match row\'s keys, so a forged key is replaced', async () => {
+    const [host, guest, forger] = [await matchKey(), await matchKey(), await matchKey()];
+    const id = { mx: 0, my: 0, b: 0 };
+    const hostBatch = await signTicks(host.privateKey, setup.matchId, 0, 0, [id, id, id]);
+    const guestBatch = await signTicks(guest.privateKey, setup.matchId, 1, 0, [id, id, id]);
+    // The guest uploads a "host" batch signed with a key of their own, and swaps that key in for the host's.
+    const forged = await signTicks(forger.privateKey, setup.matchId, 0, 0, [{ mx: 1, my: 1, b: 0 }, id, id]);
+    const a: Evidence = { setup, keys: [host.publicKey, guest.publicKey], inputs: [hostBatch, guestBatch], applied: [], lockstep: { emptyTicks: 0 } };
+    const b: Evidence = { setup: { ...setup, seed: 1 }, keys: [forger.publicKey, guest.publicKey], inputs: [forged, guestBatch], applied: [], lockstep: { emptyTicks: 9 } };
+    expect((await judge(b)).notes.join()).not.toMatch(/bad shape or signature/); // judged on its own keys, the forgery passes
+
+    const m = mergeEvidence(b, a, [host.publicKey, guest.publicKey]);
+    expect(m.keys).toEqual([host.publicKey, guest.publicKey]);
+    expect(m.setup).toBe(b.setup);
+    expect(m.lockstep).toEqual({ emptyTicks: 9 });
+    expect(m.inputs).toEqual([forged, guestBatch, hostBatch, guestBatch]);
+    const v = await judge({ ...m, setup, lockstep: { emptyTicks: 0 } });
+    expect(v.status).toBe('incomplete');
+    expect(v.ticks).toBe(3);
+    expect(v.notes).toContain('ignored a host input batch with a bad shape or signature');
+    expect(mergeEvidence(a, null, a.keys).inputs).toEqual(a.inputs);
+  });
+
+  it('unpack refuses evidence that unzips past the limit', async () => {
+    const ev: Evidence = { setup, keys: ['a', 'b'], inputs: [], applied: [] };
+    const packed = await pack(ev);
+    expect(await unpack(packed, 10_000)).toEqual(ev);
+    await expect(unpack(packed, 50)).rejects.toThrow(/too large/);
   });
 
   it('received() ignores anything that is not a well-formed signed batch', () => {

@@ -8,7 +8,8 @@ const MIGRATIONS = ['20261021_pokejam_online.sql', '20261022_pokejam_social.sql'
   '20261027_pokejam_human_check.sql', '20261028_pokejam_match_evidence.sql', '20261029_pokejam_evidence_retention.sql', '20261030_pokejam_error_reports.sql',
   '20261031_pokejam_moderation.sql', '20261101_pokejam_social_draft.sql', '20261102_pokejam_mons_sync.sql', '20261103_pokejam_match_cleanup.sql',
   '20261104_pokejam_queue_heartbeat.sql', '20261105_pokejam_draft_presence.sql', '20261106_pokejam_game_heartbeat.sql', '20261107_pokejam_requeue_stale.sql', '20261108_pokejam_net_stats.sql', '20261109_pokejam_admin_stats.sql',
-  '20261110_pokejam_offline_stats.sql', '20261111_pokejam_ranked.sql']
+  '20261110_pokejam_offline_stats.sql', '20261111_pokejam_ranked.sql', '20261116_pokejam_admin_reports_reporter.sql', '20261121_pokejam_report_dismiss.sql',
+  '20261122_pokejam_match_verdicts.sql', '20261123_pokejam_admin_reports_checks.sql']
   .map((f) => readFileSync(new URL(`../migrations/${f}`, import.meta.url), 'utf8'));
 
 export async function testDb() {
