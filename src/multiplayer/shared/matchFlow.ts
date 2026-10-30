@@ -3,6 +3,7 @@ import { userCourt } from '../../data/courts';
 import { spriteUrl, type Mon } from '../../data/pokemon';
 import { USER_STYLE, contrastAway } from '../../franchise/league';
 import { ENGINE_VERSION, type Difficulty, type TeamDef } from '../../game/types';
+import { withIntro } from '../../screens/intro';
 import { playGame } from '../../screens/play';
 import { resultsScreen } from '../../screens/results';
 import { abbr, esc } from '../../util';
@@ -73,7 +74,8 @@ function play(ctx: ModeContext, opts: FlowOptions, opp: Opponent, [mine, theirs]
   const name = settings.teamName.trim() || 'Pallet Town';
   const home: TeamDef = { name, abbr: abbr(name), ...USER_STYLE, human: true, roster: mine };
   const away = contrastAway(home, { name: opp.name, abbr: abbr(opp.name), color: '#7a3fd8', color2: '#24124a', human: false, roster: theirs });
-  playGame(root, { home, away, quarterLen: settings.quarterLen, difficulty: diffFor(opp.mmr), court: userCourt(name), autoSwitch: settings.autoSwitch !== false }, audio, async (g) => {
+  const cfg = { home, away, quarterLen: settings.quarterLen, difficulty: diffFor(opp.mmr), court: userCourt(name), autoSwitch: settings.autoSwitch !== false };
+  withIntro(root, cfg, opts.practice ? 'cpu' : opts.queue, settings, () => playGame(root, cfg, audio, async (g) => {
     const won = g.score[0] > g.score[1];
     const out = await opts.service.reportResult(opts.queue, opp, { won, score: [g.score[0], g.score[1]], engineVersion: g.engineVersion, seed: g.seed });
     root.className = 'screen-results';
@@ -84,5 +86,5 @@ function play(ctx: ModeContext, opts: FlowOptions, opp: Opponent, [mine, theirs]
       buttons: [{ id: 'again', label: 'Play again', kind: 'primary' }, { id: 'hub', label: 'Back', kind: 'ghost' }],
       onAction: (a) => (a === 'again' ? runMatch(ctx, opts) : ctx.back()),
     });
-  }, ctx.back);
+  }, ctx.back));
 }

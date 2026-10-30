@@ -4,6 +4,7 @@ import type { TeamSource } from '../season/team';
 import { isNameBlocked } from '../nameFilter';
 import { esc, lettersName, showNameError } from '../util';
 import { prefersStatic, startAttract, type Attract, type AttractState } from './attract';
+import { isIntroMode, type IntroMode } from './intro.logic';
 
 export interface Settings {
   difficulty: Difficulty;
@@ -13,6 +14,8 @@ export interface Settings {
   autoSubs?: boolean;
   /** On defense, jump to the defender on the ball after every catch (default) or only switch yourself. */
   autoSwitch?: boolean;
+  /** Lineups screen before each game: full (default), quick, or off (Ranked/Social always show it). */
+  introMode?: IntroMode;
 }
 
 export function controlsHtml(): string {
@@ -55,6 +58,12 @@ export function settingsHtml(settings: Settings, opts: { subs?: boolean } = {}):
           <button data-v="manual" class="${settings.autoSwitch === false ? 'on' : ''}">Manual</button>
         </div>
       </div>
+      <div class="field">Pre-game intro
+        <div class="seg" id="intro">
+          ${([['full', 'Full'], ['quick', 'Quick'], ['off', 'Off']] as const).map(([v, label]) =>
+            `<button data-v="${v}" class="${v === (settings.introMode ?? 'full') ? 'on' : ''}">${label}</button>`).join('')}
+        </div>
+      </div>
       ${opts.subs ? `
       <div class="field">Substitutions
         <div class="seg" id="subs">
@@ -81,6 +90,7 @@ export function bindSettings(root: HTMLElement, settings: Settings, onChange: ()
   seg('#qlen', (v) => (settings.quarterLen = Number(v)));
   seg('#subs', (v) => (settings.autoSubs = v === 'auto'));
   seg('#dswitch', (v) => (settings.autoSwitch = v === 'auto'));
+  seg('#intro', (v) => { if (isIntroMode(v)) settings.introMode = v; });
 }
 
 export interface TitleOptions {

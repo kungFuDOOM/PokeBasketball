@@ -9,6 +9,9 @@ import { Lockstep } from './lockstep';
 import { panel } from './matchFlow';
 import type { ReportOutcome } from './matchService';
 import { pack } from './evidence';
+import { showIntro } from '../../screens/intro';
+import { INTRO_CAP_MS, INTRO_LEN_MS, IntroVotes } from '../../screens/intro.logic';
+import { PreGate } from './pre';
 import { MatchOverError, connect, iceFor, type Connected, type MatchLink } from './netplay';
 import { netStatsRow, submitNetStats } from './netStats';
 import type { OnlineMatch, OnlineOpponent, ReportReason, SupabaseMatchService } from './onlineMatchService';
@@ -58,7 +61,7 @@ export async function playOnline(ctx: ModeContext, o: OnlineGameOptions) {
   });
 
   let link: MatchLink;
-  let cfg;
+  let cfg: Connected['cfg'];
   let conn: Connected;
   try {
     conn = await connect(o.sb, match, quarterLenOverride(), abort.signal, service);
@@ -119,6 +122,8 @@ export async function playOnline(ctx: ModeContext, o: OnlineGameOptions) {
     void submitNetStats(o.sb, netStatsRow(match.id, service.userId, link, ls, link.pinger.stats(), (performance.now() - startedAt) / 1000));
   };
   sayBye = () => ls?.bye();
+  // Clears the intro's timers and listener if the match ends while it's still showing.
+  let stopIntro = () => {};
   // While the game is on, a heartbeat: if both players vanish without a leave arriving, the server calls it off.
   void service.alive(match.id);
   const beat = setInterval(() => void service.alive(match.id), HEARTBEAT_MS);
@@ -128,6 +133,7 @@ export async function playOnline(ctx: ModeContext, o: OnlineGameOptions) {
     offExit();
     clearInterval(beat);
     clearInterval(watch);
+    stopIntro();
     handle?.stop();
     ls?.bye();
     sendNetStats();
@@ -143,23 +149,50 @@ export async function playOnline(ctx: ModeContext, o: OnlineGameOptions) {
     else if (performance.now() - ls.lastHeard > PEER_TIMEOUT_MS) void end('CONNECTION LOST', `Lost the connection to ${match.opponent.name}. No result was recorded.`);
   }, 1000);
 
-  audio.unlock();
-  root.className = 'screen-game';
-  handle = playGame(root, cfg, audio, (g) => void finish(g), () => void end('LEFT GAME', 'You left the game. No result was recorded.'), {
-    online: {
-      viewTeam: match.side,
-      start: (g) => {
-        const l = (ls = new Lockstep(g, link, { side: match.side, delay: startDelay }));
-        startedAt = performance.now();
-        link.attach(l);
-        // Read-only counters for the lag tests (no ids or secrets).
-        Object.defineProperty(window, '__pokejamNet', { configurable: true, get: () => ({ stalls: l.stats.stalls, stallMs: Math.round(l.stats.stallMs), delay: l.delay, rtt: Math.round(link.pinger.smooth ?? 0) }) });
+  // The pre-game intro (both lineups), unless the other player's client predates it. Its end is a barrier: each side
+  // says `ready`, the host says `go`, and only then does the game (and lockstep, with the same start delay) begin.
+  if (conn.intro) {
+    const votes = new IntroVotes();
+    const intro = showIntro(root, {
+      home: cfg.home, away: cfg.away, mySide: match.side, lengthMs: INTRO_LEN_MS, capMs: INTRO_CAP_MS, instantSkip: false,
+      online: { votes, onVote: (skip) => link.sendPre(skip ? 'skip' : 'unskip') },
+    });
+    const gate = new PreGate(match.side, INTRO_CAP_MS, (k) => link.sendPre(k), () => {
+      intro.destroy();
+      link.onPre(null);
+      startGame();
+    });
+    link.onPre((p) => {
+      if (p.k === 'skip' || p.k === 'unskip') intro.peerState(p.k === 'skip');
+      else gate.peer(p);
+    });
+    stopIntro = () => { intro.destroy(); gate.destroy(); link.onPre(null); };
+    void intro.done.then(() => { if (!over) gate.localEnd(); });
+  } else {
+    startGame();
+  }
+
+  function startGame() {
+    if (over) return;
+    stopIntro = () => {};
+    audio.unlock();
+    root.className = 'screen-game';
+    handle = playGame(root, cfg, audio, (g) => void finish(g), () => void end('LEFT GAME', 'You left the game. No result was recorded.'), {
+      online: {
+        viewTeam: match.side,
+        start: (g) => {
+          const l = (ls = new Lockstep(g, link, { side: match.side, delay: startDelay }));
+          startedAt = performance.now();
+          link.attach(l);
+          // Read-only counters for the lag tests (no ids or secrets).
+          Object.defineProperty(window, '__pokejamNet', { configurable: true, get: () => ({ stalls: l.stats.stalls, stallMs: Math.round(l.stats.stallMs), delay: l.delay, rtt: Math.round(link.pinger.smooth ?? 0) }) });
+        },
+        ping: () => link.pinger.smooth,
+        advance: (intent, dt) => ls!.advance(intent, dt),
+        status: () => (ls && ls.waiting > 0.4 ? `Waiting for ${match.opponent.name}…` : null),
       },
-      ping: () => link.pinger.smooth,
-      advance: (intent, dt) => ls!.advance(intent, dt),
-      status: () => (ls && ls.waiting > 0.4 ? `Waiting for ${match.opponent.name}…` : null),
-    },
-  });
+    });
+  }
 
   async function finish(g: Game) {
     if (over) return;
