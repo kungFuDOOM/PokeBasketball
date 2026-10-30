@@ -212,12 +212,15 @@ export async function playOnline(ctx: ModeContext, o: OnlineGameOptions) {
     if (import.meta.env.DEV) (window as unknown as Record<string, unknown>).__pokejamOnline = { hash: ls?.hash(), score: [...g.score], side: match.side, stats: ls?.stats, delay: ls?.delay, matchId: match.id, sent: link.sent, direct: link.direct };
     // Let the last lockstep messages reach the other player before leaving the channel.
     setTimeout(() => { uploadEvidence(); link.close(); }, 3000);
-    const show = (out: ReportOutcome) => (typeof o.outcomeHtml === 'function' ? o.outcomeHtml(out) : o.outcomeHtml);
+    const names = match.queue === 'ranked' ? { me: match.me.name, opp: match.opponent.name } : undefined;
+    let oppRank: ReportOutcome['oppRank'];
+    const show = (out: ReportOutcome) => (typeof o.outcomeHtml === 'function' ? o.outcomeHtml({ ...out, names: out.names ?? names, oppRank: out.oppRank !== undefined ? out.oppRank : oppRank }) : o.outcomeHtml);
     let note: string;
     let later: Promise<ReportOutcome> | undefined;
     try {
       const opp: OnlineOpponent = { ...match.opponent, matchId: match.id, mySide: match.side };
       const out = await service.reportResult(match.queue, opp, { won, score: [mine, theirs], engineVersion: g.engineVersion, seed: g.seed });
+      if (match.queue === 'ranked') oppRank = (await service.matchRanks(match.id, match.side)).opp; // fails soft: no badge on an error
       note = show(out);
       later = out.later;
     } catch {

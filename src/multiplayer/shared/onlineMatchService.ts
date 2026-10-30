@@ -2,7 +2,9 @@
 // clients can only read their own rows. See supabase/migrations/.
 import { MODE_RANKED } from '../../config/features';
 import type { DraftView } from './draft';
-import { cooldownSeconds, counted, outcomeBetween, parseProfile, parseRankResult, type RankedResult, type ServerRank } from '../ranked/serverRank';
+import { cooldownSeconds, counted, outcomeBetween, parseMatchRanks, parseMe, parseProfile, parseRankResult, type RankedMe, type RankedResult, type ServerRank } from '../ranked/serverRank';
+import { displayName, serverNameError } from '../ranked/username';
+import type { BadgeRank } from '../../ranked/badge';
 import { safeName } from '../../nameFilter';
 import { isBusy } from './capacity';
 import { RateLimit, backoffMs, jitter, singleFlight, sleep } from './throttle';
@@ -170,6 +172,40 @@ export class SupabaseMatchService implements MatchService {
     return parseProfile(await this.call('pokejam_ensure_profile', { p_name: null }));
   }
 
+  /** My Season 1 rank (pokejam_ranked_me): season, placements, points, shield. Null if the server answers with nothing usable. */
+  async rankedMe(): Promise<RankedMe | null> {
+    if (!MODE_RANKED) throw new OnlineError('Ranked is not available');
+    return parseMe(await this.call('pokejam_ranked_me'));
+  }
+
+  /** Both players' public rank for a Ranked match's name cards. Fails soft: any error (e.g. the server lacks the function) gives {}. */
+  async matchRanks(matchId: string, side: 0 | 1): Promise<{ me?: BadgeRank; opp?: BadgeRank }> {
+    if (!MODE_RANKED) return {};
+    try {
+      return parseMatchRanks(await this.call('pokejam_match_ranks', { p_match: matchId }), side);
+    } catch {
+      return {};
+    }
+  }
+
+  /** My username and when I may change it (null = now). A guest, or a player who hasn't picked, has none. */
+  async myUsername(): Promise<{ username: string | null; nextChangeAt: string | null }> {
+    const r = await this.call<{ username?: string | null; next_change_at?: string | null } | null>('pokejam_my_username');
+    return { username: typeof r?.username === 'string' ? r.username : null, nextChangeAt: typeof r?.next_change_at === 'string' ? r.next_change_at : null };
+  }
+
+  /** Pick or change my username. Throws an OnlineError with player-facing text if the server refuses it. */
+  async setUsername(name: string): Promise<string> {
+    try {
+      const r = await this.call<{ username: string }>('pokejam_set_username', { p_name: name });
+      return r.username;
+    } catch (e) {
+      const text = serverNameError((e as Error).message);
+      if (text) throw new OnlineError(text);
+      throw e;
+    }
+  }
+
   /** Who is in a match, from my side. */
   async matchInfo(id: string): Promise<OnlineMatch> {
     const m = await this.call<{
@@ -180,8 +216,14 @@ export class SupabaseMatchService implements MatchService {
     if (m.seed === null || m.seed === undefined) throw new OnlineError('This match was made by an older server. Refresh to update.');
     const side: 0 | 1 = m.host === this.userId ? 0 : 1;
     // Names come from the other player's profile: a blocked one (a modified client, or an old name) shows as the default.
-    const opp = side === 0 ? { id: m.guest, name: safeName(m.guest_name ?? 'Trainer', 'Trainer') } : { id: m.host, name: safeName(m.host_name ?? 'Trainer', 'Trainer') };
-    const me = safeName((side === 0 ? m.host_name : m.guest_name) ?? 'Trainer', 'Trainer');
+    let opp = side === 0 ? { id: m.guest, name: safeName(m.guest_name ?? 'Trainer', 'Trainer') } : { id: m.host, name: safeName(m.host_name ?? 'Trainer', 'Trainer') };
+    let me = safeName((side === 0 ? m.host_name : m.guest_name) ?? 'Trainer', 'Trainer');
+    if (m.queue === 'ranked') {
+      // Ranked shows usernames, not team names or ids; a player without one reads as "Player".
+      const u = await this.call<{ host?: string | null; guest?: string | null } | null>('pokejam_match_usernames', { p_match: id }).catch(() => null);
+      me = displayName(side === 0 ? u?.host : u?.guest);
+      opp = { ...opp, name: displayName(side === 0 ? u?.guest : u?.host) };
+    }
     return {
       id: m.id, queue: m.queue, side, me: { id: this.userId, name: me }, opponent: { ...opp, mmr: 1000, simulated: false },
       game: {
@@ -432,7 +474,10 @@ export class SupabaseMatchService implements MatchService {
   /** The server has rated the match: read my new rating (Season 1: the answer I was given; older server: my profile). */
   private async rated(result: RankedResult | null = null): Promise<ReportOutcome> {
     if (!MODE_RANKED) return { queue: 'ranked', status: 'void' };
-    if (result) return { queue: 'ranked', status: 'done', result };
+    if (result) {
+      const me = await this.rankedMe().catch(() => null); // the shield state after the match; the screen copes without it
+      return { queue: 'ranked', status: 'done', result, me: me ?? undefined };
+    }
     const before = this.rankBefore;
     const after = await this.myRank();
     this.rankBefore = after;
