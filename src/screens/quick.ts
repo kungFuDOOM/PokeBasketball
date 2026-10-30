@@ -12,6 +12,7 @@ import { badgeSvg } from '../ui/badges';
 import { abbr, esc, lettersName, shuffle, tier } from '../util';
 import { draftScreen } from './draft';
 import { bindSettings, settingsHtml, type Settings } from './menu';
+import { withIntro } from './intro';
 import { playGame } from './play';
 import { resultsScreen } from './results';
 import { offlineStats } from '../telemetry/offlineStats';
@@ -224,7 +225,8 @@ export function quickPlay(root: HTMLElement, settings: Settings, audio: Audio, a
       const close = act.overlay('Simulating your game…');
       void simulate(cfg).then((g) => { close(); done(g); });
     } else {
-      playGame(root, cfg, audio, done, () => matchup(opp, mine, theirs, court), mode === 'watched' ? { spectator: true } : {});
+      withIntro(root, cfg, cpu ? 'cpu' : 'quick', settings, () =>
+        playGame(root, cfg, audio, done, () => matchup(opp, mine, theirs, court), mode === 'watched' ? { spectator: true } : {}));
     }
   }
 
