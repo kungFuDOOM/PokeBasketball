@@ -216,7 +216,7 @@ describe('abandoned Social matches are cleaned up (#4)', () => {
     await age(t, nodraft, 30);
     expect(await c.call('pokejam_find_match', ['ranked'])).toBeNull();
     const ranked = await d.call<string>('pokejam_find_match', ['ranked']);
-    await age(t, ranked, 5 * 60);
+    await age(t, ranked, 1); // a one-minute-old Ranked pairing (the Ranked sweep, 90 s, is tested in ranked-matchmaking.test.ts)
     const done = (await drafted(t)).mid;
     await t.sql("update public.pokejam_matches set status = 'done', finished_at = now() where id = $1", [done]);
     await age(t, done, 5 * 60);

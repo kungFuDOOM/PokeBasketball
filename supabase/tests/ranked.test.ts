@@ -165,6 +165,7 @@ describe('scoring a ranked match', () => {
     // four matches played already: the fifth places the winner
     const s = await season(t);
     await t.sql('update public.pokejam_ranked_profiles set placements_played = 4, placement_raw = 3.5, seed_score = 500 where user_id = any($1) and season_id = $2', [[a.id, b.id], s.id]);
+    await t.sql(`update public.pokejam_matches set created_at = now() - interval '2 hours'`); // the same pair twice in a row is not paired
     const q = await rankedPair(a, b);
     const fin = await finish(q, 70, 20);
     const winner = fin.winner === a.id ? a : b;
@@ -288,6 +289,7 @@ describe('leavers', () => {
       const b = await t.user('B' + i);
       await setRank(t, a, { div: 12, points: 90 }); // Diamond 3 (L 20)
       await setRank(t, b, { div: 12, points: 50 });
+      await t.sql('update public.pokejam_ranked_profiles set cooldown_until = null'); // the cooldown is checked in ranked-matchmaking.test.ts
       const before = await prof(t, a.id);
       const p = await rankedPair(a, b);
       await a.call('pokejam_leave_match', [p.mid]); // dodge: only the leaver changes
