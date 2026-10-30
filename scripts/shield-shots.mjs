@@ -14,7 +14,7 @@ import { chromium } from 'playwright-core';
 const OUT = process.env.SHIELD_SHOTS ?? '/workspace/pj-shield-shots';
 const CHROME = process.env.CHROME ?? '/opt/google/chrome/chrome';
 const SIZES = [[844, 390], [932, 430], [390, 844]];
-// name -> demo screen. Add 'shop' here in PR B.
+// name -> demo screen. The shop-* shots draw the Rank Shield shop sheet over the hub (needs VITE_SHIELD_SHOP=true, set below).
 const SHOTS = {
   hub: 'shield-hub',
   'hub-armed': 'shield-hub-armed',
@@ -25,6 +25,11 @@ const SHOTS = {
   queue: 'shield-queue',
   postmatch: 'post-saved',
   'postmatch-kept': 'post-kept',
+  shop: 'shop',
+  'shop-checked': 'shop-checked',
+  'shop-waiting': 'shop-waiting',
+  'shop-cap': 'shop-cap',
+  'shop-guest': 'shop-guest',
 };
 mkdirSync(OUT, { recursive: true });
 
@@ -32,7 +37,7 @@ let server = null;
 let base = process.env.SHIELD_BASE;
 if (!base) {
   base = 'http://localhost:5199';
-  server = spawn('npx', ['vite', '--port', '5199', '--strictPort'], { env: { ...process.env, VITE_MODE_RANKED: 'true' }, stdio: ['ignore', 'pipe', 'pipe'] });
+  server = spawn('npx', ['vite', '--port', '5199', '--strictPort'], { env: { ...process.env, VITE_MODE_RANKED: 'true', VITE_SHIELD_SHOP: 'true' }, stdio: ['ignore', 'pipe', 'pipe'] });
   await new Promise((resolve, reject) => {
     const t = setTimeout(() => reject(new Error('vite did not start')), 60_000);
     server.stdout.on('data', (d) => { if (String(d).includes('Local:')) { clearTimeout(t); resolve(); } });
@@ -54,11 +59,13 @@ try {
       await page.addStyleTag({ content: '*, *::before, *::after { animation: none !important; transition: none !important; }' });
       const m = await page.evaluate(() => {
         const d = document.documentElement;
-        const off = [...document.querySelectorAll('.rk-item, .rk-weekly, .rk-chip, .rk-post, .rk-queue-tag, .rk-right .btn')]
+        const off = [...document.querySelectorAll('.rk-item, .rk-weekly, .rk-chip, .rk-post, .rk-queue-tag, .rk-right .btn, .shop-panel, .shop-card, .shop-buy, .shop-age')]
           .filter((el) => { const r = el.getBoundingClientRect(); return r.right > innerWidth + 0.5 || r.left < -0.5; }).length;
-        return { sx: d.scrollWidth - innerWidth, sy: d.scrollHeight - innerHeight, off };
+        // With the shop sheet open the page behind it is covered; the sheet scrolls inside itself, so measure that instead.
+        const sheet = document.querySelector('.shop-panel');
+        return { sx: d.scrollWidth - innerWidth, sy: sheet ? 0 : d.scrollHeight - innerHeight, off, inner: sheet ? sheet.scrollHeight - sheet.clientHeight : 0 };
       });
-      const flag = m.sx > 0 || m.off > 0 ? 'OVERFLOW-X' : m.sy > 0 ? `scrolls ${m.sy}px` : 'fits';
+      const flag = m.sx > 0 || m.off > 0 ? 'OVERFLOW-X' : m.sy > 0 ? `scrolls ${m.sy}px` : m.inner > 0 ? `sheet scrolls inside ${m.inner}px` : 'fits';
       if (m.sx > 0 || m.off > 0) bad++;
       console.log(`${w}x${h} ${name}: ${flag}`);
       await page.screenshot({ path: `${OUT}/${name}-${w}x${h}.png` });

@@ -47,15 +47,16 @@ const blockText = (it: ShieldItem, now: number): string => {
 };
 
 /** The Rank Shield item for the Ranked home: icon, count, an ARM toggle and the reason it is off (or "Armed for this match"). */
-export function shieldItemHtml(it: ShieldItem | null | undefined, now = Date.now()): string {
+export function shieldItemHtml(it: ShieldItem | null | undefined, now = Date.now(), shop = false): string {
   if (!it) return '';
   const note = it.armed ? (it.locked ? 'Armed for this match' : 'Armed: saves the points of your next loss') : blockText(it, now);
   const can = !it.locked && (it.armed || it.block === null);
-  return `<div class="rk-item${it.armed ? ' armed' : ''}" data-rk="shield">
+  return `<div class="rk-item${it.armed ? ' armed' : ''}${shop ? ' has-shop' : ''}" data-rk="shield">
     <span class="rk-item-ico" aria-hidden="true">🛡</span>
     <span class="rk-item-name"><strong>Rank Shield</strong><b class="rk-item-count" title="Rank Shields you hold">x${it.count}</b></span>
     <button class="btn rk-arm${it.armed ? ' on' : ''}" type="button" data-a="arm" aria-pressed="${it.armed}"${can ? '' : ' disabled'}>${it.armed ? 'ARMED' : 'ARM'}</button>
-    ${note ? `<span class="rk-item-note" role="status">${esc(note)}</span>` : ''}</div>`;
+    ${note ? `<span class="rk-item-note" role="status">${esc(note)}</span>` : ''}
+    ${shop ? '<button class="btn ghost rk-shop-btn" type="button" data-a="shop">Shop</button>' : ''}</div>`;
 }
 
 /** The weekly challenge card: "Play 10 ranked games - 6/10 - resets in 3 d" with the reward, or "Done this week". */

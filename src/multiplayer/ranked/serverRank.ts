@@ -232,3 +232,36 @@ export function parseMatchRanks(raw: unknown, side: 0 | 1): { me?: BadgeRank; op
   if (theirs !== undefined) out.opp = theirs;
   return out;
 }
+
+/** One pack in the Rank Shield shop (prices come from the server; the client never sends one). */
+export interface ShopProduct { sku: string; units: number; priceCents: number }
+
+/** `pokejam_shield_shop()`: what the shop sheet shows. */
+export interface ShopInfo {
+  held: number;
+  cap: number;
+  /** Shields I may still buy this season. */
+  purchasesLeft: number;
+  /** A dispute is on file: purchases are off. */
+  blocked: boolean;
+  products: ShopProduct[];
+}
+
+/** Reads `pokejam_shield_shop()`; null for anything unusable. Never throws. */
+export function parseShopInfo(raw: unknown): ShopInfo | null {
+  const r = raw as Record<string, unknown> | null | undefined;
+  if (!r || typeof r !== 'object' || Array.isArray(r)) return null;
+  const held = nullable(r.held);
+  if (held === null) return null;
+  const products: ShopProduct[] = [];
+  if (Array.isArray(r.products)) {
+    for (const p of r.products as Record<string, unknown>[]) {
+      const units = nullable(p?.units);
+      const priceCents = nullable(p?.price_cents);
+      if (typeof p?.sku !== 'string' || units === null || priceCents === null || units < 1 || priceCents < 1) continue;
+      products.push({ sku: p.sku, units: Math.floor(units), priceCents: Math.floor(priceCents) });
+    }
+  }
+  return { held: Math.max(0, Math.floor(held)), cap: nullable(r.cap) ?? 14, purchasesLeft: Math.max(0, nullable(r.purchases_left) ?? 0), blocked: r.blocked === true,
+    products: products.sort((a, b) => a.units - b.units) };
+}
