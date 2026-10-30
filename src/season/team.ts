@@ -3,6 +3,7 @@
 import { POKEMON, monByDex, type Mon } from '../data/pokemon';
 import { bestLineup } from '../game/game';
 import { cpuPick, type DraftTeam } from '../screens/draft';
+import { isNameBlocked, safeName } from '../nameFilter';
 import { abbr, fixAbbr, shuffle } from '../util';
 import { cleanName } from './share';
 
@@ -48,8 +49,9 @@ export function loadDrafted(): DraftedTeam | null {
     if (t.dex.length !== 10 || !t.dex.every((d) => Number.isInteger(d) && known.has(d))) return null;
     if (t.starters.length !== 5 || new Set(t.starters).size !== 5 || !t.starters.every((i) => Number.isInteger(i) && i >= 0 && i < 10)) return null;
     if (!t.colors || !HEX.test(t.colors.color) || !HEX.test(t.colors.color2)) return null;
-    const name = cleanName(t.name);
-    if (!name) return null;
+    const cleaned = cleanName(t.name);
+    if (!cleaned) return null;
+    const name = safeName(cleaned, 'Pallet Town');
     const rec = t.record;
     return {
       v: 1, name, dex: t.dex, starters: t.starters, colors: { color: t.colors.color, color2: t.colors.color2 },
@@ -67,7 +69,7 @@ export function loadDrafted(): DraftedTeam | null {
 export function renameDrafted(name: string): DraftedTeam | null {
   const t = loadDrafted();
   const clean = cleanName(name);
-  if (!t || !clean) return t;
+  if (!t || !clean || isNameBlocked(clean)) return t;
   const next: DraftedTeam = { ...t, name: clean, abbr: abbr(clean) };
   try {
     localStorage.setItem(DRAFTED_KEY, JSON.stringify(next));

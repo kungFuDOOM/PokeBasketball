@@ -1,6 +1,7 @@
 // Team-name editing after a draft: an inline rename (tap the name or the pencil) and the
 // "Are you sure you want this name?" confirm shown before any new franchise starts.
-import { TEAM_NAME_MAX, abbr, cleanAbbr, esc, isAbbr, lettersName as cleanName } from '../util';
+import { TEAM_NAME_MAX, abbr, cleanAbbr, esc, isAbbr, lettersName as cleanName, showNameError } from '../util';
+import { isNameBlocked } from '../nameFilter';
 
 export const NAME_MAX = TEAM_NAME_MAX;
 
@@ -28,7 +29,10 @@ export function inlineRename(host: HTMLElement, getName: () => string, onSave: (
     });
   };
   const save = () => {
-    const name = cleanName(host.querySelector<HTMLInputElement>('.rn-input')?.value ?? '');
+    const input = host.querySelector<HTMLInputElement>('.rn-input');
+    const name = cleanName(input?.value ?? '');
+    // A blocked name stays in the editor with its error showing: nothing is saved.
+    if (input && isNameBlocked(name)) { showNameError(input); input.focus(); return; }
     if (name && name !== getName()) onSave(name);
     view();
   };
@@ -87,10 +91,14 @@ export function confirmFranchiseName(opts: { name: string; abbr?: string; replac
     };
     /** Start stays off until there is a name and exactly three scoreboard letters. */
     const check = () => {
-      const ok = isAbbr(ab.value);
+      const abBad = isAbbr(ab.value) && isNameBlocked(ab.value);
+      const ok = isAbbr(ab.value) && !abBad;
       hint.hidden = ok;
+      hint.textContent = abBad ? 'Pick 3 other letters' : 'Pick 3 letters';
       ab.setAttribute('aria-invalid', String(!ok));
-      yes.disabled = !cleanName(input.value) || !ok;
+      const bad = isNameBlocked(cleanName(input.value));
+      showNameError(input);
+      yes.disabled = !cleanName(input.value) || !ok || bad;
     };
     const done = (v: { name: string; abbr: string } | null) => {
       el.remove();
