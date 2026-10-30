@@ -4,6 +4,7 @@
 import type { Mon } from '../data/pokemon';
 import { SWATCHES } from '../screens/draftView';
 import { shareUrl, type SharedTeam } from './share';
+import { isNameBlocked } from '../nameFilter';
 import { lettersName } from '../util';
 import { renderDraftCard, shareTeam, toPngBlob } from './shareImage';
 
@@ -35,7 +36,8 @@ export function wireDraftShare(host: HTMLElement, picks: Mon[], team: { name: st
   const status = host.querySelector<HTMLElement>('.sum-share-status');
   if (!thumb || !status) return;
   const current = (): SharedTeam => {
-    const name = lettersName(host.querySelector<HTMLInputElement>('#sum-name')?.value ?? '') || team.name;
+    const typed = lettersName(host.querySelector<HTMLInputElement>('#sum-name')?.value ?? '');
+    const name = typed && !isNameBlocked(typed) ? typed : team.name;
     const sw = host.querySelector<HTMLElement>('.sw.on');
     const [color, color2] = sw ? SWATCHES[Number(sw.dataset.sw)] : [team.color, team.color2];
     return draftShared(name, color, color2, picks);

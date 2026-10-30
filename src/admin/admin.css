@@ -20,7 +20,23 @@ body:has(.admin) { background: var(--bg); color: var(--fg); }
 .admin .acts .btn { margin: 0 4px 4px 0; }
 .admin .tag { display: inline-block; padding: 1px 8px; border-radius: 999px; background: var(--panel-2); font-size: 0.85em; }
 .admin .tag.bad { background: #4a1208; color: #ffb4a3; }
+.admin .tag.ok { background: #0f3d1e; color: #a6f0bd; }
+.admin td ul.latest { list-style: none; padding-left: 0; display: grid; gap: 8px; }
+.admin td ul.latest small { display: inline; }
+.admin .rep-acts { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-top: 4px; }
+.admin .rep-acts i { font-style: normal; font-size: 0.8em; color: var(--muted); margin-right: 2px; }
+.admin .btn.mini { padding: 3px 8px; font-size: 0.75rem; }
 .admin .btn.danger { border-color: var(--red); color: #ffb4a3; }
+/* Narrow screens: each Reported row becomes a wrapping card, with name, cheat tag, report count and the actions up front. */
+@media (max-width: 1000px) {
+  .admin table.reports thead { display: none; }
+  .admin table.reports, .admin table.reports tbody { display: block; }
+  .admin table.reports tr { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+  .admin table.reports td { border: 0; padding: 2px 4px; }
+  .admin table.reports td:nth-child(n+4):not(.acts) { order: 1; }
+  .admin table.reports td:nth-child(5) { flex-basis: 100%; }
+  .admin table.reports .acts { white-space: normal; }
+}
 .admin .link { background: none; border: 0; color: var(--accent); cursor: pointer; font: inherit; padding: 0; text-decoration: underline; }
 .admin .stats { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; margin-bottom: 18px; }
 .admin .stats-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
