@@ -98,10 +98,37 @@ export async function pack(e: Evidence): Promise<string> {
   return `gz1:${btoa(bin)}`;
 }
 
-/** The judge's side of pack(). */
-export async function unpack(s: string): Promise<Evidence> {
+/** The judge's side of pack(). With `maxBytes`, refuses evidence that unzips to more than that. */
+export async function unpack(s: string, maxBytes = Infinity): Promise<Evidence> {
   if (!s.startsWith('gz1:')) throw new Error('unknown evidence format');
   const bytes = Uint8Array.from(atob(s.slice(4)), (c) => c.charCodeAt(0));
-  const text = await new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'))).text();
-  return JSON.parse(text) as Evidence;
+  const reader = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip')).getReader();
+  const parts: Uint8Array[] = [];
+  let size = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.length;
+    if (size > maxBytes) {
+      await reader.cancel();
+      throw new Error('evidence too large');
+    }
+    parts.push(value);
+  }
+  return JSON.parse(await new Blob(parts as BlobPart[]).text()) as Evidence;
+}
+
+/**
+ * Both players' uploads as one: their signed inputs (and applied logs) together, the setup and lockstep settings
+ * from the first, and the keys registered on the match row, so an uploader can't pick the keys they're judged by.
+ */
+export function mergeEvidence(a: Evidence, b: Evidence | null | undefined, keys: MatchKeys): Evidence {
+  const list = <T>(x: T[] | undefined): T[] => (Array.isArray(x) ? x : []);
+  return {
+    setup: a.setup,
+    keys,
+    inputs: [...list(a.inputs), ...list(b?.inputs)],
+    applied: [...list(a.applied), ...list(b?.applied)],
+    ...(a.lockstep ? { lockstep: a.lockstep } : {}),
+  };
 }

@@ -8,16 +8,12 @@ import '../style.css';
 import './admin.css';
 import { CAPTCHA_ON, captchaToken } from '../multiplayer/shared/captcha';
 import { esc } from '../util';
+import { bansHtml, personLabel, reportsHtml, when, type Ban, type Reported } from './reportsView';
 
 const URL = import.meta.env.VITE_SUPABASE_URL;
 const KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 const root = document.querySelector<HTMLElement>('#admin')!;
 
-interface Reported {
-  user_id: string; name: string | null; reporters: number; reports: number; reasons: Record<string, number> | null;
-  latest: { reason: string; note: string | null; at: string; from: string | null }[] | null; last_at: string; banned_until: string | null;
-}
-interface Ban { user_id: string; name: string | null; until: string; reason: string | null; auto: boolean; since: string }
 interface LogRow { at: string; action: string; detail: string | null; target: string | null; by: string | null }
 
 interface Stats {
@@ -37,8 +33,6 @@ interface OfflineStats {
 }
 const MODE_LABEL = { quick: 'Quick Play', franchise: 'Franchise', season_draft: 'Season Draft' } as const;
 
-const when = (iso: string) => new Date(iso).toLocaleString();
-const forever = (iso: string) => new Date(iso).getFullYear() > new Date().getFullYear() + 50;
 
 function shell(inner: string) {
   root.innerHTML = `<main class="admin"><header><h1>Poké Jam moderation</h1><span data-who></span></header>${inner}</main>`;
@@ -98,6 +92,7 @@ function dashboard(sb: SupabaseClient, email: string) {
   const body = root.querySelector<HTMLElement>('[data-body]')!;
   const days = root.querySelector<HTMLSelectElement>('[data-days]')!;
   let tab = 'reports';
+  let judged = false;
   const call = async <T>(fn: string, args?: Record<string, unknown>): Promise<T> => {
     const { data, error } = await sb.rpc(fn, args);
     if (error) throw new Error(error.message);
@@ -108,7 +103,18 @@ function dashboard(sb: SupabaseClient, email: string) {
     root.querySelectorAll<HTMLButtonElement>('[data-tab]').forEach((b) => b.classList.toggle('on', b.dataset.tab === tab));
     days.parentElement!.hidden = tab !== 'reports';
     try {
-      if (tab === 'reports') body.innerHTML = reportsHtml(await call<Reported[]>('pokejam_admin_reports', { p_days: Number(days.value) }));
+      if (tab === 'reports') {
+        const rows = await call<Reported[]>('pokejam_admin_reports', { p_days: Number(days.value) });
+        body.innerHTML = reportsHtml(rows);
+        // Judge reported matches that have uploads but no verdict, then reload. At most once per page load, so a
+        // match the judge skips (too large, say) cannot loop; if it fails the rows simply stay "No check".
+        const match_ids = [...new Set(rows.flatMap((r) => (r.checks ?? []).filter((c) => c.has_evidence && c.status === null).map((c) => c.match_id)))];
+        if (match_ids.length && !judged) {
+          judged = true;
+          const { error } = await sb.functions.invoke('pokejam-judge', { body: { match_ids } }).catch((x: Error) => ({ error: x }));
+          if (!error && tab === 'reports') body.innerHTML = reportsHtml(await call<Reported[]>('pokejam_admin_reports', { p_days: Number(days.value) }));
+        }
+      }
       else if (tab === 'bans') body.innerHTML = bansHtml(await call<Ban[]>('pokejam_admin_bans'));
       else body.innerHTML = logHtml(await call<LogRow[]>('pokejam_admin_history', { p_limit: 100 }));
     } catch (e) {
@@ -121,15 +127,18 @@ function dashboard(sb: SupabaseClient, email: string) {
     const b = (e.target as HTMLElement).closest<HTMLButtonElement>('[data-act]');
     if (!b) return;
     const user = b.dataset.user!;
-    const name = b.dataset.name ?? 'this player';
+    const name = personLabel(b.dataset.name ?? 'this player', b.dataset.role);
     const act = b.dataset.act!;
+    const n = Number(b.dataset.reports ?? 0);
     const ask = act === 'unban' ? `Lift the suspension on ${name}?` : act === 'name' ? `Reset ${name}'s name to "Trainer"?`
+      : act === 'dismiss' ? `Clear ${n} open report${n === 1 ? '' : 's'} on ${name}?`
       : `Suspend ${name} ${act === '0' ? 'permanently' : `for ${Number(act) >= 168 ? `${Number(act) / 24} days` : `${act} hours`}`}?`;
     if (!confirm(ask)) return;
     b.disabled = true;
     try {
       if (act === 'unban') await call('pokejam_admin_unban', { p_user: user });
       else if (act === 'name') await call('pokejam_admin_reset_name', { p_user: user });
+      else if (act === 'dismiss') await call('pokejam_admin_dismiss', { p_user: user });
       else await call('pokejam_admin_ban', { p_user: user, p_hours: Number(act), p_reason: prompt('Reason (kept in the log):', 'reports reviewed') ?? 'reports reviewed' });
       await show();
     } catch (x) {
@@ -196,37 +205,6 @@ function offlineHtml(s: OfflineStats): string {
     ${seasons('Season Drafts, all time', 'season_draft', s.seasons_all)}
   </div><p class="note">Players = distinct browsers (random id per device). Games: started/finished by mode. ${
     s.first_event_at ? `First offline event ${esc(pt(s.first_event_at))} PT.` : 'No offline events yet.'} Updated ${esc(pt(s.generated_at))} PT.</p>`;
-}
-
-const actions = (r: { user_id: string; name: string | null }, banned: boolean) => {
-  const d = `data-user="${esc(r.user_id)}" data-name="${esc(r.name ?? 'Trainer')}"`;
-  return banned
-    ? `<button class="btn small" data-act="unban" ${d}>Lift</button>`
-    : `<button class="btn small" data-act="24" ${d}>24 h</button><button class="btn small" data-act="168" ${d}>7 days</button>
-       <button class="btn small danger" data-act="0" ${d}>Ban</button><button class="btn small ghost" data-act="name" ${d}>Reset name</button>`;
-};
-
-function reportsHtml(rows: Reported[]): string {
-  if (!rows.length) return '<p class="note">No reports in this period.</p>';
-  return `<div class="scroll"><table><thead><tr><th>Player</th><th>Reporters</th><th>Reasons</th><th>Latest</th><th>Status</th><th></th></tr></thead><tbody>
-    ${rows.map((r) => `<tr>
-      <td><strong>${esc(r.name ?? '?')}</strong><small>${esc(r.user_id.slice(0, 8))}</small></td>
-      <td class="num">${r.reporters}<small>${r.reports} reports</small></td>
-      <td>${Object.entries(r.reasons ?? {}).map(([k, n]) => `<span class="tag">${esc(k)} ${n}</span>`).join(' ')}</td>
-      <td><ul>${(r.latest ?? []).slice(0, 4).map((l) => `<li><b>${esc(l.from ?? '?')}</b>: ${esc(l.reason)}${l.note ? ` · “${esc(l.note)}”` : ''} <small>${esc(when(l.at))}</small></li>`).join('')}</ul></td>
-      <td>${r.banned_until ? `<span class="tag bad">suspended ${forever(r.banned_until) ? 'permanently' : `until ${esc(when(r.banned_until))}`}</span>` : '—'}</td>
-      <td class="acts">${actions(r, !!r.banned_until)}</td></tr>`).join('')}
-  </tbody></table></div>`;
-}
-
-function bansHtml(rows: Ban[]): string {
-  if (!rows.length) return '<p class="note">Nobody is suspended.</p>';
-  return `<div class="scroll"><table><thead><tr><th>Player</th><th>Until</th><th>Why</th><th>Since</th><th></th></tr></thead><tbody>
-    ${rows.map((b) => `<tr><td><strong>${esc(b.name ?? '?')}</strong><small>${esc(b.user_id.slice(0, 8))}</small></td>
-      <td>${forever(b.until) ? 'permanent' : esc(when(b.until))}</td>
-      <td>${b.auto ? '<span class="tag">automatic</span> ' : ''}${esc(b.reason ?? '')}</td><td>${esc(when(b.since))}</td>
-      <td class="acts">${actions(b, true)}</td></tr>`).join('')}
-  </tbody></table></div>`;
 }
 
 function logHtml(rows: LogRow[]): string {

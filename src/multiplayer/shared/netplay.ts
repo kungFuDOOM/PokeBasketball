@@ -18,11 +18,15 @@ import { RtcLink } from './rtc';
 import type { OnlineMatch, SupabaseMatchService } from './onlineMatchService';
 import { planRtt, startDelay, type RttStats } from './netDelay';
 import { Pinger } from './ping';
+import { parsePre, type Pre } from './pre';
 import { backoffMs } from './throttle';
 import { gameConfigFor, matchKey, type MatchKeys, type MatchSetup, type MatchTeam } from './winnerCheck';
 
-/** `ack` marks an answer to the other side's hi, which is never answered (so two finished sides don't echo). */
-type Hs = { k: 'hi'; v: number; n: number; side: 0 | 1; ack?: true };
+/**
+ * `ack` marks an answer to the other side's hi, which is never answered (so two finished sides don't echo).
+ * `i: 1` says this client shows the pre-game intro (the 'pre' event); an older peer leaves it out and skips it.
+ */
+type Hs = { k: 'hi'; v: number; n: number; side: 0 | 1; ack?: true; i?: 1 };
 
 export class NetError extends Error {}
 
@@ -247,7 +251,21 @@ export class MatchLink implements Transport {
     void rtc.start().catch(() => rtc.close());
   }
 
+  private preCb: ((p: Pre) => void) | null = null;
+  /** Intro messages ('pre'): skip votes and the start barrier, over Realtime only. */
+  sendPre(k: Pre['k'], at?: number) {
+    void this.ch.send({ type: 'broadcast', event: 'pre', payload: at === undefined ? { k } : { k, at } });
+    this.sent.realtime++;
+  }
+  onPre(cb: ((p: Pre) => void) | null) { this.preCb = cb; }
+  /** A peer's 'pre' payload; junk is dropped. */
+  deliverPre(raw: unknown) {
+    const p = parsePre(raw);
+    if (p) this.preCb?.(p);
+  }
+
   close() {
+    this.preCb = null;
     clearInterval(this.meter);
     this.rtc?.close();
     void this.sb.removeChannel(this.ch);
@@ -318,6 +336,8 @@ export interface Connected {
   /** What the judge rebuilds the game from, and both registered keys (null if this match has no evidence). */
   setup: MatchSetup;
   keys: MatchKeys | null;
+  /** The peer shows the pre-game intro (its hi carried `i: 1`); false for an older client, which goes straight in. */
+  intro: boolean;
 }
 
 const KEYS_TIMEOUT = 15_000;
@@ -369,12 +389,13 @@ export function connect(sb: SupabaseClient, match: OnlineMatch, quarterLen: numb
     const signed = !!service && wantsEvidence(match);
     let evidence: { log: EvidenceLog; keys: MatchKeys } | null | undefined = signed ? undefined : null;
     let peer = false;
+    let peerIntro = false;
     if (signed) void prepareEvidence(service!, match).then((e) => { evidence = e; ready(); });
     let done = false;
     let retry: ReturnType<typeof setTimeout> | undefined;
     // Nothing is sent until the channel is joined: a send on an unjoined channel goes out as an HTTP request instead.
     let subscribed = false;
-    const hi = (ack?: true) => subscribed && void ch.send({ type: 'broadcast', event: 'hs', payload: { k: 'hi', v: ENGINE_VERSION, n: NET_VERSION, side: match.side, ack } satisfies Hs });
+    const hi = (ack?: true) => subscribed && void ch.send({ type: 'broadcast', event: 'hs', payload: { k: 'hi', v: ENGINE_VERSION, n: NET_VERSION, side: match.side, ack, i: 1 } satisfies Hs });
     const finish = (err: Error | null) => {
       if (done) return;
       done = true;
@@ -383,7 +404,7 @@ export function connect(sb: SupabaseClient, match: OnlineMatch, quarterLen: numb
       clearTimeout(retry);
       if (err) { link.close(); reject(err); return; }
       link.evidence = evidence?.log ?? null;
-      resolve({ cfg: buildConfig(match, quarterLen), link, setup: setupFor(match, quarterLen), keys: evidence?.keys ?? null });
+      resolve({ cfg: buildConfig(match, quarterLen), link, setup: setupFor(match, quarterLen), keys: evidence?.keys ?? null, intro: peerIntro });
     };
     const ready = () => { if (peer && evidence !== undefined) finish(null); };
     const timer = setInterval(() => hi(), HS_EVERY);
@@ -398,11 +419,13 @@ export function connect(sb: SupabaseClient, match: OnlineMatch, quarterLen: numb
         if (m.v !== ENGINE_VERSION || m.n !== NET_VERSION) return finish(new NetError('You and your opponent are on different game versions. Refresh to update.'));
         // Answer their hi, even after starting (ours may have been lost), but never an answer.
         if (!m.ack) hi(true);
+        peerIntro = m.i === 1;
         peer = true;
         ready();
       });
       c.on('broadcast', { event: 'ls' }, ({ payload }) => link.deliver(payload, 'realtime'));
       c.on('broadcast', { event: 'rtc' }, ({ payload }) => link.signal(payload));
+      c.on('broadcast', { event: 'pre' }, ({ payload }) => link.deliverPre(payload));
     };
     bind(ch);
     // A cold Realtime tenant can refuse the first join (MissingPartition), and a full one refuses with rate-limit or
