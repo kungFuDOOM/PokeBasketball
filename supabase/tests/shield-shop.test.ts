@@ -151,7 +151,7 @@ describe('credit', () => {
     await s.credit(a, 'shield_3');
     const info = await a.call<Row>('pokejam_shield_shop');
     expect(info).toMatchObject({ held: 3, cap: 14, purchases_left: 39, blocked: false });
-    expect(info.products).toEqual([{ sku: 'shield_3', units: 3, price_cents: 199 }, { sku: 'shield_7', units: 7, price_cents: 399 }]);
+    expect(info.products).toEqual([{ sku: 'shield_3', units: 3, price_cents: 199, usdc_amount: 1990000 }, { sku: 'shield_7', units: 7, price_cents: 399, usdc_amount: 3990000 }]);
   });
 });
 
