@@ -1658,6 +1658,13 @@ body:has(.pause-btn) .music-btn:not(.docked) {
 .shop-name em { font-style: normal; font-size: 0.85rem; color: var(--muted); }
 .shop-name small { font-size: 0.78rem; color: #ff8a7a; }
 .shop-buy { min-width: 84px; min-height: 44px; padding: 4px 12px; font: 0.7rem var(--pixel); }
+.shop-pay { display: flex; flex-direction: column; align-items: stretch; gap: 4px; }
+.shop-card.has-usdc .shop-pay { min-width: 9.5rem; }
+.shop-card.has-usdc .shop-buy { min-height: 38px; padding: 2px 8px; font-size: 0.6rem; white-space: nowrap; }
+.shop-usdc { border-color: #9a7cf5; color: #cdbcff; }
+.shop-usdc:not(:disabled):hover { background: rgba(154, 124, 245, 0.2); }
+.shop-net { display: inline-block; padding: 1px 6px; margin-right: 4px; border: 2px solid #ffb74d; border-radius: 6px; font: 0.55rem var(--pixel); color: #ffb74d; text-transform: uppercase; }
+.shop-net[data-net="mainnet-beta"] { border-color: #9a7cf5; color: #cdbcff; }
 .shop-held { margin: 0; font: 0.65rem var(--pixel); color: var(--muted); }
 .shop-held strong { color: var(--accent); }
 .shop-age { display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 4px 8px; border: 2px dashed var(--line); border-radius: 8px; font-size: 0.92rem; cursor: pointer; }
@@ -1679,6 +1686,7 @@ body:has(.pause-btn) .music-btn:not(.docked) {
   .shop-x { min-height: 36px; }
   .shop-card { padding: 5px 8px; }
   .shop-buy { min-height: 40px; }
+  .shop-card.has-usdc .shop-buy { min-height: 32px; }
   .shop-age { min-height: 40px; padding: 2px 8px; font-size: 0.85rem; }
   .shop-fine { font-size: 0.74rem; }
   .shop-panel { padding-bottom: 8px; }

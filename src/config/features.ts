@@ -14,5 +14,12 @@ export const MODE_RANKED = import.meta.env.VITE_MODE_RANKED === 'true'
  */
 export const MODE_SHIELD_SHOP = MODE_RANKED && (import.meta.env.VITE_SHIELD_SHOP === 'true'
   || (import.meta.env.DEV && typeof location !== 'undefined' && new URLSearchParams(location.search).get('shop') === '1'));
+/**
+ * Pay for Rank Shields in USDC from a Phantom wallet: needs the shop, plus VITE_SHIELD_USDC=true (or, dev server only,
+ * `?usdc=1`). Devnet unless VITE_SHIELD_USDC_CLUSTER says otherwise; the server decides the real cluster.
+ */
+export const MODE_SHIELD_USDC = MODE_SHIELD_SHOP && (import.meta.env.VITE_SHIELD_USDC === 'true'
+  || (import.meta.env.DEV && typeof location !== 'undefined' && new URLSearchParams(location.search).get('usdc') === '1'));
+export const SHIELD_USDC_CLUSTER: 'devnet' | 'mainnet-beta' = import.meta.env.VITE_SHIELD_USDC_CLUSTER === 'mainnet-beta' ? 'mainnet-beta' : 'devnet';
 export const MODE_PACK_BATTLES = import.meta.env.VITE_MODE_PACK_BATTLES === 'true';
 export const ANY_MULTIPLAYER = MODE_SOCIAL || MODE_RANKED || MODE_PACK_BATTLES;
