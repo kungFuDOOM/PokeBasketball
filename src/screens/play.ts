@@ -13,10 +13,13 @@ import { Voice, sharedVoice } from '../game/voice';
 import { controlsHtml } from './menu';
 import { playOfTheGame, rememberReplay, type PlayOfTheGame } from './potg';
 import { nextSpeed, stepHeadless } from './watch';
+import { startingFive, type StartingFive } from './startingFive';
 
 const STEP = 1 / 60;
 /** Dev aid: ?speed=4 runs the simulation four times faster. */
 const SPEED = Math.max(1, Math.min(8, Number(new URLSearchParams(location.search).get('speed')) || 1));
+/** Dev aid: ?intro=0 skips the starting-five intro (dev builds only). */
+const INTRO = !(import.meta.env.DEV && new URLSearchParams(location.search).get('intro') === '0');
 
 export interface PlayHandle {
   stop(): void;
@@ -37,6 +40,8 @@ export interface OnlineDriver {
   status(): string | null;
   /** Round-trip time to the other player in ms, or null while unknown (shown as a small meter). */
   ping?(): number | null;
+  /** Called every frame before tip-off (loading, then the starting-five intro), to keep the link to the other player alive. */
+  idle?(): void;
 }
 
 export function playGame(
@@ -45,7 +50,8 @@ export function playGame(
   audio: Audio,
   onFinal: (g: Game) => void,
   onQuit: () => void,
-  opts: { onAutoSubs?: (on: boolean) => void; online?: OnlineDriver; spectator?: boolean } = {},
+  /** startingFive: play the starting-five intro on the court before tip-off (see startingFiveEnabled). */
+  opts: { onAutoSubs?: (on: boolean) => void; online?: OnlineDriver; spectator?: boolean; startingFive?: boolean } = {},
 ): PlayHandle {
   root.innerHTML = `
     <div class="game">
@@ -92,6 +98,7 @@ export function playGame(
   gameEl.classList.toggle('spectator', spectator);
   const rec = online || spectator ? null : new ReplayRecorder(cfg, g.seed);
   let potg: PlayOfTheGame | null = null;
+  let intro: StartingFive | null = null;
   const input = new Input();
   const touch = window.matchMedia('(pointer: coarse)').matches || navigator.maxTouchPoints > 0;
   if (touch && !spectator) {
@@ -219,6 +226,11 @@ export function playGame(
     ready = true;
     loading.remove();
     audio.startCrowd();
+    if (!INTRO || !running || !opts.startingFive) return;
+    // Your starting five, before tip-off. Offline you can skip it; online both players watch it and tip off together.
+    const mine: TeamId | null = online ? online.viewTeam : cfg.home.human !== cfg.away.human ? (cfg.home.human ? 0 : 1) : null;
+    intro = startingFive(gameEl, g, { audio, voice, mine, skippable: !online });
+    hud.el.hidden = true;
   });
 
   const frame = (now: number) => {
@@ -238,6 +250,20 @@ export function playGame(
       raf = requestAnimationFrame(frame);
       return;
     }
+    if (intro) {
+      const { intent, pause } = input.read();
+      if (pause || intent.shoot || intent.pass) intro.skip();
+      online?.idle?.();
+      // Offline, the pause menu holds the intro too.
+      if (!(menuOpen() && !online) && !intro.frame(dt)) {
+        intro = null;
+        hud.el.hidden = false;
+      }
+      renderer.draw(g, dt);
+      raf = requestAnimationFrame(frame);
+      return;
+    }
+    if (!ready) online?.idle?.();
     if (ready) {
       const read = input.read();
       const pause = read.pause;
@@ -326,6 +352,8 @@ export function playGame(
 
   function stop() {
     running = false;
+    intro = null;
+    gameEl.querySelector('.s5')?.remove();
     cancelAnimationFrame(raf);
     input.destroy();
     audio.stopCrowd();

@@ -10,7 +10,7 @@ import { panel } from './matchFlow';
 import type { ReportOutcome } from './matchService';
 import { pack } from './evidence';
 import { showIntro } from '../../screens/intro';
-import { INTRO_CAP_MS, INTRO_LEN_MS, IntroVotes } from '../../screens/intro.logic';
+import { INTRO_CAP_MS, INTRO_LEN_MS, IntroVotes, startingFiveEnabled } from '../../screens/intro.logic';
 import { PreGate } from './pre';
 import { MatchOverError, connect, iceFor, type Connected, type MatchLink } from './netplay';
 import { netStatsRow, submitNetStats } from './netStats';
@@ -190,7 +190,9 @@ export async function playOnline(ctx: ModeContext, o: OnlineGameOptions) {
         ping: () => link.pinger.smooth,
         advance: (intent, dt) => ls!.advance(intent, dt),
         status: () => (ls && ls.waiting > 0.4 ? `Waiting for ${match.opponent.name}…` : null),
+        idle: () => ls?.maybeSend(false),
       },
+      startingFive: startingFiveEnabled('full', match.queue, true, conn.startingFive),
     });
   }
 
