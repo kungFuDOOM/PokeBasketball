@@ -3,7 +3,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { RANKED_PRESETS } from './presets';
 
-const NAME = '20261120_pokejam_ranked_presets.sql';
+const NAME = '20261124_pokejam_ranked_presets.sql';
 const DIR = new URL('../../../supabase/migrations/', import.meta.url);
 const sql = readFileSync(new URL(NAME, DIR), 'utf8');
 

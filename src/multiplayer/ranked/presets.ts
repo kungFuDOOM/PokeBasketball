@@ -10,7 +10,7 @@ export interface RankedPreset {
 /**
  * The six Ranked teams. Every one totals exactly 425 OVR (an 85 average), every member is Ranked-legal
  * (isRankedLegal) and rated 81-88, no Pokémon is on two teams, and each team's raw ratings stay close to the
- * others' (see presets.test.ts). Keep the server seed (migration 20261120) in step with this list.
+ * others' (see presets.test.ts). Keep the server seed (migration 20261124) in step with this list.
  */
 export const RANKED_PRESETS: readonly RankedPreset[] = [
   { id: 'A', name: 'Night Furnace', dex: [78, 229, 94, 9, 208] }, // Rapidash, Houndoom, Gengar, Blastoise, Steelix

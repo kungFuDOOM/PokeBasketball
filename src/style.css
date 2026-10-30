@@ -1363,7 +1363,10 @@ button.gl-row:hover { border-color: var(--muted); }
 .fc-box .actions { margin-top: 16px; }
 .rn-text { overflow-wrap: break-word; word-break: normal; }
 .ss-head h2 .rn-text, .ss-head h2 { overflow-wrap: break-word; }
-.rn-edit { flex-wrap: nowrap; width: 100%; }
+.rn-edit { flex-wrap: wrap; width: 100%; }
+/* "That team name isn't allowed": under whichever team-name field is blocked; takes a full row where the field sits in a flex row. */
+.name-err { flex: 1 0 100%; margin: 4px 0 0; text-align: center; color: var(--red); font: 700 0.8rem/1.25 var(--sport); letter-spacing: normal; text-transform: none; }
+input[aria-invalid="true"].rn-input, #team-name[aria-invalid="true"], #fc-input[aria-invalid="true"], #sum-name[aria-invalid="true"] { border-color: var(--red); }
 .rn-edit .btn { font: 800 0.8rem var(--sport); padding: 8px 10px; flex: none; }
 .rn-input { flex: 1 1 auto; width: auto; min-width: 6ch; }
 /* Draft complete: share beside Continue */
@@ -1412,7 +1415,7 @@ button.gl-row:hover { border-color: var(--muted); }
 /* Title hero: name your team, then draft. The name box sits above the button at the same width. */
 .play-row { flex-direction: column; align-items: center; gap: 10px; flex-wrap: nowrap; }
 .play-row .team-field, .play-row .play-btn { width: min(100%, 400px); min-width: 0; box-sizing: border-box; }
-.play-row .team-field { display: flex; flex-direction: row; align-items: center; gap: 10px; padding: 8px 12px; }
+.play-row .team-field { display: flex; flex-direction: row; flex-wrap: wrap; align-items: center; gap: 10px; padding: 8px 12px; }
 .play-row .team-field input { flex: 1; min-width: 0; text-align: center; }
 
 /* Draft-spot reveal: where you pick this draft */
@@ -2102,3 +2105,26 @@ body:has(.pause-btn) .music-btn:not(.docked) {
 .pp-err { margin: 0; color: #ff6b6b; font-size: 0.85rem; }
 @media (orientation: portrait) { .pp-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(3, minmax(0, 1fr)); } }
 @media (orientation: landscape) and (max-height: 450px) { .pp-mons img { max-width: 34px; } .pp-top { margin-bottom: 4px; } .pp-bar .btn.big { padding-top: 6px; padding-bottom: 6px; } }
+/* Pre-game intro: both lineups, VS between, Skip pinned at thumb reach. Fits 844x390 / 932x430 / 390x844 without scrolling. */
+.screen-intro { overflow: hidden; }
+.intro { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; box-sizing: border-box; padding: max(8px, env(safe-area-inset-top, 0px)) max(10px, env(safe-area-inset-right, 0px)) calc(64px + env(safe-area-inset-bottom, 0px)) max(10px, env(safe-area-inset-left, 0px)); overflow: hidden; }
+.intro-teams { display: flex; align-items: center; justify-content: center; gap: clamp(8px, 2vw, 24px); width: 100%; max-width: 900px; min-height: 0; }
+.intro-team { flex: 1 1 0; min-width: 0; padding: clamp(6px, 1.4vh, 12px); border-top: 4px solid var(--team, var(--accent)); background: rgba(0, 0, 0, 0.35); border-radius: 6px; }
+.intro-team h2 { margin: 0; font: clamp(0.6rem, 2.4vh, 0.9rem) var(--pixel); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.intro-meta { display: flex; gap: 8px; margin: 4px 0; font: 0.55rem var(--pixel); opacity: 0.85; }
+.intro-rank { color: var(--accent); }
+.intro-team ul { list-style: none; margin: 0; padding: 0; }
+.intro-team li { display: grid; grid-template-columns: clamp(22px, 7vh, 44px) 2.6em 1fr auto; align-items: center; gap: 6px; font-size: clamp(0.6rem, 2.6vh, 0.85rem); }
+.intro-team li img { width: clamp(22px, 7vh, 44px); height: clamp(22px, 7vh, 44px); image-rendering: pixelated; object-fit: contain; }
+.intro-team li span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.intro-vs { font: clamp(0.9rem, 4vh, 1.6rem) var(--pixel); color: var(--accent); }
+.intro-skip { position: fixed; left: 50%; transform: translateX(-50%); bottom: max(12px, env(safe-area-inset-bottom, 0px)); min-width: 140px; min-height: 44px; z-index: 6; }
+.intro-skip.on { background: var(--accent); color: #1a1400; }
+@media (orientation: portrait) {
+  .intro-teams { flex-direction: column; gap: clamp(4px, 1.2vh, 12px); }
+  .intro-team { width: 100%; flex: 0 0 auto; }
+  .intro-team li { grid-template-columns: clamp(22px, 4.5vh, 40px) 2.6em 1fr auto; font-size: clamp(0.6rem, 1.7vh, 0.85rem); }
+  .intro-team li img { width: clamp(22px, 4.5vh, 40px); height: clamp(22px, 4.5vh, 40px); }
+  .intro-team h2 { font-size: clamp(0.6rem, 1.8vh, 0.9rem); }
+  .intro-vs { font-size: clamp(0.9rem, 2.6vh, 1.4rem); }
+}

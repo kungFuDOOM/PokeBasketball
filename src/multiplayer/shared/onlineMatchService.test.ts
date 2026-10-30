@@ -61,6 +61,22 @@ describe('SupabaseMatchService (Social)', () => {
     expect(m.game).toEqual({ seed: 4000000000, quarterLen: 60, rosters: null });
   });
 
+  it('shows a blocked opponent name (a modified client) as the default "Trainer"', async () => {
+    const info = { id: 'm1', queue: 'social', host: 'h', guest: 'me', host_name: 'f u c k', guest_name: 'Misty', seed: 1, quarter_len: 60 };
+    const m = await new SupabaseMatchService(fakeDb({ pokejam_match_info: info }).db, 'me').matchInfo('m1');
+    expect(m.opponent.name).toBe('Trainer');
+    expect(m.me.name).toBe('Misty');
+    const host = await new SupabaseMatchService(fakeDb({ pokejam_match_info: { ...info, host: 'me', guest: 'g', host_name: 'Ash', guest_name: 'Kissass' } }).db, 'me').matchInfo('m1');
+    expect(host.opponent.name).toBe('Trainer');
+    expect(host.me.name).toBe('Ash');
+  });
+
+  it('never sends a blocked name of its own', async () => {
+    const { db, calls } = fakeDb({ pokejam_ensure_profile: { trainer_name: 'Trainer' } });
+    await new SupabaseMatchService(db, 'me').setName('sh1t');
+    expect(calls[0].args).toEqual({ p_name: 'Trainer' });
+  });
+
   it('refuses a match with no server seed (an old server), rather than letting a player pick the game', async () => {
     const info = { id: 'm1', queue: 'social', host: 'h', guest: 'me', host_name: 'Ash', guest_name: 'Misty', seed: null, quarter_len: 120 };
     await expect(new SupabaseMatchService(fakeDb({ pokejam_match_info: info }).db, 'me').matchInfo('m1')).rejects.toThrow(/older server/);

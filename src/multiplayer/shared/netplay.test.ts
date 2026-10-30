@@ -111,7 +111,7 @@ describe('hand-over between the direct link and Realtime', () => {
 
 describe('the ranked handshake carries a roster digest', () => {
   type Hi = { k: string; side: number; d?: number; v: number; n: number };
-  function rig(m: OnlineMatch) {
+  function rankedRig(m: OnlineMatch) {
     const sent: Hi[] = [];
     let onHs: (e: { payload: unknown }) => void = () => {};
     const ch = {
@@ -134,16 +134,16 @@ describe('the ranked handshake carries a roster digest', () => {
   });
 
   it('ranked sends the digest of both rosters; social sends none', async () => {
-    const r = rig(ranked(0));
+    const r = rankedRig(ranked(0));
     await r.flush();
     expect(r.sent[0].d).toBe(want);
-    const s = rig(match(0));
+    const s = rankedRig(match(0));
     await s.flush();
     expect(s.sent[0].d).toBeUndefined();
   });
 
   it('a different digest from the peer aborts like a version mismatch', async () => {
-    const r = rig(ranked(1));
+    const r = rankedRig(ranked(1));
     await r.flush();
     r.peer({ d: want ^ 1 });
     await expect(r.p).rejects.toThrow(/different game versions/);
@@ -151,13 +151,67 @@ describe('the ranked handshake carries a roster digest', () => {
 
   it('a matching digest, or none (an older client), connects', async () => {
     for (const d of [want, undefined]) {
-      const r = rig(ranked(1));
+      const r = rankedRig(ranked(1));
       await r.flush();
       r.peer(d === undefined ? {} : { d });
       const c = await r.p;
       expect(c.setup.away.roster).toEqual(RANKED_PRESETS[3].dex);
       c.link.close();
     }
+  });
+});
+
+describe('the handshake says whether the peer shows the pre-game intro', () => {
+  type Cb = (x: { payload: unknown }) => void;
+  function introRig(side: 0 | 1) {
+    const sent: { event: string; payload: Record<string, unknown> }[] = [];
+    const handlers: Record<string, Cb> = {};
+    const ch = {
+      on: (_t: string, f: { event: string }, cb: Cb) => { handlers[f.event] = cb; return ch; },
+      subscribe: (cb: (s: string) => void) => { cb('SUBSCRIBED'); return ch; },
+      send: (x: { event: string; payload: Record<string, unknown> }) => { sent.push(x); return Promise.resolve('ok'); },
+    };
+    const sb = { channel: () => ch, removeChannel: () => Promise.resolve('ok'), realtime: { setAuth: () => Promise.resolve() } };
+    const conn = connect(sb as never, match(side), undefined);
+    const peerHi = (extra: Record<string, unknown>) =>
+      handlers.hs({ payload: { k: 'hi', v: ENGINE_VERSION, n: NET_VERSION, side: side === 0 ? 1 : 0, ...extra } });
+    return { conn, sent, handlers, peerHi };
+  }
+
+  it('our hi carries i:1, and a peer hi with i:1 yields intro:true', async () => {
+    const { conn, sent, peerHi } = introRig(0);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(sent.find((s) => s.event === 'hs')?.payload.i).toBe(1);
+    peerHi({ i: 1 });
+    const c = await conn;
+    expect(c.intro).toBe(true);
+    c.link.close();
+  });
+
+  it('an old peer (no i) yields intro:false', async () => {
+    const { conn, peerHi } = introRig(1);
+    await Promise.resolve();
+    peerHi({});
+    const c = await conn;
+    expect(c.intro).toBe(false);
+    c.link.close();
+  });
+
+  it("'pre' events reach onPre and junk is dropped; sendPre goes out on the channel", async () => {
+    const { conn, sent, handlers, peerHi } = introRig(0);
+    await Promise.resolve();
+    peerHi({ i: 1 });
+    const c = await conn;
+    const got: unknown[] = [];
+    c.link.onPre((p) => got.push(p));
+    handlers.pre({ payload: { k: 'skip' } });
+    handlers.pre({ payload: { k: 'nope' } });
+    handlers.pre({ payload: null });
+    expect(got).toEqual([{ k: 'skip' }]);
+    c.link.sendPre('ready');
+    expect(sent[sent.length - 1]).toMatchObject({ event: 'pre', payload: { k: 'ready' } });
+    c.link.close();
   });
 });
 
