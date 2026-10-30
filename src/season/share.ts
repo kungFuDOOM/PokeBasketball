@@ -1,6 +1,7 @@
 // Share links: a drafted team (and its season, when one was played), packed into the URL hash (#s=<base64url>). No backend.
 // Everything decoded from a link is untrusted: it is validated and clamped before use.
 import { POKEMON } from '../data/pokemon';
+import { safeName } from '../nameFilter';
 import type { Playoff } from './sim';
 
 export interface SharedTeam {
@@ -94,8 +95,10 @@ export function decodeShare(code: string): SharedTeam | null {
     if (allStars > 5) return null;
     const noRecord = w === 0 && l === 0 && rank === 0 && teams === 0 && po === 0 && seed === 0;
     if (!noRecord && (dex.length !== 10 || teams < 2 || teams > 32 || rank < 1 || rank > teams || w + l < 1 || w + l > 99 || po >= PLAYOFFS.length || seed > Math.min(4, teams))) return null;
-    const name = cleanName(new TextDecoder('utf-8', { fatal: true }).decode(b.slice(HEAD + 1)));
-    if (!name) return null;
+    const decoded = cleanName(new TextDecoder('utf-8', { fatal: true }).decode(b.slice(HEAD + 1)));
+    if (!decoded) return null;
+    // A link made by a modified client can carry anything: a blocked name shows as the default.
+    const name = safeName(decoded, 'Pallet Town');
     return { name, color: toHex([...b.slice(21, 24)]), color2: toHex([...b.slice(24, 27)]), dex, w, l, rank, teams, seed, playoff: PLAYOFFS[po], ...(noRecord ? { noRecord: true } : {}), ...(allStars ? { allStars } : {}) };
   } catch {
     return null;
