@@ -15,6 +15,8 @@ Step 3 of the plan on issue #4: after a battle has a winner, buy the winner's Co
 | `pokejam-ads/` | Billboard ads: book the courtside LED board by burning $PJAM (below). |
 | `pokejam-judge-worker/` | Judges the next Ranked match in the queue, one per run, and decides it if it's disputed and `judge_authoritative` is on. See "The judge queue" below. |
 | `pokejam-raffle-draw/` | Draws one closed week's card raffle. Reads PJAM balances; the database picks the winner. See `docs/weekly-challenges.md`. No cron. |
+| `../migrations/20261103_pokejam_pack_battles.sql` | Pack Battles on the test site: entries paid from the ledger, the `pack` queue, battles, settling, test credits (below). |
+| `pokejam-pack-judge/` | Judges finished battles from both players' signed inputs and settles them (below). |
 | `pokejam-pack-machines/` | Refreshes `pokejam_pack_machines` from CC's live prices, odds and stock, for the lobby. |
 | `_shared/pack/` | Ported from the devnet-verified Bun prototype: CC client, Solana RPC, Core transfer, signing, machines and the worker. Imports use explicit `.ts` extensions, so the same files run in Deno and in vitest. |
 
@@ -249,6 +251,40 @@ Not built yet. Each of these is an edge case the escrow PR has to close, using `
 - Keep only working float in the hot wallet and the rest in a multisig (Squads), topped up by hand.
 - Reconcile daily: the house's USDC against the ledger plus fee revenue (`health` does this live).
 - Watch the house's SOL for fees.
+
+## Pack Battles on the test site (`../migrations/20261103_pokejam_pack_battles.sql`, `pokejam-pack-judge/`)
+
+Devnet only. A player enters a tier and pays half the pot plus half the fee from their balance. Two players on the same tier, near each other's MMR, are paired into a `pack` match: the same online lockstep game as Ranked, with balanced teams and signed inputs. After the game, the judge replays both players' signed inputs and settles the battle:
+
+| The judge finds | What happens |
+| --- | --- |
+| A winner at the buzzer | The winner's pack is queued for the payout worker (`pokejam_pack_queue_prize`), which buys, opens and reveals it. They keep the card or sell it back. |
+| A player signed two versions of the same input | That player forfeits, and the other wins. |
+| The game stopped early, and one player signed a resignation (they pressed Leave, or closed the page) | That player forfeits (`outcome = 'resigned'`). The resignation goes out with their goodbye, so the other player's upload is proof. |
+| The game stopped early, and one player never uploaded | They left without a word (closed the app, or lost their connection for good) and forfeit (`'abandoned'`). |
+| The game stopped early, and both players stayed and uploaded | Signed inputs can't tell a real disconnect from a player cutting the link to dodge a loss, so a person decides (`'review'`, outcome `'disconnect'`) from both connection logs. Nobody wins by cutting the link. |
+| A tie, or a game that never got going (no keys, no uploads, or not one tick played with both inputs) | Both players get their entry back in full, fee included. |
+| Evidence it can't judge | The battle is held for a person (`state = 'review'`). Nothing moves, and health flags it. |
+
+The early-end rule is kungFuDOOM's: the player who quits forfeits, with no automatic refund, and a player who says it was a real disconnect contacts support, who look at it case by case. For that, each upload carries its player's connection log (`Evidence.log`: tip-off, stalls and how long they lasted, the page hiding, the device going offline, why the game stopped, and the netcode's stats), and Pack Battles uploads are kept 90 days, or for as long as a battle is unsettled or held for a person. The judge's note on the battle says who forfeited and why. In the game, the Leave button reads "Leave and forfeit", and the waiting banner tells players to stay.
+
+Leaving the queue refunds the entry, and so does an entry nobody has polled for 30 seconds. There are no deposits or withdrawals yet: with `pack_test_credits` on, a player can take $100 of test USDC a day into their balance.
+
+**The judge** (`pokejam-pack-judge/`) runs `src/multiplayer/shared/judgeMatch.ts`, bundled with the game engine into `judge.bundle.js` by `npm run build:judge`. A test fails if the committed bundle is stale. It builds the game from the match row (seed, quarter length, names), never from an upload. Each run refunds dead searches, then judges up to 5 due battles: both players uploaded, or one did 3 minutes ago, or an hour has passed. Players call it right after their game, and a one-minute cron covers the rest.
+
+### What the `pokejam` project (`ksvfgxodbwfntqnahukn`) needs, on kungFuDOOM's "Merge"
+
+1. **Migrations, in order:** `20261023_pokejam_pack_payouts`, `20261024_pokejam_pack_keep_or_sell`, `20261102_pokejam_pack_fail_safe` (#42), `20261103_pokejam_pack_battles`.
+2. **Edge Functions:** `supabase functions deploy pokejam-pack-machines pokejam-pack-payouts pokejam-pack-judge`.
+3. **Schedules (pg_cron + pg_net, service key):** `pokejam-pack-machines` every 10 minutes, and `pokejam-pack-payouts` and `pokejam-pack-judge` every minute.
+4. **Secrets (`supabase secrets set …`):**
+   - `CLUSTER=devnet`
+   - `HOUSE_SECRET_KEY`: a devnet house wallet made for the test site. Never reuse a key from anywhere else, and keep it out of the repo.
+   - `HOUSE_USDC_ACCOUNT`: its USDC-Dev token account.
+   - Optional: `ALERT_WEBHOOK_URL`, `PRIZE_CHOICE_SECONDS` (default 120).
+5. **Fund the house:** a little devnet SOL (`solana airdrop`) and USDC-Dev for the pulls. Collector Crypt's devnet gacha charges USDC-Dev (mint `Gh9ZwEmdLJ8DscKNTkTqPbNwLNNBjuSzaG9Vp2KGtKJr`), which comes from spl-token-faucet.com.
+6. **Config:** `update public.pokejam_config set value = 'true' where key = 'pack_test_credits';` The fee is `pack_fee_bps` (default 500, so 5% of the pot).
+7. **Vercel `pokejam-test` only:** `VITE_MODE_PACK_BATTLES=true`. This build also lets the page show Collector Crypt's card images (CSP `img-src`).
 
 ## Online play: TURN credentials (`pokejam-ice/`)
 

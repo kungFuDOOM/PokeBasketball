@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { Game } from '../../game/game';
 import { stateHash } from '../../game/sync';
 import { buildConfig, setupFor } from './netplay';
@@ -7,6 +7,9 @@ import { RANKED_EXCLUDED, RANKED_MAX_GAP, RANKED_MAX_SPREAD, RANKED_POOL, flowRo
 import { POSITIONS, monByDex, type Mon } from '../../data/pokemon';
 import { gameConfigFor } from './winnerCheck';
 import { RANKED_PRESETS } from '../ranked/presets';
+
+// These reroll balanced teams thousands of times: a few seconds alone, more while the full-game tests run alongside.
+vi.setConfig({ testTimeout: 30_000 });
 
 const SEEDS = Array.from({ length: 3000 }, (_, i) => (i * 2654435761) >>> 0);
 

@@ -42,6 +42,8 @@ export interface OnlineDriver {
   ping?(): number | null;
   /** Called every frame before tip-off (loading, then the starting-five intro), to keep the link to the other player alive. */
   idle?(): void;
+  /** The pause menu's quit button, when leaving means more than usual (Pack Battles: "Leave and forfeit"). */
+  quitLabel?: string;
 }
 
 export function playGame(
@@ -92,6 +94,7 @@ export function playGame(
   const muteBtn = pauseMenu.querySelector<HTMLButtonElement>('[data-a="mute"]')!;
   const annBtn = pauseMenu.querySelector<HTMLButtonElement>('[data-a="announcer"]')!;
   const loading = root.querySelector<HTMLElement>('.loading')!;
+  if (opts.online?.quitLabel) pauseMenu.querySelector<HTMLButtonElement>('[data-a="quit"]')!.textContent = opts.online.quitLabel;
 
   const g = new Game(cfg);
   const online = opts.online;

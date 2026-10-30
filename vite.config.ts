@@ -23,13 +23,17 @@ export const adsApiOrigin = (adsApi: string | undefined, supabaseUrl: string | u
   return supabaseUrl && new URL(supabaseUrl).origin === url.origin ? undefined : url.origin;
 };
 
-export const csp = (supabaseUrl: string | undefined, captcha: boolean, analytics: boolean, adsApi?: string) => [
+/** Pack Battles show the pulled card: Collector Crypt serves card images from these hosts (devnet and mainnet). */
+export const CC_IMAGES = 'https://nft-dev.collectorcrypt.com https://nft.collectorcrypt.com https://dq63y5568o1bp.cloudfront.net';
+
+/** `packs`: the build has Pack Battles on (VITE_MODE_PACK_BATTLES), so Collector Crypt's card images may load. */
+export const csp = (supabaseUrl: string | undefined, captcha: boolean, analytics: boolean, adsApi?: string, packs = false) => [
   "default-src 'none'",
   // The bot check before a first online sign-in (Cloudflare Turnstile) loads its script and widget frame. Cloudflare Web Analytics loads its beacon script and reports to cloudflareinsights.com.
   `script-src 'self' ${CF_ANALYTICS}${captcha ? ` ${TURNSTILE}` : ''}${analytics ? ` ${GA}` : ''}`,
   ...(captcha ? [`frame-src ${TURNSTILE}`] : []),
   "style-src 'self' 'unsafe-inline'",
-  `img-src 'self' data:${analytics ? ` ${GA}` : ''}`,
+  `img-src 'self' data:${analytics ? ` ${GA}` : ''}${packs ? ` ${CC_IMAGES}` : ''}`,
   "font-src 'self'",
   // Online play talks to the configured Supabase project only (REST over https, Realtime over wss), plus the analytics beacon.
   // Courtside ads go through the project's pokejam-ads-live Edge Function, or VITE_ADS_API when it lives elsewhere (adsApiOrigin).
@@ -41,12 +45,12 @@ export const csp = (supabaseUrl: string | undefined, captcha: boolean, analytics
   'upgrade-insecure-requests',
 ].join('; ');
 
-const securityHeaders = (supabaseUrl: string | undefined, captcha: boolean, adsApi?: string): Plugin => ({
+const securityHeaders = (supabaseUrl: string | undefined, captcha: boolean, adsApi?: string, packs = false): Plugin => ({
   name: 'security-meta',
   apply: 'build',
   transformIndexHtml: (_html, ctx) => [
     // admin.html (vite.admin.config.ts) gets no analytics, so its policy stays without the GA hosts.
-    { tag: 'meta', attrs: { 'http-equiv': 'Content-Security-Policy', content: csp(supabaseUrl, captcha, !/(^|[\\/])admin\.html$/.test(ctx.filename), adsApi) }, injectTo: 'head-prepend' },
+    { tag: 'meta', attrs: { 'http-equiv': 'Content-Security-Policy', content: csp(supabaseUrl, captcha, !/(^|[\\/])admin\.html$/.test(ctx.filename), adsApi, packs) }, injectTo: 'head-prepend' },
     { tag: 'meta', attrs: { name: 'referrer', content: 'no-referrer' }, injectTo: 'head-prepend' },
   ],
 });
@@ -70,7 +74,7 @@ export default defineConfig(({ mode }) => {
   return {
   base: './',
   define: { __PJ_BUILD__: JSON.stringify(mode === 'production' ? buildId : 'dev') },
-  plugins: [securityHeaders(env.VITE_SUPABASE_URL, !!env.VITE_TURNSTILE_SITE_KEY, env.VITE_ADS_API || undefined), buildIdFile(buildId)],
+  plugins: [securityHeaders(env.VITE_SUPABASE_URL, !!env.VITE_TURNSTILE_SITE_KEY, env.VITE_ADS_API || undefined, env.VITE_MODE_PACK_BATTLES === 'true'), buildIdFile(buildId)],
   build: {
     // Older iPads (iPadOS 13/14, Safari 12-14) and Android WebViews: lower ?. ?? ??= instead of shipping them as written.
     target: ['es2019', 'chrome70', 'safari12', 'firefox68', 'edge79'],

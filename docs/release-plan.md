@@ -50,6 +50,15 @@ Status (kfd/social): done except the boxes below.
 - The pull, pot and delivery logic is reviewed. Nothing real is bought.
 - kungFuDOOM OKs it, then says "Merge" for Pack Battles.
 
+Status (`pp/pack-battles-test`, on the test site behind `VITE_MODE_PACK_BATTLES`):
+- [x] Pack Battles on the online stack: entries paid from the ledger, a `pack` queue with balanced teams and signed inputs, and refunds for a cancelled search or a game with no winner.
+- [x] The judge (`pokejam-pack-judge`) decides every battle by replaying both players' signed inputs, never by their reports. It's tested on real played games, and the Deno bundle is checked against the sources.
+- [x] Payouts: buy, open and reveal the pull, then keep or sell it back. Fail-safes in #42, checked live on devnet.
+- [x] Devnet test credits, so the test site needs no wallet funding.
+- [ ] Apply the migrations, deploy the three functions, schedule them, and set the devnet secrets (`supabase/functions/README.md`).
+- [x] The forfeit rule for a game that stops early (kungFuDOOM's call): the player who quits forfeits. A disconnect with both players still there is held for a person, with both players' connection logs.
+- [ ] Deposits and withdrawals (the escrow checklist in `supabase/functions/README.md`), counsel on the prize, and regions, before any real money.
+
 ## Existing work to build on
 - **`kfd/online` branch** (handoff, not merged) has `docs/multiplayer-handoff.md` and the Supabase migration.
 - **Supabase project gauntlet-legends** (ref `ruxbufynuzmversxmptw`, shared, free tier) holds:

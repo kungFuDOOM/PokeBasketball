@@ -45,8 +45,8 @@ export type NetMsg =
   | { k: 'h'; t: number; h: number }
   /** Host → guest: the authoritative state after tick t. */
   | { k: 'snap'; t: number; s: Snapshot }
-  /** The sender quit. */
-  | { k: 'bye' }
+  /** The sender quit. g = its signed resignation, when it left on purpose (evidence.ts resign). */
+  | { k: 'bye'; g?: string }
   /** Round-trip probe (answered by the link, never seen by Lockstep): n = probe number, t = the sender's clock. */
   | { k: 'ping'; n: number; t: number }
   | { k: 'pong'; n: number; t: number };
@@ -527,9 +527,9 @@ export class Lockstep {
     return this.peerAck < this.nextLocal - 1 ? Math.max(0, this.now() - this.peerAckAt) : 0;
   }
 
-  /** Tell the peer we are leaving. */
-  bye() {
-    this.net.send({ k: 'bye' });
+  /** Tell the peer we are leaving (with our signed resignation, if we're quitting). */
+  bye(resign?: string) {
+    this.net.send(resign ? { k: 'bye', g: resign } : { k: 'bye' });
   }
 
   /** Hash of the current state (for end-of-game comparison). */

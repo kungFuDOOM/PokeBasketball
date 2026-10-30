@@ -190,4 +190,22 @@ describe('evidence bookkeeping', () => {
     log.received(good);
     expect(log.theirs).toEqual([{ side: 1, from: 11, frames: [[0.5, -0.5, 2], [0.5, -0.5, 2], [0.5, -0.5, 2]], sig: 'a'.repeat(128) }]);
   });
+
+  it('an upload holds our resignation only if we left, theirs if they sent one, and the connection log', async () => {
+    const keys: [string, string] = ['a'.repeat(64), 'b'.repeat(64)];
+    const stayer = new EvidenceLog((await matchKey()).privateKey, setup.matchId, 0);
+    stayer.note('tip-off');
+    stayer.received({ k: 'bye' }); // a goodbye without a resignation (the other player was left behind too)
+    expect(stayer.evidence(setup, keys).resigns).toEqual([]);
+    stayer.received({ k: 'bye', g: 'c'.repeat(128) });
+    expect(stayer.evidence(setup, keys).resigns).toEqual([{ side: 1, sig: 'c'.repeat(128) }]);
+    expect(stayer.evidence(setup, keys).log!.map(([, what]) => what)).toEqual(['tip-off', 'the other player said goodbye', 'the other player left (signed)']);
+
+    const leaver = new EvidenceLog((await matchKey()).privateKey, setup.matchId, 1);
+    await new Promise((r) => setTimeout(r, 50)); // the resignation is signed up front
+    expect(leaver.evidence(setup, keys).resigns).toEqual([]);
+    const sig = leaver.resign();
+    expect(sig).toMatch(/^[0-9a-f]{128}$/);
+    expect(leaver.evidence(setup, keys).resigns).toEqual([{ side: 1, sig }]);
+  });
 });
