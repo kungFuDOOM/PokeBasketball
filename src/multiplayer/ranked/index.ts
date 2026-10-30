@@ -14,7 +14,7 @@ import { isGuest, signInWithGoogle } from './account';
 import { badgeImgForTier } from '../../ranked/badge';
 import { TIER_COLORS, view, type MatchOutcome, type RankView } from './rank';
 import { LocalRankStore } from './rankStore';
-import { rankChipHtml, postMatchHtml, signInPanelHtml } from './view';
+import { rankChipHtml, postMatchHtml, shieldItemHtml, shieldTagHtml, signInPanelHtml, weeklyCardHtml } from './view';
 import { mountUsernamePicker } from './picker';
 
 // The Skip button on a rank-up / rank-down / placed reveal (view.ts): one listener for every reveal on the page.
@@ -119,11 +119,34 @@ async function renderHome(ctx: ModeContext) {
     }
     const me = await svc.rankedMe().catch(() => null);
     if (!slot.isConnected) return;
-    slot.innerHTML = rankChipHtml(me);
-    actions.insertAdjacentHTML('afterbegin', '<button class="btn primary big" data-a="find">Find ranked match</button>');
+    const shield = await svc.shieldStatus().catch(() => null); // an older server has no Rank Shield: the hub just doesn't show it
+    if (!slot.isConnected) return;
+    slot.innerHTML = rankChipHtml(me) + weeklyCardHtml(shield?.weekly);
+    actions.insertAdjacentHTML('afterbegin', `<button class="btn primary big" data-a="find">Find ranked match</button>${shieldItemHtml(shield)}`);
     actions.querySelector('[data-a="find"]')!.addEventListener('click', () => void quickMatch(ctx));
+    actions.addEventListener('click', (e) => {
+      const btn = (e.target as Element).closest<HTMLButtonElement>('[data-a="arm"]');
+      if (btn && !btn.disabled) void toggleShield(svc, actions, btn.getAttribute('aria-pressed') !== 'true');
+    });
   } catch {
     if (slot.isConnected) slot.innerHTML = '<p class="note">Could not load your rank from the server.</p>';
+  }
+}
+
+/** ARM / ARMED on the hub. The server decides (24 h cap, placements, Zenith, lock); a refusal is shown in the chip's note. */
+async function toggleShield(svc: SupabaseMatchService, actions: HTMLElement, on: boolean) {
+  const chip = actions.querySelector<HTMLElement>('[data-rk="shield"]');
+  if (!chip) return;
+  chip.querySelector<HTMLButtonElement>('[data-a="arm"]')!.disabled = true;
+  try {
+    const st = await svc.setShieldArmed(on);
+    if (st && chip.isConnected) chip.outerHTML = shieldItemHtml(st);
+  } catch (e) {
+    const fresh = await svc.shieldStatus().catch(() => null); // show the real state and the reason it is off
+    if (!chip.isConnected) return;
+    if (fresh) chip.outerHTML = shieldItemHtml(fresh);
+    else chip.querySelector<HTMLButtonElement>('[data-a="arm"]')!.disabled = false;
+    if (e instanceof OnlineError) actions.querySelector('[data-rk="shield"] .rk-item-note')?.replaceChildren(document.createTextNode(e.message));
   }
 }
 
@@ -188,6 +211,8 @@ async function quickMatch(ctx: ModeContext) {
   cpuBtn.addEventListener('click', () => { abort.abort(); playPractice(ctx); });
   try {
     const svc = await online(ctx);
+    // Fail soft: no tag if the server has no Rank Shield (or the lookup fails).
+    void svc.shieldStatus().then((st) => { if (st?.armed && root.querySelector('[data-a="cancel"]')) root.querySelector('.actions')?.insertAdjacentHTML('beforebegin', shieldTagHtml(st)); }, () => {});
     const match = await svc.quickMatch('ranked', abort.signal);
     clearTimeout(offer);
     const home: ModeContext = { ...ctx, back: () => openRanked(ctx) };
