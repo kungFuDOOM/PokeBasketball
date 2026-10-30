@@ -1,6 +1,7 @@
 // Maps the server's rating rows to what the Ranked screen shows. The client never computes a rating: the numbers
 // come from pokejam_profiles (via pokejam_ensure_profile) and are only diffed here to say what the last match did.
 import type { BadgeRank } from '../../ranked/badge';
+import { RANKED_PRESETS, type RankedPreset } from './presets';
 import { DIVISIONS, PLACEMENTS, TIERS, view, type MatchOutcome, type RankView, type Tier } from './rank';
 
 /** The rating columns of a pokejam_profiles row. */
@@ -181,6 +182,29 @@ export function parseShieldStatus(raw: unknown): ShieldStatus | null {
     kind: w.kind === 'wins' || w.kind === 'days' ? w.kind : 'games', goal, progress: Math.min(goal, Math.max(0, nullable(w.progress) ?? 0)),
     done: w.done === true, resetsAt: typeof w.resets_at === 'string' ? w.resets_at : null };
   return { ...item, weekly };
+}
+
+/** `pokejam_ranked_pick_state(p_match)`: my own blind pick (the opponent's stays hidden), the seconds left, and whether both have picked. */
+export interface PickState {
+  mine: RankedPreset['id'] | null;
+  deadline_s: number;
+  done: boolean;
+}
+
+const presetId = (v: unknown): RankedPreset['id'] | null => RANKED_PRESETS.find((p) => p.id === v)?.id ?? null;
+
+/** Reads `pokejam_ranked_pick_state()`. Never throws: junk reads as "no pick yet, no time, not done". */
+export function parsePickState(raw: unknown): PickState {
+  const r = raw as Record<string, unknown> | null | undefined;
+  if (!r || typeof r !== 'object' || Array.isArray(r)) return { mine: null, deadline_s: 0, done: false };
+  return { mine: presetId(r.mine), deadline_s: Math.max(0, nullable(r.deadline_s) ?? 0), done: r.done === true };
+}
+
+/** Reads `pokejam_ranked_presets()` (rows or bare ids): the ids the client also knows, in client order. Unknown ids are dropped. */
+export function parsePresetIds(raw: unknown): RankedPreset['id'][] {
+  if (!Array.isArray(raw)) return [];
+  const got = new Set(raw.map((x) => presetId(x && typeof x === 'object' ? (x as Record<string, unknown>).id : x)));
+  return RANKED_PRESETS.map((p) => p.id).filter((id) => got.has(id));
 }
 
 const PLACEMENT_GAMES = 5;

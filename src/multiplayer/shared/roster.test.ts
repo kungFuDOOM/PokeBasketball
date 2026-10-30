@@ -3,9 +3,10 @@ import { Game } from '../../game/game';
 import { stateHash } from '../../game/sync';
 import { buildConfig, setupFor } from './netplay';
 import type { OnlineMatch } from './onlineMatchService';
-import { RANKED_EXCLUDED, RANKED_MAX_GAP, RANKED_MAX_SPREAD, RANKED_POOL, rostersFor, teamOvr, teamSpread } from './roster';
-import { POSITIONS, monByDex } from '../../data/pokemon';
+import { RANKED_EXCLUDED, RANKED_MAX_GAP, RANKED_MAX_SPREAD, RANKED_POOL, flowRosters, rostersFor, teamOvr, teamSpread } from './roster';
+import { POSITIONS, monByDex, type Mon } from '../../data/pokemon';
 import { gameConfigFor } from './winnerCheck';
+import { RANKED_PRESETS } from '../ranked/presets';
 
 const SEEDS = Array.from({ length: 3000 }, (_, i) => (i * 2654435761) >>> 0);
 
@@ -58,18 +59,38 @@ describe('Ranked: two evenly matched teams (#29)', () => {
     expect(homeStronger / uneven).toBeLessThan(0.6);
   });
 
-  it('host, guest and the winner check build the identical Ranked game from the server seed', () => {
+  it('host, guest and the winner check build the identical Ranked game from the server preset rosters', () => {
+    const rosters: [number[], number[]] = [RANKED_PRESETS[1].dex, RANKED_PRESETS[4].dex];
     const match = (side: 0 | 1): OnlineMatch => ({
       id: 'r1', queue: 'ranked', side,
       me: { id: side ? 'g' : 'h', name: side ? 'Misty' : 'Ash' }, opponent: { id: side ? 'h' : 'g', name: side ? 'Ash' : 'Misty', mmr: 1000, simulated: false },
-      game: { seed: 987654321, quarterLen: 120 }, keys: [null, null],
+      game: { seed: 987654321, quarterLen: 120, rosters }, keys: [null, null],
     });
     const setup = setupFor(match(0));
     expect(setupFor(match(1))).toEqual(setup);
-    expect([setup.home.roster, setup.away.roster]).toEqual(rostersFor(987654321, 'ranked').map((t) => t.map((m) => m.dex)));
+    expect([setup.home.roster, setup.away.roster]).toEqual(rosters);
     const games = [new Game(buildConfig(match(0))), new Game(buildConfig(match(1))), new Game(gameConfigFor(setup))];
     for (let t = 0; t < 600; t++) for (const g of games) g.update(1 / 60);
     expect(new Set(games.map(stateHash)).size).toBe(1);
+  });
+
+  it('a Ranked match without preset rosters throws instead of playing seed teams', () => {
+    const match: OnlineMatch = {
+      id: 'r2', queue: 'ranked', side: 0, me: { id: 'h', name: 'Ash' }, opponent: { id: 'g', name: 'Misty', mmr: 1000, simulated: false },
+      game: { seed: 5, quarterLen: 120, rosters: null }, keys: [null, null],
+    };
+    expect(() => setupFor(match)).toThrow('ranked match has no preset rosters');
+    expect(() => buildConfig(match)).toThrow('ranked match has no preset rosters');
+  });
+
+  it('match flow: Ranked online plays the match rosters (mine first), throws without them; CPU practice stays random', () => {
+    const opp = { simulated: false };
+    const dex = (r: [Mon[], Mon[]]) => r.map((t) => t.map((m) => m.dex));
+    const rosters: [number[], number[]] = [RANKED_PRESETS[0].dex, RANKED_PRESETS[1].dex];
+    expect(dex(flowRosters({ queue: 'ranked' }, { ...opp, rosters, mySide: 0 }))).toEqual(rosters);
+    expect(dex(flowRosters({ queue: 'ranked' }, { ...opp, rosters, mySide: 1 }))).toEqual([rosters[1], rosters[0]]);
+    expect(() => flowRosters({ queue: 'ranked' }, { ...opp, rosters: null })).toThrow('ranked match has no preset rosters');
+    expect(dex(flowRosters({ queue: 'ranked', practice: true }, { simulated: true }, 77))).toEqual(dex(rostersFor(77, 'ranked')));
   });
 
   it('Social is unchanged: plain random teams from the whole pool (its draft comes separately)', () => {

@@ -13,6 +13,7 @@ import { abbr } from '../../util';
 import { BusyError, isChannelFailure } from './capacity';
 import { EvidenceLog } from './evidence';
 import type { Lockstep, NetMsg, Transport } from './lockstep';
+import { rosterDigest } from '../ranked/presets';
 import { rostersFor } from './roster';
 import { RtcLink } from './rtc';
 import type { OnlineMatch, SupabaseMatchService } from './onlineMatchService';
@@ -21,8 +22,11 @@ import { Pinger } from './ping';
 import { backoffMs } from './throttle';
 import { gameConfigFor, matchKey, type MatchKeys, type MatchSetup, type MatchTeam } from './winnerCheck';
 
-/** `ack` marks an answer to the other side's hi, which is never answered (so two finished sides don't echo). */
-type Hs = { k: 'hi'; v: number; n: number; side: 0 | 1; ack?: true };
+/**
+ * `ack` marks an answer to the other side's hi, which is never answered (so two finished sides don't echo).
+ * `d` (Ranked only) is rosterDigest of both rosters; older clients leave it out and ignore it, so it needs no version bump.
+ */
+export type Hs = { k: 'hi'; v: number; n: number; side: 0 | 1; ack?: true; d?: number };
 
 export class NetError extends Error {}
 
@@ -47,9 +51,10 @@ export const JOIN_BACKOFF_CAP = 8000;
  * match row. Both players and the judge build the game from this, so the judge's replay is the game that was played.
  */
 export function setupFor(match: OnlineMatch, quarterLen = match.game.quarterLen): MatchSetup {
-  // A drafted match (Social) plays the rosters the players drafted on the server; otherwise both come from the seed
-  // (balanced for Ranked).
+  // The server's rosters (Social's draft, Ranked's preset picks) when present. Social falls back to the seed; Ranked
+  // never does, so a Ranked match can't start on random teams.
   const drafted = match.game.rosters;
+  if (!drafted && match.queue === 'ranked') throw new Error('ranked match has no preset rosters');
   const [homeMons, awayMons] = drafted ? [drafted[0].map(monByDex), drafted[1].map(monByDex)] : rostersFor(match.game.seed, match.queue);
   const names: [string, string] = match.side === 0 ? [match.me.name, match.opponent.name] : [match.opponent.name, match.me.name];
   const home = { name: names[0], abbr: abbr(names[0]), ...USER_STYLE, human: true, roster: homeMons };
@@ -374,7 +379,10 @@ export function connect(sb: SupabaseClient, match: OnlineMatch, quarterLen: numb
     let retry: ReturnType<typeof setTimeout> | undefined;
     // Nothing is sent until the channel is joined: a send on an unjoined channel goes out as an HTTP request instead.
     let subscribed = false;
-    const hi = (ack?: true) => subscribed && void ch.send({ type: 'broadcast', event: 'hs', payload: { k: 'hi', v: ENGINE_VERSION, n: NET_VERSION, side: match.side, ack } satisfies Hs });
+    // Ranked: both sides must be about to play the same two teams.
+    const teams = match.queue === 'ranked' ? setupFor(match, quarterLen) : null;
+    const digest = teams ? rosterDigest([teams.home.roster, teams.away.roster]) : undefined;
+    const hi = (ack?: true) => subscribed && void ch.send({ type: 'broadcast', event: 'hs', payload: { k: 'hi', v: ENGINE_VERSION, n: NET_VERSION, side: match.side, ack, d: digest } satisfies Hs });
     const finish = (err: Error | null) => {
       if (done) return;
       done = true;
@@ -395,7 +403,7 @@ export function connect(sb: SupabaseClient, match: OnlineMatch, quarterLen: numb
       c.on('broadcast', { event: 'hs' }, ({ payload }) => {
         const m = payload as Partial<Hs>;
         if (m?.k !== 'hi' || m.side === match.side || (m.side !== 0 && m.side !== 1)) return;
-        if (m.v !== ENGINE_VERSION || m.n !== NET_VERSION) return finish(new NetError('You and your opponent are on different game versions. Refresh to update.'));
+        if (m.v !== ENGINE_VERSION || m.n !== NET_VERSION || (digest !== undefined && m.d !== undefined && m.d !== digest)) return finish(new NetError('You and your opponent are on different game versions. Refresh to update.'));
         // Answer their hi, even after starting (ours may have been lost), but never an answer.
         if (!m.ack) hi(true);
         peer = true;
