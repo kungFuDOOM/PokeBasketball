@@ -1,8 +1,10 @@
 import { POKEMON, spriteUrl } from '../data/pokemon';
 import { DIFFICULTIES, type Difficulty } from '../game/types';
 import type { TeamSource } from '../season/team';
-import { esc, lettersName } from '../util';
+import { isNameBlocked } from '../nameFilter';
+import { esc, lettersName, showNameError } from '../util';
 import { prefersStatic, startAttract, type Attract, type AttractState } from './attract';
+import { isIntroMode, type IntroMode } from './intro.logic';
 
 export interface Settings {
   difficulty: Difficulty;
@@ -12,6 +14,8 @@ export interface Settings {
   autoSubs?: boolean;
   /** On defense, jump to the defender on the ball after every catch (default) or only switch yourself. */
   autoSwitch?: boolean;
+  /** Lineups screen before each game: full (default), quick, or off (Ranked/Social always show it). */
+  introMode?: IntroMode;
 }
 
 export function controlsHtml(): string {
@@ -54,6 +58,12 @@ export function settingsHtml(settings: Settings, opts: { subs?: boolean } = {}):
           <button data-v="manual" class="${settings.autoSwitch === false ? 'on' : ''}">Manual</button>
         </div>
       </div>
+      <div class="field">Pre-game intro
+        <div class="seg" id="intro">
+          ${([['full', 'Full'], ['quick', 'Quick'], ['off', 'Off']] as const).map(([v, label]) =>
+            `<button data-v="${v}" class="${v === (settings.introMode ?? 'full') ? 'on' : ''}">${label}</button>`).join('')}
+        </div>
+      </div>
       ${opts.subs ? `
       <div class="field">Substitutions
         <div class="seg" id="subs">
@@ -80,6 +90,7 @@ export function bindSettings(root: HTMLElement, settings: Settings, onChange: ()
   seg('#qlen', (v) => (settings.quarterLen = Number(v)));
   seg('#subs', (v) => (settings.autoSubs = v === 'auto'));
   seg('#dswitch', (v) => (settings.autoSwitch = v === 'auto'));
+  seg('#intro', (v) => { if (isIntroMode(v)) settings.introMode = v; });
 }
 
 export interface TitleOptions {
@@ -164,6 +175,9 @@ export function menuScreen(root: HTMLElement, settings: Settings, onChange: () =
   };
   /** Every way out of the menu shuts the attract game down first. */
   const leave = <A extends unknown[]>(fn: (...a: A) => void) => (...a: A) => {
+    // A blocked team name stops every way out of the menu until it is changed (its error is already showing).
+    const typed = root.querySelector<HTMLInputElement>('#team-name');
+    if (typed && isNameBlocked(lettersName(typed.value))) { showNameError(typed); typed.focus(); return; }
     destroy();
     fn(...a);
   };
@@ -238,6 +252,7 @@ export function menuScreen(root: HTMLElement, settings: Settings, onChange: () =
             <a href="privacy.html">Privacy</a>
             <a href="terms.html">Terms</a>
             <a href="contact.html">Contact</a>
+            <a href="patch-notes.html">Patch notes</a>
             <a href="https://github.com/kungFuDOOM/PokeBasketball" target="_blank" rel="noopener">GitHub</a>
             <button class="link-btn" data-go="delete">Delete saved data</button>
           </p>
@@ -267,7 +282,9 @@ export function menuScreen(root: HTMLElement, settings: Settings, onChange: () =
 
   const name = $<HTMLInputElement>('#team-name')!;
   name.addEventListener('input', () => {
-    settings.teamName = lettersName(name.value);
+    // A blocked name is never kept: the last good one stays saved.
+    const typed = lettersName(name.value);
+    if (!isNameBlocked(typed)) settings.teamName = typed;
     onChange();
   });
   const startNew = $<HTMLButtonElement>('[data-go="new"]')!;

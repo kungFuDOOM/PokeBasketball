@@ -1,7 +1,8 @@
 import { POKEMON, POSITIONS, RATING_LABELS, SPECIALS, TYPE_COLORS, spriteUrl, type Mon, type PokeType, type Pos, type Ratings } from '../data/pokemon';
 import type { Audio } from '../game/audio';
 import { bestLineup, chemistry, teamOvr } from '../game/game';
-import { abbr, esc, lettersName, tier } from '../util';
+import { isNameBlocked } from '../nameFilter';
+import { abbr, esc, lettersName, showNameError, tier } from '../util';
 import { ordinal, snakePicks } from './draft.logic';
 import { monCard, summaryHtml, SWATCHES, typeChips } from './draftView';
 import { wireDraftShare } from '../season/draftShare';
@@ -397,10 +398,12 @@ export function draftScreen(
   };
   const proceed = () => {
     if (continued) return;
-    continued = true;
-    const mine = teams[me];
     const input = root.querySelector<HTMLInputElement>('#sum-name');
     const name = input ? lettersName(input.value) : '';
+    // A blocked team name can't be kept: stay here with its error showing.
+    if (isNameBlocked(name)) { showNameError(input!); input!.focus(); return; }
+    continued = true;
+    const mine = teams[me];
     if (name) { mine.name = name; mine.abbr = abbr(name); }
     const sw = root.querySelector<HTMLElement>('.sw.on');
     if (sw) { [mine.color, mine.color2] = SWATCHES[Number(sw.dataset.sw)]; }

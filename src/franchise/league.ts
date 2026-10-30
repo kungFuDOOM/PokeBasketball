@@ -3,6 +3,7 @@ import { Game, bestLineup } from '../game/game';
 import { courtFor, userCourt } from '../data/courts';
 import type { Difficulty, GameConfig, PStats, TeamDef } from '../game/types';
 import type { DraftState } from '../screens/draft';
+import { safeName } from '../nameFilter';
 import { fixAbbr } from '../util';
 
 const SAVE_KEY = 'pokejam.franchise.v1';
@@ -309,9 +310,10 @@ const HEX = /^#[0-9a-f]{3,8}$/i;
  */
 function cleanTeams(teams: unknown): boolean {
   if (!Array.isArray(teams) || !teams.length) return false;
-  for (const t of teams as { name: unknown; abbr: unknown; color: unknown; color2: unknown }[]) {
+  for (const [i, t] of (teams as { name: unknown; abbr: unknown; color: unknown; color2: unknown; human?: unknown }[]).entries()) {
     if (!t || typeof t !== 'object') return false;
-    t.name = String(t.name ?? '').slice(0, 24) || 'Team';
+    // A blocked name (a hand-edited save) becomes the team's default: the league's name for it, or Pallet Town for the player's.
+    t.name = safeName(String(t.name ?? '').slice(0, 24) || 'Team', t.human ? 'Pallet Town' : LEAGUE[i - 1]?.name ?? 'Team');
     t.abbr = fixAbbr(t.abbr, t.name as string);
     if (typeof t.color !== 'string' || !HEX.test(t.color)) t.color = USER_STYLE.color;
     if (typeof t.color2 !== 'string' || !HEX.test(t.color2)) t.color2 = USER_STYLE.color2;

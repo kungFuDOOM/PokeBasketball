@@ -20,6 +20,7 @@ import { hubScreen } from './screens/hub';
 import { championshipScreen, newSeasonScreen } from './screens/moments';
 import { masterScreen } from './screens/master';
 import { menuScreen, type Settings } from './screens/menu';
+import { withIntro } from './screens/intro';
 import { playGame } from './screens/play';
 import { resultTag, type GameMode } from './screens/watch';
 import { quickPlay } from './screens/quick';
@@ -31,6 +32,7 @@ import { shareFromHash } from './season/share';
 import { autoDraft, draftedMons, loadDrafted, renameDrafted, type TeamSource } from './season/team';
 import { confirmNewDraft } from './ui/newDraft';
 import { confirmFranchiseName } from './ui/teamName';
+import { safeName } from './nameFilter';
 import { gamesScreen } from './screens/games';
 import { ANY_MULTIPLAYER } from './config/features';
 import { badgeSvg } from './ui/badges';
@@ -39,6 +41,7 @@ import { abbr, esc, guardNameInputs, lettersName, shuffle } from './util';
 import { initErrorReports } from './telemetry/errors';
 import { offlineStats } from './telemetry/offlineStats';
 import { installTouchGuard } from './ui/touchGuard';
+import { isIntroMode } from './screens/intro.logic';
 
 initErrorReports();
 installTouchGuard();
@@ -53,9 +56,10 @@ try {
   const saved = JSON.parse(localStorage.getItem('pokejam.settings') ?? '{}') as Partial<Record<keyof Settings, unknown>>;
   if (typeof saved.difficulty === 'string' && saved.difficulty in DIFFICULTIES) settings.difficulty = saved.difficulty as Difficulty;
   if (typeof saved.quarterLen === 'number' && [60, 120, 180, 300].includes(saved.quarterLen)) settings.quarterLen = saved.quarterLen;
-  if (typeof saved.teamName === 'string') settings.teamName = saved.teamName.slice(0, 20);
+  if (typeof saved.teamName === 'string') settings.teamName = safeName(saved.teamName.slice(0, 20), 'Pallet Town');
   if (typeof saved.autoSubs === 'boolean') settings.autoSubs = saved.autoSubs;
   if (typeof saved.autoSwitch === 'boolean') settings.autoSwitch = saved.autoSwitch;
+  if (isIntroMode(saved.introMode)) settings.introMode = saved.introMode;
 } catch { /* storage unavailable */ }
 const save = () => {
   try {
@@ -339,7 +343,7 @@ function playUserGame(f: Franchise, g: FGame) {
   const { cfg, sides, uidOf } = gameConfig(f, g, true, settings.quarterLen, settings.difficulty, settings.autoSubs !== false);
   cfg.autoSwitch = settings.autoSwitch !== false;
   const stat = offlineStats().start('franchise');
-  playGame(app, cfg, audio, (game) => {
+  withIntro(app, cfg, 'franchise', settings, () => playGame(app, cfg, audio, (game) => {
     stat.finish('played');
     void afterUserGame(f, g, game, sides, uidOf, 'played');
   }, hub, {
@@ -347,7 +351,7 @@ function playUserGame(f: Franchise, g: FGame) {
       settings.autoSubs = on;
       save();
     },
-  });
+  }));
 }
 
 async function simUserGame(f: Franchise, g: FGame) {
@@ -366,10 +370,10 @@ function watchUserGame(f: Franchise, g: FGame) {
   audio.unlock();
   const { cfg, sides, uidOf } = gameConfig(f, g, false, settings.quarterLen, settings.difficulty);
   const stat = offlineStats().start('franchise');
-  playGame(app, cfg, audio, (game) => {
+  withIntro(app, cfg, 'franchise', settings, () => playGame(app, cfg, audio, (game) => {
     stat.finish('watched');
     void afterUserGame(f, g, game, sides, uidOf, 'watched');
-  }, hub, { spectator: true });
+  }, hub, { spectator: true }));
 }
 
 function progressHtml(f: Franchise, progress: Progress[]): string {
@@ -439,7 +443,31 @@ async function afterUserGame(f: Franchise, g: FGame, game: Game, sides: [number,
 const shared = shareFromHash(location.hash);
 const clearHash = () => history.replaceState(null, '', location.pathname + location.search);
 const devFinal = import.meta.env.DEV ? await import('./screens/devResults').then((m) => m.devResultsKind()) : null;
-if (devFinal) {
+// Dev only: ?introshot=offline|online renders a frozen intro for screenshots (scripts/screenshot-intro.mjs).
+const introShot = import.meta.env.DEV ? new URLSearchParams(location.search).get('introshot') : null;
+if (introShot === 'offline' || introShot === 'online') {
+  const [{ showIntro }, { IntroVotes }, { randomFive }] = await Promise.all([
+    import('./screens/intro'),
+    import('./screens/intro.logic'),
+    import('./multiplayer/shared/roster'),
+  ]);
+  let seed = 7;
+  const rng = () => ((seed = (seed * 16807) % 2147483647) - 1) / 2147483646;
+  const team = (name: string, color: string, color2: string, human: boolean) =>
+    ({ name, abbr: abbr(name), color, color2, roster: randomFive(rng), human });
+  const votes = new IntroVotes();
+  votes.vote('theirs', true);
+  showIntro(app, {
+    home: team('Cerulean Surf', '#2f6fd6', '#f5c542', true),
+    away: team('Lavender Haunts', '#7a3fb0', '#e9e1f5', false),
+    homeLabel: introShot === 'online' ? 'Gold II' : undefined,
+    awayLabel: introShot === 'online' ? 'Silver I' : undefined,
+    online: introShot === 'online' ? { votes, onVote: () => {} } : undefined,
+    lengthMs: 1e9,
+    instantSkip: false,
+    mySide: 0,
+  });
+} else if (devFinal) {
   void import('./screens/devResults').then((m) => m.devResults(app, devFinal));
 } else if (shared) {
   sharedScreen(app, shared, {

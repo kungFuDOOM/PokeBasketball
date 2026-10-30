@@ -43,6 +43,15 @@ When it's switched on, quick match, making a room and joining one each need a sh
    Optionally set `HUMAN_PASS_MINUTES` (default 20, maximum 60).
 3. Turn the check on: `update public.pokejam_config set value = 'true' where key = 'require_human';` Setting `'false'` turns it off again at once.
 
+## Moderation: the winner check on demand (`pokejam-judge/`)
+
+The moderation page's Reported tab shows a cheat-check tag per reported player. `pokejam-judge` makes those verdicts: given up to 20 `match_ids`, it skips matches already judged or with no uploads (Social matches have none), then for each of the rest reads both players' uploads with the service role, merges them under the keys registered on the match row (`mergeEvidence` in `src/multiplayer/shared/evidence.ts`, so an uploader can't choose their own keys), replays the match with `judge()` and saves the result with `pokejam_record_verdict` (`../migrations/20261122_pokejam_match_verdicts.sql`). Only moderators (`pokejam_is_admin`) get an answer; anyone else gets 403. One bad or oversized match is reported as skipped or an error and doesn't stop the rest.
+
+It imports the game engine from `src/` (the replay must be the game's own code), and `deno.json` turns on sloppy imports for those extensionless imports.
+
+1. Apply `20261122_pokejam_match_verdicts.sql` first.
+2. Deploy it with JWT verification on (the default; never `--no-verify-jwt`): `supabase functions deploy pokejam-judge`. Optionally `supabase secrets set JUDGE_ALLOWED_ORIGINS=https://pokejam.xyz,<test site>`.
+
 ## Test locally
 
 ```sh
