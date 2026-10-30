@@ -92,6 +92,7 @@ function dashboard(sb: SupabaseClient, email: string) {
   const body = root.querySelector<HTMLElement>('[data-body]')!;
   const days = root.querySelector<HTMLSelectElement>('[data-days]')!;
   let tab = 'reports';
+  let judged = false;
   const call = async <T>(fn: string, args?: Record<string, unknown>): Promise<T> => {
     const { data, error } = await sb.rpc(fn, args);
     if (error) throw new Error(error.message);
@@ -102,7 +103,18 @@ function dashboard(sb: SupabaseClient, email: string) {
     root.querySelectorAll<HTMLButtonElement>('[data-tab]').forEach((b) => b.classList.toggle('on', b.dataset.tab === tab));
     days.parentElement!.hidden = tab !== 'reports';
     try {
-      if (tab === 'reports') body.innerHTML = reportsHtml(await call<Reported[]>('pokejam_admin_reports', { p_days: Number(days.value) }));
+      if (tab === 'reports') {
+        const rows = await call<Reported[]>('pokejam_admin_reports', { p_days: Number(days.value) });
+        body.innerHTML = reportsHtml(rows);
+        // Judge reported matches that have uploads but no verdict, then reload. At most once per page load, so a
+        // match the judge skips (too large, say) cannot loop; if it fails the rows simply stay "No check".
+        const match_ids = [...new Set(rows.flatMap((r) => (r.checks ?? []).filter((c) => c.has_evidence && c.status === null).map((c) => c.match_id)))];
+        if (match_ids.length && !judged) {
+          judged = true;
+          const { error } = await sb.functions.invoke('pokejam-judge', { body: { match_ids } }).catch((x: Error) => ({ error: x }));
+          if (!error && tab === 'reports') body.innerHTML = reportsHtml(await call<Reported[]>('pokejam_admin_reports', { p_days: Number(days.value) }));
+        }
+      }
       else if (tab === 'bans') body.innerHTML = bansHtml(await call<Ban[]>('pokejam_admin_bans'));
       else body.innerHTML = logHtml(await call<LogRow[]>('pokejam_admin_history', { p_limit: 100 }));
     } catch (e) {
@@ -117,14 +129,18 @@ function dashboard(sb: SupabaseClient, email: string) {
     const user = b.dataset.user!;
     const name = personLabel(b.dataset.name ?? 'this player', b.dataset.role);
     const act = b.dataset.act!;
+    const n = Number(b.dataset.reports ?? 0);
     const ask = act === 'unban' ? `Lift the suspension on ${name}?` : act === 'name' ? `Reset ${name}'s name to "Trainer"?`
+      : act === 'dismiss' ? `Clear ${n} open report${n === 1 ? '' : 's'} on ${name}?`
       : `Suspend ${name} ${act === '0' ? 'permanently' : `for ${Number(act) >= 168 ? `${Number(act) / 24} days` : `${act} hours`}`}?`;
     if (!confirm(ask)) return;
     b.disabled = true;
     try {
       if (act === 'unban') await call('pokejam_admin_unban', { p_user: user });
       else if (act === 'name') await call('pokejam_admin_reset_name', { p_user: user });
-      else await call('pokejam_admin_ban', { p_user: user, p_hours: Number(act), p_reason: prompt('Reason (kept in the log):', 'reports reviewed') ?? 'reports reviewed' });      await show();
+      else if (act === 'dismiss') await call('pokejam_admin_dismiss', { p_user: user });
+      else await call('pokejam_admin_ban', { p_user: user, p_hours: Number(act), p_reason: prompt('Reason (kept in the log):', 'reports reviewed') ?? 'reports reviewed' });
+      await show();
     } catch (x) {
       alert(`Didn't work: ${(x as Error).message}`);
       b.disabled = false;
