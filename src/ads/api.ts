@@ -1,12 +1,14 @@
-// The pokejam-ads Edge Function (supabase/functions/_shared/ads/handler.ts). The page never moves tokens itself:
-// the server builds the burn, the advertiser's wallet signs it, the server checks it on-chain.
+// The live site's ads Edge Function, pokejam-ads-live (supabase/functions/pokejam-ads-live, sharing
+// _shared/ads/handler.ts with the devnet test site's function). The page never moves tokens itself: the server builds the
+// burn or the USDC transfer, the advertiser's wallet signs it, the server checks it on-chain.
 import type { AdTheme } from '../data/ads';
+import type { UsdcPlan } from './usdcPay';
 
 export type Plan = 'hour' | 'day' | 'week';
 export const PLANS: Plan[] = ['hour', 'day', 'week'];
 export const PLAN_HOURS: Record<Plan, number> = { hour: 1, day: 24, week: 168 };
 
-export interface LiveAd { id: string; text: string; theme: AdTheme; wallet: string; starts_at: string; ends_at: string; burn_sig: string }
+export interface LiveAd { id: string; text: string; theme: AdTheme; wallet: string; starts_at: string; ends_at: string; burn_sig: string | null; usdc_sig?: string | null }
 
 export interface Board {
   now: string;
@@ -15,15 +17,21 @@ export interface Board {
   prices: Record<Plan, string>;
   live: LiveAd[];
   booked: { starts_at: string; ends_at: string }[];
-  totals: { burned: string; ads: number; advertisers: number; hours: number };
+  /** USDC base units per plan (live only). */
+  usdc?: Record<UsdcPlan, string>;
+  /** Where USDC payments go (live only; absent means USDC isn't offered). */
+  usdcPay?: { mint: string; receiver: string; decimals: number };
+  totals: { burned: string; usdc?: string; ads: number; advertisers: number; hours: number };
   cluster: 'devnet' | 'mainnet-beta';
   mint: string;
   decimals: number;
   supply: string;
+  /** Always false on the live function's mainnet; the live page never offers a faucet either way. */
   faucet: boolean;
 }
 
-export interface Quote { plan: Plan; hours: number; price: string; starts_at: string; ends_at: string; moved: boolean }
+/** `price`: PJAM to burn (null for a USDC-only plan); `usdc`: USDC base units (null when it can't be paid in USDC). */
+export interface Quote { plan: Plan | UsdcPlan; hours: number; price: string | null; usdc?: string | null; starts_at: string; ends_at: string; moved: boolean }
 
 export interface Booking {
   id: string;
@@ -31,14 +39,16 @@ export interface Booking {
   wallet: string;
   text: string;
   theme: AdTheme;
-  plan: Plan;
+  plan: Plan | UsdcPlan;
   hours: number;
+  pay_method?: 'burn' | 'usdc';
   price: string;
   state: 'pending' | 'paid' | 'dust' | 'removed';
   starts_at: string | null;
   ends_at: string | null;
   moved: boolean;
   burn_sig: string | null;
+  usdc_sig?: string | null;
   created_at: string;
   extra_of: string | null;
   replaces: string | null;
@@ -56,8 +66,10 @@ export class AdsError extends Error {
   constructor(message: string, readonly info: Record<string, unknown> = {}) { super(message); }
 }
 
-const URL_ = import.meta.env.VITE_ADS_API
-  || (import.meta.env.VITE_SUPABASE_URL ? `${import.meta.env.VITE_SUPABASE_URL.replace(/\/$/, '')}/functions/v1/pokejam-ads` : '');
+/** The live function's URL: VITE_ADS_API when set (local development), else the Supabase project's pokejam-ads-live. */
+export const adsUrl = (env: { VITE_ADS_API?: string; VITE_SUPABASE_URL?: string }) => env.VITE_ADS_API
+  || (env.VITE_SUPABASE_URL ? `${env.VITE_SUPABASE_URL.replace(/\/$/, '')}/functions/v1/pokejam-ads-live` : '');
+const URL_ = adsUrl(import.meta.env);
 const KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
 export const ADS_CONFIGURED = !!URL_;
@@ -94,7 +106,7 @@ export const replaceMessage = (id: string, text: string, theme: string) => `Poke
 
 export const adsApi = {
   board: () => call<Board>(null),
-  quote: (plan: Plan, start: string | null) => call<Quote>({ action: 'quote', plan, start }),
+  quote: (plan: Plan | UsdcPlan, start: string | null) => call<Quote>({ action: 'quote', plan, start }),
   wallet: (wallet: string) => call<{ balance: string; lamports: number; decimals: number }>({ action: 'wallet', wallet }),
   check: (text: string) => call<{ ok: boolean; reason: string | null; message: string | null }>({ action: 'check', text }),
   prepare: (a: { wallet: string; text: string; theme: AdTheme; plan: Plan; start: string | null; expect: string }) =>
@@ -104,7 +116,12 @@ export const adsApi = {
   mine: (wallet: string) => call<{ ads: Booking[] }>({ action: 'mine', wallet }),
   replace: (id: string, text: string, theme: AdTheme, signature: string) => call<{ booking: Booking }>({ action: 'replace', id, text, theme, signature }),
   report: (id: string, reason: 'offensive' | 'scam' | 'other') => call<{ ok: true }>({ action: 'report', id, reason }),
-  faucet: (wallet: string) => call<{ signature: string; amount: string }>({ action: 'faucet', wallet }),
+  /** Pay in USDC: checks the ad (text, ban, price), then a one-time intent and the unsigned transfer to sign. */
+  usdcIntent: (a: { wallet: string; text: string; theme: AdTheme; plan: UsdcPlan; start: string | null; expect: string }) =>
+    call<Record<string, unknown>>({ action: 'usdc-intent', ...a }),
+  /** 200 {status:'paid', ad}, 202 {status:'pending'|'open'}; a refusal throws AdsError (info.code, info.expired, info.notPaid). */
+  usdcConfirm: (id: string, proof: { signature?: string; tx?: string } = {}) =>
+    call<{ status: 'paid' | 'pending' | 'open'; duplicate?: boolean; ad?: Booking | null }>({ action: 'usdc-confirm', id, ...proof }),
 };
 
 /** Base units → "1,500,000" (whole tokens; fractions only when there are any). */

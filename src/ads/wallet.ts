@@ -83,7 +83,8 @@ export class Connected {
   get address() { return this.account.address; }
 
   /**
-   * Sign the unsigned transaction (base64). On mainnet a wallet that can send does (it shows the user exactly
+   * Sign the unsigned transaction (base64): a $PJAM burn or a USDC transfer, both built by the server (the page checks a
+   * USDC transfer first, usdcPay.ts checkTransfer). On mainnet a wallet that can send does (it shows the user exactly
    * what it submits); on devnet the wallet only signs and the server sends it, so it works whichever network the
    * wallet is set to.
    */

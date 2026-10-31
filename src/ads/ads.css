@@ -67,6 +67,10 @@
 .ad-plan.on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, var(--bg)); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent); }
 .ad-save { position: absolute; top: -10px; right: 8px; font: 0.42rem/1 var(--pixel); background: var(--good); color: #052414; padding: 5px 6px 4px; border-radius: 4px; white-space: nowrap; }
 .ad-when { margin-bottom: 8px; }
+/* pay with: burn $PJAM or USDC (live only; hidden where the server doesn't offer USDC) */
+.ad-pay { margin-bottom: 10px; }
+.ad-pay[hidden] { display: none; }
+.ad-plans.usdc { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .ad-date { font: 600 1rem var(--sport); padding: 9px 10px; border-radius: 6px; border: 2px solid var(--line); background: var(--bg); color: var(--fg); color-scheme: dark; }
 
 /* checkout */
@@ -79,6 +83,7 @@
 .ad-sum dd, .ad-receipt dd { margin: 0; font-weight: 700; }
 .ad-burn { font: 800 1.45rem/1 var(--sport) !important; color: var(--ember); font-variant-numeric: tabular-nums; }
 .ad-burn small { font-size: 0.8rem; color: var(--muted); }
+.ad-burn.ad-usdc { color: #6fb6ff; }
 .ad-chip { display: flex; align-items: center; gap: 6px; max-width: 100%; width: max-content; padding: 6px 10px; border-radius: 4px; background: var(--bg);
   box-shadow: 0 0 0 2px var(--bd), 0 0 0 4px #05060f, 0 0 18px color-mix(in srgb, var(--bd) 45%, transparent); }
 .ad-chip i { font: normal 0.5rem/1 var(--pixel); background: var(--tb); color: var(--tf); padding: 3px 4px 2px; border-radius: 2px; }
@@ -96,7 +101,6 @@
 .ad-nowallet p { margin: 0 0 6px; font-weight: 700; }
 .ad-mlinks { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
 .ad-mlinks .btn { text-decoration: none; font-size: 0.85rem; padding: 8px 12px; }
-.ad-faucet { font-size: 0.85rem; padding: 8px 12px; border-style: dashed; border-color: #7ef0c0; color: #7ef0c0; }
 .ad-go { width: 100%; font-size: 1.2rem; padding: 15px 18px; background: linear-gradient(90deg, var(--accent), var(--fire)); border: 0; color: #1a0a00;
   box-shadow: 0 6px 22px color-mix(in srgb, var(--fire) 45%, transparent); }
 .ad-go:hover:not(:disabled) { filter: brightness(1.08); background: linear-gradient(90deg, var(--accent), var(--fire)); }
@@ -149,7 +153,7 @@
   .ad-hero { padding: 20px 16px 16px; }
   .ad-stats { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
   .ad-stat:first-child { grid-column: 1 / -1; }
-  .ad-plans { grid-template-columns: minmax(0, 1fr); }
+  .ad-plans, .ad-plans.usdc { grid-template-columns: minmax(0, 1fr); }
   .ad-plan { grid-template-columns: 1fr auto; align-items: baseline; }
   .ad-plan > small { grid-column: 1 / -1; }
   .ad-form, .ad-section, .ad-checkout { padding: 14px; }
