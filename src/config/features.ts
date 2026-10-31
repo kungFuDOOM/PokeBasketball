@@ -23,3 +23,5 @@ export const MODE_SHIELD_USDC = MODE_SHIELD_SHOP && (import.meta.env.VITE_SHIELD
 export const SHIELD_USDC_CLUSTER: 'devnet' | 'mainnet-beta' = import.meta.env.VITE_SHIELD_USDC_CLUSTER === 'mainnet-beta' ? 'mainnet-beta' : 'devnet';
 export const MODE_PACK_BATTLES = import.meta.env.VITE_MODE_PACK_BATTLES === 'true';
 export const ANY_MULTIPLAYER = MODE_SOCIAL || MODE_RANKED || MODE_PACK_BATTLES;
+// Ranked sign-in: Google is offered only when VITE_SIGNIN_GOOGLE is exactly "true"; default OFF = Phantom-only sign-in.
+export const SIGNIN_GOOGLE = import.meta.env.VITE_SIGNIN_GOOGLE === "true";
