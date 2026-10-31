@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { Game } from '../../game/game';
 import { stateHash } from '../../game/sync';
-import type { NetMsg } from './lockstep';
-import { ENGINE_VERSION } from '../../game/types';
-import { MatchLink, NET_VERSION, buildConfig, connect, setupFor, wantsEvidence } from './netplay';
+import { Lockstep, type NetMsg } from './lockstep';
+import { ENGINE_VERSION, emptyIntent } from '../../game/types';
+import { startingFiveEnabled } from '../../screens/intro.logic';
+import { MatchLink, NET_VERSION, buildConfig, connect, setupFor, wantsEvidence, type Connected } from './netplay';
 import { gameConfigFor } from './winnerCheck';
 import type { OnlineMatch } from './onlineMatchService';
 import { rostersFor } from './roster';
@@ -148,6 +149,79 @@ describe('the handshake says whether the peer shows the pre-game intro', () => {
     c.link.sendPre('ready');
     expect(sent[sent.length - 1]).toMatchObject({ event: 'pre', payload: { k: 'ready' } });
     c.link.close();
+  });
+});
+
+describe('the starting five online: only when both peers support it, and lockstep holds either way', () => {
+  type Cb = (x: { payload: unknown }) => void;
+  /** One side's connect() over a fake channel; `hello` is the peer's hi as it would arrive. */
+  async function side(s: 0 | 1, hello: Record<string, unknown>) {
+    const sent: { event: string; payload: Record<string, unknown> }[] = [];
+    const handlers: Record<string, Cb> = {};
+    const ch = {
+      on: (_t: string, f: { event: string }, cb: Cb) => { handlers[f.event] = cb; return ch; },
+      subscribe: (cb: (st: string) => void) => { cb('SUBSCRIBED'); return ch; },
+      send: (x: { event: string; payload: Record<string, unknown> }) => { sent.push(x); return Promise.resolve('ok'); },
+    };
+    const sb = { channel: () => ch, removeChannel: () => Promise.resolve('ok'), realtime: { setAuth: () => Promise.resolve() } };
+    const conn = connect(sb as never, match(s), undefined);
+    await Promise.resolve();
+    await Promise.resolve();
+    handlers.hs({ payload: hello });
+    const c = await conn;
+    c.link.close();
+    return { c, hi: sent.find((x) => x.event === 'hs')!.payload };
+  }
+  const newHi = (s: 0 | 1) => ({ k: 'hi', v: ENGINE_VERSION, n: NET_VERSION, side: s, i: 1, s: 1 });
+  const oldHi = (s: 0 | 1) => ({ k: 'hi', v: ENGINE_VERSION, n: NET_VERSION, side: s, i: 1 });
+  /** Roughly how long the starting five holds the sim (ms). */
+  const INTRO_FIVE_MS = 6000;
+  const shows = (c: Connected) => startingFiveEnabled('full', 'social', true, c.startingFive);
+
+  /** Two lockstep peers on a fake clock; each only idles (maybeSend) while its intro plays, as play.ts does. */
+  function run(introMs: [number, number]) {
+    let now = 0;
+    const q: { at: number; to: 0 | 1; m: NetMsg }[] = [];
+    const games = [new Game(buildConfig(match(0))), new Game(buildConfig(match(1)))];
+    const ls = ([0, 1] as const).map((s) => new Lockstep(games[s], {
+      send: (m: NetMsg) => q.push({ at: now + 40, to: (1 - s) as 0 | 1, m: JSON.parse(JSON.stringify(m)) }),
+    }, { side: s, now: () => now }));
+    for (let f = 0; f < 60 * 20; f++) {
+      now += 1000 / 60;
+      q.sort((a, b) => a.at - b.at);
+      while (q.length && q[0].at <= now) { const x = q.shift()!; ls[x.to].receive(x.m); }
+      for (const s of [0, 1]) {
+        if (now < introMs[s]) ls[s].maybeSend(false);
+        else ls[s].advance(emptyIntent(), 1 / 60);
+      }
+    }
+    return { games, ls };
+  }
+  const inStep = ({ ls }: ReturnType<typeof run>) => {
+    const t = Math.min(ls[0].tick, ls[1].tick);
+    expect(t).toBeGreaterThan(300);
+    for (const l of ls) expect(l.problem).toBeNull();
+    expect(ls[0].stats.desyncs + ls[1].stats.desyncs).toBe(0);
+  };
+
+  it('new + new: our hi carries s:1, both sides show it, and they stay in lockstep after it', async () => {
+    const [a, b] = await Promise.all([side(0, newHi(1)), side(1, newHi(0))]);
+    expect(a.hi.s).toBe(1);
+    expect([shows(a.c), shows(b.c)]).toEqual([true, true]);
+    // The intros end a little apart on each screen; the earlier side simply waits for the other's inputs.
+    inStep(run([INTRO_FIVE_MS, INTRO_FIVE_MS + 400]));
+  });
+
+  it('new + old peer (no s): the new side does not show it, they connect and stay in lockstep', async () => {
+    const a = await side(0, oldHi(1));
+    expect(a.c.startingFive).toBe(false);
+    expect(shows(a.c)).toBe(false);
+    expect(a.c.intro).toBe(true); // the pre-game card is unaffected
+    inStep(run([0, 0]));
+  });
+
+  it('NET_VERSION is still 3', () => {
+    expect(NET_VERSION).toBe(3);
   });
 });
 

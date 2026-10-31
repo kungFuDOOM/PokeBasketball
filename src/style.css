@@ -1787,6 +1787,78 @@ body:has(.pause-btn) .music-btn:not(.docked) {
   .potg.rolling .potg-card { max-width: 60%; }
 }
 
+/* ---- Your starting five: the intro before tip-off (src/screens/startingFive.ts) ---- */
+.s5 {
+  position: absolute; inset: 0; z-index: 7; pointer-events: none; overflow: hidden;
+  background: radial-gradient(ellipse at center, rgba(5, 6, 15, 0.45), rgba(5, 6, 15, 0.85));
+  opacity: 0; transition: opacity 0.35s;
+}
+.s5.in { opacity: 1; }
+.s5.out { opacity: 0; transition-duration: 0.45s; }
+.s5-bar { position: absolute; left: 0; right: 0; height: 9%; background: #000; transform: scaleY(0); transition: transform 0.35s ease-out; }
+.s5-bar.top { top: 0; transform-origin: top; }
+.s5-bar.bottom { bottom: 0; transform-origin: bottom; }
+.s5.in .s5-bar { transform: none; }
+.s5-title {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%) scale(0.6);
+  display: grid; justify-items: center; gap: 12px; text-align: center; width: max-content; max-width: 92%;
+  padding: 18px 28px; background: rgba(10, 13, 31, 0.88); border: 3px solid var(--accent); box-shadow: 6px 6px 0 #000;
+  opacity: 0; transition: opacity 0.25s, transform 0.45s cubic-bezier(0.2, 1.4, 0.4, 1);
+}
+.s5.title .s5-title { opacity: 1; transform: translate(-50%, -50%); }
+.s5-title small { font: 700 clamp(0.85rem, 2.4vw, 1.2rem) var(--sport); letter-spacing: 0.12em; text-transform: uppercase; color: var(--fg); }
+.s5-title small i { font-style: normal; color: var(--muted); padding: 0 0.3em; }
+.s5-title strong { font: clamp(1.1rem, 4.2vw, 2.4rem) var(--pixel); text-transform: uppercase; color: var(--accent); text-shadow: 3px 3px 0 var(--red), 6px 6px 0 #000; }
+.s5-team {
+  position: absolute; left: 50%; top: 50%; transform: translate(-30%, -50%);
+  display: grid; justify-items: center; gap: clamp(8px, 2.5vh, 16px); width: min(94%, 860px);
+  opacity: 0; visibility: hidden; transition: opacity 0.3s, transform 0.45s cubic-bezier(0.2, 1, 0.3, 1), visibility 0s 0.45s;
+}
+.s5-team.show { opacity: 1; visibility: visible; transform: translate(-50%, -50%); transition-delay: 0s; }
+.s5-team.gone { transform: translate(-75%, -50%); }
+.s5-head {
+  display: flex; align-items: baseline; gap: 12px; padding: 6px 20px 6px 16px;
+  background: linear-gradient(100deg, var(--tc), var(--tc2)); border: 3px solid #000; box-shadow: 4px 4px 0 #000;
+  transform: skewX(-8deg);
+}
+.s5-head > * { transform: skewX(8deg); }
+.s5-head small { font: 0.55rem var(--pixel); letter-spacing: 0.1em; text-transform: uppercase; color: rgba(255, 255, 255, 0.85); }
+.s5-head strong { font: 800 clamp(1.1rem, 3.6vw, 1.9rem) var(--sport); letter-spacing: 0.06em; text-transform: uppercase; color: #fff; text-shadow: 2px 2px 0 #000; }
+.s5-head em { font: 0.55rem var(--pixel); font-style: normal; color: #fff; background: rgba(0, 0, 0, 0.45); padding: 4px 6px; }
+.s5-team.mine .s5-head { border-color: var(--accent); box-shadow: 4px 4px 0 #000, 0 0 24px rgba(255, 203, 5, 0.45); }
+.s5-team.mine .s5-head small { color: var(--accent); }
+.s5-row { list-style: none; margin: 0; padding: 0; display: flex; justify-content: center; gap: clamp(5px, 1.4vw, 14px); width: 100%; }
+.s5-card {
+  position: relative; flex: 0 1 150px; min-width: 0;
+  display: grid; justify-items: center; gap: 4px; padding: 8px 6px 10px;
+  background: rgba(10, 13, 31, 0.9); border: 2px solid var(--line); border-top: 5px solid var(--tc); box-shadow: 3px 3px 0 #000;
+  opacity: 0; transform: translateY(36px) scale(0.85);
+  transition: opacity 0.2s, transform 0.4s cubic-bezier(0.2, 1.5, 0.4, 1);
+}
+.s5-team.show .s5-card { opacity: 1; transform: none; transition-delay: var(--d); }
+.s5-team.mine .s5-card { border-color: rgba(255, 203, 5, 0.55); border-top-color: var(--accent); }
+.s5-card b { font: 0.55rem var(--pixel); color: var(--accent); }
+.s5-card img { width: 100%; height: clamp(44px, 22vh, 128px); object-fit: contain; image-rendering: pixelated; }
+.s5-card span {
+  max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font: 700 clamp(0.72rem, 1.9vw, 1rem) var(--sport); letter-spacing: 0.04em; text-transform: uppercase; color: var(--fg);
+}
+.s5-card i { font: 0.5rem var(--pixel); font-style: normal; color: var(--muted); }
+.s5-skip {
+  position: absolute; right: 14px; bottom: calc(9% + 12px); pointer-events: auto;
+  font: 0.6rem var(--pixel); color: var(--fg); background: rgba(10, 13, 31, 0.7);
+  border: 2px solid var(--line); border-radius: 6px; padding: 8px 12px; cursor: pointer;
+}
+@media (max-width: 560px) {
+  .s5-head { padding: 5px 12px; gap: 8px; }
+  .s5-head small, .s5-head em { font-size: 0.45rem; }
+  .s5-card { padding: 6px 3px 8px; }
+  .s5-card b, .s5-card i { font-size: 0.45rem; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .s5-title, .s5-team, .s5-card { transition-property: opacity, visibility; }
+}
+
 /* Watch again: the play of the game, on the results screen. */
 .potg-again {
   display: grid; gap: 2px; justify-items: start; text-align: left; width: min(100%, 520px); margin: -10px auto 22px;
