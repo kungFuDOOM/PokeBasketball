@@ -10,7 +10,7 @@ const row = (over: Partial<AdRow> = {}): AdRow => ({
 const ban = { wallet: 'A4ahkivAG4NoZAE8Sy4qv8nn2DU9yoXRQcttuCeGtTJv', reason: 'abusive ads', at: '2026-10-31T00:00:00Z' };
 
 describe('admin Ads tab: devnet / live board switch', () => {
-  it('uses the 20261104 RPCs for devnet and the 20261124 live RPCs for live, with the shared ban list', () => {
+  it('uses the 20261104 RPCs for devnet and the 20261125 live RPCs for live, with the shared ban list', () => {
     expect(AD_RPC.devnet).toEqual({ list: 'pokejam_admin_ads', remove: 'pokejam_admin_ad_remove', bans: 'pokejam_admin_ad_bans', unban: 'pokejam_admin_ad_unban' });
     expect(AD_RPC.live).toEqual({ list: 'pokejam_admin_live_ads', remove: 'pokejam_admin_live_ad_remove', bans: 'pokejam_admin_ad_bans', unban: 'pokejam_admin_ad_unban' });
   });

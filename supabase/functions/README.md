@@ -114,7 +114,7 @@ Prices and the number of spots (`ad_spots`, default 3) change with one `update p
    2. `AD_MINT=<mint> AD_FAUCET_SECRET_FILE=<keypair.json> bun --use-system-ca scripts/ads-dev-server.ts`
    3. Open http://localhost:8787/#advertise.
 
-## Billboard ads on the live site (`pokejam-ads-live/`, `../migrations/20261124_pokejam_ads_live.sql`)
+## Billboard ads on the live site (`pokejam-ads-live/`, `../migrations/20261125_pokejam_ads_live.sql`)
 
 The live site (pokejam.xyz) books the same courtside LED board on **Solana mainnet**, through its own function. It runs the same handler as the devnet `pokejam-ads` above (`_shared/ads/handler.ts`), configured by `adsConfigLive` in `_shared/ads/config.ts`. The devnet function, its secrets and its tables are unchanged. The client (`src/ads/api.ts`) only ever calls `pokejam-ads-live`. Advertisers pay from their own wallet in one of two ways:
 - **Burn $PJAM**, exactly as above (an hour, a day or a week).
@@ -167,7 +167,7 @@ The USDC prices match the courtside banner half's list price on the contact page
 
 ### On kungFuDOOM's OK (mainnet, the live site)
 
-1. **Migration:** `20261124_pokejam_ads_live`, applied after `20261104_pokejam_ads`.
+1. **Migration:** `20261125_pokejam_ads_live`, applied after `20261104_pokejam_ads`.
 2. **Confirm the $PJAM mint** (see `ADS_PJAM_MINT` above), and set the PJAM burn prices.
 3. **Secrets:**
    ```sh

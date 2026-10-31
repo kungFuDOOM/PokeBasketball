@@ -76,7 +76,7 @@ export function adsConfig(get: (k: string) => string | undefined): AdsConfig {
 export const LIVE_MAINNET_FLAG = 'true';
 
 /**
- * The live tables' SQL functions: pokejam_ad_<x> is pokejam_live_ad_<x> (20261124_pokejam_ads_live.sql). The faucet's
+ * The live tables' SQL functions: pokejam_ad_<x> is pokejam_live_ad_<x> (20261125_pokejam_ads_live.sql). The faucet's
  * once-a-day claim (devnet test tokens only; never reached on mainnet) has no live copy and stays shared.
  */
 export const liveDbName = (fn: string) => (fn.startsWith('pokejam_ad_faucet_') ? fn : fn.replace(/^pokejam_ad_/, 'pokejam_live_ad_'));

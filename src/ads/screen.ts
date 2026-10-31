@@ -1,7 +1,7 @@
 // The Advertise page: write an ad, see it on the courtside LED board exactly as the game draws it, pick how long it
 // runs, and pay from your own wallet, either by burning $PJAM (an hour, a day or a week) or in USDC (a week or a month).
 // The live pokejam-ads-live Edge Function builds the burn or the transfer and checks it on-chain; see
-// supabase/migrations/20261104_pokejam_ads.sql and 20261124_pokejam_ads_live.sql for how a booking moves. No faucet here.
+// supabase/migrations/20261104_pokejam_ads.sql and 20261125_pokejam_ads_live.sql for how a booking moves. No faucet here.
 import './ads.css';
 import { COURTS } from '../data/courts';
 import { monByDex } from '../data/pokemon';

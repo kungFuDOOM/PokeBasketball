@@ -8,7 +8,7 @@
 //
 // Differences from the shield verifier, on purpose:
 //   - amount >= price, not ==: an overpayment still books (the DB records what arrived).
-//   - no expiry refusal: a USDC payment that really landed is never lost (20261124_pokejam_ads_live.sql books a late
+//   - no expiry refusal: a USDC payment that really landed is never lost (20261125_pokejam_ads_live.sql books a late
 //     one from the first opening). The intent's 15 minutes only bound the blockhash the page signs.
 // Whether the signature already paid for something else is the database's call (pokejam_live_ad_usdc_pay).
 import { PROGRAM, USDC_DECIMALS, deriveAta } from './usdc-chain.ts';

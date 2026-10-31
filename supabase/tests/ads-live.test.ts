@@ -1,4 +1,4 @@
-// Live-site billboard ads (20261124_pokejam_ads_live.sql) on a real Postgres (PGlite) running every migration in order.
+// Live-site billboard ads (20261125_pokejam_ads_live.sql) on a real Postgres (PGlite) running every migration in order.
 // What's promised: the migration is additive (the devnet 20261104 file and its functions are untouched, and devnet and
 // mainnet bookings never meet), the live board books by burn exactly like the devnet one, and a USDC payment books
 // exactly once per intent and once per signature, never short, never past the text rules.
@@ -12,7 +12,7 @@ vi.setConfig({ testTimeout: 120_000 });
 const DIR = new URL('../migrations/', import.meta.url);
 const FILES = readdirSync(DIR).filter((f) => f.endsWith('.sql')).sort();
 const MIGRATIONS = FILES.map((f) => readFileSync(new URL(f, DIR), 'utf8'));
-const LIVE_FILE = '20261124_pokejam_ads_live.sql';
+const LIVE_FILE = '20261125_pokejam_ads_live.sql';
 const LIVE_SQL = readFileSync(new URL(LIVE_FILE, DIR), 'utf8');
 // sha256 of pokejam-test's 20261104_pokejam_ads.sql (commit a67c151), already applied on the shared project.
 const DEVNET_SHA256 = 'adf6c2b432673feb800146593f6eeb87567c6a051678521d47a5d3c6a3c04cd0';

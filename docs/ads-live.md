@@ -14,7 +14,7 @@ The operator's reference, covering secrets, the deploy steps and how a payment i
 | Live Edge Function | `supabase/functions/pokejam-ads-live/index.ts`. It uses the same handler as the devnet `pokejam-ads`, which is unchanged. |
 | Config | `adsConfigLive` in `supabase/functions/_shared/ads/config.ts`. Mainnet only when `ADS_ALLOW_MAINNET` is exactly `"true"`. The faucet is hard-off on mainnet. |
 | USDC payment | `supabase/functions/_shared/ads/usdc-{chain,verify,handlers}.ts`, adapted from `origin/claude/shield-usdc-only` (copied, not merged). |
-| Database | `supabase/migrations/20261124_pokejam_ads_live.sql`. It is additive: it adds `pokejam_live_*` tables and functions and `live_*` config keys. `20261104_pokejam_ads.sql` is byte-identical to pokejam-test's, which is already applied. |
+| Database | `supabase/migrations/20261125_pokejam_ads_live.sql`. It is additive: it adds `pokejam_live_*` tables and functions and `live_*` config keys. `20261104_pokejam_ads.sql` is byte-identical to pokejam-test's, which is already applied. |
 | Client | `src/ads/` (`api.ts` calls `pokejam-ads-live` only, `usdcPay.ts`, `screen.ts`), `src/game/ledBoard.ts`, `src/data/ads.ts`. |
 | CSP | `vite.config.ts`. Nothing new by default, because the endpoint is on the Supabase origin and the browser never calls a Solana RPC. There are no inline scripts. |
 
@@ -64,5 +64,5 @@ The ad sections of `public/privacy.html` and `public/terms.html` now say:
   1. It reads the receiver's USDC account history since a cursor (`live_ad_usdc_scan_cursor`), at most 3 pages of 1,000 signatures and 25 checks a run, at `finalized`. Each memo of the form `pokejam-ad-usdc:<16 hex>` is matched to its intent (`pokejam_live_ad_usdc_find`) and checked exactly as `usdc-confirm` checks it. When it hits the cap, the cursor stops after the last checked payment. The first run looks back 3 days.
   2. It re-checks up to 20 open intents from the last day by their reference key (`pokejam_live_ad_usdc_open`), in case the listing omits memos or more than 3 pages arrived.
 
-  Both new SQL functions are added to the not-yet-applied `20261124` migration (additive, service role only). Nothing books twice: an intent and a signature each book once.
+  Both new SQL functions are added to the not-yet-applied `20261125` migration (additive, service role only). Nothing books twice: an intent and a signature each book once.
 - **Contact page.** The courtside half is now self-serve on the Advertise page (burn $PJAM or USDC). The ticker and the combo are still arranged by DM and paid in SOL.

@@ -1,8 +1,8 @@
 // The Ads tab of the moderation page, as pure HTML builders (testable without a page). Two boards share the tab:
 //   devnet  the test site's board (its devnet Edge Function, migration 20261104): pokejam_admin_ads / pokejam_admin_ad_remove
-//   live    pokejam.xyz's mainnet board (pokejam-ads-live, migration 20261124): pokejam_admin_live_ads /
+//   live    pokejam.xyz's mainnet board (pokejam-ads-live, migration 20261125): pokejam_admin_live_ads /
 //           pokejam_admin_live_ad_remove
-// The ban list is shared by both boards (20261124 reads pokejam_ad_bans), so Lift is pokejam_admin_ad_unban on either.
+// The ban list is shared by both boards (20261125 reads pokejam_ad_bans), so Lift is pokejam_admin_ad_unban on either.
 import { esc } from '../util';
 import { when } from './reportsView';
 
