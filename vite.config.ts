@@ -7,16 +7,18 @@ import { defineConfig, loadEnv, type Plugin } from 'vite';
  */
 const TURNSTILE = 'https://challenges.cloudflare.com';
 const CF_ANALYTICS = 'https://static.cloudflareinsights.com';
-const csp = (supabaseUrl: string | undefined, captcha: boolean) => [
+// Google Analytics 4 (public/ga.js), on the public pages only: the admin page keeps the policy without it.
+const GA = 'https://www.googletagmanager.com https://*.google-analytics.com https://*.analytics.google.com';
+const csp = (supabaseUrl: string | undefined, captcha: boolean, analytics: boolean) => [
   "default-src 'none'",
   // The bot check before a first online sign-in (Cloudflare Turnstile) loads its script and widget frame. Cloudflare Web Analytics loads its beacon script and reports to cloudflareinsights.com.
-  `script-src 'self' ${CF_ANALYTICS}${captcha ? ` ${TURNSTILE}` : ''}`,
+  `script-src 'self' ${CF_ANALYTICS}${captcha ? ` ${TURNSTILE}` : ''}${analytics ? ` ${GA}` : ''}`,
   ...(captcha ? [`frame-src ${TURNSTILE}`] : []),
   "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data:",
+  `img-src 'self' data:${analytics ? ` ${GA}` : ''}`,
   "font-src 'self'",
   // Online play talks to the configured Supabase project only (REST over https, Realtime over wss), plus the analytics beacon.
-  `connect-src 'self' https://cloudflareinsights.com${supabaseUrl ? ` ${new URL(supabaseUrl).origin} ${new URL(supabaseUrl).origin.replace(/^https:/, 'wss:')}` : ''}`,
+  `connect-src 'self' https://cloudflareinsights.com${supabaseUrl ? ` ${new URL(supabaseUrl).origin} ${new URL(supabaseUrl).origin.replace(/^https:/, 'wss:')}` : ''}${analytics ? ` ${GA}` : ''}`,
   "manifest-src 'self'",
   "base-uri 'none'",
   "form-action 'none'",
@@ -27,8 +29,9 @@ const csp = (supabaseUrl: string | undefined, captcha: boolean) => [
 const securityHeaders = (supabaseUrl: string | undefined, captcha: boolean): Plugin => ({
   name: 'security-meta',
   apply: 'build',
-  transformIndexHtml: () => [
-    { tag: 'meta', attrs: { 'http-equiv': 'Content-Security-Policy', content: csp(supabaseUrl, captcha) }, injectTo: 'head-prepend' },
+  transformIndexHtml: (_html, ctx) => [
+    // admin.html (vite.admin.config.ts) gets no analytics, so its policy stays without the GA hosts.
+    { tag: 'meta', attrs: { 'http-equiv': 'Content-Security-Policy', content: csp(supabaseUrl, captcha, !/(^|[\\/])admin\.html$/.test(ctx.filename)) }, injectTo: 'head-prepend' },
     { tag: 'meta', attrs: { name: 'referrer', content: 'no-referrer' }, injectTo: 'head-prepend' },
   ],
 });

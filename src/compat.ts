@@ -1,4 +1,4 @@
-// Imported first by main.ts: runs before any other module, so everything below is in place before the game loads.
+// Imported by main.ts right after ./framed: runs before any other module, so everything below is in place before the game loads.
 
 declare global {
   interface Window { __bootOk?: boolean }
