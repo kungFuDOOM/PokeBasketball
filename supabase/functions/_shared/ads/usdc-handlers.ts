@@ -220,3 +220,100 @@ export async function usdcConfirm(ctx: UsdcCtx, c: ConfirmInput): Promise<Reply>
   }
   return ok({ status: 'pending', intent }, 202);
 }
+
+// ---------- recovery: the sweep (cron) books USDC payments whose page closed before usdc-confirm ----------
+//
+// Two bounded passes, so a payment that really landed is booked with no page open:
+//   1. The receiver's USDC account history since the last run (cursor `live_ad_usdc_scan_cursor`), read at the config's
+//      commitment (finalized on mainnet) so the cursor never passes a payment that isn't final yet. Each transaction whose
+//      memo looks like an intent's ("pokejam-ad-usdc:<16 hex>") is matched to its intent by memo and checked exactly as
+//      usdc-confirm checks it. At most SWEEP.pages pages and SWEEP.checks checks per run; when the cap is hit the cursor
+//      stops at the last checked payment, so the rest wait for the next run instead of being skipped. The first run only
+//      looks back three days.
+//   2. Belt and braces: the last day's open intents (at most SWEEP.open), each through its reference key's history, like
+//      usdc-confirm with no signature. This covers a gap if more than SWEEP.pages pages arrived between two runs.
+// Nothing is booked twice: the database books once per intent and once per signature.
+
+export const SWEEP = { pages: 3, pageSize: 1000, checks: 25, memosPerTx: 3, open: 20, perReference: 5, lookbackSeconds: 3 * 86_400, retrySeconds: 15 * 60 } as const;
+const INTENT_MEMO = /pokejam-ad-usdc:[0-9a-f]{16}/g;
+
+type TryPay = 'paid' | 'pending' | 'skip';
+
+/** One look at one signature for one intent, no waiting: books it if it pays the intent. RPC errors throw. */
+async function tryPay(ctx: UsdcCtx, intent: UsdcIntent, sig: string): Promise<TryPay> {
+  const { usdc } = ctx;
+  if (intent.status !== 'open' || intent.cluster !== ctx.cfg.cluster || intent.mint !== usdc.mint || intent.receiver !== usdc.receiver) return 'skip';
+  const tx = await fetchTransaction((m, p) => ctx.rpc.call(m, p), sig, usdc.commitment);
+  const v = await verifyUsdcTx(tx, sig, { amount: intent.amount, mint: intent.mint, receiver: intent.receiver, wallet: intent.wallet, reference: intent.reference, memo: intent.memo, createdAt: intent.created_at });
+  if (!v.ok) return v.code === 'pending' ? 'pending' : 'skip';
+  const r = await ctx.db<{ status: string }>('pokejam_ad_usdc_pay', { p_intent: intent.id, p_sig: sig, p_amount: v.paid.toString(), p_payer: intent.wallet });
+  return r.status === 'paid' ? 'paid' : 'skip';
+}
+
+export interface SweepResult { scanned: number; seen: number; paid: number; open: number; paidByReference: number; capped: boolean }
+
+export async function usdcSweep(ctx: UsdcCtx, now = Date.now()): Promise<SweepResult> {
+  const { usdc } = ctx;
+  const ata = await deriveAta(usdc.receiver, usdc.mint);
+  const cursor = await ctx.db<string>('pokejam_ad_cfg', { p_key: 'ad_usdc_scan_cursor', p_default: '' });
+  const oldest = now / 1000 - SWEEP.lookbackSeconds;
+  let before: string | undefined;
+  let newest: string | undefined;
+  let scanned = 0;
+  const hits: { signature: string; memos: string[]; blockTime: number | null }[] = [];
+  for (let page = 0; page < SWEEP.pages; page++) {
+    const opts: Record<string, unknown> = { limit: SWEEP.pageSize, commitment: usdc.commitment };
+    if (cursor) opts.until = cursor;
+    if (before) opts.before = before;
+    const sigs = await ctx.rpc.call<{ signature: string; memo: string | null; err: unknown; blockTime: number | null }[]>('getSignaturesForAddress', [ata, opts]);
+    if (!sigs.length) break;
+    newest ??= sigs[0].signature;
+    scanned += sigs.length;
+    for (const s of sigs) {
+      // A real payment carries one memo; a few more are looked up, never an unbounded list.
+      const memos = !s.err && s.memo ? [...new Set(s.memo.match(INTENT_MEMO) ?? [])].slice(0, SWEEP.memosPerTx) : [];
+      if (memos.length) hits.push({ signature: s.signature, memos, blockTime: s.blockTime });
+    }
+    before = sigs[sigs.length - 1].signature;
+    if (sigs.length < SWEEP.pageSize || (!cursor && (sigs[sigs.length - 1].blockTime ?? 0) < oldest)) break;
+  }
+
+  // Oldest first, so the cursor can stop exactly after the last payment checked.
+  let paid = 0;
+  let checks = 0;
+  let capped = false;
+  let last: string | undefined;
+  const handled = new Set<string>();
+  outer: for (const h of hits.reverse()) {
+    if (checks > 0 && checks + h.memos.length > SWEEP.checks) { capped = true; break; }
+    for (const memo of h.memos) {
+      checks++;
+      const intent = await ctx.db<UsdcIntent | null>('pokejam_ad_usdc_find', { p_memo: memo, p_reference: null });
+      if (!intent) continue;
+      const r = await tryPay(ctx, intent, h.signature);
+      // Listed at the commitment but not readable at it yet (a lagging node): look again next run, unless it has been
+      // unreadable for a while, so one odd transaction can't hold the cursor forever (pass 2 still covers its intent).
+      if (r === 'pending' && h.blockTime !== null && now / 1000 - h.blockTime < SWEEP.retrySeconds) { capped = true; break outer; }
+      if (r === 'paid') { paid++; handled.add(intent.id); }
+    }
+    last = h.signature;
+  }
+  const next = capped ? last : newest;
+  if (next && next !== cursor) await ctx.db('pokejam_ad_set_cfg', { p_key: 'ad_usdc_scan_cursor', p_value: next });
+
+  let paidByReference = 0;
+  const open = (await ctx.db<UsdcIntent[]>('pokejam_ad_usdc_open', { p_limit: SWEEP.open })).filter((i) => !handled.has(i.id));
+  for (const intent of open) {
+    try {
+      const found = await ctx.rpc.call<{ signature: string; err: unknown }[]>('getSignaturesForAddress',
+        [intent.reference, { limit: SWEEP.perReference, commitment: usdc.commitment }]);
+      for (const s of found.filter((x) => !x.err)) {
+        if ((await tryPay(ctx, intent, s.signature)) === 'paid') { paidByReference++; break; }
+      }
+    } catch (e) {
+      // One intent's lookup failing doesn't stop the others; it is tried again next run.
+      ctx.log?.(`pokejam-ads-live sweep: intent ${intent.id}: ${(e as Error).message}`);
+    }
+  }
+  return { scanned, seen: hits.length, paid, open: open.length, paidByReference, capped };
+}

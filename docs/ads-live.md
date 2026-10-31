@@ -55,6 +55,14 @@ The ad sections of `public/privacy.html` and `public/terms.html` now say:
 
 1. **Confirm the $PJAM mint.** `GQe9QiBBV4G6bRUCxx2JgKrzT7G7RD17FJquBWgVpump` is hard-coded from #45 as the default. kungFuDOOM must confirm it is the official token, or set `ADS_PJAM_MINT`.
 2. **Set the PJAM burn prices** for the token's market at launch.
-3. **Moderation UI.** admin.html's Ads tab still lists and takes down the devnet board's ads (`pokejam_admin_ads`). The live board's RPCs exist (`pokejam_admin_live_ads`, `pokejam_admin_live_ad_remove`), but the page doesn't call them yet. Until it does, take down live ads by calling those RPCs as a moderator.
-4. **Contact page.** It still offers the courtside half by DM for SOL. It could point to the self-serve Advertise page once the board is live.
-5. Nothing here has been deployed. No migration has been applied and no secret set. See the README's "On kungFuDOOM's OK (mainnet, the live site)" steps.
+3. Nothing here has been deployed. No migration has been applied and no secret set. See the README's "On kungFuDOOM's OK (mainnet, the live site)" steps.
+
+## Follow-ups closed (task 10)
+
+- **Moderation UI.** admin.html's Ads tab has a **Devnet (test site) / Live (mainnet)** switch (`src/admin/adsView.ts`, remembered per device). Live uses `pokejam_admin_live_ads` and `pokejam_admin_live_ad_remove` (Take down, Take down + ban). **Lift** is the shared `pokejam_admin_ad_unban`, because both boards read one ban list (`pokejam_ad_bans`). Every action button carries the board it was drawn for, so switching mid-click can't hit the other board.
+- **USDC recovery.** The live `sweep` also books USDC payments whose page closed before `usdc-confirm` (`usdcSweep` in `_shared/ads/usdc-handlers.ts`). It is bounded and makes two passes:
+  1. It reads the receiver's USDC account history since a cursor (`live_ad_usdc_scan_cursor`), at most 3 pages of 1,000 signatures and 25 checks a run, at `finalized`. Each memo of the form `pokejam-ad-usdc:<16 hex>` is matched to its intent (`pokejam_live_ad_usdc_find`) and checked exactly as `usdc-confirm` checks it. When it hits the cap, the cursor stops after the last checked payment. The first run looks back 3 days.
+  2. It re-checks up to 20 open intents from the last day by their reference key (`pokejam_live_ad_usdc_open`), in case the listing omits memos or more than 3 pages arrived.
+
+  Both new SQL functions are added to the not-yet-applied `20261124` migration (additive, service role only). Nothing books twice: an intent and a signature each book once.
+- **Contact page.** The courtside half is now self-serve on the Advertise page (burn $PJAM or USDC). The ticker and the combo are still arranged by DM and paid in SOL.

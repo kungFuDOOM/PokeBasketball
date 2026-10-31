@@ -16,6 +16,7 @@
 //   POST {action:'report', id, reason}        flag a live ad for moderators
 //   POST {action:'faucet', wallet}            devnet only: test $PJAM and a little test SOL, once a day
 //   POST {action:'sweep'}                     cron (service key): pay every burn on-chain that names a booking
+//                                             (live: also book USDC payments whose page closed; usdcSweep)
 //   POST {action:'usdc-intent', ...}          live only (pokejam-ads-live): pay for a week or a month in USDC
 //   POST {action:'usdc-confirm', id, signature?, tx?}
 //                                             live only: check the USDC payment on-chain and book the ad
@@ -35,7 +36,7 @@ import { base58Encode } from '../pack/bytes.ts';
 import { decodeTransaction } from '../pack/tx-inspect.ts';
 import type { AdsConfig } from './config.ts';
 import { adMemo, buildBurnTransaction, buildFaucetTransaction, MEMO_PROGRAM, SPL_2022_PROGRAM, SPL_PROGRAM } from './tx.ts';
-import { usdcConfirm, usdcIntent, USDC_PLANS, type Reply } from './usdc-handlers.ts';
+import { usdcConfirm, usdcIntent, usdcSweep, USDC_PLANS, type Reply, type SweepResult } from './usdc-handlers.ts';
 import { checkBurn, type ParsedTransaction } from './verify.ts';
 
 /** Calls one SQL function by name with named arguments; throws its error message. */
@@ -460,7 +461,14 @@ export async function adsHandler(req: Request, cfg: AdsConfig, rawDeps: AdsDeps)
           const sigs = await findByMemo(deps.rpc, b).catch(() => []);
           if (sigs.length && (await settle(cfg, deps, b, sigs).catch(() => null))?.booking.state === 'paid') wallets++;
         }
-        return json({ ...chain, looked: pending.length, paidFromWallets: wallets });
+        // Live only: USDC payments that landed with no page left to confirm them. Its failure doesn't hide the burns'.
+        let usdc: SweepResult | { error: string } | undefined;
+        if (cfg.usdc) {
+          usdc = await usdcSweep({ cfg, usdc: cfg.usdc, db: deps.db, rpc: deps.rpc, sleep, log: (m: string) => console.error(m) })
+            .catch((e) => ({ error: (e as Error).message.slice(0, 200) }));
+          if ('paid' in usdc && usdc.paid + usdc.paidByReference > 0) changed();
+        }
+        return json({ ...chain, looked: pending.length, paidFromWallets: wallets, ...(usdc ? { usdc } : {}) });
       }
       case 'usdc-intent':
       case 'usdc-confirm': {

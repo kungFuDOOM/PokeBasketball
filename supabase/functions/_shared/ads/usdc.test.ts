@@ -13,6 +13,7 @@ import { decodeTransaction } from '../pack/tx-inspect.ts';
 import { adsConfig, adsConfigLive, liveDbName, type AdsConfig } from './config.ts';
 import { adsHandler, type AdsDeps } from './handler.ts';
 import { PROGRAM, USDC_MINT, USDC_RECEIVER, buildUsdcTransfer, deriveAta } from './usdc-chain.ts';
+import { SWEEP, usdcSweep, type UsdcCtx, type UsdcIntent } from './usdc-handlers.ts';
 import { verifyUsdcTx, type ChainTx, type IntentFacts } from './usdc-verify.ts';
 
 vi.setConfig({ testTimeout: 120_000 });
@@ -187,7 +188,8 @@ async function chain(payer: string) {
   const txs = new Map<string, ChainTx>();
   const finalized = new Set<string>();
   const byAddress = new Map<string, string[]>();
-  const sw = { lamports: 1_000_000_000, hold: false };
+  // noMemos: a node that leaves the memo out of signature listings (the sweep's second pass must still find payments).
+  const sw = { lamports: 1_000_000_000, hold: false, noMemos: false };
   const index = (sig: string, tx: ChainTx) => {
     for (const k of tx.transaction?.message?.accountKeys ?? []) {
       const a = typeof k === 'string' ? k : k.pubkey;
@@ -236,7 +238,18 @@ async function chain(payer: string) {
           const tx = txs.get(first) ?? null;
           return (tx && (opts.commitment !== 'finalized' || finalized.has(first)) ? tx : null) as T;
         }
-        case 'getSignaturesForAddress': return (byAddress.get(first) ?? []).map((signature) => ({ signature, err: null, memo: null })) as T;
+        case 'getSignaturesForAddress': {
+          // Newest first, honouring commitment, before, until and limit like the real method.
+          let list = (byAddress.get(first) ?? []).filter((x) => opts?.commitment !== 'finalized' || finalized.has(x));
+          if (opts?.before) list = list.slice(list.indexOf(opts.before as string) + 1);
+          if (opts?.until && list.includes(opts.until as string)) list = list.slice(0, list.indexOf(opts.until as string));
+          list = list.slice(0, (opts?.limit as number | undefined) ?? 1000);
+          return list.map((signature) => {
+            const memos = (txs.get(signature)?.transaction?.message?.instructions ?? []).filter((ix) => ix.programId === PROGRAM.memo).map((ix) => String(ix.parsed));
+            const memo = sw.noMemos || !memos.length ? null : memos.map((m) => `[${m.length}] ${m}`).join('; ');
+            return { signature, err: null, memo, blockTime: txs.get(signature)?.blockTime ?? null };
+          }) as T;
+        }
         default: throw new Error(`unexpected RPC ${method}`);
       }
     },
@@ -254,15 +267,16 @@ async function setup(cfg?: AdsConfig) {
   const { keypair } = await generateKeypair();
   const db = await database();
   const ch = await chain(keypair.address);
-  const config = cfg ?? adsConfigLive((k) => ({ ADS_ALLOW_MAINNET: 'true' } as Record<string, string>)[k]);
+  const config = cfg ?? adsConfigLive((k) => ({ ADS_ALLOW_MAINNET: 'true', SUPABASE_SERVICE_ROLE_KEY: 'svc' } as Record<string, string>)[k]);
   const deps: AdsDeps = { db: db.call, rpc: ch.rpc, sleep: async () => {} };
-  const post = async (body: Record<string, unknown>) => {
-    const res = await adsHandler(new Request('https://x/functions/v1/pokejam-ads-live', { method: 'POST', body: JSON.stringify(body), headers: { 'cf-connecting-ip': `10.0.0.${Math.floor(Math.random() * 250)}` } }), config, deps);
+  const post = async (body: Record<string, unknown>, headers: Record<string, string> = {}) => {
+    const res = await adsHandler(new Request('https://x/functions/v1/pokejam-ads-live', { method: 'POST', body: JSON.stringify(body), headers: { 'cf-connecting-ip': `10.0.0.${Math.floor(Math.random() * 250)}`, ...headers } }), config, deps);
     return { status: res.status, body: await res.json() as Record<string, any> };
   };
   const intent = (o: Record<string, unknown> = {}) => post({ action: 'usdc-intent', wallet: keypair.address, text: 'BUY $PJAM', theme: 'gold', plan: 'week', ...o });
   const sign = (b64: string, kp: Keypair = keypair) => signTransactionBase64(b64, kp);
-  return { db, ch, post, intent, sign, wallet: keypair.address, keypair };
+  const sweep = () => post({ action: 'sweep' }, { authorization: 'Bearer svc' });
+  return { db, ch, post, intent, sign, sweep, wallet: keypair.address, keypair };
 }
 
 describe('usdc-intent and usdc-confirm through pokejam-ads-live', () => {
@@ -404,5 +418,137 @@ describe('usdc-intent and usdc-confirm through pokejam-ads-live', () => {
     const t = await setup(adsConfig((k) => ({ AD_MINT: OTHER_MINT } as Record<string, string>)[k]));
     expect(await t.intent()).toEqual({ status: 400, body: { error: 'unknown action' } });
     expect((await t.post({ action: 'usdc-confirm', id: crypto.randomUUID() })).body).toEqual({ error: 'unknown action' });
+  });
+});
+
+describe('the sweep recovers USDC payments whose page closed (pokejam-ads-live)', () => {
+  const sigOf = (b64: string) => base58Encode(parseTransaction(base64Decode(b64)).signatures[0]);
+
+  it('books a landed payment from the receiver ATA history, once, and moves its cursor', async () => {
+    const t = await setup();
+    const i = await t.intent();
+    // The wallet sent it, then the page closed: nobody called usdc-confirm.
+    const sig = await t.ch.rpc.send(await t.sign(i.body.tx));
+    expect((await t.post({ action: 'sweep' })).status).toBe(401);
+    const first = await t.sweep();
+    expect(first.status).toBe(200);
+    expect(first.body.usdc).toMatchObject({ seen: 1, paid: 1, paidByReference: 0, capped: false });
+    const ads = await t.db.sql('select usdc_sig, state, plan from public.pokejam_live_ads');
+    expect(ads).toEqual([{ usdc_sig: sig, state: 'paid', plan: 'week' }]);
+    expect(await t.db.sql(`select value #>> '{}' as v from public.pokejam_config where key = 'live_ad_usdc_scan_cursor'`)).toEqual([{ v: sig }]);
+    // Next run: nothing new past the cursor, nothing booked twice; a late usdc-confirm is a harmless duplicate.
+    expect((await t.sweep()).body.usdc).toMatchObject({ scanned: 0, seen: 0, paid: 0, open: 0 });
+    expect((await t.post({ action: 'usdc-confirm', id: i.body.intent.id, signature: sig })).body).toMatchObject({ status: 'paid', duplicate: true });
+    expect(await t.db.sql('select count(*)::int as n from public.pokejam_live_ads')).toEqual([{ n: 1 }]);
+    // The devnet tables and cursor are untouched.
+    expect(await t.db.sql(`select count(*)::int as n from public.pokejam_config where key = 'ad_usdc_scan_cursor'`)).toEqual([{ n: 0 }]);
+  });
+
+  it('waits for finality: a payment not yet finalized is left for the next run', async () => {
+    const t = await setup();
+    const i = await t.intent();
+    t.ch.sw.hold = true;
+    const sig = await t.ch.rpc.send(await t.sign(i.body.tx));
+    expect((await t.sweep()).body.usdc).toMatchObject({ seen: 0, paid: 0, open: 1, paidByReference: 0 });
+    t.ch.finalized.add(sig);
+    expect((await t.sweep()).body.usdc).toMatchObject({ seen: 1, paid: 1 });
+  });
+
+  it('books nothing for a short or forged-mint payment, then books the real one', async () => {
+    const t = await setup();
+    const i = await t.intent();
+    const { reference, memo, id } = i.body.intent;
+    const receiverAta = t.ch.receiverAta;
+    // Crafted payments carrying this intent's memo and reference: short, and to the receiver ATA but a forged mint.
+    for (const o of [{ amount: WEEK - 1n }, { destMint: OTHER_MINT }] as Partial<Pay>[]) {
+      const s = base58Encode(randomBytes(64));
+      t.ch.inject(s, await paymentTx({ signature: s, wallet: t.wallet, reference, memo, amount: WEEK, mint: USDC, receiver: RECEIVER, ...o }));
+    }
+    expect((await t.sweep()).body.usdc).toMatchObject({ seen: 2, paid: 0, paidByReference: 0 });
+    expect(await t.db.sql('select status from public.pokejam_live_ad_usdc_intents where id = $1', [id])).toEqual([{ status: 'open' }]);
+    expect(t.ch.usdc.get(receiverAta)).toBe(0n);
+    await t.ch.rpc.send(await t.sign(i.body.tx));
+    expect((await t.sweep()).body.usdc).toMatchObject({ seen: 1, paid: 1 });
+  });
+
+  it('finds an open intent through its reference key when the listing shows no memo', async () => {
+    const t = await setup();
+    const i = await t.intent();
+    t.ch.sw.noMemos = true;
+    const sig = await t.ch.rpc.send(await t.sign(i.body.tx));
+    expect((await t.sweep()).body.usdc).toMatchObject({ seen: 0, paid: 0, open: 1, paidByReference: 1 });
+    expect(await t.db.sql('select usdc_sig from public.pokejam_live_ads')).toEqual([{ usdc_sig: sig }]);
+    expect((await t.sweep()).body.usdc).toMatchObject({ open: 0, paidByReference: 0 });
+  });
+
+  it('is not part of the devnet sweep', async () => {
+    const t = await setup(adsConfig((k) => ({ AD_MINT: OTHER_MINT, SUPABASE_SERVICE_ROLE_KEY: 'svc' } as Record<string, string>)[k]));
+    const r = await t.sweep();
+    expect(r.status).toBe(200);
+    expect(r.body).not.toHaveProperty('usdc');
+  });
+
+  // The bounds, with a stub database and chain (no Postgres needed).
+  async function stub(n: number, o: { find?: (memo: string) => UsdcIntent | null; tx?: () => ChainTx | null; blockTime?: number; fullPages?: boolean } = {}) {
+    const cfg = adsConfigLive((k) => ({ ADS_ALLOW_MAINNET: 'true' } as Record<string, string>)[k]);
+    const ata = await deriveAta(RECEIVER, USDC);
+    const now = Date.now();
+    // Newest first, like getSignaturesForAddress.
+    const sigs = Array.from({ length: n }, (_, k) => ({ signature: `sig${n - k}`, err: null, memo: `[32] pokejam-ad-usdc:${(n - k).toString(16).padStart(16, '0')}`, blockTime: o.blockTime ?? Math.floor(now / 1000) - 60 }));
+    const store = new Map<string, string>();
+    const finds: string[] = [];
+    let listings = 0;
+    const db = (async (fn: string, a: Record<string, unknown> = {}) => {
+      switch (fn) {
+        case 'pokejam_ad_cfg': return store.get(a.p_key as string) ?? a.p_default;
+        case 'pokejam_ad_set_cfg': store.set(a.p_key as string, a.p_value as string); return null;
+        case 'pokejam_ad_usdc_find': finds.push(a.p_memo as string); return o.find?.(a.p_memo as string) ?? null;
+        case 'pokejam_ad_usdc_open': return [];
+        default: throw new Error(`unexpected db ${fn}`);
+      }
+    }) as UsdcCtx['db'];
+    const rpc = {
+      async call<T>(method: string, params: unknown[]): Promise<T> {
+        const [addr, opts] = params as [string, Record<string, unknown>];
+        if (method === 'getTransaction') return (o.tx?.() ?? null) as T;
+        if (method !== 'getSignaturesForAddress' || addr !== ata) throw new Error(`unexpected ${method} ${addr}`);
+        listings++;
+        if (o.fullPages) return Array.from({ length: SWEEP.pageSize }, (_, k) => ({ signature: `p${listings}-${k}`, err: null, memo: null, blockTime: Math.floor(now / 1000) })) as T;
+        let list = sigs;
+        if (opts.until) list = list.slice(0, list.findIndex((s) => s.signature === opts.until));
+        return list.slice(0, opts.limit as number) as T;
+      },
+    } as unknown as UsdcCtx['rpc'];
+    const ctx: UsdcCtx = { cfg, usdc: cfg.usdc!, db, rpc, sleep: async () => {} };
+    return { run: () => usdcSweep(ctx, now), store, finds, listings: () => listings };
+  }
+
+  it('checks at most SWEEP.checks payments a run, and the cursor resumes after the last one checked', async () => {
+    const s = await stub(SWEEP.checks + 5);
+    expect(await s.run()).toMatchObject({ seen: SWEEP.checks + 5, capped: true });
+    expect(s.finds).toHaveLength(SWEEP.checks);
+    // Oldest first, so the cursor is the newest one checked.
+    expect(s.store.get('ad_usdc_scan_cursor')).toBe(`sig${SWEEP.checks}`);
+    expect(await s.run()).toMatchObject({ seen: 5, capped: false });
+    expect(s.finds).toHaveLength(SWEEP.checks + 5);
+    expect(s.store.get('ad_usdc_scan_cursor')).toBe(`sig${SWEEP.checks + 5}`);
+    expect(await s.run()).toMatchObject({ scanned: 0, seen: 0 });
+  });
+
+  it('reads at most SWEEP.pages pages of history a run', async () => {
+    const s = await stub(0, { fullPages: true });
+    expect(await s.run()).toMatchObject({ scanned: SWEEP.pages * SWEEP.pageSize });
+    expect(s.listings()).toBe(SWEEP.pages);
+  });
+
+  it('holds the cursor for a just-listed payment it cannot read yet, but not forever', async () => {
+    const intent = (memo: string) => ({ id: crypto.randomUUID(), status: 'open', cluster: 'mainnet-beta', mint: USDC, receiver: RECEIVER, memo, amount: WEEK.toString(), wallet: RECEIVER, reference: RECEIVER, created_at: 0 }) as unknown as UsdcIntent;
+    const fresh = await stub(2, { find: intent, tx: () => null });
+    expect(await fresh.run()).toMatchObject({ capped: true, paid: 0 });
+    expect(fresh.store.has('ad_usdc_scan_cursor')).toBe(false);
+    // Unreadable for longer than SWEEP.retrySeconds: skipped (the open-intent pass still covers it for a day).
+    const stale = await stub(2, { find: intent, tx: () => null, blockTime: Math.floor(Date.now() / 1000) - SWEEP.retrySeconds - 60 });
+    expect(await stale.run()).toMatchObject({ capped: false, paid: 0 });
+    expect(stale.store.get('ad_usdc_scan_cursor')).toBe('sig2');
   });
 });

@@ -159,10 +159,11 @@ The USDC prices match the courtside banner half's list price on the contact page
    - the advertiser's wallet signed;
    - the transaction succeeded.
 3. A signature books only once, because `usdc_sig` and the intent's signature are unique. With no signature, `usdc-confirm` finds the payment by the intent's reference key, so a page closed mid-payment still books on its next visit. A payment that really landed after its intent expired still books.
+4. **Recovery with no page open:** the live `sweep` reads the receiver's USDC account history past a cursor (`live_ad_usdc_scan_cursor`, at `finalized`, at most 3 pages and 25 checks a run, 3 days back on the first run). It matches each intent memo with `pokejam_live_ad_usdc_find` and checks it as in step 2. It then re-checks the last day's open intents (at most 20, `pokejam_live_ad_usdc_open`) by reference key. If it hits a cap, the cursor stops at the last payment checked, so nothing is skipped. The sweep's reply carries a `usdc` summary.
 
 **Layout.** The board keeps two halves. The `$PJAM · OFFICIAL POKEJAM TOKEN` half stays a fixed house ad. Booked ads replace only the "YOUR AD HERE" half (`src/game/ledBoard.ts`, `houseAds()` / `bookableHalfOn()` in `src/data/ads.ts`), and that half shows YOUR AD HERE when nothing is booked. The board is part of the court scenery, and the Advertise page is its own screen (title menu → Courtside Ads, `#advertise`), so no ad UI ever covers the game.
 
-**Moderation.** `pokejam_admin_live_ads` and `pokejam_admin_live_ad_remove` work like the devnet ones and are logged in `pokejam_admin_log`. To stop new bookings: `update public.pokejam_config set value = 'true' where key = 'live_ads_paused';` Payments already sent still settle.
+**Moderation.** admin.html's Ads tab has a Devnet / Live (mainnet) switch. Live calls `pokejam_admin_live_ads` and `pokejam_admin_live_ad_remove`, which work like the devnet ones and are logged in `pokejam_admin_log`. The ban list is shared by both boards, so **Lift** is `pokejam_admin_ad_unban` on either. To stop new bookings: `update public.pokejam_config set value = 'true' where key = 'live_ads_paused';` Payments already sent still settle.
 
 ### On kungFuDOOM's OK (mainnet, the live site)
 

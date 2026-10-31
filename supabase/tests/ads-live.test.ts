@@ -317,6 +317,30 @@ describe('paying in USDC', () => {
     expect(await t.service('pokejam_live_ad_usdc_intent_get', ['00000000-0000-0000-0000-000000000000'])).toBeNull();
   });
 
+  it('finds an intent by memo or reference for the recovery sweep, and lists the last day\'s open ones', async () => {
+    const t = await testDb();
+    const memo = `pokejam-ad-usdc:${'0123456789abcdef'}`;
+    const i = await t.service<Intent>('pokejam_live_ad_usdc_intent', [WALLET, 'LOST PAGE', 'fire', 'week', null, ref(), memo, RECEIVER, USDC, 'mainnet-beta', null]);
+    const j = await t.intent('STILL OPEN');
+    expect(await t.service('pokejam_live_ad_usdc_find', [memo, null])).toMatchObject({ id: i.id, status: 'open' });
+    expect(await t.service('pokejam_live_ad_usdc_find', [null, j.reference])).toMatchObject({ id: j.id });
+    // Unknown keys, a memo that isn't ours, or nothing at all: null.
+    expect(await t.service('pokejam_live_ad_usdc_find', ['pokejam-ad-usdc:ffffffffffffffff', null])).toBeNull();
+    expect(await t.service('pokejam_live_ad_usdc_find', [j.memo, null])).toBeNull(); // the test helper's memos aren't 16 hex
+    expect(await t.service('pokejam_live_ad_usdc_find', [null, null])).toBeNull();
+    const open = await t.service<Intent[]>('pokejam_live_ad_usdc_open', [10]);
+    expect(open.map((x) => x.id)).toEqual([j.id, i.id]);
+    // Paid, or older than a day: no longer open for the sweep (find still returns a paid one, so the sweep skips it).
+    await t.usdcPay(i);
+    await t.sql(`update public.pokejam_live_ad_usdc_intents set created_at = now() - interval '2 days' where id = $1`, [j.id]);
+    expect(await t.service('pokejam_live_ad_usdc_open', [10])).toEqual([]);
+    expect(await t.service('pokejam_live_ad_usdc_find', [memo, null])).toMatchObject({ status: 'paid' });
+    // Bounded: at most 50, at least 1.
+    expect(await t.service<Intent[]>('pokejam_live_ad_usdc_open', [0])).toHaveLength(0);
+    for (let k = 0; k < 3; k++) await t.intent(`AD ${k}`);
+    expect(await t.service<Intent[]>('pokejam_live_ad_usdc_open', [0])).toHaveLength(1);
+  });
+
   it('a USDC ad taken down keeps its time to replace, paid the same way', async () => {
     const t = await testDb();
     const r = await t.usdcPay(await t.intent('FIRST TEXT'));
@@ -339,6 +363,8 @@ describe('who may call what', () => {
       await expect(call('pokejam_live_ad_usdc_intent', [WALLET, 'HI', 'gold', 'week', null, ref(), 'memo-123456', RECEIVER, USDC, 'mainnet-beta', null])).rejects.toThrow(/permission denied/);
       await expect(call('pokejam_live_ad_usdc_pay', [Z, 'x', '1', WALLET])).rejects.toThrow(/permission denied/);
       await expect(call('pokejam_live_ad_usdc_intent_get', [Z])).rejects.toThrow(/permission denied/);
+      await expect(call('pokejam_live_ad_usdc_find', ['pokejam-ad-usdc:0123456789abcdef', null])).rejects.toThrow(/permission denied/);
+      await expect(call('pokejam_live_ad_usdc_open', [10])).rejects.toThrow(/permission denied/);
       await expect(call('pokejam_live_ad_set_cfg', ['ads_paused', 'false'])).rejects.toThrow(/permission denied/);
       for (const table of ['pokejam_live_ads', 'pokejam_live_ad_reports', 'pokejam_live_ad_usdc_intents']) {
         await expect(t.db.transaction(async (tx) => {
@@ -366,5 +392,9 @@ describe('who may call what', () => {
     expect(await t.as('authenticated', mod)<{ wallet: string }[]>('pokejam_admin_ad_bans')).toMatchObject([{ wallet: WALLET }]);
     const log = await t.sql('select action from public.pokejam_admin_log order by id');
     expect(log.map((r) => r.action)).toEqual(['live ad ban']);
+    // Lift (the admin page's Live board uses the shared unban): the wallet may book on the live board again.
+    await expect(t.create()).rejects.toThrow(/banned/);
+    await t.as('authenticated', mod)('pokejam_admin_ad_unban', [WALLET]);
+    expect((await t.create()).state).toBe('pending');
   });
 });

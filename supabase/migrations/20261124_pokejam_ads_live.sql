@@ -361,6 +361,25 @@ returns jsonb language sql stable security definer set search_path = public as $
   select public.pokejam_live_ad_usdc_intent_view(i) from public.pokejam_live_ad_usdc_intents i where i.id = p_id;
 $$;
 
+-- Recovery (the sweep in pokejam-ads-live, for a payment whose page closed before it confirmed). The intent a memo or
+-- reference key seen on chain belongs to, or null: either key may be null. Only the last 30 days' intents, and a memo
+-- must look like ours, so a stranger's memo costs one indexed lookup at most.
+create or replace function public.pokejam_live_ad_usdc_find(p_memo text, p_reference text)
+returns jsonb language sql stable security definer set search_path = public as $$
+  select public.pokejam_live_ad_usdc_intent_view(i) from public.pokejam_live_ad_usdc_intents i
+  where ((p_memo ~ '^pokejam-ad-usdc:[0-9a-f]{16}$' and i.memo = p_memo) or (p_reference is not null and i.reference = p_reference))
+    and i.created_at > now() - interval '30 days'
+  order by i.created_at desc limit 1;
+$$;
+
+-- Open intents from the last day, newest first (at most 50): the sweep looks each one up by its reference key.
+create or replace function public.pokejam_live_ad_usdc_open(p_limit int)
+returns jsonb language sql stable security definer set search_path = public as $$
+  select coalesce(jsonb_agg(public.pokejam_live_ad_usdc_intent_view(i) order by i.created_at desc), '[]')
+  from (select * from public.pokejam_live_ad_usdc_intents where status = 'open' and created_at > now() - interval '1 day'
+        order by created_at desc limit greatest(1, least(p_limit, 50))) i;
+$$;
+
 -- Called only after the Edge Function checked the transaction on chain. Idempotent. Returns {status, ad, intent}:
 --   paid            the ad was booked now
 --   duplicate       this intent was already paid by this same signature (a retry): nothing changes
@@ -560,6 +579,7 @@ begin
     'pokejam_live_ad_usdc_intent(text, text, text, text, timestamptz, text, text, text, text, text, numeric)',
     'pokejam_live_ad_usdc_intent_view(public.pokejam_live_ad_usdc_intents)', 'pokejam_live_ad_usdc_intent_get(uuid)',
     'pokejam_live_ad_usdc_pay(uuid, text, numeric, text)',
+    'pokejam_live_ad_usdc_find(text, text)', 'pokejam_live_ad_usdc_open(int)',
     'pokejam_live_ad_get(uuid)', 'pokejam_live_ad_by_code(text)', 'pokejam_live_ad_mine(text)', 'pokejam_live_ad_unsettled(int)',
     'pokejam_live_ad_remove(uuid, text, boolean)', 'pokejam_live_ad_replace(uuid, text, text)', 'pokejam_live_ad_report(uuid, text, text)',
     'pokejam_live_ad_board()'
