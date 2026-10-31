@@ -2161,8 +2161,9 @@ body:has(.pause-btn) .music-btn:not(.docked) {
 }
 /* Ranked team pick (presetPick.ts): six preset cards, 3x2 in landscape, 2x3 in portrait; Lock in pinned at the bottom. */
 .menu.pp { display: flex; flex-direction: column; box-sizing: border-box; height: 100dvh; min-height: 0; padding: max(8px, env(safe-area-inset-top, 0px)) 10px 0; overflow: hidden; }
-/* Right padding keeps the clock clear of the fixed music button (40px + its 10px inset). */
-.pp-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 6px; padding-right: 48px; }
+/* The header reserves the fixed music button's corner: right padding keeps the clock clear of it (40px + its 10px inset),
+   and min-height ends the header below the button's bottom edge (max(10px, inset) + 40px) so the cards start under it. */
+.pp-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 44px; margin-bottom: 6px; padding-right: 48px; }
 .pp-title { margin: 0; font: normal 700 1.1rem var(--pixel); }
 .pp-clock { font: normal 700 1.1rem var(--pixel); padding: 2px 10px; border: 2px solid var(--line); border-radius: 8px; }
 .pp-clock.low { color: #ff6b6b; border-color: #ff6b6b; }
@@ -2183,7 +2184,12 @@ body:has(.pause-btn) .music-btn:not(.docked) {
 .pp-bar .btn { min-width: 220px; }
 .pp-status { margin: 0; padding: 10px 0; font-weight: 700; }
 .pp-err { margin: 0; color: #ff6b6b; font-size: 0.85rem; }
-@media (orientation: portrait) { .pp-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(3, minmax(0, 1fr)); } }
+/* Portrait cards are narrow but tall: three sprites per row (3 + 2) gives each name room, and long names may wrap. */
+@media (orientation: portrait) {
+  .pp-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(3, minmax(0, 1fr)); }
+  .pp-mons { grid-template-columns: repeat(3, minmax(0, 1fr)); align-content: center; row-gap: 6px; }
+  .pp-mon { white-space: normal; overflow-wrap: anywhere; text-align: center; font-size: 0.6rem; }
+}
 @media (orientation: landscape) and (max-height: 450px) { .pp-mons img { max-width: 34px; } .pp-top { margin-bottom: 4px; } .pp-bar .btn.big { padding-top: 6px; padding-bottom: 6px; } }
 /* Pre-game intro: both lineups, VS between, Skip pinned at thumb reach. Fits 844x390 / 932x430 / 390x844 without scrolling. */
 .screen-intro { overflow: hidden; }
