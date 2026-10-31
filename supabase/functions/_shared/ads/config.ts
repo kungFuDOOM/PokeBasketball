@@ -1,4 +1,5 @@
 // Billboard ads: Edge Function settings, from Edge Function secrets (never the repo).
+import { USDC_MINT, USDC_RECEIVER } from './usdc-chain.ts';
 //
 // Devnet until kungFuDOOM approves mainnet: any other cluster refuses to start unless ADS_ALLOW_MAINNET is the
 // exact approval phrase. Nothing here is secret on mainnet (the server never signs a burn); on devnet the faucet's
@@ -25,6 +26,19 @@ export interface AdsConfig {
   faucetAmount: bigint;
   /** Who may run the sweeper (cron). */
   serviceKey: string;
+  /** Paying in USDC (the live function only; the devnet pokejam-ads has none, so its actions don't exist there). */
+  usdc?: UsdcSettings;
+  /** The SQL function a handler call really goes to (the live function's tables are pokejam_live_*). Default: as named. */
+  dbName?: (fn: string) => string;
+}
+
+export interface UsdcSettings {
+  /** Fixed per cluster (USDC_MINT): never taken from a secret or from the client. */
+  mint: string;
+  /** The receiving wallet's public address; the payment must land in its associated token account for `mint`. */
+  receiver: string;
+  /** 'finalized' on mainnet, 'confirmed' on devnet. */
+  commitment: 'confirmed' | 'finalized';
 }
 
 const RPC: Record<Cluster, string> = { devnet: 'https://api.devnet.solana.com', 'mainnet-beta': 'https://api.mainnet-beta.solana.com' };
@@ -61,6 +75,12 @@ export function adsConfig(get: (k: string) => string | undefined): AdsConfig {
 /** The live function runs on mainnet only when this secret is exactly this string. */
 export const LIVE_MAINNET_FLAG = 'true';
 
+/**
+ * The live tables' SQL functions: pokejam_ad_<x> is pokejam_live_ad_<x> (20261124_pokejam_ads_live.sql). The faucet's
+ * once-a-day claim (devnet test tokens only; never reached on mainnet) has no live copy and stays shared.
+ */
+export const liveDbName = (fn: string) => (fn.startsWith('pokejam_ad_faucet_') ? fn : fn.replace(/^pokejam_ad_/, 'pokejam_live_ad_'));
+
 /** Base58 public key (32 bytes, 32-44 chars). */
 const PUBKEY = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 
@@ -83,6 +103,9 @@ export function adsConfigLive(get: (k: string) => string | undefined, opts: Live
   const mintVal = val('ADS_PJAM_MINT') ?? (cluster === 'mainnet-beta' ? PJAM_MAINNET : undefined);
   if (!mintVal) throw new Error('ADS_PJAM_MINT is not set');
   if (!PUBKEY.test(mintVal)) throw new Error('ADS_PJAM_MINT is not a valid Solana address');
+  // USDC goes to kungfudoom.sns unless ADS_USDC_RECEIVER names another wallet. The mint is never configurable.
+  const receiver = val('ADS_USDC_RECEIVER') ?? USDC_RECEIVER;
+  if (!PUBKEY.test(receiver)) throw new Error('ADS_USDC_RECEIVER is not a valid Solana address');
   const priority = Number(val('ADS_LIVE_PRIORITY_MICROLAMPORTS') ?? (cluster === 'devnet' ? 0 : 20_000));
   const faucet = val('AD_FAUCET_AMOUNT') ?? '25000000000000';
   return {
@@ -95,5 +118,7 @@ export function adsConfigLive(get: (k: string) => string | undefined, opts: Live
     faucetSecret: cluster === 'devnet' ? val('AD_FAUCET_SECRET') : undefined,
     faucetAmount: /^\d+$/.test(faucet) ? BigInt(faucet) : 25_000_000_000_000n,
     serviceKey: val('SUPABASE_SERVICE_ROLE_KEY') ?? '',
+    usdc: { mint: USDC_MINT[cluster], receiver, commitment: cluster === 'mainnet-beta' ? 'finalized' : 'confirmed' },
+    dbName: liveDbName,
   };
 }

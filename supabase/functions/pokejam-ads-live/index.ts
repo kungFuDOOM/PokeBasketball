@@ -1,7 +1,11 @@
 // pokejam-ads-live: the live site's (pokejam.xyz) courtside LED board booking. Same handler as the devnet test site's
 // pokejam-ads (_shared/ads/handler.ts), configured by adsConfigLive: mainnet unless ADS_LIVE_CLUSTER is "devnet", and
-// it refuses to start on mainnet unless ADS_ALLOW_MAINNET is exactly "true". No faucet on mainnet.
-// Secrets: ADS_ALLOW_MAINNET, ADS_PJAM_MINT (optional, defaults to the official $PJAM; needs user confirmation);
+// it refuses to start on mainnet unless ADS_ALLOW_MAINNET is exactly "true". No faucet on mainnet. Its bookings live in
+// the pokejam_live_* tables (20261124_pokejam_ads_live.sql; the config maps every SQL call there). Besides the $PJAM burn
+// it takes USDC for a week or a month (actions usdc-intent / usdc-confirm, _shared/ads/usdc-handlers.ts), paid to
+// kungfudoom.sns (FPwoDYkH...) unless ADS_USDC_RECEIVER says otherwise; the USDC mint is fixed per cluster.
+// Secrets: ADS_ALLOW_MAINNET, ADS_PJAM_MINT (optional, defaults to the official $PJAM; needs user confirmation),
+// ADS_USDC_RECEIVER (optional);
 // optionally ADS_LIVE_CLUSTER, ADS_LIVE_RPC_URL, ADS_LIVE_ALLOWED_ORIGINS, ADS_LIVE_PRIORITY_MICROLAMPORTS,
 // ADS_ALERT_WEBHOOK_URL. The ADS_LIVE_* names keep the devnet function's ADS_* secrets untouched (secrets are
 // project-wide). Deploy with --no-verify-jwt: the page calls it without signing in.

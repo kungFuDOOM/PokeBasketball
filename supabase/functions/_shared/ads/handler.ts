@@ -16,6 +16,10 @@
 //   POST {action:'report', id, reason}        flag a live ad for moderators
 //   POST {action:'faucet', wallet}            devnet only: test $PJAM and a little test SOL, once a day
 //   POST {action:'sweep'}                     cron (service key): pay every burn on-chain that names a booking
+//   POST {action:'usdc-intent', ...}          live only (pokejam-ads-live): pay for a week or a month in USDC
+//   POST {action:'usdc-confirm', id, signature?, tx?}
+//                                             live only: check the USDC payment on-chain and book the ad
+//                                             (both in usdc-handlers.ts; the devnet pokejam-ads answers 'unknown action')
 //
 // A burn is found three ways, so it always becomes airtime: the page confirms it the moment the wallet signs; the
 // wallet's ads are settled whenever it connects (any device); and the sweeper walks the mint's own history for
@@ -31,6 +35,7 @@ import { base58Encode } from '../pack/bytes.ts';
 import { decodeTransaction } from '../pack/tx-inspect.ts';
 import type { AdsConfig } from './config.ts';
 import { adMemo, buildBurnTransaction, buildFaucetTransaction, MEMO_PROGRAM, SPL_2022_PROGRAM, SPL_PROGRAM } from './tx.ts';
+import { usdcConfirm, usdcIntent, USDC_PLANS, type Reply } from './usdc-handlers.ts';
 import { checkBurn, type ParsedTransaction } from './verify.ts';
 
 /** Calls one SQL function by name with named arguments; throws its error message. */
@@ -51,7 +56,8 @@ export interface Booking {
   wallet: string;
   text: string;
   theme: string;
-  plan: 'hour' | 'day' | 'week';
+  /** 'month' only on the live board, paid in USDC. */
+  plan: 'hour' | 'day' | 'week' | 'month';
   hours: number;
   price: string;
   state: 'pending' | 'paid' | 'dust' | 'removed';
@@ -92,7 +98,7 @@ export const VERDICTS: Record<string, string> = {
 // Per IP, per window (seconds). The board is cached instead.
 const LIMITS: Record<string, [number, number]> = {
   check: [120, 60], quote: [60, 60], wallet: [30, 60], prepare: [30, 3600], confirm: [120, 60], mine: [30, 60],
-  replace: [10, 3600], report: [10, 3600], faucet: [3, 86_400],
+  replace: [10, 3600], report: [10, 3600], faucet: [3, 86_400], 'usdc-intent': [30, 3600], 'usdc-confirm': [120, 60],
 };
 
 /** A mistake the caller can fix: shown to them as-is. */
@@ -208,7 +214,10 @@ const refused = (e: unknown) => {
   return /^RPC sendTransaction: (?!HTTP)/.test(m);
 };
 
-export async function adsHandler(req: Request, cfg: AdsConfig, deps: AdsDeps): Promise<Response> {
+export async function adsHandler(req: Request, cfg: AdsConfig, rawDeps: AdsDeps): Promise<Response> {
+  // The live function's tables are pokejam_live_*: every SQL call goes through cfg.dbName (none on devnet).
+  const dbName = cfg.dbName;
+  const deps: AdsDeps = dbName ? { ...rawDeps, db: (fn, args) => rawDeps.db(dbName(fn), args) } : rawDeps;
   const origin = req.headers.get('origin') ?? '';
   const allowed = !cfg.origins.length || cfg.origins.includes(origin);
   const cors: Record<string, string> = {
@@ -260,7 +269,8 @@ export async function adsHandler(req: Request, cfg: AdsConfig, deps: AdsDeps): P
   const caller = hex(await sha256(`${cfg.serviceKey}|${ip}`)).slice(0, 24);
 
   try {
-    const limit = LIMITS[action];
+    // The USDC actions don't exist on the devnet function: not even a rate-limit row for them there.
+    const limit = action.startsWith('usdc-') && !cfg.usdc ? undefined : LIMITS[action];
     if (limit && !(await deps.db<boolean>('pokejam_ad_allow', { p_key: `${action}:${caller}`, p_max: limit[0], p_seconds: limit[1] }))) {
       return json({ error: 'Too many requests. Wait a minute and try again.' }, 429);
     }
@@ -268,7 +278,9 @@ export async function adsHandler(req: Request, cfg: AdsConfig, deps: AdsDeps): P
       case 'board': {
         if (!boardCache || Date.now() - boardCache.at > 10_000) {
           const [board, mint] = await Promise.all([deps.db<Record<string, unknown>>('pokejam_ad_board'), mintInfo(cfg, deps.rpc)]);
-          boardCache = { at: Date.now(), body: { ...board, cluster: cfg.cluster, mint: cfg.mint, decimals: mint.decimals, supply: mint.supply, faucet: !!cfg.faucetSecret } };
+          boardCache = { at: Date.now(), body: { ...board, cluster: cfg.cluster, mint: cfg.mint, decimals: mint.decimals, supply: mint.supply, faucet: !!cfg.faucetSecret,
+            // Where USDC payments go (live only). The prices are the board's own `usdc` (from the database).
+            ...(cfg.usdc ? { usdcPay: { mint: cfg.usdc.mint, receiver: cfg.usdc.receiver, decimals: 6 } } : {}) } };
         }
         return json(boardCache.body, 200, { 'cache-control': 'public, max-age=10' });
       }
@@ -278,7 +290,8 @@ export async function adsHandler(req: Request, cfg: AdsConfig, deps: AdsDeps): P
       }
       case 'quote': {
         const plan = str('plan');
-        if (!PLANS.has(plan)) throw new Refusal('Pick an hour, a day or a week.');
+        // A month is a USDC plan: quoted only where USDC is offered.
+        if (!PLANS.has(plan) && !(cfg.usdc && USDC_PLANS.has(plan))) throw new Refusal(cfg.usdc ? 'Pick an hour, a day, a week or a month.' : 'Pick an hour, a day or a week.');
         const w = str('wallet');
         return json(await deps.db('pokejam_ad_quote', { p_plan: plan, p_start: start(), p_wallet: isAddress(w) ? w : null }));
       }
@@ -449,6 +462,18 @@ export async function adsHandler(req: Request, cfg: AdsConfig, deps: AdsDeps): P
         }
         return json({ ...chain, looked: pending.length, paidFromWallets: wallets });
       }
+      case 'usdc-intent':
+      case 'usdc-confirm': {
+        if (!cfg.usdc) return json({ error: 'unknown action' }, 400);
+        const ctx = { cfg, usdc: cfg.usdc, db: deps.db, rpc: deps.rpc, sleep, log: (m: string) => console.error(m) };
+        const r: Reply = action === 'usdc-intent'
+          ? await usdcIntent(ctx, { wallet: wallet(), text: str('text', 200), theme: str('theme'), plan: str('plan'), start: start(), expect: str('expect'), themes: THEMES })
+          : await usdcConfirm(ctx, { id: str('id'), signature: str('signature', 100), tx: str('tx', 4000) });
+        if (r.changed) changed();
+        // The text filter's verdict, in the page's words (the same as a burn booking's).
+        if (r.body.verdict) return json({ error: VERDICTS[r.body.reason as string] ?? "That text can't run.", reason: r.body.reason }, r.status);
+        return json(r.body, r.status);
+      }
       default:
         return json({ error: 'unknown action' }, 400);
     }
@@ -458,7 +483,7 @@ export async function adsHandler(req: Request, cfg: AdsConfig, deps: AdsDeps): P
     // The SQL functions' own refusals are written for players.
     const verdict = /ad text not allowed \((\w+)\)/.exec(msg);
     if (verdict) return json({ error: VERDICTS[verdict[1]] ?? "That text can't run.", reason: verdict[1] }, 400);
-    if (/paused|not a Solana wallet|unknown plan|60 days|too many unpaid|already used|banned|already replaced|only an ad that was taken down|no time left|no such ad|pick a colour/.test(msg)) {
+    if (/paused|not a Solana wallet|unknown plan|60 days|too many unpaid|already used|banned|already replaced|only an ad that was taken down|no time left|no such ad|pick a colour|this plan is paid/.test(msg)) {
       return json({ error: msg.charAt(0).toUpperCase() + msg.slice(1) + '.' }, 400);
     }
     console.error('pokejam-ads:', msg);
