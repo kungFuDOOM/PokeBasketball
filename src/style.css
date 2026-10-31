@@ -1980,7 +1980,18 @@ body:has(.pause-btn) .music-btn:not(.docked) {
   border-bottom-right-radius: 8px;
   pointer-events: none;
 }
-.tut-text { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 10px; }
+.tut-text { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 8px; }
+/* The coach: the user's top player (existing sprite art), sized from the strip's own height so it can never poke out
+   over the court. The strip's overflow: hidden is the backstop. */
+.tut-coach {
+  flex: none;
+  width: var(--coach); height: var(--coach);
+  --coach: calc(var(--tut-h) - env(safe-area-inset-top, 0px) - 6px);
+  object-fit: contain;
+  image-rendering: pixelated;
+  pointer-events: none;
+}
+.tut-lines { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 10px; }
 .tut-step { flex: none; font: 0.62rem var(--pixel); color: var(--accent); text-transform: uppercase; letter-spacing: 0.06em; }
 .tut-hint {
   min-width: 0; font-weight: 700; font-size: 0.92rem; line-height: 1.2; color: var(--fg);
@@ -2014,7 +2025,9 @@ body:has(.pause-btn) .music-btn:not(.docked) {
 @media (orientation: portrait) and (max-width: 700px) {
   .game.tut-on { --tut-h: calc(88px + env(safe-area-inset-top, 0px)); }
   .tut-strip { flex-wrap: wrap; align-content: center; row-gap: 6px; padding-bottom: 4px; }
-  .tut-text { flex: 1 1 100%; flex-direction: column; align-items: flex-start; gap: 3px; }
+  .tut-text { flex: 1 1 100%; }
+  .tut-coach { --coach: 44px; }
+  .tut-lines { flex-direction: column; align-items: flex-start; gap: 3px; }
   .tut-hint { font-size: 0.8rem; }
 }
 
@@ -2033,7 +2046,51 @@ body:has(.pause-btn) .music-btn:not(.docked) {
 /* The game is stopped behind the completion screen: hide its pause button and the strip's buttons. */
 .game:has(.tut-done) .pause-btn, .game:has(.tut-done) .tut-acts { display: none; }
 
+/* ---------- tutorial drill results ---------- */
+/* Below the prompt strip (never over it), so its Skip / Exit buttons keep working while the card is up. */
+.tut-result {
+  position: absolute; top: var(--tut-h); right: 0; bottom: 0; left: 0; z-index: 12;
+  background: rgba(5, 6, 15, 0.72);
+  display: grid; place-items: center;
+  padding: 12px max(12px, env(safe-area-inset-right, 0px)) max(12px, env(safe-area-inset-bottom, 0px)) max(12px, env(safe-area-inset-left, 0px));
+  overflow-y: auto;
+}
+.tut-result .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px 20px; max-width: 420px; width: 100%; text-align: center; }
+.tut-result h2 { font: 1rem var(--pixel); color: var(--accent); margin: 0 0 8px; }
+.tut-result p { margin: 0 0 8px; color: var(--fg); }
+.tut-score b { font: 1.1rem var(--pixel); }
+.tut-stars { font-size: 2rem; line-height: 1; color: var(--accent); letter-spacing: 0.1em; }
+.tut-best { color: var(--muted); }
+.tut-new { color: var(--accent); font-weight: 700; }
+.tut-res-line { font-size: 0.9rem; }
+.tut-result .tut-done-acts { margin-top: 12px; }
+.game:has(.tut-result) .pause-btn { display: none; }
+.tut-sum { list-style: none; margin: 0 0 12px; padding: 0; text-align: left; }
+.tut-sum li { display: flex; justify-content: space-between; gap: 12px; padding: 2px 0; color: var(--fg); }
+@media (orientation: landscape) and (max-height: 500px) {
+  .tut-result .panel { padding: 10px 14px; }
+  .tut-stars { font-size: 1.4rem; }
+  .tut-result p { margin-bottom: 4px; }
+}
+
 /* ---------- menu: tutorial entry ---------- */
 .mode-card.quick .actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .tut-hint-menu { margin: 0; font-size: 0.85rem; color: var(--accent); }
 .tut-hint-menu[hidden] { display: none; }
+
+/* ---------- training menu ---------- */
+.training {
+  max-width: 560px;
+  margin: 0 auto;
+  padding-block: max(14px, env(safe-area-inset-top, 0px)) max(32px, env(safe-area-inset-bottom, 0px));
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.trn-h { font: 1.2rem var(--pixel); color: var(--accent); margin: 4px 0 8px; }
+.trn-all { width: 100%; margin: 4px 0 14px; }
+.trn-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.trn-drill { width: 100%; min-height: 48px; display: flex; justify-content: space-between; align-items: center; gap: 12px; text-align: left; }
+.trn-stars { color: var(--accent); font-size: 1.2rem; letter-spacing: 0.08em; }
+@media (orientation: landscape) and (max-height: 500px) {
+  .trn-list { grid-template-columns: 1fr 1fr; }
+}

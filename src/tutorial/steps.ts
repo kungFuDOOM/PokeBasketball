@@ -1,23 +1,15 @@
 /**
- * Tutorial step logic: pure data + a reducer. No DOM, no Game import.
- * The watcher (engine -> signals) feeds `reduce`; the UI reads `currentStep` / `hintFor`.
+ * LEGACY linear tutorial flow (move → pass → … → steal).
+ * Superseded by the drill model in drills.ts; kept only until the tutorial screen
+ * switches to the drill runner. Do not add new behavior here.
+ * Shared signal types now live in drills.ts and are re-exported for existing imports.
  */
+import type { InputKind, Signal, TutorialEventKind } from './drills';
 
+export type { InputKind, Signal, TutorialEventKind } from './drills';
+
+/** @deprecated Use DrillId from drills.ts. */
 export type TutorialStep = 'move' | 'pass' | 'shoot' | 'dunk' | 'special' | 'defense' | 'steal';
-export type InputKind = 'keys' | 'touch';
-
-/** Engine events the tutorial cares about (a subset of GameEvent kinds, plus 'pass'). */
-export type TutorialEventKind = 'pass' | 'release' | 'score' | 'special' | 'steal' | 'block';
-
-export type Signal =
-  /** The user's player moved `dist` feet this frame. */
-  | { type: 'moved'; dist: number }
-  /** The user spent `dt` seconds on defense this frame. */
-  | { type: 'defending'; dt: number }
-  /** An engine event; `byUser` is true when the user's team/player did it. */
-  | { type: 'event'; kind: TutorialEventKind; byUser: boolean; how?: 'jump' | 'layup' | 'dunk' }
-  | { type: 'skipStep' }
-  | { type: 'skipAll' };
 
 export interface StepDef {
   id: TutorialStep;
@@ -34,6 +26,7 @@ const userEvent = (s: Signal, kind: TutorialEventKind) => s.type === 'event' && 
 export const MOVE_GOAL_FT = 12;
 export const DEFENSE_GOAL_S = 3;
 
+/** @deprecated Use DRILLS from drills.ts. */
 export const STEPS: readonly StepDef[] = [
   {
     id: 'move',

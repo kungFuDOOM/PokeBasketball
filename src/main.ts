@@ -35,6 +35,8 @@ import { confirmNewDraft } from './ui/newDraft';
 import { confirmFranchiseName } from './ui/teamName';
 import { safeName } from './nameFilter';
 import { gamesScreen } from './screens/games';
+import type { TutorialStart } from './screens/tutorial';
+import { isTutorialDone } from './tutorial/store';
 import { ANY_MULTIPLAYER } from './config/features';
 import { badgeSvg } from './ui/badges';
 import { guardZoom } from './ui/noZoom';
@@ -158,7 +160,7 @@ function menu() {
       void import('./multiplayer/hub').then((h) => h.multiplayerHub({ root: app, settings, audio }, menu));
     },
     onQuick: () => quick('draft'),
-    onTutorial: () => tutorial(),
+    onTutorial: () => training(),
     onSeason: season,
     confirmSeason: () => guardNewDraft(menu),
     onResumeDraft: () => {
@@ -190,10 +192,18 @@ function quick(source: TeamSource) {
   quickPlay(app, settings, audio, { menu, saved: save, overlay }, source);
 }
 
-/** Offline practice game with prompts (lazy-loaded: most players never open it). */
-function tutorial() {
+/** Offline training drills (lazy-loaded: most players never open them). */
+function tutorial(start: TutorialStart = 'all') {
   audio.unlock();
-  void import('./screens/tutorial').then((t) => t.tutorialScreen(app, settings, audio, { menu, quick: () => quick('draft') }));
+  void import('./screens/tutorial').then((t) =>
+    t.tutorialScreen(app, settings, audio, { menu, quick: () => quick('draft'), training }, start));
+}
+
+/** The Training menu (six drills + Run all). First-time players skip it and go straight into Run all. */
+function training() {
+  if (!isTutorialDone()) return tutorial('all');
+  void import('./screens/training').then((t) =>
+    t.trainingScreen(app, { drill: (id) => tutorial(id), runAll: () => tutorial('all'), back: menu }));
 }
 
 /** Franchise with My Drafted Team (its name and colors); `onCancel` runs if the name confirm is cancelled. */

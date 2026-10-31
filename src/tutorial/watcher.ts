@@ -4,7 +4,7 @@
  */
 import type { Game } from '../game/game';
 import type { GameEvent, Intent, Player } from '../game/types';
-import type { Signal } from './steps';
+import type { Signal } from './drills';
 
 /** Stick deflection below this is treated as idle (no deliberate movement). */
 const STICK_DEADZONE = 0.2;
