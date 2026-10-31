@@ -1,6 +1,7 @@
 // Usernames: the rules, the filter and the error text. Pure (no DOM, no network). The server enforces the same rules in
 // supabase/migrations/20261114_pokejam_profiles.sql (pokejam_name_check); the lists come from nameFilterData.json and a test
 // keeps both sides in step. The client check is for fast feedback only, the server is the authority.
+import { SIGNIN_GOOGLE } from '../../config/features';
 import data from './nameFilterData.json';
 
 export const NAME_MIN = 3;
@@ -78,7 +79,7 @@ const MESSAGES: Record<ServerNameError, string> = {
   profanity: 'That name is not allowed. Pick another.',
   taken: 'That name is taken. Pick another.',
   cooldown: 'You changed your name recently. Try again later.',
-  signin: 'Sign in with Google or Phantom to pick a username.',
+  signin: `Sign in with ${SIGNIN_GOOGLE ? 'Google or Phantom' : 'Phantom'} to pick a username.`,
   required: 'Pick a username before joining Ranked.',
 };
 

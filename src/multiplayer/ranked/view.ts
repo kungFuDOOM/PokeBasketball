@@ -1,6 +1,7 @@
 // Season 1 Ranked screens as HTML strings: the rank chip, placement progress, the sign-in panel and the post-match points
 // block. Pure (no DOM, no network) so they unit-test in node. Menu and results screens only: nothing here is ever drawn
 // over the court or the in-game HUD. Text and CSS only (index.ts wires the buttons; style.css has the look).
+import { SIGNIN_GOOGLE } from '../../config/features';
 import { esc } from '../../util';
 import type { PhantomAction } from '../../wallet/phantom';
 import { badgeImgHtml, badgeRankOf, renderRankBadge, type BadgeRank } from '../../ranked/badge';
@@ -98,24 +99,32 @@ export function rankChipHtml(me: RankedMe | null, o: { badge?: boolean } = {}): 
     <span class="rk-pts">${d >= ZENITH_IDX ? `${pts} pts` : `${pts} / ${DIV_POINTS}`}</span></div>${bar}${shieldNote(me)}${left}</div>`;
 }
 
-/** The sign-in panel shown to guests before Ranked. `error` is plain text. */
-export function signInPanelHtml(phantom: PhantomAction, o: { busy?: boolean; error?: string | null; why?: string } = {}): string {
+/**
+ * The sign-in panel shown to guests before Ranked. `error` is plain text. `google` (default: the SIGNIN_GOOGLE build flag)
+ * offers Google next to Phantom; off, the panel is Phantom-only and Phantom becomes the primary button.
+ */
+export function signInPanelHtml(phantom: PhantomAction, o: { busy?: boolean; error?: string | null; why?: string; google?: boolean } = {}): string {
+  const google = o.google ?? SIGNIN_GOOGLE;
   const dis = o.busy ? ' disabled' : '';
+  const cls = google ? 'btn big' : 'btn primary big';
   const phantomBtn = phantom.kind === 'sign-in'
-    ? `<button class="btn big" data-a="phantom"${dis}>Sign in with Phantom</button>`
+    ? `<button class="${cls}" data-a="phantom"${dis}>Sign in with Phantom</button>`
     : phantom.kind === 'open-in-phantom'
-      ? `<a class="btn big" data-a="phantom-open" href="${esc(phantom.href)}">Open in Phantom</a>`
-      : `<a class="btn big" data-a="phantom-install" href="${esc(phantom.href)}" target="_blank" rel="noopener">Get Phantom</a>`;
+      ? `<a class="${cls}" data-a="phantom-open" href="${esc(phantom.href)}">Open in Phantom</a>`
+      : `<a class="${cls}" data-a="phantom-install" href="${esc(phantom.href)}" target="_blank" rel="noopener">Get Phantom</a>`;
+  const googleBtn = google ? `<button class="btn primary big" data-a="google"${dis}>Sign in with Google</button>` : '';
+  const how = google
+    ? 'Signing in with Google keeps your guest stats. A wallet is a fresh account. Signing only proves you own it. It costs nothing and never moves funds.'
+    : 'A wallet is a fresh account. Signing only proves you own it. It costs nothing and never moves funds.';
   const phantomNote = phantom.kind === 'open-in-phantom' ? 'Phantom was not found here. This opens PokeJam inside the Phantom app, where you can sign in.'
     : phantom.kind === 'install' ? 'Phantom was not found in this browser. Install it, then come back and tap Sign in with Phantom.' : '';
   return `<div class="rk-signin" data-rk="signin">
     <p class="rk-why">${esc(o.why ?? 'Ranked needs a signed-in account so your rank is yours. Guests can still play Social and offline.')}</p>
     <div class="actions center rk-signin-btns">
-      <button class="btn primary big" data-a="google"${dis}>Sign in with Google</button>
-      ${phantomBtn}
+      ${googleBtn}${phantomBtn}
     </div>
     ${phantomNote ? `<p class="note center">${esc(phantomNote)}</p>` : ''}
-    <p class="note center">Signing in with Google keeps your guest stats. A wallet is a fresh account. Signing only proves you own it. It costs nothing and never moves funds.</p>
+    <p class="note center">${how}</p>
     ${o.error ? `<p class="note center rk-error" role="alert">${esc(o.error)}</p>` : ''}
   </div>`;
 }

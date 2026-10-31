@@ -117,19 +117,30 @@ describe('post-match points', () => {
 
 describe('sign-in panel', () => {
   it('offers Google and, depending on the device, Phantom sign-in, the phone deep link or the download page', () => {
-    const base = signInPanelHtml({ kind: 'sign-in' });
+    const base = signInPanelHtml({ kind: 'sign-in' }, { google: true });
     expect(base).toContain('data-a="google"');
     expect(base).toContain('data-a="phantom"');
+    expect(base).toContain('Signing in with Google keeps your guest stats');
     expect(signInPanelHtml({ kind: 'open-in-phantom', href: 'https://phantom.app/ul/browse/x?ref=y' })).toContain('href="https://phantom.app/ul/browse/x?ref=y"');
     const install = signInPanelHtml({ kind: 'install', href: 'https://phantom.app/download' });
     expect(install).toContain('https://phantom.app/download');
     expect(install).toContain('rel="noopener"');
   });
+  it('Phantom-only (Google flag off): no Google button, copy or gap, and Phantom is the primary button', () => {
+    for (const a of [{ kind: 'sign-in' as const }, { kind: 'open-in-phantom' as const, href: 'https://phantom.app/ul/x' }, { kind: 'install' as const, href: 'https://phantom.app/download' }]) {
+      const h = signInPanelHtml(a, { google: false });
+      expect(h).not.toMatch(/google/i);
+      expect(h).toMatch(/class="btn primary big" data-a="phantom/);
+      expect(h).toMatch(/rk-signin-btns">\s*<(button|a) /); // the Phantom button is the first child: no empty slot before it
+    }
+    expect(signInPanelHtml({ kind: 'sign-in' }, { google: false })).toContain('A wallet is a fresh account');
+  });
   it('escapes the error and disables the buttons while busy', () => {
-    const h = signInPanelHtml({ kind: 'sign-in' }, { busy: true, error: '<b>x</b>' });
+    const h = signInPanelHtml({ kind: 'sign-in' }, { busy: true, error: '<b>x</b>', google: true });
     expect(h).toContain('&lt;b&gt;');
     expect(h).not.toContain('<b>x</b>');
     expect(h.match(/ disabled/g)?.length).toBe(2);
+    expect(signInPanelHtml({ kind: 'sign-in' }, { busy: true, google: false }).match(/ disabled/g)?.length).toBe(1);
   });
   it('contains no Marvel names', () => {
     for (const h of [rankChipHtml(me({ divIdx: 24, points: 5 })), signInPanelHtml({ kind: 'sign-in' })]) expect(h).not.toMatch(/celestial|eternity|one above all/i);
