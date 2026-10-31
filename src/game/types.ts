@@ -97,6 +97,11 @@ export interface GameConfig {
    * any other version throws instead of silently playing out differently.
    */
   engineVersion?: number;
+  /**
+   * Tutorial practice: the CPU team never steals, shoves or uses defensive specials and reacts slowly to shots.
+   * Offline only; omitted (the default) leaves the CPU exactly as before.
+   */
+  practice?: boolean;
 }
 
 export interface Intent {

@@ -158,6 +158,7 @@ function menu() {
       void import('./multiplayer/hub').then((h) => h.multiplayerHub({ root: app, settings, audio }, menu));
     },
     onQuick: () => quick('draft'),
+    onTutorial: () => tutorial(),
     onSeason: season,
     confirmSeason: () => guardNewDraft(menu),
     onResumeDraft: () => {
@@ -187,6 +188,12 @@ function quick(source: TeamSource) {
   audio.unlock();
   app.className = 'screen-quick';
   quickPlay(app, settings, audio, { menu, saved: save, overlay }, source);
+}
+
+/** Offline practice game with prompts (lazy-loaded: most players never open it). */
+function tutorial() {
+  audio.unlock();
+  void import('./screens/tutorial').then((t) => t.tutorialScreen(app, settings, audio, { menu, quick: () => quick('draft') }));
 }
 
 /** Franchise with My Drafted Team (its name and colors); `onCancel` runs if the name confirm is cancelled. */
@@ -469,6 +476,9 @@ if (introShot === 'offline' || introShot === 'online') {
     instantSkip: false,
     mySide: 0,
   });
+} else if (import.meta.env.DEV && new URLSearchParams(location.search).get('tutorial') === '1') {
+  // Dev only: ?tutorial=1 jumps straight into the tutorial practice game.
+  tutorial();
 } else if (devFinal) {
   void import('./screens/devResults').then((m) => m.devResults(app, devFinal));
 } else if (shared) {
