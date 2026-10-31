@@ -76,8 +76,27 @@ describe('browser compatibility', () => {
     while (timers.length) timers.shift()!();
     expect(app.innerHTML).toBe('');
   });
-  it('compat is the first import of main and flags a started bundle', () => {
-    expect(readFileSync('src/main.ts', 'utf8').startsWith("import './compat';")).toBe(true);
+  it('boot guard and nomodule notice stay quiet while framed, leaving the framebust overlay', () => {
+    const app = { children: { length: 0 }, innerHTML: '', querySelector: () => null };
+    const listeners: Record<string, (e: unknown) => void> = {};
+    const timers: (() => void)[] = [];
+    const win = { __framed: true, addEventListener: (t: string, f: (e: unknown) => void) => (listeners[t] = f), setTimeout: (f: () => void) => timers.push(f) } as Record<string, unknown>;
+    const doc = { getElementById: () => app, readyState: 'complete' };
+    new Function('window', 'document', readFileSync('public/boot.js', 'utf8'))(win, doc);
+    expect(Object.keys(listeners)).toHaveLength(0);
+    expect(timers).toHaveLength(0);
+    let failed = false;
+    win.__bootFail = () => (failed = true);
+    new Function('window', readFileSync('public/nomodule.js', 'utf8'))(win);
+    expect(failed).toBe(false);
+    expect(app.innerHTML).toBe('');
+  });
+  it('framed is the first import of every entry, then compat in main, which flags a started bundle', () => {
+    for (const f of ['src/main.ts', 'src/admin/admin.ts', 'src/trailer/trailer.ts', 'src/demo/rtc-check.ts']) {
+      expect(readFileSync(f, 'utf8').match(/^import [^\n]*/m)?.[0], f).toMatch(/^import '\.{1,2}\/framed';$/);
+    }
+    expect(readFileSync('src/main.ts', 'utf8').startsWith("import './framed';\nimport './compat';")).toBe(true);
+    expect(readFileSync('src/framed.ts', 'utf8')).toMatch(/if \(typeof window !== 'undefined' && window\.__framed\) throw /);
     expect(readFileSync('src/compat.ts', 'utf8')).toContain('window.__bootOk = true');
   });
   it('roundRect fallback is installed when missing and leaves a native one alone', () => {
