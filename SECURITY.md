@@ -15,6 +15,10 @@ maintainer listed in `public/privacy.html`. Please don't open a public issue for
   scripts, styles, images and fonts load only from the site itself, nothing can be framed or posted anywhere,
   and plugins and `<base>` tricks are blocked. GitHub Pages can't send response headers, so the policy ships as
   a `<meta>` tag; `frame-ancestors` and the headers below need a proxy (see DDoS and headers).
+- **No framing by other sites.** Browsers ignore `frame-ancestors` in a `<meta>` CSP (and log a warning), so
+  it isn't in the meta. Instead every page loads `public/framebust.js` as its first script: inside another
+  site's frame it tries to send the top window to the game, and if that is blocked it hides the page behind a
+  "Play at pokejam.xyz" link.
 - **No referrer.** `<meta name="referrer" content="no-referrer">`: links out don't reveal the page.
 - **Output escaping.** Every name that reaches the page (your team name, saved data) goes through `esc()` or
   `textContent`; nothing is built with `eval` or `new Function`.

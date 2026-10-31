@@ -2,7 +2,9 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src https://static.cloudflareinsights.com; style-src 'unsafe-inline'; img-src 'self'; connect-src https://cloudflareinsights.com; base-uri 'none'; form-action 'none'; object-src 'none'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' https://static.cloudflareinsights.com https://www.googletagmanager.com https://*.google-analytics.com https://*.analytics.google.com; style-src 'unsafe-inline'; img-src 'self' https://www.googletagmanager.com https://*.google-analytics.com https://*.analytics.google.com; connect-src https://cloudflareinsights.com https://www.googletagmanager.com https://*.google-analytics.com https://*.analytics.google.com; base-uri 'none'; form-action 'none'; object-src 'none'">
+  <script src="framebust.js"></script>
+  <script src="ga.js"></script>
   <meta name="referrer" content="no-referrer">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <link rel="icon" href="icon.svg" type="image/svg+xml">
@@ -43,10 +45,10 @@
 <main>
   <p><a href="./">← Back to the game</a> · <a href="terms.html">Terms of use</a></p>
   <h1>Poké Jam privacy policy and terms</h1>
-  <p class="meta">Last updated: October 29, 2026</p>
+  <p class="meta">Last updated: October 31, 2026</p>
 
   <div class="summary">
-    <p><strong>The short version:</strong> Poké Jam is a free browser game. Playing never needs a payment; the only thing you can buy is an optional item, the Rank Shield, and Stripe handles that payment so we never see your card (or, with Phantom, you can pay in USDC; see <a href="#purchases">Purchases</a>). There is no ad network, no ad tracking and no cookies. We only count visits with Cloudflare's cookieless analytics. Playing on your own (Quick Play, Franchise, drafts) needs no account, and those saves stay on your own device. If you choose to <a href="#online">play online</a>, the game makes you an anonymous account and keeps what online play needs, listed below. The only other things the game sends are a short <a href="#crash">crash report</a> if it breaks and anonymous <a href="#counts">gameplay counts</a>.</p>
+    <p><strong>The short version:</strong> Poké Jam is a free browser game. Its sponsor and ad spots are text only, and there is no ad network or ad tracking. We count visits with Cloudflare Web Analytics and <a href="#analytics">Google Analytics</a>, which gives us anonymous traffic stats and sets cookies. Playing on your own (Quick Play, Franchise, drafts) needs no account, and those saves stay on your own device. If you choose to <a href="#online">play online</a>, the game makes you an anonymous account and keeps what online play needs, listed below. The only other things the game sends are a short <a href="#crash">crash report</a> if it breaks and anonymous <a href="#counts">gameplay counts</a>. The only thing you can buy is the optional <a href="#shields">Rank Shield</a>, paid in USDC from your own Phantom wallet.</p>
   </div>
 
   <h2 id="privacy">Privacy policy</h2>
@@ -94,7 +96,7 @@
   <p>Press <strong>Delete saved data</strong> at the bottom of the title screen to erase everything the game has stored on your device, including the online sign-in. Clearing this site's data in your browser settings does the same. To have an online account's records deleted from our servers, email us at the address below and say which trainer name it was (use the same device if you can, so we can match the account). We delete the account and its match records within 30 days of confirming the request. Crash reports hold no account information and are deleted after 30 days anyway.</p>
 
   <h3>Third-party services</h3>
-  <p>Playing on your own uses none, apart from the crash reports and gameplay counts above and Cloudflare Web Analytics. This site uses Cloudflare Web Analytics, which is cookieless and does not track people across sites, to count visits. The game's code, fonts, sprites and sounds are all served by this website itself. The game does not load advertising, social media widgets or session recording tools, and it loads no payment code: if you choose to buy a Rank Shield you are sent to Stripe's own checkout page (see <a href="#purchases">Purchases</a>).</p>
+  <p>Playing on your own uses none, apart from the crash reports and gameplay counts above, Cloudflare Web Analytics and Google Analytics. This site uses Cloudflare Web Analytics, which is cookieless and does not track people across sites, to count visits. The game's code, fonts, sprites and sounds are all served by this website itself. The game does not load ad networks, social media widgets or session recording tools. Payments, if any, go straight on-chain (see below).</p>
   <p>Online play uses these services, which receive your IP address and browser information as part of providing them:</p>
   <ul>
     <li><strong>Supabase</strong> runs the online accounts, the database and the match messages (<a href="https://supabase.com/privacy" rel="noopener">Supabase privacy policy</a>).</li>
@@ -102,17 +104,26 @@
     <li><strong>Cloudflare TURN relay</strong> passes match traffic between you and your opponent, so neither of you sees the other's IP address. It doesn't keep the game data (<a href="https://www.cloudflare.com/privacypolicy/" rel="noopener">Cloudflare privacy policy</a>).</li>
   </ul>
 
-  <h3 id="purchases">Purchases (Rank Shield)</h3>
-  <p>You can buy the optional Rank Shield item with a signed-in (Google or Phantom) account. Payment is handled entirely by <strong>Stripe</strong> on its own hosted checkout page (<a href="https://stripe.com/privacy" rel="noopener">Stripe privacy policy</a>). Your card number and billing details go to Stripe only: we never see, receive or store card data. Stripe tells us that a payment succeeded, was refunded or was disputed. For each purchase we store your account id, the pack you bought, the amount, the Stripe session and payment ids, the time, and a ledger of Rank Shields added and removed on your account (purchases, weekly grants, uses, refunds). We use this to credit your shields, handle refund and dispute requests, stop abuse and keep our accounts. We keep purchase records for as long as the law and our accounting need, and delete or anonymize them afterwards. Deleting your account (see above) removes the records tied to your account id, except what we must keep by law. Stripe keeps its own records under its own policy. If you pay with <strong>USDC</strong> from a Phantom wallet, no card or Stripe is involved: we store your wallet address, the Solana transaction signature, the pack, the amount and the time, and read the transaction from a Solana RPC provider to check it. A blockchain is public and permanent, so the payment itself (your wallet address, ours and the amount) is visible to anyone on Solana and can't be deleted by us, even if we delete our records. Purchases need an adult or a parent's permission, and we do not knowingly sell to children under 13.</p>
+  <h3>Ads and sponsors</h3>
+  <p>Sponsor and ad spots (the courtside LED board and the menu ticker) are sold directly by kungFuDOOM and may be paid in crypto (SOL). Ads are text only. No ad network or ad tracking is used, and sponsors don't get player data.</p>
+
+  <h3>Payments</h3>
+  <p>The game is free to play. Any purchases are optional. If optional paid items are offered, crypto payments go on-chain from your own wallet. We never hold your keys. Blockchain transactions are public and usually can't be reversed.</p>
+
+  <h3 id="shields">Rank Shields</h3>
+  <p>Rank Shields are optional digital items, paid in USDC on Solana from your own Phantom wallet. We never hold your keys. For each purchase we store your wallet address, the transaction signature and your shield balance, tied to your online account, so we can credit your shields, check the payment and stop abuse. Solana transactions are public. Deleting your account (see above) removes these records, except what we must keep by law.</p>
+
+  <h3 id="analytics">Google Analytics</h3>
+  <p>This site uses Google Analytics 4 for anonymous traffic stats: which pages are viewed, rough location (country or city, worked out from your IP address) and device type. Google signals and ad personalization are turned off, and the site shows no Google ads or AdSense. Google Analytics does not run when the site is embedded on another website. Google processes this data under the <a href="https://policies.google.com/privacy" rel="noopener">Google privacy policy</a>. To opt out on every site, install the <a href="https://tools.google.com/dlpage/gaoptout" rel="noopener">Google Analytics opt-out browser add-on</a>.</p>
 
   <h3>Hosting</h3>
   <p>This website is hosted on GitHub Pages. Like any web host, GitHub receives standard technical information when your browser loads the site, such as your IP address and browser type, and may keep it in server logs for security. See the <a href="https://docs.github.com/en/pages/getting-started-with-github-pages/about-github-pages#data-collection" rel="noopener">GitHub Pages data collection notice</a> and <a href="https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement" rel="noopener">GitHub's privacy statement</a>.</p>
 
   <h3>Cookies</h3>
-  <p>Poké Jam does not set cookies. The local storage described above is used only for features you choose to use, such as saving your franchise.</p>
+  <p>Google Analytics sets first-party cookies (such as <code>_ga</code>) on this site to count visits and tell new visitors from returning ones. The game itself sets no other cookies. The local storage described above is used only for features you choose to use, such as saving your franchise.</p>
 
   <h3>Children</h3>
-  <p>The game is suitable for all ages, but purchases are for adults or for children with a parent's permission, and we don't direct sales or marketing at children under 13. Playing on your own collects no personal information. Online play uses an anonymous account, a trainer name and the match records above, and asks for no email, real name or contact details.</p>
+  <p>The game is suitable for all ages. Rank Shield purchases are for adults, or children with a parent's permission. Playing on your own collects no personal information beyond the anonymous traffic stats above. Online play uses an anonymous account, a trainer name and the match records above, and asks for no email, real name or contact details.</p>
 
   <h3>Changes</h3>
   <p>If this policy changes, the new version will be posted on this page with a new date. Before any new feature collects data, this page will list what it collects and every service involved.</p>
@@ -120,14 +131,14 @@
   <h2 id="terms">Terms of use</h2>
   <p>The full terms are on the <a href="terms.html">Terms of use page</a>. In short:</p>
 
-  <h3>Free to play, optional purchases</h3>
-  <p>Poké Jam is free to play. The only thing you can buy is the optional Rank Shield item. The terms of sale and the refund policy are on the <a href="terms.html#sale">Terms of use page</a>, and they are shown to you before you pay.</p>
+  <h3>Free to play</h3>
+  <p>Poké Jam is free to play. Any purchases are optional. Rank Shields are paid in USDC on Solana, and the <a href="terms.html#sale">terms for Rank Shields</a> apply. Paid items and ad bookings are final unless the law says otherwise.</p>
 
   <h3>Provided as is</h3>
-  <p>The game is provided "as is" and "as available", without warranties of any kind, express or implied. We don't guarantee it will be error-free or always available, or that saved games will never be lost. Browsers can clear local storage at any time.</p>
+  <p>The game is provided "as is" and "as available", without warranties of any kind, express or implied. We don't guarantee uptime, that it will be error-free, or that saved games will never be lost. Browsers can clear local storage at any time.</p>
 
   <h3>Limitation of liability</h3>
-  <p>To the fullest extent permitted by law, the creators of Poké Jam are not liable for any indirect, incidental, special or consequential damages, or for any loss of data, arising from your use of the game. Because the game is free, our total liability for any claim related to it is limited to zero dollars, or to the amount you paid us for Rank Shields in the 12 months before the claim if you bought any, where the law allows.</p>
+  <p>To the fullest extent permitted by law, the creators of Poké Jam are not liable for any indirect, incidental, special or consequential damages, or for any loss of data, arising from your use of the game. Because the game is free, our total liability for any claim related to it is limited to zero dollars, where the law allows.</p>
 
   <h3>Fair use</h3>
   <p>Don't use the game or this website to break the law, attack or overload the site, or pass the game off as an official product.</p>
