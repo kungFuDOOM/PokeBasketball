@@ -4,6 +4,7 @@
 // wall, the draft clock, Kyogre vs Groudon, the badge case, evolution and a $PJAM end card.
 // scripts/render-trailer.mjs captures the frames and scores the result; open /trailer.html?play in the
 // dev server to preview it in real time.
+import '../framed';
 import '../fonts.css';
 import { COURTS, type CourtStyle } from '../data/courts';
 import { LEAGUE } from '../franchise/league';

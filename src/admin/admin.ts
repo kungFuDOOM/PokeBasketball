@@ -2,6 +2,7 @@
 // lift and reset-name actions. Not linked from the game. Moderators sign in with an email link to an existing
 // account listed in pokejam_admins (migration 20261031); every call is checked on the server, so the page shows
 // nothing to anyone else. Its session is kept apart from the game's anonymous one (its own storage key).
+import '../framed';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import '../fonts.css';
 import '../style.css';

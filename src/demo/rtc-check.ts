@@ -2,6 +2,7 @@
 // MatchLink over a real WebRTC connection (local candidates only, no TURN), play a full lockstep game. Midway the
 // direct link is cut, and the game must carry on over the "Realtime" fallback (here a fake channel) to the same
 // final state on both sides. Driven by scripts/rtc-check.mjs.
+import '../framed';
 import type { RealtimeChannel, SupabaseClient } from '@supabase/supabase-js';
 import { COURTS } from '../data/courts';
 import { monByDex } from '../data/pokemon';

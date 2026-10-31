@@ -1,3 +1,4 @@
+import './framed';
 import './compat';
 import './fonts.css';
 import './style.css';
