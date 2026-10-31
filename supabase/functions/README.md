@@ -102,7 +102,7 @@ Prices and the number of spots (`ad_spots`, default 3) change with one `update p
 5. **Schedule:** POST `{"action":"sweep"}` to `pokejam-ads` with the service key every 2 minutes (pg_cron + pg_net). Optional: `ADS_ALERT_WEBHOOK_URL` for reports.
 6. **Vercel `pokejam-test`:** `VITE_MODE_ADS=true`. This adds Courtside Ads to the title screen, the page at `#advertise`, and booked ads on every court.
 
-**Mainnet, only on kungFuDOOM's OK:**
+**Mainnet, only on kungFuDOOM's OK:** (this is the devnet function's own switch. The live site doesn't use it: it uses `pokejam-ads-live`, below.)
 - Set `ADS_CLUSTER=mainnet-beta` and `ADS_ALLOW_MAINNET=approved-by-kungfudoom`. The mint is then always the official $PJAM, `GQe9QiBBV4G6bRUCxx2JgKrzT7G7RD17FJquBWgVpump` (Token-2022), and the faucet is off whatever is set.
 - Use a paid RPC (`ADS_RPC_URL`): the public mainnet RPC rate-limits the history lookups.
 - Set prices for the token's market at the time.
@@ -113,6 +113,69 @@ Prices and the number of spots (`ad_spots`, default 3) change with one `update p
    1. `VITE_MODE_ADS=true VITE_ADS_API=http://localhost:8787/api/ads npm run build`
    2. `AD_MINT=<mint> AD_FAUCET_SECRET_FILE=<keypair.json> bun --use-system-ca scripts/ads-dev-server.ts`
    3. Open http://localhost:8787/#advertise.
+
+## Billboard ads on the live site (`pokejam-ads-live/`, `../migrations/20261124_pokejam_ads_live.sql`)
+
+The live site (pokejam.xyz) books the same courtside LED board on **Solana mainnet**, through its own function. It runs the same handler as the devnet `pokejam-ads` above (`_shared/ads/handler.ts`), configured by `adsConfigLive` in `_shared/ads/config.ts`. The devnet function, its secrets and its tables are unchanged. The client (`src/ads/api.ts`) only ever calls `pokejam-ads-live`. Advertisers pay from their own wallet in one of two ways:
+- **Burn $PJAM**, exactly as above (an hour, a day or a week).
+- **Pay in USDC** (a week or a month), sent to kungfudoom.sns.
+
+More detail, including the open questions, is in `docs/ads-live.md`.
+
+**Its own rows.** Live bookings use separate tables (`pokejam_live_ads`, `pokejam_live_ad_reports`, `pokejam_live_ad_usdc_intents`) and `pokejam_live_ad_*` functions. The ban list (`pokejam_ad_bans`) is shared on purpose, so a wallet banned on either board is banned on both. Its settings sit in `pokejam_config` under `live_` plus the devnet key (`live_ad_price_week`, `live_ad_usdc_month`, `live_ad_spots`, `live_ads_paused`, …). `adsConfigLive.dbName` maps every SQL call to the live names, so devnet and mainnet bookings never mix. The migration is additive only: it drops nothing and doesn't change any function the devnet site uses.
+
+**Secrets.** Edge Function secrets are shared by the whole project, so anything the devnet function also reads gets an `ADS_LIVE_` name here:
+
+| Secret | | |
+| --- | --- | --- |
+| `ADS_ALLOW_MAINNET` | required on mainnet | Must be exactly `true`. Anything else, such as `TRUE`, ` true`, `1` or the devnet function's approval phrase, and the function refuses to start. |
+| `ADS_LIVE_CLUSTER` | optional | `devnet` runs this function against devnet (for a staging copy). Anything else, or unset, means `mainnet-beta`. This is the live counterpart of `ADS_CLUSTER`, which stays the devnet function's own and doesn't affect this one. |
+| `ADS_PJAM_MINT` | optional on mainnet | The token burned. It defaults to `GQe9QiBBV4G6bRUCxx2JgKrzT7G7RD17FJquBWgVpump`, hard-coded in #45. **Needs user confirmation:** kungFuDOOM must confirm this is the official $PJAM before mainnet is turned on. It is required on devnet, where there is no default. |
+| `ADS_USDC_RECEIVER` | optional | The wallet paid in USDC. It defaults to kungfudoom.sns, `FPwoDYkHTFef4Fg45o1wzReXiVoYGP6KXEgRyfqqBpyk`. The payment must land in that wallet's USDC associated token account. The USDC mint is never configurable: on mainnet it is Circle's `EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v`. |
+| `ADS_LIVE_RPC_URL` | strongly advised | A paid mainnet RPC. The public one rate-limits history lookups. All chain reads happen here; the browser never calls an RPC. |
+| `ADS_LIVE_ALLOWED_ORIGINS` | advised | `https://pokejam.xyz` (comma-separated exact origins). If it's empty, any origin may call. |
+| `ADS_LIVE_PRIORITY_MICROLAMPORTS` | optional | The priority fee on the burn. Default 20,000 on mainnet. |
+| `ADS_ALERT_WEBHOOK_URL` | optional | Shared with the devnet function: report alerts to Slack or Discord. |
+
+**No faucet on mainnet**, whatever is set: `AD_FAUCET_SECRET` is ignored, the `faucet` action answers 404, the board reports `faucet: false` and the page hides the button.
+
+**Plans and prices.** Only the bookable courtside half is self-serve. The ticker and the ticker + courtside combo stay contact-sales, priced in USD and paid in SOL (`public/contact.html`).
+
+| Plan | Burn $PJAM | USDC |
+| --- | --- | --- |
+| 1 hour | `live_ad_price_hour` (default 100,000 PJAM) | n/a |
+| 1 day | `live_ad_price_day` (default 1,500,000 PJAM) | n/a |
+| 1 week | `live_ad_price_week` (default 7,500,000 PJAM) | `live_ad_usdc_week` = $150 |
+| 1 month (720 h) | n/a | `live_ad_usdc_month` = $500 |
+
+The USDC prices match the courtside banner half's list price on the contact page. The PJAM defaults are the devnet ones: set real prices for the token's market before launch (`update public.pokejam_config …`, no deploy). The amounts are stored in base units (6 decimals for both tokens).
+
+**How a USDC payment works** (`_shared/ads/usdc-*.ts`, adapted from the USDC payment pattern on `origin/claude/shield-usdc-only`, copied, not merged):
+1. `usdc-intent` first runs every check that could refuse the ad: the text filter, a ban, paused sales, the price the page showed, and the wallet's USDC and SOL. It then saves a one-time intent with an exact amount, a reference key and a memo, which expires in 15 minutes. It returns an unsigned SPL `TransferChecked` to the receiver's USDC account. The page rebuilds that transaction itself and checks it matches before the wallet signs.
+2. `usdc-confirm` reads the payment from the chain at `finalized` commitment on mainnet (`confirmed` on devnet) and checks that:
+   - the mint is USDC;
+   - the destination is the associated token account of the receiver;
+   - the amount is at least the price;
+   - the advertiser's wallet signed;
+   - the transaction succeeded.
+3. A signature books only once, because `usdc_sig` and the intent's signature are unique. With no signature, `usdc-confirm` finds the payment by the intent's reference key, so a page closed mid-payment still books on its next visit. A payment that really landed after its intent expired still books.
+
+**Layout.** The board keeps two halves. The `$PJAM · OFFICIAL POKEJAM TOKEN` half stays a fixed house ad. Booked ads replace only the "YOUR AD HERE" half (`src/game/ledBoard.ts`, `houseAds()` / `bookableHalfOn()` in `src/data/ads.ts`), and that half shows YOUR AD HERE when nothing is booked. The board is part of the court scenery, and the Advertise page is its own screen (title menu → Courtside Ads, `#advertise`), so no ad UI ever covers the game.
+
+**Moderation.** `pokejam_admin_live_ads` and `pokejam_admin_live_ad_remove` work like the devnet ones and are logged in `pokejam_admin_log`. To stop new bookings: `update public.pokejam_config set value = 'true' where key = 'live_ads_paused';` Payments already sent still settle.
+
+### On kungFuDOOM's OK (mainnet, the live site)
+
+1. **Migration:** `20261124_pokejam_ads_live`, applied after `20261104_pokejam_ads`.
+2. **Confirm the $PJAM mint** (see `ADS_PJAM_MINT` above), and set the PJAM burn prices.
+3. **Secrets:**
+   ```sh
+   supabase secrets set ADS_ALLOW_MAINNET=true ADS_LIVE_RPC_URL=<paid mainnet RPC> ADS_LIVE_ALLOWED_ORIGINS=https://pokejam.xyz
+   ```
+   Add `ADS_PJAM_MINT` and `ADS_USDC_RECEIVER` only to change their defaults.
+4. **Deploy:** `supabase functions deploy pokejam-ads-live --no-verify-jwt`. The page calls it without signing in.
+5. **Schedule:** POST `{"action":"sweep"}` to `pokejam-ads-live` with the service key every few minutes (pg_cron + pg_net), as for devnet.
+6. **The site's build:** `VITE_MODE_ADS=true`. The client calls `<VITE_SUPABASE_URL>/functions/v1/pokejam-ads-live`, whose origin is already in the CSP's `connect-src`. Set `VITE_ADS_API` only for a function hosted elsewhere: it must be https, and its origin is added to `connect-src`. No Solana RPC is added, and no inline script.
 
 ## Online play: TURN credentials (`pokejam-ice/`)
 
