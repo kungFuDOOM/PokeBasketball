@@ -10,6 +10,9 @@ Two ways to sign in:
 - **Phantom** (Sign in with Solana, `signInWithWeb3`). Supabase cannot link a wallet to a guest account, so this is a fresh
   account. No transaction, no payment: the wallet only signs the login message.
 
+**Launch flag:** Google is hidden unless the build sets `VITE_SIGNIN_GOOGLE=true` (`SIGNIN_GOOGLE` in `src/config/features.ts`);
+by default Ranked sign-in is Phantom-only, so the Google setup in section 1 can wait until the flag is turned on.
+
 Nothing below has been done for you. Do these by hand in the dashboards, **before** turning Ranked on.
 
 ## 1. Google Cloud (OAuth client)
