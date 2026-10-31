@@ -55,6 +55,10 @@ describe('shop sheet', () => {
     const g = shopBodyHtml(model({ signedIn: false, info: null }));
     expect(g).toContain('Sign in to buy');
     expect(g).not.toContain('data-a="buy"');
+    const guest = model({ signedIn: false, info: null });
+    expect(shopBodyHtml(guest, { google: false })).toContain('Sign in with Phantom from the Ranked screen.');
+    expect(shopBodyHtml(guest, { google: true })).toContain('Sign in with Google or Phantom from the Ranked screen.');
+    expect(shopHtml(guest, { google: false })).not.toContain('Google');
     expect(shopBodyHtml(model({ info: info({ products: [] }) }))).toContain('Shop coming soon');
     expect(shopBodyHtml(model({ info: null }))).toContain('Loading the shop');
     expect(shopBodyHtml(model({ notice: { tone: 'bad', text: '<img src=x>' } }))).not.toContain('<img');
