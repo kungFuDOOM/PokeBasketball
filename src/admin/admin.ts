@@ -1,5 +1,5 @@
-// The moderation page (admin.html): reported players, suspensions and the moderators' action log, with suspend,
-// lift and reset-name actions. Not linked from the game. Moderators sign in with an email link to an existing
+// The moderation page (admin.html): reported players, suspensions, courtside ads and the moderators' action log, with
+// suspend, lift, reset-name and take-down-ad actions. Not linked from the game. Moderators sign in with an email link to an existing
 // account listed in pokejam_admins (migration 20261031); every call is checked on the server, so the page shows
 // nothing to anyone else. Its session is kept apart from the game's anonymous one (its own storage key).
 import '../framed';
@@ -16,6 +16,11 @@ const KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 const root = document.querySelector<HTMLElement>('#admin')!;
 
 interface LogRow { at: string; action: string; detail: string | null; target: string | null; by: string | null }
+interface AdRow {
+  id: string; text: string; theme: string; wallet: string; state: 'paid' | 'removed'; starts_at: string; ends_at: string; burn_sig: string | null;
+  removed_reason: string | null; banned: boolean; reports: number; reasons: Record<string, number> | null;
+}
+interface AdBan { wallet: string; reason: string | null; at: string }
 
 interface Stats {
   players_today: number; players_7d: number; players_all: number; profiles_all: number; games_today: number; games_today_finished: number;
@@ -85,7 +90,7 @@ function dashboard(sb: SupabaseClient, email: string) {
       <p class="note">Offline counting started with this update (Oct 2026); earlier offline games aren't counted.</p>
       <div data-offline-body><p class="note">Loading…</p></div></section>
     <nav class="tabs">
-      <button class="on" data-tab="reports">Reported</button><button data-tab="bans">Suspended</button><button data-tab="log">History</button>
+      <button class="on" data-tab="reports">Reported</button><button data-tab="bans">Suspended</button><button data-tab="ads">Ads</button><button data-tab="log">History</button>
       <label>Last <select data-days><option>1</option><option selected>7</option><option>30</option></select> days</label>
     </nav><section data-body><p class="note">Loading…</p></section>`);
   root.querySelector('[data-who]')!.innerHTML = `${esc(email)} · <button class="link" data-out>Sign out</button>`;
@@ -102,7 +107,7 @@ function dashboard(sb: SupabaseClient, email: string) {
 
   const show = async () => {
     root.querySelectorAll<HTMLButtonElement>('[data-tab]').forEach((b) => b.classList.toggle('on', b.dataset.tab === tab));
-    days.parentElement!.hidden = tab !== 'reports';
+    days.parentElement!.hidden = tab !== 'reports' && tab !== 'ads';
     try {
       if (tab === 'reports') {
         const rows = await call<Reported[]>('pokejam_admin_reports', { p_days: Number(days.value) });
@@ -117,6 +122,7 @@ function dashboard(sb: SupabaseClient, email: string) {
         }
       }
       else if (tab === 'bans') body.innerHTML = bansHtml(await call<Ban[]>('pokejam_admin_bans'));
+      else if (tab === 'ads') body.innerHTML = adsHtml(await call<AdRow[]>('pokejam_admin_ads', { p_days: Number(days.value) }), await call<AdBan[]>('pokejam_admin_ad_bans'));
       else body.innerHTML = logHtml(await call<LogRow[]>('pokejam_admin_history', { p_limit: 100 }));
     } catch (e) {
       body.innerHTML = `<p class="note">Couldn't load: ${esc((e as Error).message)}</p>`;
@@ -125,6 +131,27 @@ function dashboard(sb: SupabaseClient, email: string) {
   root.querySelectorAll<HTMLButtonElement>('[data-tab]').forEach((b) => b.addEventListener('click', () => { tab = b.dataset.tab!; void show(); }));
   days.addEventListener('change', () => void show());
   body.addEventListener('click', async (e) => {
+    const ad = (e.target as HTMLElement).closest<HTMLButtonElement>('[data-ad]');
+    if (ad) {
+      // Removing keeps the advertiser's remaining time for new text; a ban takes every ad of theirs down for good.
+      const act = ad.dataset.ad!;
+      const what = ad.dataset.text ?? 'this ad';
+      if (act === 'unban') {
+        if (!confirm(`Let ${ad.dataset.wallet} advertise again?`)) return;
+      } else if (!confirm(act === 'ban' ? `Take down "${what}" and every other ad from this wallet, and ban it from advertising? The burns can't be given back.`
+        : `Take down "${what}"? The advertiser keeps the time it had left and can run it with new text.`)) return;
+      const reason = act === 'unban' ? '' : prompt('Reason (the advertiser sees it):', act === 'ban' ? 'abusive ads' : 'breaks the ad rules') ?? '';
+      ad.disabled = true;
+      try {
+        if (act === 'unban') await call('pokejam_admin_ad_unban', { p_wallet: ad.dataset.wallet });
+        else await call('pokejam_admin_ad_remove', { p_id: ad.dataset.id, p_reason: reason, p_ban: act === 'ban' });
+        await show();
+      } catch (x) {
+        alert(`Didn't work: ${(x as Error).message}`);
+        ad.disabled = false;
+      }
+      return;
+    }
     const b = (e.target as HTMLElement).closest<HTMLButtonElement>('[data-act]');
     if (!b) return;
     const user = b.dataset.user!;
@@ -206,6 +233,27 @@ function offlineHtml(s: OfflineStats): string {
     ${seasons('Season Drafts, all time', 'season_draft', s.seasons_all)}
   </div><p class="note">Players = distinct browsers (random id per device). Games: started/finished by mode. ${
     s.first_event_at ? `First offline event ${esc(pt(s.first_event_at))} PT.` : 'No offline events yet.'} Updated ${esc(pt(s.generated_at))} PT.</p>`;
+}
+
+function adsHtml(rows: AdRow[], bans: AdBan[]): string {
+  const now = Date.now();
+  const status = (a: AdRow) => a.state === 'removed' ? `<span class="tag bad">taken down${a.banned ? ', banned' : ''}</span><small>${esc(a.removed_reason ?? '')}</small>`
+    : Date.parse(a.ends_at) <= now ? '<span class="tag">ended</span>' : Date.parse(a.starts_at) > now ? '<span class="tag">scheduled</span>' : '<span class="tag">live</span>';
+  const table = rows.length ? `<div class="scroll"><table><thead><tr><th>Ad</th><th>Wallet</th><th>Runs</th><th>Reports</th><th>Status</th><th></th></tr></thead><tbody>
+    ${rows.map((a) => `<tr>
+      <td><strong>${esc(a.text)}</strong><small>${esc(a.theme)}</small></td>
+      <td><small>${esc(a.wallet)}</small></td>
+      <td>${esc(when(a.starts_at))}<small>to ${esc(when(a.ends_at))}</small></td>
+      <td class="num">${a.reports}<small>${Object.entries(a.reasons ?? {}).map(([k, n]) => `${esc(k)} ${n}`).join(', ')}</small></td>
+      <td>${status(a)}</td>
+      <td class="acts">${a.state === 'paid' && Date.parse(a.ends_at) > now ? `<button class="btn small" data-ad="remove" data-id="${esc(a.id)}" data-text="${esc(a.text)}">Take down</button>
+        <button class="btn small danger" data-ad="ban" data-id="${esc(a.id)}" data-text="${esc(a.text)}">Take down + ban</button>` : ''}</td></tr>`).join('')}
+  </tbody></table></div>` : '<p class="note">No ads in this period.</p>';
+  const banned = bans.length ? `<h3>Banned from advertising</h3><div class="scroll"><table><thead><tr><th>Wallet</th><th>Why</th><th>Since</th><th></th></tr></thead><tbody>
+    ${bans.map((b) => `<tr><td><small>${esc(b.wallet)}</small></td><td>${esc(b.reason ?? '')}</td><td>${esc(when(b.at))}</td>
+      <td class="acts"><button class="btn small" data-ad="unban" data-wallet="${esc(b.wallet)}">Lift</button></td></tr>`).join('')}
+  </tbody></table></div>` : '';
+  return table + banned;
 }
 
 function logHtml(rows: LogRow[]): string {
