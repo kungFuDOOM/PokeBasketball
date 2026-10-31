@@ -2,6 +2,7 @@ import { POKEMON, spriteUrl } from '../data/pokemon';
 import { DIFFICULTIES, type Difficulty } from '../game/types';
 import type { TeamSource } from '../season/team';
 import { isNameBlocked } from '../nameFilter';
+import { isTutorialDone } from '../tutorial/store';
 import { esc, lettersName, showNameError } from '../util';
 import { prefersStatic, startAttract, type Attract, type AttractState } from './attract';
 import { isIntroMode, type IntroMode } from './intro.logic';
@@ -107,6 +108,8 @@ export interface TitleOptions {
   /** Starts a franchise with the chosen team source. */
   onNew: (source: TeamSource) => void;
   onQuick: () => void;
+  /** Offline practice game with step-by-step prompts. */
+  onTutorial: () => void;
   onSeason: () => void;
   /** Before a Season Draft: resolves to what to run after leaving the menu, or null to stay put. */
   confirmSeason?: () => Promise<(() => void) | null>;
@@ -209,7 +212,11 @@ export function menuScreen(root: HTMLElement, settings: Settings, onChange: () =
           <section class="mode-card quick">
             <h2>Quick Play</h2>
             <p class="setup-note">Pick any Gym Leader or the Elite Four, draft five Pokémon against them and play on any court. Pure arcade.</p>
-            <div class="actions"><button class="btn big" data-go="quick">Quick Play</button></div>
+            <div class="actions">
+              <button class="btn big" data-go="quick">Quick Play</button>
+              <button class="btn" data-go="tutorial" aria-label="Tutorial: learn the controls in a practice game">Tutorial</button>
+            </div>
+            <p class="tut-hint-menu"${isTutorialDone() ? ' hidden' : ''}>New? Try the tutorial</p>
           </section>
           <section class="mode-card franchise">
             <h2>Franchise</h2>
@@ -306,6 +313,7 @@ export function menuScreen(root: HTMLElement, settings: Settings, onChange: () =
   });
   const quick = leave(opts.onQuick);
   $('[data-go="quick"]')!.addEventListener('click', quick);
+  $('[data-go="tutorial"]')!.addEventListener('click', leave(opts.onTutorial));
   $('[data-go="season"]')!.addEventListener('click', async () => {
     const go = opts.confirmSeason ? await opts.confirmSeason() : opts.onSeason;
     if (go) leave(go)();

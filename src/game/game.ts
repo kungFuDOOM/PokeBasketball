@@ -318,10 +318,12 @@ export class Game {
   }
   /** Block reaction delay for an AI defender. */
   reactTime(p: Player): number {
+    if (this.cfg.practice && this.vsCpu && !this.teams[p.team].human) return 1.5 + this.rand(0, 0.08);
     const base = this.vsCpu && this.cfg.home.human && p.team === 1 ? this.diff.react : 0.2;
     return base + ((100 - p.r.def) / 100) * 0.25 + this.rand(0, 0.08);
   }
   aggro(p: Player): number {
+    if (this.cfg.practice && this.vsCpu && !this.teams[p.team].human) return 0;
     return this.vsCpu && this.cfg.home.human && p.team === 1 ? this.diff.aggro * (1 - 0.5 * this.catchup()) : 0.85;
   }
 
