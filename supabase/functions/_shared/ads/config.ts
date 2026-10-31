@@ -51,3 +51,49 @@ export function adsConfig(get: (k: string) => string | undefined): AdsConfig {
     serviceKey: val('SUPABASE_SERVICE_ROLE_KEY') ?? '',
   };
 }
+
+// ---------------------------------------------------------------------------------------------------------------
+// Live site (pokejam.xyz): the separate pokejam-ads-live function. adsConfig above is the devnet test site's and is
+// unchanged. Edge Function secrets are shared by every function in the Supabase project, so the live function takes
+// its cluster as a parameter and reads ADS_LIVE_* keys for anything the devnet function also reads (RPC, origins,
+// priority fee). Setting them can never move the devnet function off devnet.
+
+/** The live function runs on mainnet only when this secret is exactly this string. */
+export const LIVE_MAINNET_FLAG = 'true';
+
+/** Base58 public key (32 bytes, 32-44 chars). */
+const PUBKEY = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
+
+export interface LiveOptions {
+  /** Which cluster this deployment serves. Default: mainnet-beta. */
+  cluster?: Cluster;
+}
+
+export function adsConfigLive(get: (k: string) => string | undefined, opts: LiveOptions = {}): AdsConfig {
+  const val = (k: string) => { const v = get(k); return v === undefined || v.trim() === '' ? undefined : v.trim(); };
+  const cluster: Cluster = opts.cluster ?? 'mainnet-beta';
+  if (cluster !== 'devnet' && cluster !== 'mainnet-beta') throw new Error(`unknown cluster ${String(cluster)}`);
+  // Exact string, untrimmed: "TRUE", " true", "1", "yes" all refuse.
+  if (cluster === 'mainnet-beta' && get('ADS_ALLOW_MAINNET') !== LIVE_MAINNET_FLAG) {
+    throw new Error('pokejam-ads-live refuses mainnet: ADS_ALLOW_MAINNET is not "true"');
+  }
+  // NEEDS USER CONFIRMATION: the $PJAM mint was hard-coded in #45 (PJAM_MAINNET). kungFuDOOM must confirm it is the
+  // official token before mainnet goes on; ADS_PJAM_MINT overrides it. On devnet there is no default: a devnet
+  // deployment must name its test mint, so it can never point at the real token by accident.
+  const mintVal = val('ADS_PJAM_MINT') ?? (cluster === 'mainnet-beta' ? PJAM_MAINNET : undefined);
+  if (!mintVal) throw new Error('ADS_PJAM_MINT is not set');
+  if (!PUBKEY.test(mintVal)) throw new Error('ADS_PJAM_MINT is not a valid Solana address');
+  const priority = Number(val('ADS_LIVE_PRIORITY_MICROLAMPORTS') ?? (cluster === 'devnet' ? 0 : 20_000));
+  const faucet = val('AD_FAUCET_AMOUNT') ?? '25000000000000';
+  return {
+    cluster,
+    rpcUrl: val('ADS_LIVE_RPC_URL') ?? RPC[cluster],
+    mint: mintVal,
+    origins: (val('ADS_LIVE_ALLOWED_ORIGINS') ?? '').split(',').map((s) => s.trim()).filter(Boolean),
+    priorityMicroLamports: Number.isFinite(priority) && priority >= 0 ? Math.min(priority, 5_000_000) : 0,
+    // Hard-off on mainnet, whatever is set: the handler's faucet action 404s and the board reports faucet: false.
+    faucetSecret: cluster === 'devnet' ? val('AD_FAUCET_SECRET') : undefined,
+    faucetAmount: /^\d+$/.test(faucet) ? BigInt(faucet) : 25_000_000_000_000n,
+    serviceKey: val('SUPABASE_SERVICE_ROLE_KEY') ?? '',
+  };
+}
