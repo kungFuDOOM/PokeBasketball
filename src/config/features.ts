@@ -3,4 +3,6 @@
 export const MODE_SOCIAL = import.meta.env.VITE_MODE_SOCIAL === 'true';
 export const MODE_RANKED = import.meta.env.VITE_MODE_RANKED === 'true';
 export const MODE_PACK_BATTLES = import.meta.env.VITE_MODE_PACK_BATTLES === 'true';
+/** Billboard ads: book the courtside LED board by burning $PJAM (the Advertise page, and booked ads in every game). */
+export const MODE_ADS = import.meta.env.VITE_MODE_ADS === 'true';
 export const ANY_MULTIPLAYER = MODE_SOCIAL || MODE_RANKED || MODE_PACK_BATTLES;

@@ -113,6 +113,8 @@ export interface TitleOptions {
   onRoster: () => void;
   /** Only set when at least one multiplayer mode is enabled at build time. */
   onMultiplayer?: () => void;
+  /** Only set when billboard ads are enabled at build time. */
+  onAdvertise?: () => void;
 }
 
 const TIPS = [
@@ -241,6 +243,11 @@ export function menuScreen(root: HTMLElement, settings: Settings, onChange: () =
             <p class="setup-note">Scout all ${POKEMON.length} Pokémon before you draft: every rating, position, size and evolution.</p>
             <div class="actions"><button class="btn" data-go="roster">Browse the full roster</button></div>
           </section>
+          ${opts.onAdvertise ? `<section class="mode-card ad-mode">
+            <h2>Courtside Ads</h2>
+            <p class="setup-note">Put your message on the LED board in every game. Pay by burning $PJAM or in USDC.</p>
+            <div class="actions"><button class="btn" data-go="advertise">Advertise on the court</button></div>
+          </section>` : ''}
         </div>
         <details class="controls-fold">
           <summary>Controls</summary>
@@ -311,6 +318,7 @@ export function menuScreen(root: HTMLElement, settings: Settings, onChange: () =
   });
   $('[data-go="roster"]')!.addEventListener('click', leave(opts.onRoster));
   if (opts.onMultiplayer) $('[data-go="multiplayer"]')!.addEventListener('click', leave(opts.onMultiplayer));
+  if (opts.onAdvertise) $('[data-go="advertise"]')!.addEventListener('click', leave(opts.onAdvertise));
   startNew.addEventListener('click', tryNew);
   $('[data-go="continue"]')?.addEventListener('click', leave(opts.onContinue));
   $('[data-go="resume-draft"]')?.addEventListener('click', leave(opts.onResumeDraft));

@@ -1,7 +1,8 @@
 import { courtFor, type CourtStyle } from '../data/courts';
-import { BANNER_ADS, boardAfterAd } from '../data/ads';
+import { bookableHalfOn, boardAds, houseAds, type BoardAd } from '../data/ads';
 import { badgeSvg } from '../ui/badges';
 import { IDEAL_RELEASE, type Game } from './game';
+import { drawLedBoard } from './ledBoard';
 import { getSprite } from './sprites';
 import { BALL_R, COURT_L, COURT_W, HOOP_Y, RIM_R, RIM_Z, clamp, rand, type GameEvent, type Player } from './types';
 
@@ -36,6 +37,8 @@ export class Renderer {
   private camX = 47;
   /** The yellow ring and "P1" tag on the user's player (off in replays: nobody is playing). */
   showUser = true;
+  /** What the courtside LED board runs: the booked ads (the Advertise page's preview shows a draft instead). */
+  ads: () => BoardAd[] = boardAds;
   private crowd: HTMLCanvasElement[] = [];
   private particles: Particle[] = [];
   private flash = 0;
@@ -212,58 +215,11 @@ export class Renderer {
     const crowd = this.crowd[Math.abs(frame) % 2];
     const off = -((this.camX * S_FAR * 0.85) % crowd.width) - 200;
     for (let x = off; x < VW; x += crowd.width) ctx.drawImage(crowd, Math.round(x), 0);
-    // LED ad board along the far sideline: 20px tall, bottom edge at Y_FAR-2, growing up over the crowd. It runs a little past both edges so screen shake never uncovers the ends.
-    const top = Y_FAR - 22;
-    ctx.fillStyle = '#05060f';
-    ctx.fillRect(-4, top, VW + 8, 20);
-    const edge = this.court!.boardColor;
-    const color = this.hype > 0 && Math.floor(this.t * 6) % 2 ? '#ffffff' : edge;
-    ctx.fillStyle = edge;
-    ctx.fillRect(-4, top, VW + 8, 1);
-    ctx.fillRect(-4, top + 19, VW + 8, 1);
-    ctx.font = '8px "Press Start 2P", monospace';
-    ctx.textBaseline = 'alphabetic';
-    const base = top + 13;
-    const ads = this.hype > 0 ? [] : BANNER_ADS.filter((a) => a.enabled);
-    const ad = ads.length > 0;
-    const msg = this.hype > 0 ? '  BUCKETS!  ★  BUCKETS!  ★ ' : ad ? `  ★ ${boardAfterAd(this.court!.board)}  ★ ` : `  ${this.court!.board}  ★ `;
-    // Whole-pixel layout: [lead] then one equal-width half per enabled ad, each [frame 2px][pad][tag box][gap][text][pad][frame 2px], then the board text, so every repeat is identical and joins cleanly. Long ad text is condensed horizontally to fit its half.
-    const lead = 4, pad = 4, gap = 4, tagPad = 3, halfW = 190;
-    const blockW = halfW * ads.length;
-    const msgX = ad ? lead + blockW : 0;
-    const w = msgX + Math.ceil(ctx.measureText(msg).width || 400);
-    const scroll = -Math.floor((this.camX * S_FAR + this.t * 12) % w);
-    const pulse = 0.8 + 0.2 * (Math.floor(this.t * 2) % 2);
-    for (let x = scroll - w; x < VW + 4; x += w) {
-      ads.forEach((a, i) => {
-        const bx = x + lead + i * halfW;
-        const tx = bx + 2 + pad;
-        const tagW = Math.ceil(ctx.measureText(a.tag).width) + tagPad * 2;
-        const room = halfW - 4 - pad * 2 - tagW - gap;
-        const textW = Math.ceil(ctx.measureText(a.text).width);
-        const k = Math.min(1, room / textW);
-        ctx.globalAlpha = pulse;
-        ctx.fillStyle = a.border;
-        ctx.fillRect(bx, top + 2, halfW, 16);
-        ctx.globalAlpha = 1;
-        ctx.fillStyle = '#05060f';
-        ctx.fillRect(bx + 1, top + 3, halfW - 2, 14);
-        ctx.fillStyle = a.bg;
-        ctx.fillRect(bx + 2, top + 4, halfW - 4, 12);
-        ctx.fillStyle = a.tagBg;
-        ctx.fillRect(tx, top + 5, tagW, 10);
-        ctx.fillStyle = '#ffffff';
-        ctx.fillText(a.tag, tx + tagPad, base);
-        ctx.fillStyle = a.color;
-        ctx.save();
-        ctx.translate(tx + tagW + gap + Math.floor((room - textW * k) / 2), base);
-        ctx.scale(k, 1);
-        ctx.fillText(a.text, 0, 0);
-        ctx.restore();
-      });
-      ctx.fillStyle = color;
-      ctx.fillText(msg, x + msgX, base);
-    }
+    // LED ad board along the far sideline: 20px tall, bottom edge at Y_FAR-2, growing up over the crowd, with the fixed $PJAM house half first and the booked ads taking turns in the bookable half (where YOUR AD HERE ran).
+    drawLedBoard(ctx, {
+      top: Y_FAR - 22, width: VW, scroll: this.camX * S_FAR + this.t * 12, t: this.t, edge: this.court!.boardColor,
+      hype: this.hype > 0, text: this.court!.board, ads: bookableHalfOn() ? this.ads() : [], house: houseAds(),
+    });
   }
 
   private poly(ctx: CanvasRenderingContext2D, pts: [number, number][], z = 0) {
