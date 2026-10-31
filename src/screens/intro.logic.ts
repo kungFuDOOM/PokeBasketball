@@ -17,6 +17,15 @@ export function introEnabled(mode: IntroMode, ctx: IntroCtx): boolean {
   return mode !== 'off';
 }
 
+/**
+ * The starting five on the court before tip-off. Offline only in 'full' mode (any ctx, so games without the pre-game
+ * card follow the setting too). Online only when the peer plays it as well (never skippable there), whatever the mode.
+ */
+export function startingFiveEnabled(mode: IntroMode, _ctx: IntroCtx, online: boolean, peerSupports: boolean): boolean {
+  if (online) return peerSupports;
+  return mode === 'full';
+}
+
 export interface IntroTiming {
   lengthMs: number;
   capMs: number;

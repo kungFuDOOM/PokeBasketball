@@ -13,6 +13,7 @@ import { abbr, esc, lettersName, shuffle, tier } from '../util';
 import { draftScreen } from './draft';
 import { bindSettings, settingsHtml, type Settings } from './menu';
 import { withIntro } from './intro';
+import { startingFiveEnabled } from './intro.logic';
 import { playGame } from './play';
 import { resultsScreen } from './results';
 import { offlineStats } from '../telemetry/offlineStats';
@@ -225,8 +226,10 @@ export function quickPlay(root: HTMLElement, settings: Settings, audio: Audio, a
       const close = act.overlay('Simulating your game…');
       void simulate(cfg).then((g) => { close(); done(g); });
     } else {
-      withIntro(root, cfg, cpu ? 'cpu' : 'quick', settings, () =>
-        playGame(root, cfg, audio, done, () => matchup(opp, mine, theirs, court), mode === 'watched' ? { spectator: true } : {}));
+      const ctx = cpu ? 'cpu' : 'quick';
+      const startingFive = startingFiveEnabled(settings.introMode ?? 'full', ctx, false, false);
+      withIntro(root, cfg, ctx, settings, () =>
+        playGame(root, cfg, audio, done, () => matchup(opp, mine, theirs, court), { spectator: mode === 'watched', startingFive }));
     }
   }
 
