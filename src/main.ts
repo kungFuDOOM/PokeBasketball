@@ -35,7 +35,7 @@ import { confirmNewDraft } from './ui/newDraft';
 import { confirmFranchiseName } from './ui/teamName';
 import { safeName } from './nameFilter';
 import { gamesScreen } from './screens/games';
-import { ANY_MULTIPLAYER } from './config/features';
+import { ANY_MULTIPLAYER, MODE_ADS } from './config/features';
 import { badgeSvg } from './ui/badges';
 import { guardZoom } from './ui/noZoom';
 import { abbr, esc, guardNameInputs, lettersName, shuffle } from './util';
@@ -46,6 +46,8 @@ import { isIntroMode, startingFiveEnabled } from './screens/intro.logic';
 
 initErrorReports();
 installTouchGuard();
+// Booked billboard ads, for the courtside LED board in every game.
+if (MODE_ADS) void import('./ads/board').then((b) => b.startLiveAds());
 
 const app = document.querySelector<HTMLElement>('#app')!;
 const audio = new Audio();
@@ -156,6 +158,9 @@ function menu() {
       app.className = 'screen-menu';
       window.scrollTo(0, 0);
       void import('./multiplayer/hub').then((h) => h.multiplayerHub({ root: app, settings, audio }, menu));
+    },
+    onAdvertise: !MODE_ADS ? undefined : () => {
+      void import('./ads/screen').then((a) => a.openAdvertise(app, menu));
     },
     onQuick: () => quick('draft'),
     onSeason: season,
@@ -480,3 +485,7 @@ if (introShot === 'offline' || introShot === 'online') {
     },
   });
 } else menu();
+// A link straight to the Advertise page: pokejam.xyz/#advertise.
+const advertise = () => { if (MODE_ADS && location.hash === '#advertise') void import('./ads/screen').then((a) => a.openAdvertise(app, menu)); };
+advertise();
+window.addEventListener('hashchange', advertise);

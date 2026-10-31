@@ -26,6 +26,8 @@ export interface ParsedTx {
   version: 'legacy' | number;
   signers: string[];
   accountKeys: string[];
+  /** The blockhash the transaction was built on (it can't land once that expires). */
+  recentBlockhash: string;
 }
 
 export function parseTransaction(bytes: Uint8Array): ParsedTx {
@@ -46,7 +48,10 @@ export function parseTransaction(bytes: Uint8Array): ParsedTx {
   const accountKeys: string[] = [];
   for (let i = 0; i < keyCount; i++) accountKeys.push(base58Encode(message.slice(keysAt + i * 32, keysAt + (i + 1) * 32)));
   if (required !== n) throw new Error(`transaction has ${n} signature slots but needs ${required}`);
-  return { signatures, message, version, signers: accountKeys.slice(0, required), accountKeys };
+  const bhAt = keysAt + keyCount * 32;
+  if (message.length < bhAt + 32) throw new Error('truncated transaction');
+  const recentBlockhash = base58Encode(message.slice(bhAt, bhAt + 32));
+  return { signatures, message, version, signers: accountKeys.slice(0, required), accountKeys, recentBlockhash };
 }
 
 export function serializeTransaction(tx: ParsedTx): Uint8Array {

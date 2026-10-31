@@ -46,6 +46,21 @@ export class Rpc {
     return false;
   }
 
+  /** Where a transaction stands: 'confirmed' (or finalized), 'failed', 'processed' (in a block, not confirmed yet), or null (unseen). */
+  async signatureStatus(signature: string): Promise<'confirmed' | 'failed' | 'processed' | null> {
+    const r = await this.call<{ value: ({ err: unknown; confirmationStatus?: string } | null)[] }>('getSignatureStatuses', [[signature], { searchTransactionHistory: true }]);
+    const s = r.value[0];
+    if (!s) return null;
+    if (s.err) return 'failed';
+    return s.confirmationStatus === 'confirmed' || s.confirmationStatus === 'finalized' ? 'confirmed' : 'processed';
+  }
+
+  /** False once a blockhash has expired: a transaction built on it can never land after that. */
+  async blockhashValid(blockhash: string): Promise<boolean> {
+    const r = await this.call<{ value: boolean }>('isBlockhashValid', [blockhash, { commitment: 'processed' }]);
+    return r.value;
+  }
+
   /** Token account balance in base units. */
   async tokenBalance(account: string): Promise<number> {
     const r = await this.call<{ value: { amount: string } }>('getTokenAccountBalance', [account, { commitment: 'confirmed' }]);
