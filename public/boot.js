@@ -1,7 +1,9 @@
 /* Classic script that runs before the game bundle. If the bundle can't start (old browser, blocked script, a
    throw while loading), the page would stay blank: show a readable message instead. The bundle sets
-   window.__bootOk as its very first act; once that is set this script stays out of the way. */
+   window.__bootOk as its very first act; once that is set this script stays out of the way. When framebust.js has
+   flagged the page as framed (window.__framed) the bundle stops on purpose and its overlay must stay: do nothing. */
 (function () {
+  if (window.__framed) return;
   function show(detail) {
     var app = document.getElementById('app');
     if (window.__bootOk || !app || app.children.length) return;
