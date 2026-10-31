@@ -10,6 +10,8 @@ interface ImportMetaEnv {
   readonly VITE_SHIELD_USDC?: string;
   /** "mainnet-beta" shows real USDC; anything else is devnet test USDC. Display only: the server decides the cluster. */
   readonly VITE_SHIELD_USDC_CLUSTER?: string;
+  /** "true" offers Google sign-in for Ranked next to Phantom; anything else is Phantom-only. */
+  readonly VITE_SIGNIN_GOOGLE?: string;
   /** Supabase project URL and publishable (anon) key for online play. Public by design; never the service-role key. */
   readonly VITE_SUPABASE_URL?: string;
   readonly VITE_SUPABASE_ANON_KEY?: string;

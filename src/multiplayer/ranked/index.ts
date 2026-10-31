@@ -1,6 +1,7 @@
 // Ranked: placements, tiers and divisions (rules in rank.ts).
 // Online (Supabase configured): two real players are matched by the server, which rates the match; the rating shown
 // here is always read back from the server. Not configured: the local mock (CPU opponent, rating in localStorage).
+import { SIGNIN_GOOGLE } from '../../config/features';
 import { esc } from '../../util';
 import { runMatch, panel } from '../shared/matchFlow';
 import { LocalMockMatchService, type ReportOutcome } from '../shared/matchService';
@@ -181,16 +182,22 @@ export async function rankedAccount(): Promise<SupabaseMatchService> {
   return service;
 }
 
-/** Ranked is for signed-in accounts: Google (links the guest account so stats carry over) or a Phantom wallet. Also used by the profile screen. */
+/**
+ * Ranked is for signed-in accounts: a Phantom wallet, plus Google (links the guest account so stats carry over) when the
+ * SIGNIN_GOOGLE build flag is on. Also used by the profile screen.
+ */
 export function mountSignIn(slot: HTMLElement, o: { returnTo: 'ranked' | 'profile'; onSignedIn(): void; error?: string | null; busy?: boolean }) {
   slot.innerHTML = signInPanelHtml(phantomAction(), { busy: o.busy, error: o.error ?? null });
   const sb = supabase();
   const again = (error: string | null = null, busy = false) => mountSignIn(slot, { ...o, error, busy });
   const fail = (e: unknown) => again(e instanceof Error ? e.message : 'Could not sign in.');
-  slot.querySelector('[data-a="google"]')?.addEventListener('click', () => {
-    again(null, true);
-    signInWithGoogle(sb, location, undefined, o.returnTo).catch(fail); // on success the browser leaves for Google and comes back to this page
-  });
+  // Flag off: no Google button is rendered and this branch is dropped from the build, so Google sign-in can't be started.
+  if (SIGNIN_GOOGLE) {
+    slot.querySelector('[data-a="google"]')?.addEventListener('click', () => {
+      again(null, true);
+      signInWithGoogle(sb, location, undefined, o.returnTo).catch(fail); // on success the browser leaves for Google and comes back to this page
+    });
+  }
   slot.querySelector('[data-a="phantom"]')?.addEventListener('click', async () => {
     again(null, true);
     try {
