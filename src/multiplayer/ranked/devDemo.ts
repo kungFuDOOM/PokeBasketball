@@ -7,8 +7,8 @@ import type { RankedMe, RankedResult } from './serverRank';
 import { renderRankBadge } from '../../ranked/badge';
 import { postMatchHtml, rankChipHtml, shieldItemHtml, shieldTagHtml, signInPanelHtml, usernamePickerHtml, weeklyCardHtml } from './view';
 import { parseShieldStatus, parseShopInfo } from './serverRank';
-import { MODE_SHIELD_SHOP } from '../../config/features';
-import { SHOP_NOTICES, shopHtml, type ShopModel } from './shopView';
+import { MODE_SHIELD_SHOP, MODE_SHIELD_STRIPE } from '../../config/features';
+import { SHOP_NOTICES, USDC_NOTICES, gotShields, shopHtml, type ShopModel } from './shopView';
 import { profileHtml, type ProfileModel } from '../../screens/profile';
 import { checkUsername, nameErrorText } from './username';
 import { initialPickModel, presetPickHtml } from './presetPick';
@@ -57,6 +57,13 @@ const SCREENS: Record<string, () => string> = {
   'shop-waiting': () => shieldHome(),
   'shop-cap': () => shieldHome(),
   'shop-guest': () => shieldHome(),
+  // The same sheet for a player signed in with Phantom (USDC buttons, devnet badge).
+  'usdc-shop': () => shieldHome(),
+  'usdc-shop-checked': () => shieldHome(),
+  'usdc-approve': () => shieldHome(),
+  'usdc-confirming': () => shieldHome(),
+  'usdc-success': () => shieldHome(),
+  'usdc-error': () => shieldHome(),
   'shield-queue': () => panel('SEARCHING', 'Looking for a ranked opponent near your skill…', `${shieldTagHtml(shield({ armed: true }))}<div class="actions center"><button class="btn ghost" data-a="cancel">Cancel</button></div>`),
   // Ranked team pick (presetPick.ts): nothing chosen, a card tapped, and locked in waiting on the opponent.
   pick: () => presetPickHtml(initialPickModel(17)),
@@ -92,14 +99,21 @@ export const devRankedScreen = (): string | null => {
 };
 
 const shopInfo = (held = 3, left = 39) => parseShopInfo({ held, cap: 14, purchases_left: left, blocked: false,
-  products: [{ sku: 'shield_3', units: 3, price_cents: 199 }, { sku: 'shield_7', units: 7, price_cents: 399 }, { sku: 'shield_14', units: 14, price_cents: 699 }] });
-const shopModel = (o: Partial<ShopModel> = {}): ShopModel => ({ info: shopInfo(), signedIn: true, agreed: false, busy: null, notice: null, ...o });
+  products: [{ sku: 'shield_3', units: 3, price_cents: 199, usdc_amount: 1990000 }, { sku: 'shield_7', units: 7, price_cents: 399, usdc_amount: 3990000 }, { sku: 'shield_14', units: 14, price_cents: 699, usdc_amount: 6990000 }] });
+const phantom = { cluster: 'devnet' } as const;
+const shopModel = (o: Partial<ShopModel> = {}): ShopModel => ({ info: shopInfo(), signedIn: true, agreed: false, busy: null, notice: null, card: MODE_SHIELD_STRIPE, ...o });
 const SHOP_SHEETS: Record<string, () => ShopModel> = {
   shop: () => shopModel(),
   'shop-checked': () => shopModel({ agreed: true }),
   'shop-waiting': () => shopModel({ agreed: true, notice: SHOP_NOTICES.waiting }),
   'shop-cap': () => shopModel({ info: shopInfo(12), agreed: true }),
   'shop-guest': () => shopModel({ info: null, signedIn: false }),
+  'usdc-shop': () => shopModel({ usdc: phantom }),
+  'usdc-shop-checked': () => shopModel({ usdc: phantom, agreed: true }),
+  'usdc-approve': () => shopModel({ usdc: phantom, agreed: true, busy: 'shield_7', rail: 'usdc', usdcStep: 'approve', notice: USDC_NOTICES.approve }),
+  'usdc-confirming': () => shopModel({ usdc: phantom, agreed: true, busy: 'shield_7', rail: 'usdc', usdcStep: 'confirm', notice: USDC_NOTICES.confirming }),
+  'usdc-success': () => shopModel({ usdc: phantom, agreed: true, info: shopInfo(10), notice: gotShields(7) }),
+  'usdc-error': () => shopModel({ usdc: phantom, agreed: true, notice: { tone: 'bad', text: 'The payment amount does not match the price' } }),
 };
 
 export function devRanked(root: HTMLElement, kind: string) {

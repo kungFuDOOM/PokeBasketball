@@ -16,7 +16,7 @@ import { TIER_COLORS, view, type MatchOutcome, type RankView } from './rank';
 import { LocalRankStore } from './rankStore';
 import { rankChipHtml, postMatchHtml, shieldItemHtml, shieldTagHtml, signInPanelHtml, weeklyCardHtml } from './view';
 import { mountUsernamePicker } from './picker';
-import { MODE_SHIELD_SHOP } from '../../config/features';
+import { MODE_SHIELD_SHOP, MODE_SHIELD_STRIPE } from '../../config/features';
 import { shopReturnOf } from './shopView';
 import { RankedUpdatingError, pickedMatch } from './presetPick';
 
@@ -136,10 +136,11 @@ async function renderHome(ctx: ModeContext) {
       if (MODE_SHIELD_SHOP && (e.target as Element).closest('[data-a="shop"]')) void showShop(svc, actions);
     });
     // Back from Stripe Checkout (?shop=success / ?shop=cancel): open the shop on the result, then drop the param.
-    const returned = MODE_SHIELD_SHOP ? shopReturnOf(location.search) : null;
+    const returned = shopReturnOf(location.search);
     if (returned) {
       history.replaceState(null, '', location.pathname + location.hash);
-      void showShop(svc, actions, returned);
+      // With Stripe off a stale ?shop=success|cancel is just cleaned up: no shop, no "payment" message.
+      if (MODE_SHIELD_STRIPE) void showShop(svc, actions, returned);
     }
   } catch {
     if (slot.isConnected) slot.innerHTML = '<p class="note">Could not load your rank from the server.</p>';

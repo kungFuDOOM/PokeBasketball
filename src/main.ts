@@ -1,3 +1,4 @@
+import './framed';
 import './compat';
 import './fonts.css';
 import './style.css';
@@ -34,14 +35,14 @@ import { confirmNewDraft } from './ui/newDraft';
 import { confirmFranchiseName } from './ui/teamName';
 import { safeName } from './nameFilter';
 import { gamesScreen } from './screens/games';
-import { ANY_MULTIPLAYER, MODE_SHIELD_SHOP } from './config/features';
+import { ANY_MULTIPLAYER, MODE_SHIELD_STRIPE } from './config/features';
 import { badgeSvg } from './ui/badges';
 import { guardZoom } from './ui/noZoom';
 import { abbr, esc, guardNameInputs, lettersName, shuffle } from './util';
 import { initErrorReports } from './telemetry/errors';
 import { offlineStats } from './telemetry/offlineStats';
 import { installTouchGuard } from './ui/touchGuard';
-import { isIntroMode } from './screens/intro.logic';
+import { isIntroMode, startingFiveEnabled } from './screens/intro.logic';
 
 initErrorReports();
 installTouchGuard();
@@ -356,6 +357,7 @@ function playUserGame(f: Franchise, g: FGame) {
     stat.finish('played');
     void afterUserGame(f, g, game, sides, uidOf, 'played');
   }, hub, {
+    startingFive: startingFiveEnabled(settings.introMode ?? 'full', 'franchise', false, false),
     onAutoSubs: (on) => {
       settings.autoSubs = on;
       save();
@@ -382,7 +384,7 @@ function watchUserGame(f: Franchise, g: FGame) {
   withIntro(app, cfg, 'franchise', settings, () => playGame(app, cfg, audio, (game) => {
     stat.finish('watched');
     void afterUserGame(f, g, game, sides, uidOf, 'watched');
-  }, hub, { spectator: true }));
+  }, hub, { spectator: true, startingFive: startingFiveEnabled(settings.introMode ?? 'full', 'franchise', false, false) }));
 }
 
 function progressHtml(f: Franchise, progress: Progress[]): string {
@@ -462,7 +464,7 @@ const returnTo = ANY_MULTIPLAYER ? (() => {
   } catch { return null; }
 })() : null;
 // Back from Stripe Checkout (?shop=success / ?shop=cancel): reopen Ranked, which opens the shop on the result.
-const backFromShop = MODE_SHIELD_SHOP && /[?&]shop=(success|cancel)\b/.test(location.search);
+const backFromShop = MODE_SHIELD_STRIPE && /[?&]shop=(success|cancel)\b/.test(location.search);
 const backToRanked = returnTo === 'ranked' || backFromShop;
 // Dev only: ?introshot=offline|online renders a frozen intro for screenshots (scripts/screenshot-intro.mjs).
 const introShot = import.meta.env.DEV ? new URLSearchParams(location.search).get('introshot') : null;

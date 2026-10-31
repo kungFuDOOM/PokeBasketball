@@ -2,7 +2,9 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src https://static.cloudflareinsights.com; style-src 'unsafe-inline'; img-src 'self'; connect-src https://cloudflareinsights.com; base-uri 'none'; form-action 'none'; object-src 'none'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' https://static.cloudflareinsights.com https://www.googletagmanager.com https://*.google-analytics.com https://*.analytics.google.com; style-src 'unsafe-inline'; img-src 'self' https://www.googletagmanager.com https://*.google-analytics.com https://*.analytics.google.com; connect-src https://cloudflareinsights.com https://www.googletagmanager.com https://*.google-analytics.com https://*.analytics.google.com; base-uri 'none'; form-action 'none'; object-src 'none'">
+  <script src="framebust.js"></script>
+  <script src="ga.js"></script>
   <meta name="referrer" content="no-referrer">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <link rel="icon" href="icon.svg" type="image/svg+xml">
@@ -43,40 +45,32 @@
 <main>
   <p><a href="./">← Back to the game</a> · <a href="privacy.html">Privacy policy</a></p>
   <h1>Poké Jam terms of use</h1>
-  <p class="meta">Last updated: October 29, 2026</p>
+  <p class="meta">Last updated: October 31, 2026</p>
 
   <div class="summary">
-    <p><strong>The short version:</strong> Poké Jam is a free-to-play, fan-made game made by kungFuDOOM, with one optional item you can buy (the Rank Shield). Play fair, have fun, and know that it comes with no guarantees.</p>
+    <p><strong>The short version:</strong> Poké Jam is a free, fan-made game (any purchases are optional) made by kungFuDOOM. Play fair, have fun, and know that it comes with no guarantees.</p>
   </div>
 
-  <h2>Free-to-play fan-made game</h2>
-  <p>Poké Jam is a free-to-play, unofficial fan project made by kungFuDOOM. It is not affiliated with, endorsed by or sponsored by Nintendo, Creatures Inc., GAME FREAK inc. or The Pokémon Company. Pokémon names and sprites belong to their respective owners.</p>
+  <h2>Free fan-made game</h2>
+  <p>Poké Jam is a free, unofficial fan project made by kungFuDOOM. It is not affiliated with, endorsed by or sponsored by Nintendo, Creatures Inc., GAME FREAK inc. or The Pokémon Company. Pokémon names and sprites belong to their respective owners.</p>
+
+  <h2>Ads and sponsors</h2>
+  <p>Sponsor and ad spots (the courtside LED board and the menu ticker) are sold directly by kungFuDOOM and may be paid in crypto (SOL). Ads are text only. No ad network or ad tracking is used, and sponsors don't get player data.</p>
+
+  <h2>Payments</h2>
+  <p>The game is free to play. Any purchases are optional. If optional paid items are offered, crypto payments go on-chain from your own wallet. We never hold your keys. Blockchain transactions are public and usually can't be reversed. Paid items and ad bookings are final unless the law says otherwise.</p>
+
+  <h2 id="sale">Rank Shields</h2>
+  <ul>
+    <li><strong>What they are.</strong> Rank Shields are optional digital items. Each one can save the points of one lost ranked match, under the rules shown in the game. Packs cost $1.99, $3.99 or $6.99.</li>
+    <li><strong>How you pay.</strong> Shields are paid in USDC on Solana, from your own Phantom wallet. We never hold your keys.</li>
+    <li id="refunds"><strong>Payments are final.</strong> On-chain payments are final unless the law requires otherwise. If a payment went through but your shields didn't arrive, email us the transaction signature and we will fix it.</li>
+    <li><strong>No cash value.</strong> Shields are tied to your account, can't be sold, traded or transferred, and can't be exchanged for money.</li>
+    <li><strong>Who may buy.</strong> You must be 18 or older, or have a parent's or guardian's permission.</li>
+  </ul>
 
   <h2>Provided as is, no warranty</h2>
-  <p>The game is provided "as is" and "as available", without warranties of any kind. It may have bugs, be unavailable at times, or lose saved games. Use it at your own risk.</p>
-
-  <h2 id="sale">Rank Shield purchases (terms of sale)</h2>
-  <p>These terms apply when you buy a Rank Shield. You see them before you pay.</p>
-  <ul>
-    <li><strong>What you get.</strong> A Rank Shield is a digital item in the game. A pack adds the number of shields shown at checkout to your account. Each shield can save the points of one lost ranked match, under the rules shown in the game.</li>
-    <li><strong>One use per 24 hours.</strong> At most one Rank Shield can be used in any rolling 24 hours, whether you bought it or earned it. You can hold at most 14, and buy at most 42 per ranked season.</li>
-    <li><strong>No cash value.</strong> Rank Shields are not money, can't be exchanged for money, and are not real property. You can't sell, trade, gift or transfer them.</li>
-    <li><strong>Tied to your account.</strong> Shields belong to the signed-in account that bought them. We can't move them to another account. If an account is closed for breaking the rules, its shields are lost.</li>
-    <li><strong>Things can change.</strong> We may change how Rank Shields work, rebalance or remove them, or end the game. If we remove purchased shields that you haven't used, we will refund them.</li>
-    <li><strong>Who may buy.</strong> You must be 18 or older, or have a parent's or guardian's permission, and you confirm this before checkout. We don't target children under 13 and don't knowingly sell to them.</li>
-    <li><strong>Payment.</strong> Payments are taken in US dollars on Stripe's secure checkout page. We never see your card. Prices are shown before you pay, and any taxes due are included or shown there.</li>
-    <li><strong>Refunds and chargebacks.</strong> See <a href="#refunds">Refunds</a>. A refund or a chargeback removes the shields it paid for, and a dispute can stop you from buying again.</li>
-  </ul>
-
-  <h2 id="refunds">Refunds</h2>
-  <p>Rank Shields are a digital item. Even so:</p>
-  <ul>
-    <li><strong>Unused shields</strong> bought in the last 14 days can be refunded on request. Email <a href="mailto:kungfudoom@mail.grokbot.com">kungfudoom@mail.grokbot.com</a> with the email on your Stripe receipt and your trainer name.</li>
-    <li><strong>Used shields</strong> can't be refunded. If you used some of a pack, the unused rest can be refunded in proportion to the price of the pack.</li>
-    <li>When a payment is refunded or disputed, the shields it paid for are removed from your account. Shields already used can't be taken back, and we don't undo the rank points a used shield saved.</li>
-    <li>If a payment succeeded but your shields didn't arrive, or you were charged twice, email us and we will fix it or refund you.</li>
-    <li>Please contact us before you ask your bank to reverse a charge. A dispute stops purchases on your account until it's sorted out.</li>
-  </ul>
+  <p>The game is provided "as is" and "as available", without warranties of any kind. It may have bugs, be unavailable at times, or lose saved games. Use it at your own risk. We don't guarantee uptime.</p>
 
   <h2>Fair play</h2>
   <p>Don't cheat, exploit bugs, use bots or modified clients, harass other players, or attack or overload the site. We may block anyone who does.</p>

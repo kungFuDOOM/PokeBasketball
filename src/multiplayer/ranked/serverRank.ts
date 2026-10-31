@@ -258,7 +258,13 @@ export function parseMatchRanks(raw: unknown, side: 0 | 1): { me?: BadgeRank; op
 }
 
 /** One pack in the Rank Shield shop (prices come from the server; the client never sends one). */
-export interface ShopProduct { sku: string; units: number; priceCents: number }
+export interface ShopProduct {
+  sku: string;
+  units: number;
+  priceCents: number;
+  /** USDC price in base units (6 decimals); null when the pack can't be paid in USDC. */
+  usdcAmount: number | null;
+}
 
 /** `pokejam_shield_shop()`: what the shop sheet shows. */
 export interface ShopInfo {
@@ -283,7 +289,8 @@ export function parseShopInfo(raw: unknown): ShopInfo | null {
       const units = nullable(p?.units);
       const priceCents = nullable(p?.price_cents);
       if (typeof p?.sku !== 'string' || units === null || priceCents === null || units < 1 || priceCents < 1) continue;
-      products.push({ sku: p.sku, units: Math.floor(units), priceCents: Math.floor(priceCents) });
+      const usdc = nullable(p?.usdc_amount);
+      products.push({ sku: p.sku, units: Math.floor(units), priceCents: Math.floor(priceCents), usdcAmount: usdc !== null && usdc > 0 ? Math.floor(usdc) : null });
     }
   }
   return { held: Math.max(0, Math.floor(held)), cap: nullable(r.cap) ?? 14, purchasesLeft: Math.max(0, nullable(r.purchases_left) ?? 0), blocked: r.blocked === true,

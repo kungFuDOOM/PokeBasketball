@@ -1,32 +1,48 @@
-// Rank Shield shop sheet (behind MODE_SHIELD_SHOP): loads the packs, sends a sku to the shield-create-checkout Edge Function,
+// Rank Shield shop sheet (behind MODE_SHIELD_SHOP; the card path needs MODE_SHIELD_STRIPE, USDC needs MODE_SHIELD_USDC): loads the packs, sends a sku to the shield-create-checkout Edge Function,
 // and hands the player to Stripe's hosted page. It never sees card data or a price it could change, and it never credits
 // anything: coming back from Stripe it only waits (polls pokejam_shield_me) for the webhook's credit to show up.
 import { supabase } from '../shared/supabase';
 import type { SupabaseMatchService } from '../shared/onlineMatchService';
-import { SHOP_NOTICES, gotShields, pollForRise, shopBodyHtml, shopHtml, type ShopModel, type ShopNotice } from './shopView';
+import { MODE_SHIELD_STRIPE, MODE_SHIELD_USDC, SHIELD_USDC_CLUSTER } from '../../config/features';
+import { getPhantomProvider, type WalletUser } from '../../wallet/phantom';
+import { SHOP_NOTICES, USDC_NOTICES, gotShields, pollForRise, shopBodyHtml, shopHtml, usdcOption, type ShopModel, type ShopNotice } from './shopView';
+import { UsdcPayError, parseIntent, pollConfirm, prepareTransfer, rpcFor, signAndSend, type ConfirmAnswer, type PayProvider } from './usdcPay';
 
 /** The held count just before leaving for Stripe, so the page that comes back knows what "more" means. */
 const BEFORE_KEY = 'pokejam.shop.before';
 const CONSENT_KEY = 'pokejam.shop.age';
+/** A USDC payment that was sent but not yet confirmed by the server: {intentId, signature}. Lets the shop finish it after a reload. */
+const USDC_KEY = 'pokejam.shop.usdc';
 
 const store = () => { try { return window.sessionStorage; } catch { return null; } };
 
-/** A player-facing reason from a failed shield-create-checkout call. */
-async function checkoutError(error: unknown): Promise<string> {
+/** A failed Edge Function call: the player-facing text, and the HTTP status when there was one. */
+class FnError extends Error {
+  constructor(message: string, public status = 0) { super(message); }
+}
+
+/** A player-facing reason from a failed Edge Function call. */
+async function checkoutError(error: unknown): Promise<FnError> {
   const e = error as { name?: string; context?: unknown };
-  if (e?.name === 'FunctionsFetchError' || e?.name === 'FunctionsRelayError') return 'Could not reach the shop. Try again in a moment.';
+  if (e?.name === 'FunctionsFetchError' || e?.name === 'FunctionsRelayError') return new FnError('Could not reach the shop. Try again in a moment.');
   if (e?.context instanceof Response) {
     const body = (await e.context.clone().json().catch(() => null)) as { error?: unknown } | null;
-    if (typeof body?.error === 'string' && body.error) return body.error;
+    if (typeof body?.error === 'string' && body.error) return new FnError(body.error, e.context.status);
+    return new FnError('Could not start checkout. Try again in a moment.', e.context.status);
   }
-  return 'Could not start checkout. Try again in a moment.';
+  return new FnError('Could not start checkout. Try again in a moment.');
+}
+
+async function callFn<T>(name: string, body: Record<string, unknown>): Promise<T> {
+  const { data, error } = await supabase().functions.invoke(name, { body });
+  if (error) throw await checkoutError(error);
+  return data as T;
 }
 
 /** Creates the Stripe Checkout Session; returns its hosted-page URL. */
 async function startCheckout(sku: string): Promise<string> {
-  const { data, error } = await supabase().functions.invoke('shield-create-checkout', { body: { sku, ageConfirmed: true } });
-  if (error) throw new Error(await checkoutError(error));
-  const url = (data as { url?: unknown } | null)?.url;
+  const data = await callFn<{ url?: unknown } | null>('shield-create-checkout', { sku, ageConfirmed: true });
+  const url = data?.url;
   if (typeof url !== 'string' || !url.startsWith('https://')) throw new Error('Could not start checkout. Try again in a moment.');
   return url;
 }
@@ -41,7 +57,7 @@ export interface ShopOptions {
 /** Opens the shop sheet over the Ranked home. Removes itself on close. */
 export function openShop(svc: SupabaseMatchService, o: ShopOptions = {}) {
   const prev = document.activeElement as HTMLElement | null;
-  const m: ShopModel = { info: null, signedIn: true, agreed: store()?.getItem(CONSENT_KEY) === '1', busy: null, notice: null };
+  const m: ShopModel = { info: null, signedIn: true, agreed: store()?.getItem(CONSENT_KEY) === '1', busy: null, notice: null, card: MODE_SHIELD_STRIPE };
   const host = document.createElement('div');
   host.innerHTML = shopHtml(m);
   const sheet = host.firstElementChild as HTMLElement;
@@ -58,6 +74,8 @@ export function openShop(svc: SupabaseMatchService, o: ShopOptions = {}) {
     if (t === sheet || t.closest('[data-a="shop-close"]')) return close();
     const buy = t.closest<HTMLButtonElement>('[data-a="buy"]');
     if (buy && !buy.disabled) void buyPack(buy.dataset.sku ?? '');
+    const usdc = t.closest<HTMLButtonElement>('[data-a="buy-usdc"]');
+    if (usdc && !usdc.disabled) void buyUsdc(usdc.dataset.sku ?? '');
   });
   sheet.addEventListener('change', (e) => {
     const box = (e.target as Element).closest<HTMLInputElement>('[data-a="age"]');
@@ -69,7 +87,7 @@ export function openShop(svc: SupabaseMatchService, o: ShopOptions = {}) {
   sheet.querySelector<HTMLElement>('[data-a="shop-close"]')?.focus();
 
   async function buyPack(sku: string) {
-    if (!sku || !m.agreed || m.busy) return;
+    if (!MODE_SHIELD_STRIPE || !sku || !m.agreed || m.busy) return;
     m.busy = sku;
     say(null);
     try {
@@ -78,6 +96,68 @@ export function openShop(svc: SupabaseMatchService, o: ShopOptions = {}) {
     } catch (e) {
       m.busy = null;
       if (open()) say({ tone: 'bad', text: e instanceof Error ? e.message : 'Could not start checkout.' });
+    }
+  }
+
+  /** Pay in USDC: server intent -> Phantom signs and sends -> the server reads the payment back from Solana and credits. */
+  async function buyUsdc(sku: string) {
+    if (!sku || !m.agreed || m.busy || !wallet) return;
+    m.busy = sku;
+    m.rail = 'usdc';
+    m.usdcStep = 'approve';
+    say(null);
+    try {
+      const intent = parseIntent(await callFn('shield-usdc-intent', { sku, ageConfirmed: true }));
+      // The badge says which network this build is for: never send money on another one.
+      if (intent.cluster !== SHIELD_USDC_CLUSTER) throw new UsdcPayError('The shop is on a different Solana network than this page. Reload and try again.');
+      const provider = getPhantomProvider() as PayProvider | null;
+      if (!provider) throw new UsdcPayError(USDC_NOTICES.noPhantom.text, 'no-phantom');
+      const built = await prepareTransfer(intent, wallet, rpcFor(intent.cluster));
+      say(USDC_NOTICES.approve);
+      const signature = await signAndSend(provider, built, wallet);
+      try { store()?.setItem(USDC_KEY, JSON.stringify({ intentId: intent.intentId, signature })); } catch { /* the payment still confirms below */ }
+      await finishUsdc(intent.intentId, signature);
+    } catch (e) {
+      if (open()) say(e instanceof UsdcPayError && e.kind === 'rejected' ? USDC_NOTICES.rejected : { tone: 'bad', text: e instanceof Error ? e.message : 'The payment did not go through.' });
+    } finally {
+      m.busy = null;
+      m.rail = 'card';
+      m.usdcStep = null;
+      if (open()) render();
+    }
+  }
+
+  /** Waits for the server to confirm a sent payment (it credits only after reading it from Solana), then refreshes the shop. */
+  async function finishUsdc(intentId: string, signature: string) {
+    m.usdcStep = 'confirm';
+    say(USDC_NOTICES.confirming);
+    let r: ConfirmAnswer | 'timeout';
+    try {
+      r = await pollConfirm(() => callFn<ConfirmAnswer>('shield-usdc-confirm', { intentId, signature }), { stop: () => !open() });
+    } catch (e) {
+      // A refusal (4xx other than rate limiting) is final: don't retry it on the next open.
+      if (e instanceof FnError && e.status >= 400 && e.status < 500 && e.status !== 429) try { store()?.removeItem(USDC_KEY); } catch { /* ignore */ }
+      throw e;
+    }
+    if (!open()) return;
+    if (r === 'timeout') return say(USDC_NOTICES.timeout);
+    try { store()?.removeItem(USDC_KEY); } catch { /* ignore */ }
+    const short = r.short ?? 0;
+    say(short > 0 ? { tone: 'warn', text: `Payment confirmed: +${r.credited ?? 0}. ${short} were over your limit of ${m.info?.cap ?? 14}: email kungfudoom@mail.grokbot.com for a refund.` } : gotShields(r.credited ?? 0));
+    await refresh();
+  }
+
+  async function resumeUsdc() {
+    let saved: { intentId?: unknown; signature?: unknown } | null = null;
+    try { saved = JSON.parse(store()?.getItem(USDC_KEY) ?? 'null'); } catch { /* none */ }
+    if (typeof saved?.intentId !== 'string' || typeof saved.signature !== 'string' || m.busy) return;
+    m.busy = '-';
+    m.rail = 'usdc';
+    try { await finishUsdc(saved.intentId, saved.signature); } catch (e) { if (open()) say({ tone: 'bad', text: e instanceof Error ? e.message : 'The payment did not go through.' }); } finally {
+      m.busy = null;
+      m.rail = 'card';
+      m.usdcStep = null;
+      if (open()) render();
     }
   }
 
@@ -108,10 +188,19 @@ export function openShop(svc: SupabaseMatchService, o: ShopOptions = {}) {
     if (open()) render();
   }
 
+  // USDC is for players signed in with Phantom only: the wallet comes from the Supabase user (the server re-reads it from the JWT).
+  let wallet = '';
   void (async () => {
+    if (MODE_SHIELD_USDC) {
+      const { data } = await supabase().auth.getSession().catch(() => ({ data: { session: null } }));
+      const opt = usdcOption(data.session?.user as WalletUser | undefined, true, SHIELD_USDC_CLUSTER);
+      wallet = opt?.wallet ?? '';
+      if (opt) m.usdc = { cluster: opt.cluster };
+    }
     await refresh();
     if (!open()) return;
-    if (o.returned === 'cancel') say(SHOP_NOTICES.cancelled);
+    if (wallet) void resumeUsdc();
+    if (!MODE_SHIELD_STRIPE) { /* no card payments: a Stripe return means nothing here */ } else if (o.returned === 'cancel') say(SHOP_NOTICES.cancelled);
     else if (o.returned === 'success') void waitForPayment();
   })();
 }

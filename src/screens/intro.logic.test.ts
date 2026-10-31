@@ -4,7 +4,7 @@ import type { TeamDef } from '../game/types';
 import { withIntro } from './intro';
 import {
   INTRO_CAP_MS, INTRO_LEN_MS, INTRO_QUICK_LEN_MS, IntroVotes, introEnabled, introLength, isIntroMode,
-  type IntroCtx, type IntroMode,
+  startingFiveEnabled, type IntroCtx, type IntroMode,
 } from './intro.logic';
 
 const CTXS: IntroCtx[] = ['ranked', 'social', 'quick', 'cpu', 'franchise'];
@@ -15,6 +15,26 @@ describe('introEnabled', () => {
       expect(introEnabled('full', ctx)).toBe(true);
       expect(introEnabled('quick', ctx)).toBe(true);
       expect(introEnabled('off', ctx)).toBe(ctx === 'ranked' || ctx === 'social');
+    }
+  });
+});
+
+describe('startingFiveEnabled', () => {
+  it('offline: only in full mode, for every ctx (peer flag ignored)', () => {
+    for (const ctx of CTXS) {
+      for (const peer of [true, false]) {
+        expect(startingFiveEnabled('full', ctx, false, peer)).toBe(true);
+        expect(startingFiveEnabled('quick', ctx, false, peer)).toBe(false);
+        expect(startingFiveEnabled('off', ctx, false, peer)).toBe(false);
+      }
+    }
+  });
+  it('online: only when the peer supports it, whatever the mode', () => {
+    for (const ctx of CTXS) {
+      for (const mode of ['full', 'quick', 'off'] as IntroMode[]) {
+        expect(startingFiveEnabled(mode, ctx, true, true)).toBe(true);
+        expect(startingFiveEnabled(mode, ctx, true, false)).toBe(false);
+      }
     }
   });
 });

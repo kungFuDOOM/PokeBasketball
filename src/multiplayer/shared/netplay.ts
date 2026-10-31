@@ -27,8 +27,9 @@ import { gameConfigFor, matchKey, type MatchKeys, type MatchSetup, type MatchTea
  * `ack` marks an answer to the other side's hi, which is never answered (so two finished sides don't echo).
  * `d` (Ranked only) is rosterDigest of both rosters; older clients leave it out and ignore it, so it needs no version bump.
  * `i: 1` says this client shows the pre-game intro (the 'pre' event); an older peer leaves it out and skips it.
+ * `s: 1` says this client plays the starting five on the court; it's shown only when both sides send it.
  */
-export type Hs = { k: 'hi'; v: number; n: number; side: 0 | 1; ack?: true; d?: number; i?: 1 };
+export type Hs = { k: 'hi'; v: number; n: number; side: 0 | 1; ack?: true; d?: number; i?: 1; s?: 1 };
 
 export class NetError extends Error {}
 
@@ -341,6 +342,8 @@ export interface Connected {
   keys: MatchKeys | null;
   /** The peer shows the pre-game intro (its hi carried `i: 1`); false for an older client, which goes straight in. */
   intro: boolean;
+  /** The peer also plays the starting five (its hi carried `s: 1`); false for an older client. */
+  startingFive: boolean;
 }
 
 const KEYS_TIMEOUT = 15_000;
@@ -393,6 +396,7 @@ export function connect(sb: SupabaseClient, match: OnlineMatch, quarterLen: numb
     let evidence: { log: EvidenceLog; keys: MatchKeys } | null | undefined = signed ? undefined : null;
     let peer = false;
     let peerIntro = false;
+    let peerFive = false;
     if (signed) void prepareEvidence(service!, match).then((e) => { evidence = e; ready(); });
     let done = false;
     let retry: ReturnType<typeof setTimeout> | undefined;
@@ -401,7 +405,7 @@ export function connect(sb: SupabaseClient, match: OnlineMatch, quarterLen: numb
     // Ranked: both sides must be about to play the same two teams.
     const teams = match.queue === 'ranked' ? setupFor(match, quarterLen) : null;
     const digest = teams ? rosterDigest([teams.home.roster, teams.away.roster]) : undefined;
-    const hi = (ack?: true) => subscribed && void ch.send({ type: 'broadcast', event: 'hs', payload: { k: 'hi', v: ENGINE_VERSION, n: NET_VERSION, side: match.side, ack, d: digest, i: 1 } satisfies Hs });
+    const hi = (ack?: true) => subscribed && void ch.send({ type: 'broadcast', event: 'hs', payload: { k: 'hi', v: ENGINE_VERSION, n: NET_VERSION, side: match.side, ack, d: digest, i: 1, s: 1 } satisfies Hs });
     const finish = (err: Error | null) => {
       if (done) return;
       done = true;
@@ -410,7 +414,7 @@ export function connect(sb: SupabaseClient, match: OnlineMatch, quarterLen: numb
       clearTimeout(retry);
       if (err) { link.close(); reject(err); return; }
       link.evidence = evidence?.log ?? null;
-      resolve({ cfg: buildConfig(match, quarterLen), link, setup: setupFor(match, quarterLen), keys: evidence?.keys ?? null, intro: peerIntro });
+      resolve({ cfg: buildConfig(match, quarterLen), link, setup: setupFor(match, quarterLen), keys: evidence?.keys ?? null, intro: peerIntro, startingFive: peerFive });
     };
     const ready = () => { if (peer && evidence !== undefined) finish(null); };
     const timer = setInterval(() => hi(), HS_EVERY);
@@ -426,6 +430,7 @@ export function connect(sb: SupabaseClient, match: OnlineMatch, quarterLen: numb
         // Answer their hi, even after starting (ours may have been lost), but never an answer.
         if (!m.ack) hi(true);
         peerIntro = m.i === 1;
+        peerFive = m.s === 1;
         peer = true;
         ready();
       });
