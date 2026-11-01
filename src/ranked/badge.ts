@@ -2,11 +2,11 @@
 import { esc } from '../util';
 import { TIERS, ZENITH_IDX, rankName, tierIndex, tierName } from './rank';
 
-/** CSS class that carries the tier colour (style.css .tier-0 .. .tier-7, .tier-z). */
+/** CSS class that carries the tier colour (style.css .tier-0 .. .tier-6, .tier-z). */
 export const tierClass = (divIdx: number) => (divIdx >= ZENITH_IDX ? 'tier-z' : `tier-${tierIndex(divIdx)}`);
 
-/** File stems, in TIERS order; Zenith has its own. */
-export const BADGE_FILES = ['bronze', 'silver', 'gold', 'platinum', 'diamond', 'prism', 'eclipse', 'master'] as const;
+/** File stems, in TIERS order (looked up by tier index, so Eclipse's six divisions all show eclipse.png); Zenith has its own. */
+export const BADGE_FILES = ['bronze', 'silver', 'gold', 'platinum', 'diamond', 'eclipse', 'master'] as const;
 export const ZENITH_BADGE = 'zenith';
 
 /** Badge file stem for a tier name as shown in the UI ('Pokémon Master' -> 'master', 'Zenith' -> 'zenith'); null when unknown. */
