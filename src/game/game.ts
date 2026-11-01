@@ -903,8 +903,10 @@ export class Game {
     const d = this.distToHoop(p);
     const turbo = p.intent.turbo && (p.turbo > 0.05 || p.fx.surge > 0 || p.fire);
     p.facing = hx > p.x ? 1 : -1;
-    // The layups drill teaches the layup: no dunks off the dribble there (normal games unaffected).
-    if (this.drillId !== 'layups' && d <= this.dunkRange(p, turbo)) {
+    // The layups drill teaches the layup and the jump shots drill the jumper: no dunks off the dribble in
+    // either (a turbo drive into the mid-range ring would otherwise dunk and not count). Normal games unaffected.
+    const noDunk = this.drillId === 'layups' || this.drillId === 'jumpshots';
+    if (!noDunk && d <= this.dunkRange(p, turbo)) {
       this.startDunk(p, false);
       return;
     }

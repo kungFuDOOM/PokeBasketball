@@ -117,6 +117,24 @@ export function timeLeft(s: RunnerState): number {
   return id ? Math.max(0, drill(id).timeLimit - s.stats.elapsed) : 0;
 }
 
+/**
+ * Run-all position prefix for the strip label ("Drill 3/6 · "), empty for a single drill. Spelled out so it
+ * never reads as a rep counter: a bare "3/6" next to "Jump Shots" looked like 3 of 6 makes.
+ */
+export const runPos = (s: RunnerState): string => (s.runAll ? `Drill ${s.index + 1}/${s.queue.length} · ` : '');
+
+/** Live strip tag while a drill is active: clock, then "reps/target" or, for scored timed drills, "N made". */
+export function activeTag(s: RunnerState): string {
+  const id = currentDrill(s);
+  if (!id) return '';
+  const def = drill(id);
+  const secs = Math.ceil(timeLeft(s));
+  let tag = ` ${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`;
+  if (def.repTarget) tag += ` · ${s.stats.reps}/${def.repTarget}`;
+  else if (id === 'layups' || id === 'jumpshots') tag += ` · ${s.stats.reps} made`;
+  return tag;
+}
+
 /** Markers to draw for a drill in a given phase: from the drill's intro, through the countdown, until it's done. */
 export function markersFor(id: DrillId | null, phase: RunnerPhase, stats: DrillStats): MarkerRequest[] {
   if (!id || phase === 'done') return [];

@@ -12,7 +12,7 @@ import { coachMon, fitLine } from '../tutorial/coach';
 import { getBestStars, markTutorialDone, recordDrillStars } from '../tutorial/store';
 import { DRILL_IDS, coachLine, drill, goalFor, type DrillId, type InputKind, type Stars } from '../tutorial/drills';
 import {
-  currentDrill, startRun, startRunAll, step, timeLeft,
+  activeTag, currentDrill, runPos, startRun, startRunAll, step,
   type DrillOutcome, type MarkerRequest, type RunnerAction, type RunnerState, type RunnerStep,
 } from '../tutorial/runner';
 import { createWatcher } from '../tutorial/watcher';
@@ -319,7 +319,6 @@ export function tutorialScreen(
       return;
     }
     const def = drill(id);
-    const pos = rs.runAll ? `${rs.index + 1}/${rs.queue.length} ` : '';
     let tag = '';
     let text = goalFor(id, kind);
     let p = 0;
@@ -330,9 +329,7 @@ export function tutorialScreen(
         text = `Get set… ${count || 'GO!'}`;
         break;
       case 'active': {
-        const secs = Math.ceil(timeLeft(rs));
-        tag = ` ${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`;
-        if (def.repTarget) tag += ` · ${rs.stats.reps}/${def.repTarget}`;
+        tag = activeTag(rs);
         if (goT > 0) text = 'GO!';
         else if (coachT > 0 && coachText) text = coachText;
         p = def.repTarget ? rs.stats.reps / def.repTarget : rs.stats.elapsed / def.timeLimit;
@@ -346,7 +343,7 @@ export function tutorialScreen(
     const key = `${rs.index}:${rs.phase}:${tag}:${text}:${Math.floor(p * 20)}`;
     if (key === shown) return;
     shown = key;
-    label.textContent = `${pos}${def.title}${tag}`;
+    label.textContent = `${runPos(rs)}${def.title}${tag}`;
     hint.textContent = fitLine(text);
     strip.style.setProperty('--p', `${Math.min(1, Math.max(0, p)) * 100}%`);
   };

@@ -60,7 +60,7 @@ describe('layups drill: lay it in, no dunk', () => {
     expect(shootAtRim(cfg('layups'))).toBe('layup');
   });
   it('the same shot still dunks in other drills and normal games', () => {
-    expect(shootAtRim(cfg('jumpshots'))).toBe('dunk');
+    expect(shootAtRim(cfg('passing'))).toBe('dunk');
     const n = new Game(cfg());
     expect(n.dunkRange(n.teamPlayers(0)[0], true)).toBeGreaterThan(3);
   });
