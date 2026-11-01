@@ -12,7 +12,7 @@ import { displayName } from './username';
 
 const PLACEMENT_GAMES = 5;
 
-/** CSS class that carries the tier colour (style.css: .tier-0 Bronze ... .tier-7 Pokémon Master, .tier-z Zenith). */
+/** CSS class that carries the tier colour (style.css: .tier-0 Bronze ... .tier-6 Pokémon Master, .tier-z Zenith). */
 export const tierClass = (divIdx: number) => (divIdx >= ZENITH_IDX ? 'tier-z' : `tier-${tierIndex(divIdx)}`);
 const seasonBadge = (n: number | null) => (n === null ? '' : `<span class="rk-season" title="Season ${n}">S${n}</span>`);
 const plural = (n: number, word: string) => `${n} ${n === 1 ? word : /(s|ch)$/.test(word) ? `${word}es` : `${word}s`}`;
