@@ -12,8 +12,10 @@ import {
   step,
   timeLeft,
   type RunnerAction,
+  type MarkerRequest,
   type RunnerEmit,
   type RunnerState,
+  type RunnerStep,
 } from './runner';
 
 const tick = (dt: number): RunnerAction => ({ type: 'tick', dt });
@@ -41,14 +43,14 @@ const script: Record<DrillId, RunnerAction[]> = {
 };
 
 describe('runner phases', () => {
-  it('starts in intro with the intro coach line and no markers', () => {
+  it('starts in intro with the intro coach line and the drill markers already up', () => {
     const { state, emits } = startRun('layups');
     expect(state.phase).toBe('intro');
     expect(currentDrill(state)).toBe('layups');
     expect(emits).toEqual([
       { kind: 'drill', id: 'layups' },
       { kind: 'coach', line: 'layups.intro' },
-      { kind: 'markers', markers: [] },
+      { kind: 'markers', markers: [{ kind: 'zone', zone: 'layup' }] },
     ]);
     expect(coachLine('layups.intro')).toBe(DRILLS.layups.coach.intro);
   });
@@ -222,6 +224,37 @@ describe('sequencing', () => {
     expect(state.outcomes.every((o) => o.skipped)).toBe(true);
   });
 
+  it('Run all: skipping drill 1 of 6 in any phase goes to drill 2, not the end', () => {
+    const phases = [
+      startRunAll().state,
+      step(startRunAll().state, { type: 'start' }).state,
+      toActive(startRunAll().state),
+    ];
+    for (const s of phases) {
+      const r = step(s, { type: 'skip' });
+      expect(r.state).toMatchObject({ index: 1, phase: 'intro', finished: false });
+      expect(r.emits.some((e) => e.kind === 'finished')).toBe(false);
+      expect(r.emits).toContainEqual({ kind: 'drill', id: 'layups' });
+    }
+  });
+
+  it('single-drill run: skip moves on to the next drill; only the last drill finishes', () => {
+    for (const s of [startRun('movement').state, toActive(startRun('movement').state)]) {
+      const r = step(s, { type: 'skip' });
+      expect(r.state).toMatchObject({ queue: ['layups'], index: 0, phase: 'intro', finished: false, runAll: false });
+      expect(r.emits[0]).toEqual({ kind: 'result', outcome: { id: 'movement', score: 0, stars: 0, skipped: true } });
+      expect(r.emits.some((e) => e.kind === 'finished')).toBe(false);
+      expect(r.emits).toContainEqual({ kind: 'drill', id: 'layups' });
+    }
+    // From its results card, skip acts like Next.
+    const done = run(toActive(startRun('movement').state), script.movement).state;
+    expect(currentDrill(step(done, { type: 'skip' }).state)).toBe('layups');
+    const last = DRILL_IDS[DRILL_IDS.length - 1];
+    const end = step(startRun(last).state, { type: 'skip' });
+    expect(end.state.finished).toBe(true);
+    expect(end.emits).toContainEqual({ kind: 'finished', exited: false, outcomes: [{ id: last, score: 0, stars: 0, skipped: true }] });
+  });
+
   it('exit ends the run from any phase and clears markers', () => {
     const active = toActive(startRunAll().state);
     const r = step(active, { type: 'exit' });
@@ -241,14 +274,46 @@ describe('sequencing', () => {
 });
 
 describe('markersFor', () => {
-  it('shows markers only in countdown/active, per drill', () => {
+  it('shows markers from intro through active (not done), per drill', () => {
     const empty = startRun('movement').state.stats;
-    expect(markersFor('layups', 'intro', empty)).toEqual([]);
+    expect(markersFor('layups', 'intro', empty)).toEqual([{ kind: 'zone', zone: 'layup' }]);
+    expect(markersFor('layups', 'countdown', empty)).toEqual([{ kind: 'zone', zone: 'layup' }]);
+    expect(markersFor('movement', 'intro', empty)).toEqual([{ kind: 'spot', index: 0, of: 6 }]);
     expect(markersFor('layups', 'done', empty)).toEqual([]);
     expect(markersFor('layups', 'active', empty)).toEqual([{ kind: 'zone', zone: 'layup' }]);
     expect(markersFor('jumpshots', 'active', empty).map((m) => m.kind === 'zone' && m.zone)).toEqual(['mid', 'three']);
     expect(markersFor('defense', 'active', empty)).toEqual([]);
     expect(markersFor('movement', 'active', { ...empty, reps: 6 })).toEqual([]);
     expect(markersFor(null, 'active', empty)).toEqual([]);
+  });
+
+  it('keeps the layups zone ring up from drill start until the drill completes', () => {
+    // Replays the runner's markers emits the way the screen does: the last one wins.
+    let reqs: MarkerRequest[] | null = null;
+    const take = (r: RunnerStep) => {
+      for (const e of r.emits) if (e.kind === 'markers') reqs = e.markers;
+      return r.state;
+    };
+    const ring = [{ kind: 'zone', zone: 'layup' }];
+    let s = take(startRunAll());
+    s = take(step(s, { type: 'skip' })); // Run All: movement skipped → layups intro
+    expect(currentDrill(s)).toBe('layups');
+    expect(s.phase).toBe('intro');
+    expect(reqs).toEqual(ring);
+    for (let i = 0; i < 60 * 12 && s.phase !== 'active'; i++) {
+      s = take(step(s, tick(1 / 60)));
+      expect(reqs).toEqual(ring);
+    }
+    expect(s.phase).toBe('active');
+    s = take(step(s, tick(1)));
+    expect(reqs).toEqual(ring);
+    // Retry restarts at intro with the ring still up.
+    s = take(step(s, { type: 'retry' }));
+    expect(s.phase).toBe('intro');
+    expect(reqs).toEqual(ring);
+    // Completing the drill clears it.
+    s = take(run(toActive(s), script.layups));
+    expect(s.phase).toBe('done');
+    expect(reqs).toEqual([]);
   });
 });

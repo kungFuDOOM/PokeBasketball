@@ -117,9 +117,9 @@ export function timeLeft(s: RunnerState): number {
   return id ? Math.max(0, drill(id).timeLimit - s.stats.elapsed) : 0;
 }
 
-/** Markers to draw for a drill in a given phase. Only shown while the drill is live (or counting down). */
+/** Markers to draw for a drill in a given phase: from the drill's intro, through the countdown, until it's done. */
 export function markersFor(id: DrillId | null, phase: RunnerPhase, stats: DrillStats): MarkerRequest[] {
-  if (!id || (phase !== 'active' && phase !== 'countdown')) return [];
+  if (!id || phase === 'done') return [];
   switch (id) {
     case 'movement': {
       const of = drill(id).repTarget ?? 0;
@@ -163,7 +163,7 @@ function enterIntroEmits(s: RunnerState): RunnerEmit[] {
   return [
     { kind: 'drill', id },
     { kind: 'coach', line: coachLineId(id, 'intro') },
-    { kind: 'markers', markers: [] },
+    { kind: 'markers', markers: markersFor(id, 'intro', s.stats) },
   ];
 }
 
@@ -285,11 +285,15 @@ export function step(s: RunnerState, a: RunnerAction): RunnerStep {
       return { state, emits: enterIntroEmits(state) };
     }
     case 'skip': {
-      if (s.phase === 'done') return advance(s);
+      // A single-drill run (picked from the Training menu) moves on to the next drill as a new single
+      // run, like Next on its results card. Only skipping the last drill (or the end of Run all) finishes.
+      const after = s.runAll ? null : DRILL_IDS[DRILL_IDS.indexOf(id) + 1] ?? null;
+      const move = (st: RunnerState) => (after ? startRun(after) : advance(st));
+      if (s.phase === 'done') return move(s);
       const outcome: DrillOutcome = { id, score: 0, stars: 0, skipped: true };
       // Keep an earlier real result for this drill (e.g. a retry that was then skipped).
       const outcomes = s.outcomes.some((o) => o.id === id) ? s.outcomes : recordOutcome(s.outcomes, outcome);
-      const r = advance({ ...s, outcomes, result: outcome });
+      const r = move({ ...s, outcomes, result: outcome });
       return { state: r.state, emits: [{ kind: 'result', outcome }, ...r.emits] };
     }
     case 'exit': {
