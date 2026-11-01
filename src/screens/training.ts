@@ -1,4 +1,4 @@
-// Training menu: the six drills with their best stars, "Run all", and Back. Offline, local only.
+// Training menu: the drills with their best stars, "Run all", and Back. Offline, local only.
 // Kept free of game/play imports so it stays light; the drill itself is src/screens/tutorial.ts.
 import { DRILL_IDS, drill, type DrillId } from '../tutorial/drills';
 import { loadBestStars, type BestStars } from '../tutorial/store';
@@ -7,7 +7,7 @@ import { esc } from '../util';
 export interface TrainingActions {
   /** Play one drill. */
   drill(id: DrillId): void;
-  /** Play all six drills in order. */
+  /** Play every drill in order. */
   runAll(): void;
   back(): void;
 }
@@ -37,7 +37,7 @@ export function trainingHtml(best: BestStars): string {
         <div class="status"><span class="round">POKé JAM</span><span class="otc">Training</span></div>
       </header>
       <h1 class="trn-h" id="trn-h">Training</h1>
-      <p class="note">Pick a drill or run all six. Earn up to 3 stars each · ${total}/${DRILL_IDS.length * 3} stars</p>
+      <p class="note">Pick a drill or run all ${DRILL_IDS.length}. Earn up to 3 stars each · ${total}/${DRILL_IDS.length * 3} stars</p>
       <button class="btn primary big trn-all" data-trn="all">Run all</button>
       <ul class="trn-list" aria-labelledby="trn-h">${rows}
       </ul>

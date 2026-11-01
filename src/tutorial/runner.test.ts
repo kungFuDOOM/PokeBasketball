@@ -38,6 +38,7 @@ const script: Record<DrillId, RunnerAction[]> = {
   layups: [...times(10, [ev('release'), ev('score', { how: 'layup' })]).flat(), tick(45)],
   jumpshots: [...times(10, [ev('release'), ev('score', { how: 'jump' })]).flat(), tick(60)],
   passing: [tick(5), ...times(8, ev('pass'))],
+  alleyoop: [tick(5), ...times(5, [ev('oop'), ev('score', { how: 'dunk', oop: true })]).flat()],
   defense: [ev('block'), ev('steal'), ...times(30, [sig({ type: 'defending', dt: 1 }), tick(1)]).flat()],
   steals: [tick(5), ...times(3, ev('steal'))],
 };
@@ -171,7 +172,7 @@ describe('sequencing', () => {
     expect(again.outcomes[0].stars).toBe(3);
   });
 
-  it('Run all advances through all six drills in order', () => {
+  it('Run all advances through all seven drills in order', () => {
     let { state } = startRunAll();
     expect(state.runAll).toBe(true);
     const seen: DrillId[] = [];

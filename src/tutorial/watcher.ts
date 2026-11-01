@@ -18,6 +18,8 @@ export type Watch = (g: Game, events: readonly GameEvent[], intent: Intent, dt: 
 export function createWatcher(): Watch {
   let prevUser: Player | null = null;
   let pass: { from: Player; to: Player } | null = null;
+  /** The user's teammate going up off a user-team alley-oop, until that dunk scores, misses or is blocked. */
+  let oopBy: Player | null = null;
 
   return (g, events, intent, dt) => {
     const out: Signal[] = [];
@@ -50,12 +52,27 @@ export function createWatcher(): Watch {
     for (const e of events) {
       switch (e.kind) {
         case 'score':
-          out.push({ type: 'event', kind: 'score', byUser: isUser(e.player), how: e.how });
+          if (oopBy && e.player === oopBy) {
+            // An alley-oop finish counts for the user's team (the user threw the lob; auto-switch may or may not
+            // have handed them the dunker yet).
+            out.push({ type: 'event', kind: 'score', byUser: true, how: e.how, oop: true });
+            oopBy = null;
+          } else out.push({ type: 'event', kind: 'score', byUser: isUser(e.player), how: e.how });
+          break;
+        case 'oop':
+          if (e.player.team === userTeam && g.teams[userTeam].human) {
+            oopBy = e.player;
+            out.push({ type: 'event', kind: 'oop', byUser: true });
+          }
+          break;
+        case 'miss':
+          if (e.player === oopBy) oopBy = null;
           break;
         case 'release':
         case 'special':
         case 'steal':
         case 'block':
+          if (e.kind === 'block' && e.victim === oopBy) oopBy = null;
           out.push({ type: 'event', kind: e.kind, byUser: isUser(e.player) });
           break;
       }

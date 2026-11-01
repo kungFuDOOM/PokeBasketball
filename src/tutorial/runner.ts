@@ -4,7 +4,7 @@
  * button presses) and reacts to the emits (coach lines, marker requests, countdown, results).
  *
  * Sequencing: a run is a queue of drill ids. `startRun(id)` queues one drill; `startRunAll()` queues
- * all six. After a drill's results ('done'), `next` advances (or finishes the run), `retry` restarts it.
+ * all of them (DRILL_IDS). After a drill's results ('done'), `next` advances (or finishes the run), `retry` restarts it.
  * `skip` abandons the current drill (recorded as skipped) and moves on; `exit` ends the whole run.
  */
 import {
@@ -45,6 +45,8 @@ export type MarkerRequest =
   | { kind: 'spot'; index: number; of: number }
   /** Arrow from the user's player to the open teammate. */
   | { kind: 'passLane' }
+  /** Alley-oop drill: the glowing spot by the rim, plus an arrow from the ball handler to the teammate on it. */
+  | { kind: 'oopSpot' }
   | { kind: 'zone'; zone: ShotZone };
 
 export interface DrillOutcome extends DrillResult {
@@ -117,6 +119,24 @@ export function timeLeft(s: RunnerState): number {
   return id ? Math.max(0, drill(id).timeLimit - s.stats.elapsed) : 0;
 }
 
+/**
+ * Run-all position prefix for the strip label ("Drill 3/7 · "), empty for a single drill. Spelled out so it
+ * never reads as a rep counter: a bare "3/6" next to "Jump Shots" looked like 3 of 6 makes.
+ */
+export const runPos = (s: RunnerState): string => (s.runAll ? `Drill ${s.index + 1}/${s.queue.length} · ` : '');
+
+/** Live strip tag while a drill is active: clock, then "reps/target" or, for scored timed drills, "N made". */
+export function activeTag(s: RunnerState): string {
+  const id = currentDrill(s);
+  if (!id) return '';
+  const def = drill(id);
+  const secs = Math.ceil(timeLeft(s));
+  let tag = ` ${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`;
+  if (def.repTarget) tag += ` · ${s.stats.reps}/${def.repTarget}`;
+  else if (id === 'layups' || id === 'jumpshots') tag += ` · ${s.stats.reps} made`;
+  return tag;
+}
+
 /** Markers to draw for a drill in a given phase: from the drill's intro, through the countdown, until it's done. */
 export function markersFor(id: DrillId | null, phase: RunnerPhase, stats: DrillStats): MarkerRequest[] {
   if (!id || phase === 'done') return [];
@@ -134,6 +154,8 @@ export function markersFor(id: DrillId | null, phase: RunnerPhase, stats: DrillS
       ];
     case 'passing':
       return [{ kind: 'passLane' }];
+    case 'alleyoop':
+      return [{ kind: 'oopSpot' }];
     default:
       return [];
   }
@@ -155,7 +177,7 @@ function initial(queue: DrillId[], runAll: boolean): RunnerStep {
 /** Starts a single-drill run. */
 export const startRun = (id: DrillId): RunnerStep => initial([id], false);
 
-/** Starts "Run all": the six drills in order. */
+/** Starts "Run all": every drill in DRILL_IDS order. */
 export const startRunAll = (): RunnerStep => initial([...DRILL_IDS], true);
 
 function enterIntroEmits(s: RunnerState): RunnerEmit[] {

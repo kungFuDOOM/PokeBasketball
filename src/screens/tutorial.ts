@@ -4,7 +4,7 @@
 import { POKEMON, spriteUrl } from '../data/pokemon';
 import { LEAGUE, USER_STYLE, contrastAway } from '../franchise/league';
 import type { Audio } from '../game/audio';
-import { movementSpot, reachedSpot } from '../game/practice';
+import { movementSpot, oopSpot, reachedSpot } from '../game/practice';
 import type { Game } from '../game/game';
 import type { GameConfig, Marker, TeamDef } from '../game/types';
 import { cpuRoster } from '../season/team';
@@ -12,7 +12,7 @@ import { coachMon, fitLine } from '../tutorial/coach';
 import { getBestStars, markTutorialDone, recordDrillStars } from '../tutorial/store';
 import { DRILL_IDS, coachLine, drill, goalFor, type DrillId, type InputKind, type Stars } from '../tutorial/drills';
 import {
-  currentDrill, startRun, startRunAll, step, timeLeft,
+  activeTag, currentDrill, runPos, startRun, startRunAll, step,
   type DrillOutcome, type MarkerRequest, type RunnerAction, type RunnerState, type RunnerStep,
 } from '../tutorial/runner';
 import { createWatcher } from '../tutorial/watcher';
@@ -75,6 +75,15 @@ export function drillMarkers(g: Game, reqs: readonly MarkerRequest[]): Marker[] 
       if (s) out.push({ kind: 'spot', x: s.x, y: s.y });
     } else if (r.kind === 'zone') {
       out.push({ kind: 'zone', zone: r.zone, team: u });
+    } else if (r.kind === 'oopSpot') {
+      // Alley-oop: the spot by the rim, and an arrow from the user's ball handler to the teammate nearest it.
+      const s = oopSpot(u);
+      out.push({ kind: 'spot', x: s.x, y: s.y });
+      const me = g.ball.owner?.team === u ? g.ball.owner : null;
+      if (!me) continue;
+      const near = (p: { x: number; y: number }) => Math.hypot(p.x - s.x, p.y - s.y);
+      const to = g.teamPlayers(u).filter((p) => p !== me).reduce<typeof me | null>((a, b) => (!a || near(b) < near(a) ? b : a), null);
+      if (to) out.unshift({ kind: 'lane', from: me.id, to: to.id });
     } else {
       // Pass lane: from the user's ball handler to the most open teammate.
       const me = g.ball.owner?.team === u ? g.ball.owner : null;
@@ -94,7 +103,7 @@ export const tutorialInput = (): InputKind =>
 /** How long (seconds) a coach line (rep praise, tip) stays up before the drill goal comes back. */
 export const PRAISE_S = 1.4;
 
-/** What the tutorial screen opens on: one training drill, or "Run all" (the six in order). */
+/** What the tutorial screen opens on: one training drill, or "Run all" (every drill in order). */
 export type TutorialStart = DrillId | 'all';
 
 export { starText };
@@ -319,7 +328,6 @@ export function tutorialScreen(
       return;
     }
     const def = drill(id);
-    const pos = rs.runAll ? `${rs.index + 1}/${rs.queue.length} ` : '';
     let tag = '';
     let text = goalFor(id, kind);
     let p = 0;
@@ -330,9 +338,7 @@ export function tutorialScreen(
         text = `Get set… ${count || 'GO!'}`;
         break;
       case 'active': {
-        const secs = Math.ceil(timeLeft(rs));
-        tag = ` ${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`;
-        if (def.repTarget) tag += ` · ${rs.stats.reps}/${def.repTarget}`;
+        tag = activeTag(rs);
         if (goT > 0) text = 'GO!';
         else if (coachT > 0 && coachText) text = coachText;
         p = def.repTarget ? rs.stats.reps / def.repTarget : rs.stats.elapsed / def.timeLimit;
@@ -346,7 +352,7 @@ export function tutorialScreen(
     const key = `${rs.index}:${rs.phase}:${tag}:${text}:${Math.floor(p * 20)}`;
     if (key === shown) return;
     shown = key;
-    label.textContent = `${pos}${def.title}${tag}`;
+    label.textContent = `${runPos(rs)}${def.title}${tag}`;
     hint.textContent = fitLine(text);
     strip.style.setProperty('--p', `${Math.min(1, Math.max(0, p)) * 100}%`);
   };
