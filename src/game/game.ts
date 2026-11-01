@@ -410,6 +410,9 @@ export class Game {
       p.state = 'free'; p.stateT = 0; p.dunk = null; p.meter = 0;
       p.facing = p.team === 0 ? 1 : -1;
       p.ai.jumpIn = -1; p.ai.plan = 'none';
+      // Drills start cold: clear any streak or fire carried over from free practice.
+      p.streak = 0; p.fireMakes = 0;
+      if (p.fire) { p.fire = false; this.events.push({ kind: 'fire', player: p, on: false }); }
     }
     const off: TeamId = st.userBall ? u : ((1 - u) as TeamId);
     const b = this.ball;
@@ -900,7 +903,8 @@ export class Game {
     const d = this.distToHoop(p);
     const turbo = p.intent.turbo && (p.turbo > 0.05 || p.fx.surge > 0 || p.fire);
     p.facing = hx > p.x ? 1 : -1;
-    if (d <= this.dunkRange(p, turbo)) {
+    // The layups drill teaches the layup: no dunks off the dribble there (normal games unaffected).
+    if (this.drillId !== 'layups' && d <= this.dunkRange(p, turbo)) {
       this.startDunk(p, false);
       return;
     }
@@ -1263,7 +1267,8 @@ export class Game {
   }
 
   private setFire(p: Player) {
-    if (p.fire) return;
+    // Training drills never heat up: no on-fire (streaks or the blaze special) while a drill is staged.
+    if (p.fire || this.drillId) return;
     p.fire = true;
     p.fireMakes = 0;
     this.events.push({ kind: 'fire', player: p, on: true });
