@@ -35,6 +35,8 @@ import { confirmNewDraft } from './ui/newDraft';
 import { confirmFranchiseName } from './ui/teamName';
 import { safeName } from './nameFilter';
 import { gamesScreen } from './screens/games';
+import type { TutorialStart } from './screens/tutorial';
+import { isTutorialDone } from './tutorial/store';
 import { ANY_MULTIPLAYER, MODE_SHIELD_SHOP } from './config/features';
 import { badgeSvg } from './ui/badges';
 import { guardZoom } from './ui/noZoom';
@@ -167,6 +169,7 @@ function menu() {
       void import('./screens/profile').then((m) => m.openProfile({ root: app, back: menu }, local));
     },
     onQuick: () => quick('draft'),
+    onTutorial: () => training(),
     onSeason: season,
     confirmSeason: () => guardNewDraft(menu),
     onResumeDraft: () => {
@@ -196,6 +199,20 @@ function quick(source: TeamSource) {
   audio.unlock();
   app.className = 'screen-quick';
   quickPlay(app, settings, audio, { menu, saved: save, overlay }, source);
+}
+
+/** Offline training drills (lazy-loaded: most players never open them). */
+function tutorial(start: TutorialStart = 'all') {
+  audio.unlock();
+  void import('./screens/tutorial').then((t) =>
+    t.tutorialScreen(app, settings, audio, { menu, quick: () => quick('draft'), training }, start));
+}
+
+/** The Training menu (the drills + Run all). First-time players skip it and go straight into Run all. */
+function training() {
+  if (!isTutorialDone()) return tutorial('all');
+  void import('./screens/training').then((t) =>
+    t.trainingScreen(app, { drill: (id) => tutorial(id), runAll: () => tutorial('all'), back: menu }));
 }
 
 /** Franchise with My Drafted Team (its name and colors); `onCancel` runs if the name confirm is cancelled. */
@@ -499,6 +516,9 @@ if (introShot === 'offline' || introShot === 'online') {
   // Back from a Google sign-in started on the profile: reopen the profile.
   menu();
   app.querySelector<HTMLButtonElement>('[data-go="profile"]')?.click();
+} else if (import.meta.env.DEV && new URLSearchParams(location.search).get('tutorial') === '1') {
+  // Dev only: ?tutorial=1 jumps straight into the tutorial practice game.
+  tutorial();
 } else if (devFinal) {
   void import('./screens/devResults').then((m) => m.devResults(app, devFinal));
 } else if (shared) {
