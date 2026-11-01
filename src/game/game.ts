@@ -3,8 +3,9 @@ import { think } from './ai';
 import {
   BALL_R, COURT_L, COURT_W, DIFFICULTIES, ENGINE_VERSION, GRAVITY, HOOP_Y, RIM_R, RIM_Z,
   backDir, clamp, dist, emptyIntent, hoopX, isThree, lerp, seededRng,
-  type Ball, type GameConfig, type GameEvent, type Grade, type Intent, type Player, type Rng, type TeamDef, type TeamId,
+  type Ball, type GameConfig, type GameEvent, type Grade, type Intent, type Marker, type Player, type Rng, type TeamDef, type TeamId,
 } from './types';
+import { PRACTICE_STAGES, stageX, type PracticeDrill } from './practice';
 
 /** Meter value (0..1 fill) at which a jump shot is released perfectly. */
 export const IDEAL_RELEASE = 0.8;
@@ -151,6 +152,8 @@ export class Game {
   inputs: [Intent, Intent] = [emptyIntent(), emptyIntent()];
   /** Which team this screen follows: the HUD, P1 tag and `user` refer to it. Display only, never the sim. */
   viewTeam: TeamId = 0;
+  /** Training markers painted on the floor (tutorial drills). Display only, never the sim. */
+  markers: Marker[] = [];
   /** The seed this game was started from (cfg.seed, or a random one). */
   readonly seed: number;
   /** The simulation rules this game runs on; results and snapshots carry it so replays use the same engine. */
@@ -168,6 +171,8 @@ export class Game {
   /** Who won the latest jump ball; the other team starts the following quarter. */
   private tipWinner: TeamId;
   private dribblePh = 0;
+  /** The training drill this practice game stages (null in every normal game). */
+  private drillId: PracticeDrill | null = null;
 
   constructor(cfg: GameConfig) {
     if (cfg.engineVersion !== undefined && cfg.engineVersion !== ENGINE_VERSION) {
@@ -193,6 +198,7 @@ export class Game {
       });
     }
     this.assignMatchups();
+    this.drillId = cfg.practice ? cfg.drill ?? null : null;
     this.clock = cfg.quarterLen;
     this.tipWinner = this.rng() < 0.5 ? 0 : 1;
     this.ball = {
@@ -353,20 +359,72 @@ export class Game {
       p.facing = p.team === 0 ? 1 : -1;
       p.ai.jumpIn = -1; p.ai.plan = 'none';
     }
+    if (this.drillId) return this.stageDrill();
     const label = q > 4 ? (q === 5 ? 'OVERTIME' : `${q - 4}OT`) : ['1ST', '2ND', '3RD', '4TH'][q - 1] + ' QUARTER';
     this.phase = 'tip';
-    if (q === 1 || q === 3) {
+    // Practice (the tutorial) skips the opening jump ball: the user starts with the ball so A reads PASS.
+    // Counting it as the user's tip keeps the usual alternation for Q2 (and Q3 still jumps).
+    let first = start;
+    if (this.cfg.practice && q === 1) {
+      first = this.tipWinner = this.teams[0].human ? 0 : 1;
+    } else if (q === 1 || q === 3) {
       this.setupJump();
       this.events.push({ kind: 'quarter', label, sub: 'JUMP BALL' });
       return;
     }
-    this.offense = start;
-    const pg = this.players.find((p) => p.team === start && p.slot === 0)!;
+    this.offense = first;
+    const pg = this.players.find((p) => p.team === first && p.slot === 0)!;
     this.giveBall(pg, true);
     this.phaseT = 1.8;
     this.updateUser(true);
-    this.events.push({ kind: 'quarter', label, sub: `${this.teams[start].abbr} BALL` });
+    this.events.push({ kind: 'quarter', label, sub: `${this.teams[first].abbr} BALL` });
     this.sfx.push('whistle');
+  }
+
+  /** The staged training drill (practice games only), or null. */
+  get drill(): PracticeDrill | null {
+    return this.drillId;
+  }
+
+  /** Practice only: switch to (or restart) a training drill and stage it now. Null goes back to free play. */
+  setDrill(d: PracticeDrill | null) {
+    if (!this.cfg.practice) return;
+    this.drillId = d;
+    if (d) this.stageDrill();
+  }
+
+  /** The team the user plays for (the human side of a practice game). */
+  private practiceUser(): TeamId {
+    return this.teams[0].human ? 0 : 1;
+  }
+
+  /** Puts everyone on their drill spots and hands the ball to the drill's ball handler, after a short pause. */
+  private stageDrill() {
+    const st = PRACTICE_STAGES[this.drillId!];
+    const u = this.practiceUser();
+    for (const p of this.players) {
+      const [x, y] = (p.team === u ? st.user : st.cpu)[p.slot] ?? [47, 25];
+      p.x = stageX(x, u);
+      p.y = y;
+      p.z = 0; p.vx = 0; p.vy = 0; p.vz = 0;
+      p.state = 'free'; p.stateT = 0; p.dunk = null; p.meter = 0;
+      p.facing = p.team === 0 ? 1 : -1;
+      p.ai.jumpIn = -1; p.ai.plan = 'none';
+    }
+    const off: TeamId = st.userBall ? u : ((1 - u) as TeamId);
+    const b = this.ball;
+    this.tipoff = null;
+    b.fromShot = -1;
+    b.noPickup = 0;
+    b.vx = 0; b.vy = 0; b.vz = 0;
+    this.offense = off;
+    this.shotClock = 24;
+    this.giveBall(this.players.find((p) => p.team === off && p.slot === 0)!, true);
+    this.updateUser(true);
+    // On defense the user always guards the ball handler (their point guard, staged right on him).
+    if (!st.userBall) this.setUser(u, this.players.find((p) => p.team === u && p.slot === 0)!);
+    this.phase = 'tip';
+    this.phaseT = 0.6;
   }
 
   /** Best leaper on a team: shot blocking, rebounding and size. */
@@ -598,11 +656,13 @@ export class Game {
 
     const b = this.ball;
     const live = this.phase === 'live';
+    const stage = this.drillId ? PRACTICE_STAGES[this.drillId] : null;
     if (live) {
-      this.clock -= dt;
+      // Drills keep the game clock still: the tutorial's drill timer owns time.
+      if (!stage) this.clock -= dt;
       this.tickStamina(dt);
       const shotClockRuns = b.mode === 'held' || b.mode === 'pass' || (b.mode === 'loose' && b.fromShot === -1);
-      if (shotClockRuns) this.shotClock -= dt;
+      if (shotClockRuns && (!stage || stage.shotClock)) this.shotClock -= dt;
     } else if (this.phase === 'dead') {
       this.phaseT -= dt;
       if (this.phaseT <= 0) this.inbound();
@@ -615,6 +675,9 @@ export class Game {
 
     for (const p of this.players) {
       p.intent = p.human ? this.userIntent(p, dt) : think(this, p, dt);
+      if (stage?.cpuDribbleOnly && !p.human && b.owner === p) {
+        p.intent = { ...p.intent, shoot: false, shootHeld: false, pass: false, special: false, passTo: undefined };
+      }
     }
     for (const p of this.players) {
       if (this.phase === 'live') this.act(p, dt);
@@ -622,6 +685,14 @@ export class Game {
     }
     this.separate();
     this.updateBall(dt);
+    // Drills: the wrong side holding the ball (a CPU rebound, a user steal) ends the rep; inbound() restages it.
+    if (stage && this.phase === 'live' && b.owner && b.mode === 'held') {
+      const u = this.practiceUser();
+      if ((b.owner.team === u) !== stage.userBall) {
+        this.phase = 'dead';
+        this.phaseT = 1;
+      }
+    }
 
     if (this.phase === 'live' || this.phase === 'dead') {
       // A shot in the air (or a layup or dunk already on its way up) at 0:00 plays out before the buzzer ends it.
@@ -655,6 +726,7 @@ export class Game {
   }
 
   private inbound() {
+    if (this.drillId) return this.stageDrill();
     this.applyPendingSubs();
     this.autoSubs(0, false);
     this.autoSubs(1, false);

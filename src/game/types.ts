@@ -1,5 +1,6 @@
 import type { CourtStyle } from '../data/courts';
 import type { Mon, Ratings } from '../data/pokemon';
+import type { PracticeDrill } from './practice';
 
 export type TeamId = 0 | 1;
 
@@ -102,6 +103,11 @@ export interface GameConfig {
    * Offline only; omitted (the default) leaves the CPU exactly as before.
    */
   practice?: boolean;
+  /**
+   * Practice only: stage a training drill instead of a normal game (src/game/practice.ts). Positions are reset
+   * at the start and after every basket, turnover or lost possession; the game clock stands still.
+   */
+  drill?: PracticeDrill;
 }
 
 export interface Intent {
@@ -196,6 +202,20 @@ export interface Player {
   /** Weeks out if hurt in this game; 0 = healthy. */
   hurt: number;
 }
+
+/** Shot zones a floor marker can ring around a team's attacking hoop. */
+export type ShotZone = 'layup' | 'mid' | 'three';
+
+/**
+ * A training marker painted on the court floor (court feet, display only: never read by the sim).
+ * - `spot`: a pulsing target spot to run to.
+ * - `lane`: a pass-lane arrow from one player to a teammate (by `Player.id`, so it follows them).
+ * - `zone`: a shot-zone ring around the hoop `team` attacks.
+ */
+export type Marker =
+  | { kind: 'spot'; x: number; y: number }
+  | { kind: 'lane'; from: number; to: number }
+  | { kind: 'zone'; zone: ShotZone; team: TeamId };
 
 export type BallMode = 'held' | 'pass' | 'shot' | 'loose' | 'net';
 

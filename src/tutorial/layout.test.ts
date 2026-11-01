@@ -28,7 +28,7 @@ describe('tutorial prompt strip layout', () => {
   });
   it('is inserted as a sibling of the stage, not inside it', () => {
     expect(screen).toMatch(/gameEl\.classList\.add\('tut-on'\)/);
-    expect(screen).toMatch(/gameEl\.insertAdjacentHTML\('afterbegin', stripHtml\(\)\)/);
+    expect(screen).toMatch(/gameEl\.insertAdjacentHTML\('afterbegin', stripHtml\(coach\)\)/);
     expect(screen).toMatch(/querySelector<HTMLElement>\('\.game'\)/);
   });
   it('reserves right padding (110px + safe area) for the pause/music/X corner', () => {
@@ -43,13 +43,62 @@ describe('tutorial prompt strip layout', () => {
   });
 });
 
-describe('tutorial menu wiring', () => {
-  it('main.ts wires onTutorial to the lazy-loaded tutorial screen', () => {
-    expect(main).toMatch(/onTutorial: \(\) => tutorial\(\)/);
-    expect(main).toMatch(/function tutorial\(\)/);
-    expect(main).toMatch(/import\('\.\/screens\/tutorial'\)/);
+/** The body of `sel`'s rule inside the first @media block whose query matches `query`. */
+const mediaRule = (query: RegExp, sel: string): string => {
+  for (const m of css.matchAll(/@media ([^{]*)\{((?:[^{}]*\{[^}]*\})*)\s*\}/g)) {
+    if (!query.test(m[1])) continue;
+    const r = m[2].match(new RegExp(`(?:^|\\n)\\s*${esc(sel)} \\{([^}]*)\\}`));
+    if (r) return r[1];
+  }
+  return '';
+};
+const px = (s: string) => Number(s.match(/calc\((\d+)px/)?.[1] ?? s.match(/(\d+)px/)?.[1] ?? NaN);
+
+describe('tutorial coach in the prompt strip', () => {
+  it('uses existing sprite art via spriteUrl (no new assets) and drops the portrait if it fails to load', () => {
+    expect(screen).toMatch(/import \{ POKEMON, spriteUrl \} from '\.\.\/data\/pokemon'/);
+    expect(screen).toMatch(/<img class="tut-coach" src="\$\{spriteUrl\(coach\.dex\)\}" alt="" aria-hidden="true"/);
+    expect(screen).toMatch(/\.tut-coach'\)\?\.addEventListener\('error'/);
   });
-  it('menu has a Tutorial button bound to onTutorial', () => {
+  it('sits inside the strip (its own flex item), never positioned over the court', () => {
+    expect(screen).toMatch(/<div class="tut-text">\$\{face\}<div class="tut-lines">/);
+    const coach = rule('.tut-coach');
+    expect(coach).toMatch(/flex: none/);
+    expect(coach).not.toMatch(/position:/);
+    expect(coach).toMatch(/pointer-events: none/);
+    expect(rule('.tut-strip')).toMatch(/overflow: hidden/);
+  });
+  it('is sized from the strip height (minus the top safe area) so it fits on desktop and landscape phones', () => {
+    const coach = rule('.tut-coach');
+    expect(coach).toMatch(/width: var\(--coach\); height: var\(--coach\)/);
+    expect(coach).toMatch(/--coach: calc\(var\(--tut-h\) - env\(safe-area-inset-top, 0px\) - 6px\)/);
+    // Desktop 44px and short-landscape 38px strips leave a 38px / 32px portrait: both inside the strip.
+    expect(px(rule('.game.tut-on'))).toBe(44);
+    expect(px(mediaRule(/orientation: landscape\) and \(max-height: 500px/, '.game.tut-on'))).toBe(38);
+  });
+  it('portrait phones: coach + lines on one row, buttons on the next, all inside the 88px strip', () => {
+    const portrait = /orientation: portrait\) and \(max-width: 700px/;
+    const h = px(mediaRule(portrait, '.game.tut-on'));
+    const coach = px(mediaRule(portrait, '.tut-coach'));
+    expect(h).toBe(88);
+    expect(mediaRule(portrait, '.tut-strip')).toMatch(/flex-wrap: wrap/);
+    expect(mediaRule(portrait, '.tut-lines')).toMatch(/flex-direction: column/);
+    // coach row + 6px row gap + ~28px button row + 4px bottom padding must fit.
+    expect(coach + 6 + 28 + 4).toBeLessThanOrEqual(h);
+  });
+  it('clamps every shown line to the strip length', () => {
+    expect(screen).toMatch(/hint\.textContent = fitLine\(/);
+  });
+});
+
+describe('tutorial menu wiring', () => {
+  it('main.ts wires onTutorial to the lazy-loaded Training menu and tutorial screen', () => {
+    expect(main).toMatch(/onTutorial: \(\) => training\(\)/);
+    expect(main).toMatch(/function tutorial\(start: TutorialStart = 'all'\)/);
+    expect(main).toMatch(/import\('\.\/screens\/tutorial'\)/);
+    expect(main).toMatch(/import\('\.\/screens\/training'\)/);
+  });
+  it('menu has a Training button bound to onTutorial', () => {
     expect(menu).toMatch(/onTutorial: \(\) => void/);
     expect(menu).toMatch(/data-go="tutorial"/);
     expect(menu).toMatch(/\$\('\[data-go="tutorial"\]'\)!\.addEventListener\('click', leave\(opts\.onTutorial\)\)/);

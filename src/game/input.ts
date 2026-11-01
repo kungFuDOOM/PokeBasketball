@@ -169,6 +169,9 @@ export class Input {
       id = null;
       this.touchMove = { x: 0, y: 0 };
       knob.style.transform = '';
+      // Back to its CSS rest spot (in the gutter, off the court) instead of staying where the thumb lifted.
+      base.style.left = '';
+      base.style.top = '';
       base.classList.remove('on');
     };
     zone.addEventListener('pointerup', end);

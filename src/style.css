@@ -1980,7 +1980,18 @@ body:has(.pause-btn) .music-btn:not(.docked) {
   border-bottom-right-radius: 8px;
   pointer-events: none;
 }
-.tut-text { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 10px; }
+.tut-text { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 8px; }
+/* The coach: the user's top player (existing sprite art), sized from the strip's own height so it can never poke out
+   over the court. The strip's overflow: hidden is the backstop. */
+.tut-coach {
+  flex: none;
+  width: var(--coach); height: var(--coach);
+  --coach: calc(var(--tut-h) - env(safe-area-inset-top, 0px) - 6px);
+  object-fit: contain;
+  image-rendering: pixelated;
+  pointer-events: none;
+}
+.tut-lines { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 10px; }
 .tut-step { flex: none; font: 0.62rem var(--pixel); color: var(--accent); text-transform: uppercase; letter-spacing: 0.06em; }
 .tut-hint {
   min-width: 0; font-weight: 700; font-size: 0.92rem; line-height: 1.2; color: var(--fg);
@@ -2014,8 +2025,56 @@ body:has(.pause-btn) .music-btn:not(.docked) {
 @media (orientation: portrait) and (max-width: 700px) {
   .game.tut-on { --tut-h: calc(88px + env(safe-area-inset-top, 0px)); }
   .tut-strip { flex-wrap: wrap; align-content: center; row-gap: 6px; padding-bottom: 4px; }
-  .tut-text { flex: 1 1 100%; flex-direction: column; align-items: flex-start; gap: 3px; }
+  .tut-text { flex: 1 1 100%; }
+  .tut-coach { --coach: 44px; }
+  .tut-lines { flex-direction: column; align-items: flex-start; gap: 3px; }
   .tut-hint { font-size: 0.8rem; }
+}
+/* Announcer text in Training on phones. The intro lines ("Go! X and crew!") use the bottom-center .battle box, which sat
+   on top of the A/PASS button and the near sideline; the .banner sat full-width across mid-court. Both move to a compact
+   top-center slot (landscape: the crowd band under the score bug; portrait: the free band above the court), capped to
+   the width between the player card/stick side and the button side. Presentation only; they never take pointer events. */
+@media (orientation: landscape) and (max-height: 500px), (orientation: portrait) and (max-width: 700px) {
+  .game.tut-on .banner, .game.tut-on .battle { pointer-events: none; }
+  .game.tut-on .banner { left: 50%; right: auto; width: max-content; max-width: min(440px, calc(100vw - 2 * (200px + env(safe-area-inset-right, 0px)))); transform: translateX(-50%) scale(0.9); }
+  .game.tut-on .banner.show { transform: translateX(-50%); }
+  .game.tut-on .banner-main { font-size: clamp(0.85rem, 2.6vw, 1.3rem); text-shadow: 2px 2px 0 var(--red), 4px 4px 0 #000; padding: 0 6px; overflow-wrap: anywhere; }
+  .game.tut-on .banner-sub { font-size: 0.5rem; margin-top: 5px; }
+  .game.tut-on.has-touch .battle {
+    top: 38px; bottom: auto; left: 50%;
+    width: max-content;
+    max-width: min(420px, calc(100vw - 2 * (190px + env(safe-area-inset-right, 0px))));
+    padding: 4px 10px; border-width: 3px; box-shadow: 0 0 0 2px #f8f8f0, 0 3px 0 rgba(0, 0, 0, 0.4);
+    transform: translate(-50%, -6px); opacity: 0;
+    transition: transform 0.18s, opacity 0.18s;
+  }
+  .game.tut-on.has-touch .battle.show { transform: translateX(-50%); opacity: 1; }
+  .game.tut-on.has-touch .battle p { font-size: 0.55rem; line-height: 1.5; min-height: 0; }
+}
+@media (orientation: landscape) and (max-height: 500px) {
+  .game.tut-on .banner { top: 86px; }
+}
+@media (orientation: portrait) and (max-width: 700px) {
+  /* Portrait: the court is pinned right under the HUD rows (see below), so the banner sits on the court's crowd band
+     (the top strip of the canvas, no players) and the intro box sits in the free band under the court, above the
+     stick and face buttons. Offsets are relative to .hud, which starts at --tut-h. */
+  .game.tut-on .banner, .game.tut-on.has-touch .battle { max-width: calc(100vw - 24px); }
+  .game.tut-on .banner { top: calc(var(--tut-hud) + 4px); }
+  /* Clamped to stay above the stick (its base top is at ~72% of the .hud height minus 52px) on short phones. */
+  .game.tut-on.has-touch .battle { top: min(calc(var(--tut-hud) + 100vw * 9 / 16 + 10px), calc(72% - 100px)); }
+}
+
+/* Portrait phones: the 16:9 court used to float mid-screen with a dead dark band above it. Pin it directly under the
+   HUD rows (player card + score bug, --tut-hud tall) and give all spare height to the bottom, where the stick and face
+   buttons live. Training only; the normal game layout is unchanged. */
+@media (orientation: portrait) and (max-width: 700px) {
+  .game.tut-on { --tut-hud: 50px; justify-content: flex-start; }
+  .game.tut-on .tut-strip { margin-bottom: 0; }
+  .game.tut-on .stage { margin: var(--tut-hud) 0 0; }
+}
+/* Touch portrait: the bug drops below the player card (+62px), so the HUD block is taller. */
+@media (orientation: portrait) and (max-width: 480px) {
+  .game.tut-on.has-touch { --tut-hud: 104px; }
 }
 
 /* ---------- tutorial completion ---------- */
@@ -2033,7 +2092,106 @@ body:has(.pause-btn) .music-btn:not(.docked) {
 /* The game is stopped behind the completion screen: hide its pause button and the strip's buttons. */
 .game:has(.tut-done) .pause-btn, .game:has(.tut-done) .tut-acts { display: none; }
 
+/* ---------- tutorial drill results ---------- */
+/* Below the prompt strip (never over it), so its Skip / Exit buttons keep working while the card is up. */
+.tut-result {
+  position: absolute; top: var(--tut-h); right: 0; bottom: 0; left: 0; z-index: 12;
+  background: rgba(5, 6, 15, 0.72);
+  display: grid; place-items: center;
+  padding: 12px max(12px, env(safe-area-inset-right, 0px)) max(12px, env(safe-area-inset-bottom, 0px)) max(12px, env(safe-area-inset-left, 0px));
+  overflow-y: auto;
+}
+.tut-result .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px 20px; max-width: 420px; width: 100%; text-align: center; }
+.tut-result h2 { font: 1rem var(--pixel); color: var(--accent); margin: 0 0 8px; }
+.tut-result p { margin: 0 0 8px; color: var(--fg); }
+.tut-score b { font: 1.1rem var(--pixel); }
+.tut-stars { font-size: 2rem; line-height: 1; color: var(--accent); letter-spacing: 0.1em; }
+.tut-best { color: var(--muted); }
+.tut-new { color: var(--accent); font-weight: 700; }
+.tut-res-line { font-size: 0.9rem; }
+.tut-result .tut-done-acts { margin-top: 12px; }
+.game:has(.tut-result) .pause-btn { display: none; }
+.tut-sum { list-style: none; margin: 0 0 12px; padding: 0; text-align: left; }
+.tut-sum li { display: flex; justify-content: space-between; gap: 12px; padding: 2px 0; color: var(--fg); }
+@media (orientation: landscape) and (max-height: 500px) {
+  .tut-result .panel { padding: 10px 14px; }
+  .tut-stars { font-size: 1.4rem; }
+  .tut-result p { margin-bottom: 4px; }
+}
+
 /* ---------- menu: tutorial entry ---------- */
 .mode-card.quick .actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .tut-hint-menu { margin: 0; font-size: 0.85rem; color: var(--accent); }
 .tut-hint-menu[hidden] { display: none; }
+
+/* ---------- training menu ---------- */
+.training {
+  max-width: 560px;
+  margin: 0 auto;
+  padding-block: max(14px, env(safe-area-inset-top, 0px)) max(32px, env(safe-area-inset-bottom, 0px));
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.trn-h { font: 1.2rem var(--pixel); color: var(--accent); margin: 4px 0 8px; }
+.trn-all { width: 100%; margin: 4px 0 14px; }
+.trn-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.trn-drill { width: 100%; min-height: 48px; display: flex; justify-content: space-between; align-items: center; gap: 12px; text-align: left; }
+.trn-stars { color: var(--accent); font-size: 1.2rem; letter-spacing: 0.08em; }
+@media (orientation: landscape) and (max-height: 500px) {
+  .trn-list { grid-template-columns: 1fr 1fr; }
+}
+
+/* ---------- touch controls clear of the court ---------- */
+/* Short landscape phones (844x390, 932x430): the 16:9 court used to fill the height and run under the face buttons and
+   the stick. Reserve a gutter on each side (stick on the left, a compact two-column face-button cluster on the right)
+   and shrink the stage to fit between them, so no control ever sits over the court. Normal game and Training alike. */
+@media (orientation: landscape) and (max-height: 500px) {
+  .game.has-touch {
+    --gut-l: calc(128px + env(safe-area-inset-left, 0px));
+    --gut-r: calc(158px + env(safe-area-inset-right, 0px));
+  }
+  .game.has-touch .stage {
+    position: relative;
+    left: calc((var(--gut-l) - var(--gut-r)) / 2);
+    width: min(calc(100vw - var(--gut-l) - var(--gut-r)), calc(100dvh * 16 / 9));
+  }
+  .game.tut-on.has-touch .stage { width: min(calc(100vw - var(--gut-l) - var(--gut-r)), calc((100dvh - var(--tut-h)) * 16 / 9)); }
+  /* The stick rests centred in the left gutter (it still follows the thumb anywhere in .stick-zone while held). */
+  .game.has-touch .stick-base { left: calc(env(safe-area-inset-left, 0px) + 64px); }
+  /* Compact cluster, 140px wide: Y over X|B over A (Xbox diamond squeezed into two columns), RB on top. */
+  .game.has-touch .btns { width: 140px; height: 236px; bottom: max(10px, env(safe-area-inset-bottom, 0px)); }
+  .game.has-touch .tb.xa { right: 37px; bottom: 0; width: 66px; height: 66px; }
+  .game.has-touch .tb.xx { right: 72px; bottom: 60px; width: 66px; height: 66px; }
+  .game.has-touch .tb.xb { right: 4px; bottom: 62px; width: 62px; height: 62px; }
+  .game.has-touch .tb.xy { right: 39px; bottom: 120px; width: 62px; height: 62px; }
+  .game.has-touch .tb.turbo { right: 35px; bottom: 190px; width: 70px; height: 44px; }
+}
+/* Narrow landscape (~548px wide): smaller gutters, cluster and stick scaled to match. */
+@media (orientation: landscape) and (max-height: 500px) and (max-width: 700px) {
+  .game.has-touch {
+    --gut-l: calc(104px + env(safe-area-inset-left, 0px));
+    --gut-r: calc(128px + env(safe-area-inset-right, 0px));
+  }
+  .game.has-touch .btns { transform: scale(0.82); transform-origin: bottom right; }
+  .game.has-touch .stick-base { left: calc(env(safe-area-inset-left, 0px) + 52px); transform: scale(0.85); }
+}
+/* Portrait Training: the stick and face buttons used to sit at the very bottom, ~165px below the court. Start them just
+   under the court (and the intro box that sits there), a little larger, clamped so they never run off short phones.
+   Offsets are relative to .touch, which starts at --tut-h; the court spans --tut-hud .. --tut-hud + 100vw * 9 / 16. */
+@media (orientation: portrait) and (max-width: 480px) {
+  .game.tut-on.has-touch { --tut-ctl: min(calc(var(--tut-hud) + 100vw * 9 / 16 + 64px), calc(100dvh - var(--tut-h) - 252px)); }
+  .game.tut-on.has-touch .btns { top: var(--tut-ctl); bottom: auto; transform: scale(1.12); transform-origin: top right; }
+  .game.tut-on.has-touch .stick-zone { top: calc(var(--tut-ctl) - 24px); bottom: 0; height: auto; width: 50%; }
+  .game.tut-on.has-touch .stick-base { top: 140px; }
+}
+/* Portrait touch, normal game: the announcer box sat bottom-centre over the A/PASS button. The court is centred, so put
+   the box in the empty band just above it (below the score bug), fading in place instead of sliding up from the bottom. */
+@media (orientation: portrait) and (max-width: 480px) {
+  .game.has-touch:not(.tut-on) .battle {
+    top: auto; bottom: calc(50% + 100vw * 9 / 32 + 10px);
+    max-width: calc(100vw - 24px);
+    transform: translate(-50%, 6px); opacity: 0;
+    transition: transform 0.18s, opacity 0.18s;
+  }
+  .game.has-touch:not(.tut-on) .battle.show { transform: translateX(-50%); opacity: 1; }
+}
