@@ -3,8 +3,9 @@ import { think } from './ai';
 import {
   BALL_R, COURT_L, COURT_W, DIFFICULTIES, ENGINE_VERSION, GRAVITY, HOOP_Y, RIM_R, RIM_Z,
   backDir, clamp, dist, emptyIntent, hoopX, isThree, lerp, seededRng,
-  type Ball, type GameConfig, type GameEvent, type Grade, type Intent, type Player, type Rng, type TeamDef, type TeamId,
+  type Ball, type GameConfig, type GameEvent, type Grade, type Intent, type Marker, type Player, type Rng, type TeamDef, type TeamId,
 } from './types';
+import { PRACTICE_STAGES, stageX, type PracticeDrill, type PracticeStage } from './practice';
 
 /** Meter value (0..1 fill) at which a jump shot is released perfectly. */
 export const IDEAL_RELEASE = 0.8;
@@ -151,6 +152,8 @@ export class Game {
   inputs: [Intent, Intent] = [emptyIntent(), emptyIntent()];
   /** Which team this screen follows: the HUD, P1 tag and `user` refer to it. Display only, never the sim. */
   viewTeam: TeamId = 0;
+  /** Training markers painted on the floor (tutorial drills). Display only, never the sim. */
+  markers: Marker[] = [];
   /** The seed this game was started from (cfg.seed, or a random one). */
   readonly seed: number;
   /** The simulation rules this game runs on; results and snapshots carry it so replays use the same engine. */
@@ -168,6 +171,10 @@ export class Game {
   /** Who won the latest jump ball; the other team starts the following quarter. */
   private tipWinner: TeamId;
   private dribblePh = 0;
+  /** The training drill this practice game stages (null in every normal game). */
+  private drillId: PracticeDrill | null = null;
+  /** Alley-oop drill: seconds the ball has been loose (a missed oop) before the rep restarts. */
+  private drillLooseT = 0;
 
   constructor(cfg: GameConfig) {
     if (cfg.engineVersion !== undefined && cfg.engineVersion !== ENGINE_VERSION) {
@@ -193,6 +200,7 @@ export class Game {
       });
     }
     this.assignMatchups();
+    this.drillId = cfg.practice ? cfg.drill ?? null : null;
     this.clock = cfg.quarterLen;
     this.tipWinner = this.rng() < 0.5 ? 0 : 1;
     this.ball = {
@@ -318,10 +326,12 @@ export class Game {
   }
   /** Block reaction delay for an AI defender. */
   reactTime(p: Player): number {
+    if (this.cfg.practice && this.vsCpu && !this.teams[p.team].human) return 1.5 + this.rand(0, 0.08);
     const base = this.vsCpu && this.cfg.home.human && p.team === 1 ? this.diff.react : 0.2;
     return base + ((100 - p.r.def) / 100) * 0.25 + this.rand(0, 0.08);
   }
   aggro(p: Player): number {
+    if (this.cfg.practice && this.vsCpu && !this.teams[p.team].human) return 0;
     return this.vsCpu && this.cfg.home.human && p.team === 1 ? this.diff.aggro * (1 - 0.5 * this.catchup()) : 0.85;
   }
 
@@ -351,20 +361,90 @@ export class Game {
       p.facing = p.team === 0 ? 1 : -1;
       p.ai.jumpIn = -1; p.ai.plan = 'none';
     }
+    if (this.drillId) return this.stageDrill();
     const label = q > 4 ? (q === 5 ? 'OVERTIME' : `${q - 4}OT`) : ['1ST', '2ND', '3RD', '4TH'][q - 1] + ' QUARTER';
     this.phase = 'tip';
-    if (q === 1 || q === 3) {
+    // Practice (the tutorial) skips the opening jump ball: the user starts with the ball so A reads PASS.
+    // Counting it as the user's tip keeps the usual alternation for Q2 (and Q3 still jumps).
+    let first = start;
+    if (this.cfg.practice && q === 1) {
+      first = this.tipWinner = this.teams[0].human ? 0 : 1;
+    } else if (q === 1 || q === 3) {
       this.setupJump();
       this.events.push({ kind: 'quarter', label, sub: 'JUMP BALL' });
       return;
     }
-    this.offense = start;
-    const pg = this.players.find((p) => p.team === start && p.slot === 0)!;
+    this.offense = first;
+    const pg = this.players.find((p) => p.team === first && p.slot === 0)!;
     this.giveBall(pg, true);
     this.phaseT = 1.8;
     this.updateUser(true);
-    this.events.push({ kind: 'quarter', label, sub: `${this.teams[start].abbr} BALL` });
+    this.events.push({ kind: 'quarter', label, sub: `${this.teams[first].abbr} BALL` });
     this.sfx.push('whistle');
+  }
+
+  /** The staged training drill (practice games only), or null. */
+  get drill(): PracticeDrill | null {
+    return this.drillId;
+  }
+
+  /** Practice only: switch to (or restart) a training drill and stage it now. Null goes back to free play. */
+  setDrill(d: PracticeDrill | null) {
+    if (!this.cfg.practice) return;
+    this.drillId = d;
+    if (d) this.stageDrill();
+  }
+
+  /** The team the user plays for (the human side of a practice game). */
+  private practiceUser(): TeamId {
+    return this.teams[0].human ? 0 : 1;
+  }
+
+  /** Alley-oop drill: walk back to (and wait on) this player's stage spot; nothing else. */
+  private holdSpotIntent(p: Player, st: PracticeStage): Intent {
+    const it = emptyIntent();
+    const [x, y] = (p.team === this.practiceUser() ? st.user : st.cpu)[p.slot] ?? [47, 25];
+    const dx = stageX(x, this.practiceUser()) - p.x;
+    const dy = y - p.y;
+    const d = Math.hypot(dx, dy);
+    if (d >= 0.6) {
+      const k = Math.min(1, d / 2.5) / d;
+      it.mx = dx * k;
+      it.my = dy * k;
+    }
+    return it;
+  }
+
+  /** Puts everyone on their drill spots and hands the ball to the drill's ball handler, after a short pause. */
+  private stageDrill() {
+    const st = PRACTICE_STAGES[this.drillId!];
+    const u = this.practiceUser();
+    for (const p of this.players) {
+      const [x, y] = (p.team === u ? st.user : st.cpu)[p.slot] ?? [47, 25];
+      p.x = stageX(x, u);
+      p.y = y;
+      p.z = 0; p.vx = 0; p.vy = 0; p.vz = 0;
+      p.state = 'free'; p.stateT = 0; p.dunk = null; p.meter = 0;
+      p.facing = p.team === 0 ? 1 : -1;
+      p.ai.jumpIn = -1; p.ai.plan = 'none';
+      // Drills start cold: clear any streak or fire carried over from free practice.
+      p.streak = 0; p.fireMakes = 0;
+      if (p.fire) { p.fire = false; this.events.push({ kind: 'fire', player: p, on: false }); }
+    }
+    const off: TeamId = st.userBall ? u : ((1 - u) as TeamId);
+    const b = this.ball;
+    this.tipoff = null;
+    b.fromShot = -1;
+    b.noPickup = 0;
+    b.vx = 0; b.vy = 0; b.vz = 0;
+    this.offense = off;
+    this.shotClock = 24;
+    this.giveBall(this.players.find((p) => p.team === off && p.slot === 0)!, true);
+    this.updateUser(true);
+    // On defense the user always guards the ball handler (their point guard, staged right on him).
+    if (!st.userBall) this.setUser(u, this.players.find((p) => p.team === u && p.slot === 0)!);
+    this.phase = 'tip';
+    this.phaseT = 0.6;
   }
 
   /** Best leaper on a team: shot blocking, rebounding and size. */
@@ -596,11 +676,13 @@ export class Game {
 
     const b = this.ball;
     const live = this.phase === 'live';
+    const stage = this.drillId ? PRACTICE_STAGES[this.drillId] : null;
     if (live) {
-      this.clock -= dt;
+      // Drills keep the game clock still: the tutorial's drill timer owns time.
+      if (!stage) this.clock -= dt;
       this.tickStamina(dt);
       const shotClockRuns = b.mode === 'held' || b.mode === 'pass' || (b.mode === 'loose' && b.fromShot === -1);
-      if (shotClockRuns) this.shotClock -= dt;
+      if (shotClockRuns && (!stage || stage.shotClock)) this.shotClock -= dt;
     } else if (this.phase === 'dead') {
       this.phaseT -= dt;
       if (this.phaseT <= 0) this.inbound();
@@ -613,6 +695,10 @@ export class Game {
 
     for (const p of this.players) {
       p.intent = p.human ? this.userIntent(p, dt) : think(this, p, dt);
+      if (stage?.cpuDribbleOnly && !p.human && b.owner === p) {
+        p.intent = { ...p.intent, shoot: false, shootHeld: false, pass: false, special: false, passTo: undefined };
+      }
+      if (stage?.holdSpots && !p.human && b.owner !== p) p.intent = this.holdSpotIntent(p, stage);
     }
     for (const p of this.players) {
       if (this.phase === 'live') this.act(p, dt);
@@ -620,6 +706,28 @@ export class Game {
     }
     this.separate();
     this.updateBall(dt);
+    // Alley-oop drill: a missed oop dunk nobody grabs within a moment restarts the rep (everyone else holds a spot).
+    if (stage?.holdSpots && this.phase === 'live' && b.mode === 'loose') {
+      this.drillLooseT += dt;
+      if (this.drillLooseT > 1.2) {
+        this.drillLooseT = 0;
+        this.phase = 'dead';
+        this.phaseT = 0.5;
+      }
+    } else this.drillLooseT = 0;
+    // Drills: the wrong side holding the ball (a CPU rebound, a user steal) ends the rep; inbound() restages it.
+    if (stage && this.phase === 'live' && b.owner && b.mode === 'held') {
+      const u = this.practiceUser();
+      if ((b.owner.team === u) !== stage.userBall) {
+        this.phase = 'dead';
+        this.phaseT = 1;
+      } else if (stage.holdSpots && b.owner.slot !== 0 && b.owner.state === 'free') {
+        // Alley-oop drill: a teammate holding the ball (a plain pass, a rebound) means no oop; reset the rep.
+        // An oop catch goes straight up for the dunk (state 'dunk'), so it never lands here.
+        this.phase = 'dead';
+        this.phaseT = 0.8;
+      }
+    }
 
     if (this.phase === 'live' || this.phase === 'dead') {
       // A shot in the air (or a layup or dunk already on its way up) at 0:00 plays out before the buzzer ends it.
@@ -653,6 +761,7 @@ export class Game {
   }
 
   private inbound() {
+    if (this.drillId) return this.stageDrill();
     this.applyPendingSubs();
     this.autoSubs(0, false);
     this.autoSubs(1, false);
@@ -826,7 +935,10 @@ export class Game {
     const d = this.distToHoop(p);
     const turbo = p.intent.turbo && (p.turbo > 0.05 || p.fx.surge > 0 || p.fire);
     p.facing = hx > p.x ? 1 : -1;
-    if (d <= this.dunkRange(p, turbo)) {
+    // The layups drill teaches the layup and the jump shots drill the jumper: no dunks off the dribble in
+    // either (a turbo drive into the mid-range ring would otherwise dunk and not count). Normal games unaffected.
+    const noDunk = this.drillId === 'layups' || this.drillId === 'jumpshots';
+    if (!noDunk && d <= this.dunkRange(p, turbo)) {
       this.startDunk(p, false);
       return;
     }
@@ -1189,7 +1301,8 @@ export class Game {
   }
 
   private setFire(p: Player) {
-    if (p.fire) return;
+    // Training drills never heat up: no on-fire (streaks or the blaze special) while a drill is staged.
+    if (p.fire || this.drillId) return;
     p.fire = true;
     p.fireMakes = 0;
     this.events.push({ kind: 'fire', player: p, on: true });
