@@ -14,7 +14,7 @@ import { Announcer, CLIPS } from '../game/announcer';
 import { DUNK_MOVES } from '../game/hud';
 import { Renderer, VH, VW } from '../game/render';
 import { getSprite, preload } from '../game/sprites';
-import type { PracticeDrill } from '../game/practice';
+import { oopSpot, type PracticeDrill } from '../game/practice';
 import type { GameConfig, GameEvent, Marker, TeamDef } from '../game/types';
 import { badgeSvg } from '../ui/badges';
 import { tier } from '../util';
@@ -25,7 +25,8 @@ export const FPS = 30;
  * 'franchise' (the season story), 'top5' (a countdown of the best plays), 'online' (a sub-30-second
  * multiplayer announcement: Social is live, Ranked is coming, Pack Battles teased) or 'watch' (an 18-second
  * spot for Play / Watch / Sim: spectate at 1x, 2x or 4x, skip, or sim straight to the final) or 'training'
- * (an 18-second spot for the Training drills, filmed on real practice games with their floor markers).
+ * (an 18-second spot for the Training drills and the new Alley-Oop drill, filmed on real practice games with
+ * their floor markers).
  */
 type Cut = 'main' | 'vertical' | 'franchise' | 'top5' | 'online' | 'watch' | 'training';
 const CUT: Cut = (['vertical', 'franchise', 'top5', 'online', 'watch', 'training'] as const).find((c) => c === new URLSearchParams(location.search).get('cut')) ?? 'main';
@@ -1949,14 +1950,17 @@ function renderWSim(seg: Segment, t: number, a: number) {
 
 // ---------- cut: training ----------
 
-type TrainingDrill = Extract<PracticeDrill, 'layups' | 'jumpshots' | 'passing'>;
+type TrainingDrill = Extract<PracticeDrill, 'layups' | 'jumpshots' | 'passing' | 'alleyoop'>;
 /** What each filmed drill shows: its slot in the six, title, coach lines and points per rep (as the real drills score). */
 const TR_DRILLS: Record<TrainingDrill, { n: number; title: string; intro: string; rep: string; pts: number }> = {
   layups: { n: 2, title: 'LAYUPS', intro: 'Attack the rim. Make as many as you can!', rep: 'Bucket!', pts: 2 },
   jumpshots: { n: 3, title: 'JUMP SHOTS', intro: 'Shoot from the rings. Timing is everything.', rep: 'Splash!', pts: 150 },
   passing: { n: 4, title: 'PASSING', intro: 'Move the ball. Follow the arrows!', rep: 'Dime!', pts: 100 },
+  alleyoop: { n: 5, title: 'ALLEY-OOP', intro: 'Throw it up! Lob it to your big on the spot.', rep: 'Alley-oop!', pts: 100 },
 };
-const TR_ALL = ['MOVEMENT', 'LAYUPS', 'JUMP SHOTS', 'PASSING', 'DEFENSE', 'STEALS'];
+const TR_ALL = ['MOVEMENT', 'LAYUPS', 'JUMP SHOTS', 'PASSING', 'ALLEY-OOP', 'DEFENSE', 'STEALS'];
+/** The drill the spot shows off as new. */
+const TR_NEW = 'ALLEY-OOP';
 /** The drills' user team is the away side (team 1): the side a practice game treats as yours when neither is human. */
 const TR_USER = 1;
 
@@ -1965,10 +1969,15 @@ function drillConfig(drill: TrainingDrill, seed: number): GameConfig {
   return { home: HOME, away: AWAY, court: COURT, quarterLen: 600, difficulty: 'rookie', stamina: false, practice: true, drill, seed };
 }
 
-/** True when this step's ball shows the drill's rep: a user bucket of the right kind, or a user pass leaving the hands. */
-function drillRep(drill: TrainingDrill, sg: SeededGame, events: GameEvent[], passing: boolean): boolean {
+/**
+ * True when this step shows the drill's rep: a user layup or jumper, a user pass leaving the hands, or a dunk
+ * off a lob the user threw in the last second and a half.
+ */
+function drillRep(drill: TrainingDrill, sg: SeededGame, events: GameEvent[], passing: boolean, sinceOop: number): boolean {
   if (drill === 'passing') return !passing && sg.g.ball.mode === 'pass' && sg.g.ball.pass?.from.team === TR_USER;
-  return events.some((e) => e.kind === 'score' && e.player.team === TR_USER && (drill === 'jumpshots' ? e.how === 'jump' : e.how !== 'jump'));
+  const how = drill === 'jumpshots' ? 'jump' : drill === 'layups' ? 'layup' : 'dunk';
+  if (drill === 'alleyoop' && sinceOop > 90) return false;
+  return events.some((e) => e.kind === 'score' && e.player.team === TR_USER && e.how === how);
 }
 
 /** Finds a seed and start step so the drill's first rep lands `at` seconds into a `sec`-second shot. */
@@ -1978,11 +1987,13 @@ function drillPlan(drill: TrainingDrill, at: number, sec: number): { seed: numbe
     const sg = new SeededGame(seed, drillConfig(drill, seed));
     const reps: number[] = [];
     let passing = false;
+    let lastOop = -999;
     while (sg.step < 60 * 30) {
       sg.advance(1);
       const ev = sg.g.events.splice(0);
       sg.g.sfx.length = 0;
-      if (drillRep(drill, sg, ev, passing)) reps.push(sg.step);
+      if (ev.some((e) => e.kind === 'oop' && e.player.team === TR_USER)) lastOop = sg.step;
+      if (drillRep(drill, sg, ev, passing, sg.step - lastOop)) reps.push(sg.step);
       passing = sg.g.ball.mode === 'pass';
     }
     const first = reps.find((k) => k >= lead + 30);
@@ -2000,6 +2011,15 @@ function drillMarkers(drill: TrainingDrill, sg: SeededGame): Marker[] {
   if (drill === 'layups') return [{ kind: 'zone', zone: 'layup', team: TR_USER }];
   if (drill === 'jumpshots') return [{ kind: 'zone', zone: 'mid', team: TR_USER }];
   const me = g.ball.owner?.team === TR_USER ? g.ball.owner : null;
+  if (drill === 'alleyoop') {
+    // The glowing spot by the rim, and an arrow from the ball handler to the teammate nearest it.
+    const spot = oopSpot(TR_USER);
+    const out: Marker[] = [{ kind: 'spot', x: spot.x, y: spot.y }];
+    if (!me) return out;
+    const near = (p: { x: number; y: number }) => Math.hypot(p.x - spot.x, p.y - spot.y);
+    const to = g.teamPlayers(TR_USER).filter((p) => p !== me).reduce<typeof me | null>((a, b) => (!a || near(b) < near(a) ? b : a), null);
+    return to ? [{ kind: 'lane', from: me.id, to: to.id }, ...out] : out;
+  }
   if (!me) return [];
   const to = g.teamPlayers(TR_USER).filter((p) => p !== me).reduce<typeof me | null>((a, b) => (!a || g.openness(b) > g.openness(a) ? b : a), null);
   return to ? [{ kind: 'lane', from: me.id, to: to.id }] : [];
@@ -2022,31 +2042,44 @@ function renderTrHook(seg: Segment, t: number, a: number) {
 /** The Training menu: six drills, stars filling in. */
 function renderTrMenu(seg: Segment, t: number, a: number) {
   renderBackground(t, 0.88);
-  jamText('6 DRILLS. 3 STARS EACH.', W / 2, 120, 96, { scale: a < 0.2 ? easeOutBack(a / 0.2) : 1 });
+  jamText('7 DRILLS. 3 STARS EACH.', W / 2, 120, 96, { scale: a < 0.2 ? easeOutBack(a / 0.2) : 1 });
   const rowW = 900;
   const x0 = W / 2 - rowW / 2;
   TR_ALL.forEach((name, i) => {
-    const at = 0.15 + i * 0.1;
+    const at = 0.15 + i * 0.09;
     if (a < at) return;
-    const y = 230 + i * 118;
+    const y = 214 + i * 104;
     const k = clamp01((a - at) / 0.15);
     ctx.save();
     ctx.globalAlpha = k;
     ctx.translate((1 - k) * 120, 0);
-    roundRect(x0, y, rowW, 98, 16, 'rgba(10,13,31,0.92)', 'rgba(255,255,255,0.3)', 4);
-    ctx.font = `800 54px ${SPORT}`;
-    ctx.fillStyle = '#f2f0e6';
+    const isNew = name === TR_NEW;
+    roundRect(x0, y, rowW, 88, 16, isNew ? 'rgba(60,40,0,0.92)' : 'rgba(10,13,31,0.92)', isNew ? '#ffcb05' : 'rgba(255,255,255,0.3)', isNew ? 6 : 4);
+    ctx.font = `800 52px ${SPORT}`;
+    ctx.fillStyle = isNew ? '#ffcb05' : '#f2f0e6';
     ctx.textBaseline = 'middle';
-    ctx.fillText(name, x0 + 36, y + 52);
+    ctx.fillText(name, x0 + 36, y + 47);
     ctx.font = `800 30px ${SPORT}`;
     ctx.fillStyle = '#8f95c0';
-    ctx.fillText(`DRILL ${i + 1}`, x0 + 340, y + 52);
+    ctx.fillText(`DRILL ${i + 1}`, x0 + 340, y + 47);
+    if (isNew) {
+      const pulse = 1 + 0.08 * Math.sin(a * 12);
+      ctx.save();
+      ctx.translate(x0 - 70, y + 44);
+      ctx.scale(pulse, pulse);
+      roundRect(-56, -26, 112, 52, 26, '#e3350d', '#fff', 4);
+      ctx.font = `800 34px ${SPORT}`;
+      ctx.fillStyle = '#fff';
+      ctx.textAlign = 'center';
+      ctx.fillText('NEW', 0, 2);
+      ctx.restore();
+    }
     // Stars fill left to right, row by row.
     for (let st = 0; st < 3; st++) {
       const sa = 0.6 + i * 0.12 + st * 0.06;
       const lit = a > sa;
       if (lit) once(`trm${i}-${st}`, t, seg.t0 + sa, () => { if (st === 2) cue(t, 'badge'); });
-      starShape(x0 + rowW - 230 + st * 76, y + 50, 30, lit ? '#ffcb05' : 'rgba(255,255,255,0.18)', lit ? easeOutBack(clamp01((a - sa) / 0.15)) : 1);
+      starShape(x0 + rowW - 230 + st * 76, y + 44, 30, lit ? '#ffcb05' : 'rgba(255,255,255,0.18)', lit ? easeOutBack(clamp01((a - sa) / 0.15)) : 1);
     }
     ctx.restore();
   });
@@ -2126,7 +2159,7 @@ function renderTrDrill(seg: Segment & { kind: 'tr-drill' }, t: number, first: bo
   ctx.font = `800 34px ${SPORT}`;
   ctx.fillStyle = '#ffcb05';
   ctx.textBaseline = 'middle';
-  ctx.fillText(`TRAINING · DRILL ${info.n} OF 6`, 70, 74);
+  ctx.fillText(`TRAINING · DRILL ${info.n} OF ${TR_ALL.length}`, 70, 74);
   ctx.font = `56px ${PIXEL}`;
   ctx.fillStyle = '#f8f8f0';
   ctx.fillText(info.title, 70, 128);
@@ -2163,12 +2196,12 @@ function renderTrStars(seg: Segment, t: number, a: number) {
   ctx.fillStyle = '#f8f8f0';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText('JUMP SHOTS', 0, -210);
+  ctx.fillText('ALLEY-OOP', 0, -210);
   ctx.font = `800 60px ${SPORT}`;
   ctx.fillStyle = '#aab0d8';
   ctx.fillText('SCORE', -90, -110);
   ctx.fillStyle = '#ffcb05';
-  ctx.fillText(Math.round(1250 * clamp01((a - 0.15) / 0.5)).toLocaleString('en-US'), 110, -110);
+  ctx.fillText(String(Math.round(750 * clamp01((a - 0.15) / 0.5))), 110, -110);
   ctx.restore();
   for (let i = 0; i < 3; i++) {
     const at = 0.45 + i * 0.18;
@@ -2177,7 +2210,7 @@ function renderTrStars(seg: Segment, t: number, a: number) {
     starShape(W / 2 + (i - 1) * 190, 520, 80, '#ffcb05', easeOutBack(clamp01((a - at) / 0.18)));
   }
   if (a > 1.0) {
-    plainText('Pure shooter! Automatic.', W / 2, 660, 56, '#f8f8f0');
+    plainText('Showtime! Perfect lobs every time.', W / 2, 660, 56, '#f8f8f0');
     jamText('NEW BEST!', W / 2, 900, 100, { scale: 0.3 + 0.7 * easeOutBack(clamp01((a - 1.0) / 0.2)) });
   }
 }
@@ -2381,15 +2414,15 @@ export async function prepare(): Promise<{ frames: number; fps: number }> {
     add({ kind: 'outro', t0: t, t1: t + 4.2 });
     musicEnd = s[s.length - 1].t0 + 1.6;
   } else if (CUT === 'training') {
-    add({ kind: 'tr-hook', t0: t, t1: t + 2.4 });
+    add({ kind: 'tr-hook', t0: t, t1: t + 2.2 });
     musicStart = 0.1;
     add({ kind: 'tr-menu', t0: t, t1: t + 2.4 });
-    for (const [d, sec, at] of [['layups', 2.8, 1.9], ['jumpshots', 2.8, 2.0], ['passing', 2.4, 0.9]] as const) {
+    for (const [d, sec, at] of [['layups', 2.5, 1.7], ['jumpshots', 2.5, 1.8], ['alleyoop', 3.2, 2.3]] as const) {
       const p = drillPlan(d, at, sec);
       add({ kind: 'tr-drill', t0: t, t1: t + sec, drill: d, ...p });
     }
-    add({ kind: 'tr-stars', t0: t, t1: t + 2.0 });
-    add({ kind: 'outro', t0: t, t1: t + 3.6 });
+    add({ kind: 'tr-stars', t0: t, t1: t + 1.8 });
+    add({ kind: 'outro', t0: t, t1: t + 3.4 });
     musicEnd = s[s.length - 1].t0 + 1.6;
   } else if (CUT === 'watch') {
     add({ kind: 'w-hook', t0: t, t1: t + 2.4 });
