@@ -86,8 +86,10 @@ describe('the rank window', () => {
   it('keeps the hard rules: no Bronze against Platinum+, Eclipse+ never more than 3 tiers down', async () => {
     const t = await testDb();
     const ok = async (a: number, b: number) => (await t.sql('select public.pokejam_ranked_pair_ok($1, $2) as ok', [a, b]))[0].ok;
-    expect([await ok(0, 800), await ok(0, 900), await ok(900, 0), await ok(1800, 800), await ok(1800, 900), await ok(2400, 1500), await ok(2400, 1100)])
-      .toEqual([true, false, false, false, true, true, false]);
+    // Tiers: Bronze 0, Silver 1, Gold 2, Platinum 3, Diamond 4, Eclipse 5 (1500..2099), Pokémon Master 6, Zenith counts as 6.
+    expect([await ok(0, 800), await ok(0, 900), await ok(900, 0), await ok(1800, 500), await ok(1800, 600), await ok(1500, 599),
+      await ok(1500, 600), await ok(1499, 300), await ok(2400, 1500), await ok(2400, 900), await ok(2400, 899)])
+      .toEqual([true, false, false, false, true, false, true, true, true, true, false]);
     const [a, b] = [await t.user('A'), await t.user('B')];
     await setScore(t, a, 0);
     await setScore(t, b, 900);
