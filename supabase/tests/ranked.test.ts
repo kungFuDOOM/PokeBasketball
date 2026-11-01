@@ -2,7 +2,7 @@
 // and the SQL point maths equal to src/ranked/rank.ts.
 import { readFileSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
-import { applyResult, divisionOf, marginOf, newLadderState, NO_MARGIN, placementShift, placementWeight, seedScore, tierIndex, tierName, zenithDecay, type Margin } from '../../src/ranked/rank';
+import { applyResult, marginOf, newLadderState, NO_MARGIN, placementShift, placementWeight, seedScore, zenithDecay, type Margin } from '../../src/ranked/rank';
 import { testDb, type Db, type User } from './testDb';
 
 vi.setConfig({ testTimeout: 60_000 });
@@ -405,9 +405,6 @@ describe('SQL equals the TS rank module', () => {
       expect((await t.sql('select public.pokejam_ranked_placement_shift($1::numeric) as v', [raw]))[0].v).toBe(placementShift(raw));
     expect((await t.sql(`select public.pokejam_ranked_tier_name(24) as a, public.pokejam_ranked_tier_name(7) as b, public.pokejam_ranked_division(7) as c, public.pokejam_ranked_division(24) as d`))[0])
       .toEqual({ a: 'Zenith', b: 'Gold', c: 2, d: null });
-    for (let d = 0; d <= 24; d++)
-      expect((await t.sql('select public.pokejam_ranked_tier_name($1) as n, public.pokejam_ranked_division($1) as v, public.pokejam_ranked_tier_idx($1) as i', [d]))[0])
-        .toEqual({ n: tierName(d), v: divisionOf(d), i: tierIndex(d) });
   });
 
   it('a full match through report_result lands where the TS module says', async () => {

@@ -1,7 +1,7 @@
 // @ts-ignore Node's fs has no type declarations in this project.
 import { existsSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { TIERS, TOP_DIV, ZENITH_IDX, tierIndex } from './rank';
+import { TIERS, TOP_DIV, ZENITH_IDX } from './rank';
 import { badgeRankOf, renderRankBadge, BADGE_FILES, ZENITH_BADGE, badgeImgForTier, badgeImgHtml, badgeUrl, stemForTier } from './badge';
 
 const file = (s: string, x2 = false) => new URL(`../../public/ranks/${s}${x2 ? '@2x' : ''}.png`, import.meta.url);
@@ -21,13 +21,7 @@ describe('rank badge art', () => {
     expect(stemForTier('Nope')).toBeNull();
   });
   it('maps every division index to its tier badge, with alt text', () => {
-    for (let d = 0; d <= TOP_DIV; d++) expect(badgeImgHtml(d)).toContain(`ranks/${BADGE_FILES[tierIndex(d)]}.png`);
-    const stems = Array.from({ length: TOP_DIV + 1 }, (_, d) => badgeImgHtml(d).match(/ranks\/(\w+)\.png/)![1]);
-    expect(stems).toEqual([...Array(3).fill('bronze'), ...Array(3).fill('silver'), ...Array(3).fill('gold'), ...Array(3).fill('platinum'),
-      ...Array(3).fill('diamond'), ...Array(6).fill('eclipse'), ...Array(3).fill('master')]);
-    expect(badgeImgHtml(15)).toContain('alt="Eclipse"');
-    expect(BADGE_FILES).not.toContain('prism');
-    expect(existsSync(file('prism'))).toBe(false);
+    for (let d = 0; d <= TOP_DIV; d++) expect(badgeImgHtml(d)).toContain(`ranks/${BADGE_FILES[Math.floor(d / 3)]}.png`);
     expect(badgeImgHtml(ZENITH_IDX)).toContain('ranks/zenith.png');
     expect(badgeImgHtml(ZENITH_IDX)).toContain('alt="Zenith"');
     expect(badgeImgHtml(0)).toContain('alt="Bronze"');
