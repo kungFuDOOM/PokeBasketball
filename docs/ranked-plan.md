@@ -172,7 +172,7 @@ Use the existing `pokejam_find_match` queue and its 2 s polling heartbeat, with 
 | 30-60 s | up to 700 | +/- 7 |
 | 60 s+ | up to 900, hard stop | +/- 9 |
 
-- Hard rules: Eclipse and above never match more than 3 tiers down (Eclipse meets Gold at the lowest, Pokémon Master and Zenith meet Platinum); a Bronze player never faces Platinum or higher (a gap of 9 divisions).
+- Hard rules: Eclipse and above never match more than 3 tiers down; a Bronze player never faces Platinum or higher (a gap of 9 divisions).
 - After 90 s with no match the client shows "No opponent right now" with **Keep waiting / Play CPU instead**. The queue does not silently stall.
 - The same two players are not paired twice in a row, and at most 3 times per 24 h (win-trade guard).
 - Skip pairing across a banned/blocked pair exactly as today. `find_match` keeps `for update skip locked`, so there are no double matches.
