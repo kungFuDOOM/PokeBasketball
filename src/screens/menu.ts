@@ -2,6 +2,7 @@ import { POKEMON, spriteUrl } from '../data/pokemon';
 import { DIFFICULTIES, type Difficulty } from '../game/types';
 import type { TeamSource } from '../season/team';
 import { isNameBlocked } from '../nameFilter';
+import { isTutorialDone } from '../tutorial/store';
 import { esc, lettersName, showNameError } from '../util';
 import { prefersStatic, startAttract, type Attract, type AttractState } from './attract';
 import { isIntroMode, type IntroMode } from './intro.logic';
@@ -107,6 +108,8 @@ export interface TitleOptions {
   /** Starts a franchise with the chosen team source. */
   onNew: (source: TeamSource) => void;
   onQuick: () => void;
+  /** Training: the drill menu (first-time players go straight into Run all). */
+  onTutorial: () => void;
   onSeason: () => void;
   /** Before a Season Draft: resolves to what to run after leaving the menu, or null to stay put. */
   confirmSeason?: () => Promise<(() => void) | null>;
@@ -193,6 +196,8 @@ export function menuScreen(root: HTMLElement, settings: Settings, onChange: () =
           : '<canvas class="attract-canvas"></canvas>'}
         <div class="attract-dim"></div>
       </div>
+      <a class="x-link tg-link" href="https://t.me/PokeJamSol" target="_blank" rel="noopener noreferrer" aria-label="PokeJam on Telegram" title="PokeJam on Telegram"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false"><path fill="currentColor" d="M21.94 3.4a1 1 0 0 0-1.02-.17L2.7 10.26a1 1 0 0 0 .08 1.88l4.6 1.45 1.78 5.64a1 1 0 0 0 1.62.45l2.57-2.3 4.6 3.4a1 1 0 0 0 1.57-.6l3.2-16.1a1 1 0 0 0-.38-.98zM9.8 13.9l7.9-5.9-6.3 6.7-.3 2.9z"/></svg></a>
+      <a class="x-link" href="https://x.com/pokejamsol" target="_blank" rel="noopener noreferrer" aria-label="PokeJam on X" title="PokeJam on X"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false"><path fill="currentColor" d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg></a>
       <div class="menu-in">
         <header class="title">
           <h1 class="logo"><span class="logo-poke">POKé</span><span class="logo-jam">JAM</span></h1>
@@ -211,7 +216,11 @@ export function menuScreen(root: HTMLElement, settings: Settings, onChange: () =
           <section class="mode-card quick">
             <h2>Quick Play</h2>
             <p class="setup-note">Pick any Gym Leader or the Elite Four, draft five Pokémon against them and play on any court. Pure arcade.</p>
-            <div class="actions"><button class="btn big" data-go="quick">Quick Play</button></div>
+            <div class="actions">
+              <button class="btn big" data-go="quick">Quick Play</button>
+              <button class="btn" data-go="tutorial" aria-label="Training: seven drills with star grades, or run them all">Training</button>
+            </div>
+            <p class="tut-hint-menu"${isTutorialDone() ? ' hidden' : ''}>New? Try the tutorial</p>
           </section>
           <section class="mode-card franchise">
             <h2>Franchise</h2>
@@ -308,6 +317,7 @@ export function menuScreen(root: HTMLElement, settings: Settings, onChange: () =
   });
   const quick = leave(opts.onQuick);
   $('[data-go="quick"]')!.addEventListener('click', quick);
+  $('[data-go="tutorial"]')!.addEventListener('click', leave(opts.onTutorial));
   $('[data-go="season"]')!.addEventListener('click', async () => {
     const go = opts.confirmSeason ? await opts.confirmSeason() : opts.onSeason;
     if (go) leave(go)();
