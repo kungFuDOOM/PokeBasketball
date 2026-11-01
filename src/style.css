@@ -1603,10 +1603,10 @@ body:has(.pause-btn) .music-btn:not(.docked) {
 /* ---- Ranked Season 1: rank chip, placement pips, sign-in panel, post-match points. Menu and results screens only. ---- */
 :root {
   --tier-0: #c9824a; --tier-1: #b8c2cf; --tier-2: #f2c53d; --tier-3: #5fd4c4; --tier-4: #6fb6ff;
-  --tier-5: #ff7a59; --tier-6: #ff5db1; --tier-z: #ffe27a;
+  --tier-5: #c58bff; --tier-6: #ff7a59; --tier-7: #ff5db1; --tier-z: #ffe27a;
 }
 .tier-0 { --rc: var(--tier-0); } .tier-1 { --rc: var(--tier-1); } .tier-2 { --rc: var(--tier-2); } .tier-3 { --rc: var(--tier-3); }
-.tier-4 { --rc: var(--tier-4); } .tier-5 { --rc: var(--tier-5); } .tier-6 { --rc: var(--tier-6); } .tier-z { --rc: var(--tier-z); }
+.tier-4 { --rc: var(--tier-4); } .tier-5 { --rc: var(--tier-5); } .tier-6 { --rc: var(--tier-6); } .tier-7 { --rc: var(--tier-7); } .tier-z { --rc: var(--tier-z); }
 .rk-home { display: grid; gap: 14px; justify-items: center; }
 .rk-left, .rk-right { width: 100%; max-width: 440px; display: flex; flex-direction: column; align-items: center; gap: 10px; }
 .rk-right .btn { width: 100%; }
