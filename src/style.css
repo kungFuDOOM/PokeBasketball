@@ -1474,6 +1474,13 @@ body:has(.pause-btn) .music-btn:not(.docked) {
   body:has(.pause-btn) .music-btn:not(.docked) { width: 34px; height: 34px; right: calc(max(10px, env(safe-area-inset-right, 0px)) + 34px + 6px); }
 }
 .hub-head .music-btn.docked { order: 3; }
+/* X (Twitter) link: top-right of the title screen only, just left of the floating music button. */
+.x-link { position: fixed; z-index: 25; top: max(10px, env(safe-area-inset-top, 0px)); right: calc(max(10px, env(safe-area-inset-right, 0px)) + 40px + 10px); width: 40px; height: 40px; display: grid; place-items: center; border-radius: 8px; border: 2px solid var(--line); background: rgba(10, 13, 31, 0.78); color: var(--accent); }
+.x-link.tg-link { right: calc(max(10px, env(safe-area-inset-right, 0px)) + 40px + 10px + 40px + 10px); }
+.x-link:hover { color: #fff; }
+.x-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* Narrow portrait: push the logo below the X + music buttons. */
+@media (max-width: 480px) and (orientation: portrait) { .menu:not(:has(.mp-teams)) .menu-in .title { padding-top: 44px; } }
 
 /* Browsers without color-mix() (Safari < 16.2, Chrome < 111) drop those whole declarations; give the main cards and
    rows a plain fallback so they still have a background and border. */
@@ -1935,4 +1942,214 @@ body:has(.pause-btn) .music-btn:not(.docked) {
   .intro-team li img { width: clamp(22px, 4.5vh, 40px); height: clamp(22px, 4.5vh, 40px); }
   .intro-team h2 { font-size: clamp(0.6rem, 1.8vh, 0.9rem); }
   .intro-vs { font-size: clamp(0.9rem, 2.6vh, 1.4rem); }
+}
+
+/* ---------- tutorial prompt strip ---------- */
+/* The strip is a real flex row above the stage (never position:absolute over it): the court shrinks to fit below it.
+   It stops ~110px short of the right edge (plus the safe area) so the pause button, music button and X link keep their
+   corner, and the HUD and touch controls start below it, so nothing overlaps. Only its buttons take pointer events. */
+.game.tut-on {
+  --tut-h: calc(44px + env(safe-area-inset-top, 0px));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+.game.tut-on .stage {
+  flex: none;
+  width: min(100vw, calc((100vh - var(--tut-h)) * 16 / 9));
+  width: min(100vw, calc((100dvh - var(--tut-h)) * 16 / 9));
+  margin-bottom: auto;
+}
+.game.tut-on .hud, .game.tut-on .touch { top: var(--tut-h); }
+.tut-strip {
+  position: relative;
+  z-index: 6;
+  flex: none;
+  align-self: stretch;
+  box-sizing: border-box;
+  height: var(--tut-h);
+  margin: 0 calc(110px + env(safe-area-inset-right, 0px)) auto 0;
+  padding: env(safe-area-inset-top, 0px) 8px 0 max(10px, env(safe-area-inset-left, 0px));
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  overflow: hidden;
+  background: rgba(10, 13, 31, 0.92);
+  border-bottom: 2px solid var(--line);
+  border-right: 2px solid var(--line);
+  border-bottom-right-radius: 8px;
+  pointer-events: none;
+}
+.tut-text { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 8px; }
+/* The coach: the user's top player (existing sprite art), sized from the strip's own height so it can never poke out
+   over the court. The strip's overflow: hidden is the backstop. */
+.tut-coach {
+  flex: none;
+  width: var(--coach); height: var(--coach);
+  --coach: calc(var(--tut-h) - env(safe-area-inset-top, 0px) - 6px);
+  object-fit: contain;
+  image-rendering: pixelated;
+  pointer-events: none;
+}
+.tut-lines { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 10px; }
+.tut-step { flex: none; font: 0.62rem var(--pixel); color: var(--accent); text-transform: uppercase; letter-spacing: 0.06em; }
+.tut-hint {
+  min-width: 0; font-weight: 700; font-size: 0.92rem; line-height: 1.2; color: var(--fg);
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.tut-acts { flex: none; display: flex; gap: 6px; }
+.tut-btn {
+  pointer-events: auto;
+  font: 0.52rem var(--pixel);
+  padding: 7px 9px;
+  border-radius: 6px;
+  border: 2px solid var(--accent);
+  background: var(--panel-2);
+  color: var(--fg);
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+.tut-btn.ghost { border-color: var(--line); background: transparent; color: var(--muted); }
+.tut-btn[hidden] { display: none; }
+.tut-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.tut-prog { position: absolute; left: 0; bottom: 0; height: 3px; width: var(--p, 0%); background: var(--accent); transition: width 0.15s; }
+/* Short landscape phones (844x390, 932x430): a slimmer strip so the court keeps as much height as possible. */
+@media (orientation: landscape) and (max-height: 500px) {
+  .game.tut-on { --tut-h: calc(38px + env(safe-area-inset-top, 0px)); }
+  .tut-hint { font-size: 0.8rem; }
+  .tut-btn { padding: 5px 7px; font-size: 0.46rem; }
+}
+/* Portrait phones: plenty of letterbox above the court, so two rows (prompt, then buttons) at the top.
+   The bottom stays free for the stick and face buttons. */
+@media (orientation: portrait) and (max-width: 700px) {
+  .game.tut-on { --tut-h: calc(88px + env(safe-area-inset-top, 0px)); }
+  .tut-strip { flex-wrap: wrap; align-content: center; row-gap: 6px; padding-bottom: 4px; }
+  .tut-text { flex: 1 1 100%; }
+  .tut-coach { --coach: 44px; }
+  .tut-lines { flex-direction: column; align-items: flex-start; gap: 3px; }
+  .tut-hint { font-size: 0.8rem; }
+}
+/* Announcer text in Training on phones. The intro lines ("Go! X and crew!") use the bottom-center .battle box, which sat
+   on top of the A/PASS button and the near sideline; the .banner sat full-width across mid-court. Both move to a compact
+   top-center slot (landscape: the crowd band under the score bug; portrait: the free band above the court), capped to
+   the width between the player card/stick side and the button side. Presentation only; they never take pointer events. */
+@media (orientation: landscape) and (max-height: 500px), (orientation: portrait) and (max-width: 700px) {
+  .game.tut-on .banner, .game.tut-on .battle { pointer-events: none; }
+  .game.tut-on .banner { left: 50%; right: auto; width: max-content; max-width: min(440px, calc(100vw - 2 * (200px + env(safe-area-inset-right, 0px)))); transform: translateX(-50%) scale(0.9); }
+  .game.tut-on .banner.show { transform: translateX(-50%); }
+  .game.tut-on .banner-main { font-size: clamp(0.85rem, 2.6vw, 1.3rem); text-shadow: 2px 2px 0 var(--red), 4px 4px 0 #000; padding: 0 6px; overflow-wrap: anywhere; }
+  .game.tut-on .banner-sub { font-size: 0.5rem; margin-top: 5px; }
+  .game.tut-on.has-touch .battle {
+    top: 38px; bottom: auto; left: 50%;
+    width: max-content;
+    max-width: min(420px, calc(100vw - 2 * (190px + env(safe-area-inset-right, 0px))));
+    padding: 4px 10px; border-width: 3px; box-shadow: 0 0 0 2px #f8f8f0, 0 3px 0 rgba(0, 0, 0, 0.4);
+    transform: translate(-50%, -6px); opacity: 0;
+    transition: transform 0.18s, opacity 0.18s;
+  }
+  .game.tut-on.has-touch .battle.show { transform: translateX(-50%); opacity: 1; }
+  .game.tut-on.has-touch .battle p { font-size: 0.55rem; line-height: 1.5; min-height: 0; }
+}
+@media (orientation: landscape) and (max-height: 500px) {
+  .game.tut-on .banner { top: 86px; }
+}
+@media (orientation: portrait) and (max-width: 700px) {
+  /* Portrait: the court is pinned right under the HUD rows (see below), so the banner sits on the court's crowd band
+     (the top strip of the canvas, no players) and the intro box sits in the free band under the court, above the
+     stick and face buttons. Offsets are relative to .hud, which starts at --tut-h. */
+  .game.tut-on .banner, .game.tut-on.has-touch .battle { max-width: calc(100vw - 24px); }
+  .game.tut-on .banner { top: calc(var(--tut-hud) + 4px); }
+  /* Clamped to stay above the stick (its base top is at ~72% of the .hud height minus 52px) on short phones. */
+  .game.tut-on.has-touch .battle { top: min(calc(var(--tut-hud) + 100vw * 9 / 16 + 10px), calc(72% - 100px)); }
+}
+
+/* Portrait phones: the 16:9 court used to float mid-screen with a dead dark band above it. Pin it directly under the
+   HUD rows (player card + score bug, --tut-hud tall) and give all spare height to the bottom, where the stick and face
+   buttons live. Training only; the normal game layout is unchanged. */
+@media (orientation: portrait) and (max-width: 700px) {
+  .game.tut-on { --tut-hud: 50px; justify-content: flex-start; }
+  .game.tut-on .tut-strip { margin-bottom: 0; }
+  .game.tut-on .stage { margin: var(--tut-hud) 0 0; }
+}
+/* Touch portrait: the bug drops below the player card (+62px), so the HUD block is taller. */
+@media (orientation: portrait) and (max-width: 480px) {
+  .game.tut-on.has-touch { --tut-hud: 104px; }
+}
+
+/* ---------- tutorial completion ---------- */
+.tut-done {
+  position: absolute; inset: 0; z-index: 12;
+  background: rgba(5, 6, 15, 0.82);
+  display: grid; place-items: center;
+  padding: max(16px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) max(16px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px));
+  overflow-y: auto;
+}
+.tut-done .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 20px; max-width: 460px; width: 100%; text-align: center; }
+.tut-done h2 { font: 1.2rem var(--pixel); color: var(--accent); margin: 0 0 12px; }
+.tut-done p { margin: 0 0 16px; color: var(--fg); }
+.tut-done-acts { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+/* The game is stopped behind the completion screen: hide its pause button and the strip's buttons. */
+.game:has(.tut-done) .pause-btn, .game:has(.tut-done) .tut-acts { display: none; }
+
+/* ---------- tutorial drill results ---------- */
+/* Below the prompt strip (never over it), so its Skip / Exit buttons keep working while the card is up. */
+.tut-result {
+  position: absolute; top: var(--tut-h); right: 0; bottom: 0; left: 0; z-index: 12;
+  background: rgba(5, 6, 15, 0.72);
+  display: grid; place-items: center;
+  padding: 12px max(12px, env(safe-area-inset-right, 0px)) max(12px, env(safe-area-inset-bottom, 0px)) max(12px, env(safe-area-inset-left, 0px));
+  overflow-y: auto;
+}
+.tut-result .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px 20px; max-width: 420px; width: 100%; text-align: center; }
+.tut-result h2 { font: 1rem var(--pixel); color: var(--accent); margin: 0 0 8px; }
+.tut-result p { margin: 0 0 8px; color: var(--fg); }
+.tut-score b { font: 1.1rem var(--pixel); }
+.tut-stars { font-size: 2rem; line-height: 1; color: var(--accent); letter-spacing: 0.1em; }
+.tut-best { color: var(--muted); }
+.tut-new { color: var(--accent); font-weight: 700; }
+.tut-res-line { font-size: 0.9rem; }
+.tut-result .tut-done-acts { margin-top: 12px; }
+.game:has(.tut-result) .pause-btn { display: none; }
+.tut-sum { list-style: none; margin: 0 0 12px; padding: 0; text-align: left; }
+.tut-sum li { display: flex; justify-content: space-between; gap: 12px; padding: 2px 0; color: var(--fg); }
+@media (orientation: landscape) and (max-height: 500px) {
+  .tut-result .panel { padding: 10px 14px; }
+  .tut-stars { font-size: 1.4rem; }
+  .tut-result p { margin-bottom: 4px; }
+}
+
+/* ---------- menu: tutorial entry ---------- */
+.mode-card.quick .actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.tut-hint-menu { margin: 0; font-size: 0.85rem; color: var(--accent); }
+.tut-hint-menu[hidden] { display: none; }
+
+/* ---------- training menu ---------- */
+.training {
+  max-width: 560px;
+  margin: 0 auto;
+  padding-block: max(14px, env(safe-area-inset-top, 0px)) max(32px, env(safe-area-inset-bottom, 0px));
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.trn-h { font: 1.2rem var(--pixel); color: var(--accent); margin: 4px 0 8px; }
+.trn-all { width: 100%; margin: 4px 0 14px; }
+.trn-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.trn-drill { width: 100%; min-height: 48px; display: flex; justify-content: space-between; align-items: center; gap: 12px; text-align: left; }
+.trn-stars { color: var(--accent); font-size: 1.2rem; letter-spacing: 0.08em; }
+@media (orientation: landscape) and (max-height: 500px) {
+  .trn-list { grid-template-columns: 1fr 1fr; }
+}
+
+/* Portrait touch, normal game: the announcer box sat bottom-centre over the A/PASS button. The court is centred, so put
+   the box in the empty band just above it (below the score bug), fading in place instead of sliding up from the bottom. */
+@media (orientation: portrait) and (max-width: 480px) {
+  .game.has-touch:not(.tut-on) .battle {
+    top: auto; bottom: calc(50% + 100vw * 9 / 32 + 10px);
+    max-width: calc(100vw - 24px);
+    transform: translate(-50%, 6px); opacity: 0;
+    transition: transform 0.18s, opacity 0.18s;
+  }
+  .game.has-touch:not(.tut-on) .battle.show { transform: translateX(-50%); opacity: 1; }
 }
