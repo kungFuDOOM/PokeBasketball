@@ -5,6 +5,7 @@ import type { ReportOutcome } from '../shared/matchService';
 import type { PhantomAction } from '../../wallet/phantom';
 import type { RankedMe, RankedResult } from './serverRank';
 import { renderRankBadge } from '../../ranked/badge';
+import { TIER_START_DIV, ZENITH_IDX } from '../../ranked/rank';
 import { postMatchHtml, rankChipHtml, signInPanelHtml, usernamePickerHtml } from './view';
 import { profileHtml, type ProfileModel } from '../../screens/profile';
 import { checkUsername, nameErrorText } from './username';
@@ -47,7 +48,7 @@ const SCREENS: Record<string, () => string> = {
   'profile-zenith': () => profile(model({ me: me({ divIdx: 24, points: 340, zenith: true, peakIdx: 24, shieldActive: false }) })),
   'post-opp-unranked': () => post(postMatchHtml(out(result(), me({ points: 62 }), null), true)),
   'post-opp-placing': () => post(postMatchHtml(out(result(), me({ points: 62 }), { placing: 3 }), true)),
-  badges: () => panel('BADGES', 'Every tier, then Zenith, placement and unranked', `<div class="rk-gallery">${[0, 3, 6, 9, 12, 15, 18, 21, 24].map((d) => renderRankBadge({ divIdx: d })).join('')}${renderRankBadge({ placing: 2 })}${renderRankBadge(null)}</div>`),
+  badges: () => panel('BADGES', 'Every tier, then Zenith, placement and unranked', `<div class="rk-gallery">${[...TIER_START_DIV, ZENITH_IDX].map((d) => renderRankBadge({ divIdx: d })).join('')}${renderRankBadge({ placing: 2 })}${renderRankBadge(null)}</div>`),
   'post-win': () => post(postMatchHtml(out(result(), me({ points: 62 })), true)),
   'post-loss': () => post(postMatchHtml(out(result({ before: 762, after: 745, delta: -17, points: 45 }), me({ points: 45 })), false)),
   'post-up': () => post(postMatchHtml(out(result({ event: 'promoted', before: 790, after: 812, delta: 22, divIdx: 8, points: 12 }), me({ divIdx: 8, points: 12 })), true)),
