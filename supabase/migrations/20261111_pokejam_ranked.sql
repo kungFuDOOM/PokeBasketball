@@ -110,20 +110,17 @@ create policy "pokejam ranked match participants" on public.pokejam_ranked_match
 create or replace function public.pokejam_ranked_rdiv(n int, d int)
 returns int language sql immutable as $$ select ((2 * n + d) / (2 * d))::int $$;
 
--- Tier 0..6 (Bronze .. Pokémon Master; Zenith counts as Pokémon Master). Eclipse spans six divisions, div_idx 15..20.
 create or replace function public.pokejam_ranked_tier_idx(p_div int)
-returns int language sql immutable as $$ select case when p_div >= 21 then 6 when p_div >= 15 then 5 else p_div / 3 end $$;
+returns int language sql immutable as $$ select least(p_div / 3, 7) $$;
 
 create or replace function public.pokejam_ranked_tier_name(p_div int)
 returns text language sql immutable as $$
   select case when p_div >= 24 then 'Zenith'
-    else (array['Bronze','Silver','Gold','Platinum','Diamond','Eclipse','Pokémon Master'])[public.pokejam_ranked_tier_idx(p_div) + 1] end $$;
+    else (array['Bronze','Silver','Gold','Platinum','Diamond','Prism','Eclipse','Pokémon Master'])[p_div / 3 + 1] end $$;
 
--- 3 (lowest) .. 1 (highest), Eclipse 6 .. 1; null for Zenith.
+-- 3 (lowest) .. 1 (highest); null for Zenith.
 create or replace function public.pokejam_ranked_division(p_div int)
-returns int language sql immutable as $$
-  select case when p_div >= 24 then null when p_div >= 21 then 24 - p_div when p_div >= 15 then 21 - p_div
-    else 3 - (p_div % 3) end $$;
+returns int language sql immutable as $$ select case when p_div >= 24 then null else 3 - (p_div % 3) end $$;
 
 create or replace function public.pokejam_ranked_ladder(p_div int, p_points int)
 returns int language sql immutable as $$ select case when p_div >= 24 then 2400 + p_points else p_div * 100 + p_points end $$;
@@ -141,9 +138,9 @@ create or replace function public.pokejam_ranked_step(p_div int, p_pts int, p_ch
   p_diff int, p_total int, p_opp int, p_mode text, p_heavy boolean,
   out o_div int, out o_pts int, out o_charge int, out o_lsh int, out o_delta int, out o_event text)
 language plpgsql immutable as $$
-declare t int := public.pokejam_ranked_tier_idx(p_div);
-        w int := (array[30,27,25,24,23,21,20])[t + 1];
-        l int := (array[19,19,19,20,20,21,22])[t + 1];
+declare t int := least(p_div / 3, 7);
+        w int := (array[30,27,25,24,23,22,21,20])[t + 1];
+        l int := (array[19,19,19,20,20,21,21,22])[t + 1];
         diff int := case when p_total is null or p_total <= 0 then 0 else p_diff end;
         total int := case when p_total is null or p_total <= 0 then 1 else p_total end;
         adj int := greatest(-3, least(3, p_opp - p_div));
