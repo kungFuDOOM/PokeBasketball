@@ -28,8 +28,8 @@ returns int language sql immutable as $$
 -- The hard pairing rules between two ladder scores.
 create or replace function public.pokejam_ranked_pair_ok(a int, b int)
 returns boolean language sql immutable as $$
-  select not (least(a, b) / 100 / 3 = 0 and public.pokejam_ranked_tier_idx(greatest(a, b) / 100) >= 3)
-     and not (public.pokejam_ranked_tier_idx(greatest(a, b) / 100) >= 5 -- Eclipse (tier 5) and above
+  select not (least(a, b) / 100 / 3 = 0 and least(public.pokejam_ranked_tier_idx(greatest(a, b) / 100), 7) >= 3)
+     and not (public.pokejam_ranked_tier_idx(greatest(a, b) / 100) >= 6
               and public.pokejam_ranked_tier_idx(greatest(a, b) / 100) - public.pokejam_ranked_tier_idx(least(a, b) / 100) > 3) $$;
 
 -- ---------- stale matches ----------
