@@ -2140,3 +2140,58 @@ body:has(.pause-btn) .music-btn:not(.docked) {
 @media (orientation: landscape) and (max-height: 500px) {
   .trn-list { grid-template-columns: 1fr 1fr; }
 }
+
+/* ---------- touch controls clear of the court ---------- */
+/* Short landscape phones (844x390, 932x430): the 16:9 court used to fill the height and run under the face buttons and
+   the stick. Reserve a gutter on each side (stick on the left, a compact two-column face-button cluster on the right)
+   and shrink the stage to fit between them, so no control ever sits over the court. Normal game and Training alike. */
+@media (orientation: landscape) and (max-height: 500px) {
+  .game.has-touch {
+    --gut-l: calc(128px + env(safe-area-inset-left, 0px));
+    --gut-r: calc(158px + env(safe-area-inset-right, 0px));
+  }
+  .game.has-touch .stage {
+    position: relative;
+    left: calc((var(--gut-l) - var(--gut-r)) / 2);
+    width: min(calc(100vw - var(--gut-l) - var(--gut-r)), calc(100dvh * 16 / 9));
+  }
+  .game.tut-on.has-touch .stage { width: min(calc(100vw - var(--gut-l) - var(--gut-r)), calc((100dvh - var(--tut-h)) * 16 / 9)); }
+  /* The stick rests centred in the left gutter (it still follows the thumb anywhere in .stick-zone while held). */
+  .game.has-touch .stick-base { left: calc(env(safe-area-inset-left, 0px) + 64px); }
+  /* Compact cluster, 140px wide: Y over X|B over A (Xbox diamond squeezed into two columns), RB on top. */
+  .game.has-touch .btns { width: 140px; height: 236px; bottom: max(10px, env(safe-area-inset-bottom, 0px)); }
+  .game.has-touch .tb.xa { right: 37px; bottom: 0; width: 66px; height: 66px; }
+  .game.has-touch .tb.xx { right: 72px; bottom: 60px; width: 66px; height: 66px; }
+  .game.has-touch .tb.xb { right: 4px; bottom: 62px; width: 62px; height: 62px; }
+  .game.has-touch .tb.xy { right: 39px; bottom: 120px; width: 62px; height: 62px; }
+  .game.has-touch .tb.turbo { right: 35px; bottom: 190px; width: 70px; height: 44px; }
+}
+/* Narrow landscape (~548px wide): smaller gutters, cluster and stick scaled to match. */
+@media (orientation: landscape) and (max-height: 500px) and (max-width: 700px) {
+  .game.has-touch {
+    --gut-l: calc(104px + env(safe-area-inset-left, 0px));
+    --gut-r: calc(128px + env(safe-area-inset-right, 0px));
+  }
+  .game.has-touch .btns { transform: scale(0.82); transform-origin: bottom right; }
+  .game.has-touch .stick-base { left: calc(env(safe-area-inset-left, 0px) + 52px); transform: scale(0.85); }
+}
+/* Portrait Training: the stick and face buttons used to sit at the very bottom, ~165px below the court. Start them just
+   under the court (and the intro box that sits there), a little larger, clamped so they never run off short phones.
+   Offsets are relative to .touch, which starts at --tut-h; the court spans --tut-hud .. --tut-hud + 100vw * 9 / 16. */
+@media (orientation: portrait) and (max-width: 480px) {
+  .game.tut-on.has-touch { --tut-ctl: min(calc(var(--tut-hud) + 100vw * 9 / 16 + 64px), calc(100dvh - var(--tut-h) - 252px)); }
+  .game.tut-on.has-touch .btns { top: var(--tut-ctl); bottom: auto; transform: scale(1.12); transform-origin: top right; }
+  .game.tut-on.has-touch .stick-zone { top: calc(var(--tut-ctl) - 24px); bottom: 0; height: auto; width: 50%; }
+  .game.tut-on.has-touch .stick-base { top: 140px; }
+}
+/* Portrait touch, normal game: the announcer box sat bottom-centre over the A/PASS button. The court is centred, so put
+   the box in the empty band just above it (below the score bug), fading in place instead of sliding up from the bottom. */
+@media (orientation: portrait) and (max-width: 480px) {
+  .game.has-touch:not(.tut-on) .battle {
+    top: auto; bottom: calc(50% + 100vw * 9 / 32 + 10px);
+    max-width: calc(100vw - 24px);
+    transform: translate(-50%, 6px); opacity: 0;
+    transition: transform 0.18s, opacity 0.18s;
+  }
+  .game.has-touch:not(.tut-on) .battle.show { transform: translateX(-50%); opacity: 1; }
+}
