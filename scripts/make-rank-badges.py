@@ -13,7 +13,7 @@ import numpy as np
 from PIL import Image
 from scipy import ndimage
 
-TIERS = ['bronze', 'silver', 'gold', 'platinum', 'diamond', 'prism', 'eclipse', 'master', 'zenith']
+TIERS = ['bronze', 'silver', 'gold', 'platinum', 'diamond', 'eclipse', 'master', 'zenith']
 TOL = 18        # core background: max RGB distance from the corner colour (tight, so black outlines are walls)
 HUE = 6         # ...and the pixel must be navy-ish: blue at least this far above red, like the background
 FRINGE = 4      # then up to this many px of dim, bluish glow next to the background are removed too
