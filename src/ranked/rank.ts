@@ -16,12 +16,10 @@ export const ZENITH_DECAY_POINTS = 25;
 /** Points you land on after dropping into the division below. */
 export const DEMOTE_POINTS = 75;
 
-export const TIERS = ['Bronze', 'Silver', 'Gold', 'Platinum', 'Diamond', 'Eclipse', 'Pokémon Master'] as const;
-/** First div_idx of each tier. Every tier has 3 divisions except Eclipse, which spans 6 (div_idx 15..20). */
-export const TIER_START_DIV = [0, 3, 6, 9, 12, 15, 21] as const;
+export const TIERS = ['Bronze', 'Silver', 'Gold', 'Platinum', 'Diamond', 'Prism', 'Eclipse', 'Pokémon Master'] as const;
 /** Base win / full-cost loss per tier (Zenith uses Pokémon Master's). */
-export const TIER_WIN = [30, 27, 25, 24, 23, 21, 20] as const;
-export const TIER_LOSS = [19, 19, 19, 20, 20, 21, 22] as const;
+export const TIER_WIN = [30, 27, 25, 24, 23, 22, 21, 20] as const;
+export const TIER_LOSS = [19, 19, 19, 20, 20, 21, 21, 22] as const;
 
 export const SHIELD_MAX_DIV = 8; // Gold 1 and below
 export const SHIELD_RECHARGE_LOSSES = 3;
@@ -43,22 +41,14 @@ export const roundDiv = (n: number, d: number) => Math.floor((2 * n + d) / (2 * 
 // ---------- ranks, names, ladder score ----------
 
 export function tierIndex(divIdx: number): number {
-  let t = 0;
-  while (t < TIER_START_DIV.length - 1 && divIdx >= TIER_START_DIV[t + 1]) t++;
-  return t;
-}
-/** Number of divisions in a tier (3, Eclipse 6). */
-export function tierDivisions(tier: number): number {
-  return (TIER_START_DIV[tier + 1] ?? ZENITH_IDX) - TIER_START_DIV[tier];
+  return Math.min(Math.floor(divIdx / 3), TIERS.length - 1);
 }
 export function tierName(divIdx: number): string {
   return divIdx >= ZENITH_IDX ? 'Zenith' : TIERS[tierIndex(divIdx)];
 }
-/** 3 (lowest) .. 1 (highest) inside a tier (Eclipse 6 .. 1); null for Zenith. */
+/** 3 (lowest) .. 1 (highest) inside a tier; null for Zenith. */
 export function divisionOf(divIdx: number): number | null {
-  if (divIdx >= ZENITH_IDX) return null;
-  const t = tierIndex(divIdx);
-  return TIER_START_DIV[t] + tierDivisions(t) - divIdx;
+  return divIdx >= ZENITH_IDX ? null : 3 - (divIdx % 3);
 }
 /** "Gold 2", "Pokémon Master 1", "Zenith". */
 export function rankName(divIdx: number): string {
