@@ -2,11 +2,14 @@ import { courtFor, type CourtStyle } from '../data/courts';
 import { BANNER_ADS, boardAfterAd } from '../data/ads';
 import { badgeSvg } from '../ui/badges';
 import { IDEAL_RELEASE, type Game } from './game';
+import { SPOT_R, laneArrow, laneDashOffset, markerPulse, zonePoly, type CourtPt } from './markers';
 import { getSprite } from './sprites';
-import { BALL_R, COURT_L, COURT_W, HOOP_Y, RIM_R, RIM_Z, clamp, rand, type GameEvent, type Player } from './types';
+import { BALL_R, COURT_L, COURT_W, HOOP_Y, RIM_R, RIM_Z, clamp, rand, type GameEvent, type Marker, type Player, type ShotZone } from './types';
 
 /** The user's marker color (the game's accent yellow). */
 const USER_YELLOW = '#ffcb05';
+/** Shot-zone ring colors: layup green, mid-range blue, three yellow. */
+const ZONE_COLOR: Record<ShotZone, string> = { layup: '#7ac74c', mid: '#6390f0', three: USER_YELLOW };
 /** "P1" in a 3x5 pixel font. */
 const P1_GLYPH = ['###..#.', '#.#.##.', '###..#.', '#....#.', '#...###'];
 
@@ -44,6 +47,8 @@ export class Renderer {
   private t = 0;
   private court: CourtStyle | null = null;
   private logo: HTMLCanvasElement | null = null;
+  /** prefers-reduced-motion: floor markers hold still instead of pulsing. */
+  calm = typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   constructor(canvas: HTMLCanvasElement) {
     canvas.width = VW;
@@ -179,6 +184,7 @@ export class Renderer {
     if (!this.court) this.useCourt(g.cfg.court ?? courtFor(g.teams[0]));
     this.drawArena(ctx);
     this.drawFloor(ctx);
+    this.drawMarkers(ctx, g);
 
     // Shadows first, then depth-sorted players, ball and hoops.
     for (const p of g.players) this.shadow(ctx, p.x, p.y, p.z, 1.1 * p.size);
@@ -383,6 +389,96 @@ export class Renderer {
       this.line(ctx, [[base, 47], [cornerX, 47]]);
       this.line(ctx, side ? this.arcPts(hx, 25, 23.75, Math.PI - a, Math.PI + a, 40) : this.arcPts(hx, 25, 23.75, -a, a, 40));
       this.line(ctx, side ? this.arcPts(hx, 25, 4, Math.PI / 2, Math.PI * 1.5, 16) : this.arcPts(hx, 25, 4, -Math.PI / 2, Math.PI / 2, 16));
+    }
+  }
+
+  /** Training markers painted on the floor, under shadows and players: shot zones, then pass lanes, then target spots. */
+  private drawMarkers(ctx: CanvasRenderingContext2D, g: Game) {
+    const ms = g.markers;
+    if (!ms.length) return;
+    const pulse = markerPulse(this.t, this.calm);
+    const order = (m: Marker) => (m.kind === 'zone' ? 0 : m.kind === 'lane' ? 1 : 2);
+    ctx.save();
+    for (const m of [...ms].sort((a, b) => order(a) - order(b))) {
+      if (m.kind === 'zone') this.drawZone(ctx, m.zone, m.team, pulse);
+      else if (m.kind === 'lane') {
+        const from = g.players.find((p) => p.id === m.from);
+        const to = g.players.find((p) => p.id === m.to);
+        if (from && to) this.drawLane(ctx, from, to, pulse);
+      } else this.drawSpot(ctx, m.x, m.y, pulse);
+    }
+    ctx.restore();
+  }
+
+  private drawZone(ctx: CanvasRenderingContext2D, zone: ShotZone, team: 0 | 1, pulse: number) {
+    const pts = zonePoly(zone, team);
+    const col = ZONE_COLOR[zone];
+    ctx.fillStyle = col;
+    ctx.globalAlpha = 0.16 + 0.12 * pulse;
+    this.poly(ctx, pts);
+    ctx.fill();
+    ctx.globalAlpha = 0.65 + 0.35 * pulse;
+    ctx.strokeStyle = col;
+    ctx.lineWidth = 1;
+    this.line(ctx, [...pts, pts[0]]);
+    ctx.globalAlpha = 1;
+  }
+
+  private drawLane(ctx: CanvasRenderingContext2D, from: Player, to: Player, pulse: number) {
+    const a = laneArrow(from, to);
+    if (!a) return;
+    const pt = ([x, y]: CourtPt) => this.proj(x, y);
+    const tail = pt(a.tail);
+    const neck = pt(a.neck);
+    // Dark under-stroke so the lane reads on any floor, then marching yellow dashes.
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = 'rgba(5,6,15,0.55)';
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.moveTo(tail.x, tail.y);
+    ctx.lineTo(neck.x, neck.y);
+    ctx.stroke();
+    ctx.strokeStyle = USER_YELLOW;
+    ctx.globalAlpha = 0.7 + 0.3 * pulse;
+    ctx.lineWidth = 2;
+    ctx.setLineDash([4, 4]);
+    ctx.lineDashOffset = laneDashOffset(this.t, this.calm);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.lineDashOffset = 0;
+    ctx.fillStyle = USER_YELLOW;
+    ctx.strokeStyle = 'rgba(5,6,15,0.55)';
+    ctx.lineWidth = 1;
+    this.poly(ctx, [a.left, a.tip, a.right]);
+    ctx.fill();
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+    ctx.lineCap = 'butt';
+  }
+
+  private drawSpot(ctx: CanvasRenderingContext2D, x: number, y: number, pulse: number) {
+    // Soft glow, a solid core with a dark rim, and (unless calm) a ring that ripples outward.
+    ctx.fillStyle = USER_YELLOW;
+    ctx.globalAlpha = 0.18 + 0.17 * pulse;
+    this.poly(ctx, this.arcPts(x, y, SPOT_R * 2, 0, Math.PI * 2, 28));
+    ctx.fill();
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = 'rgba(5,6,15,0.6)';
+    this.poly(ctx, this.arcPts(x, y, SPOT_R + 0.3, 0, Math.PI * 2, 24));
+    ctx.fill();
+    ctx.fillStyle = USER_YELLOW;
+    this.poly(ctx, this.arcPts(x, y, SPOT_R, 0, Math.PI * 2, 24));
+    ctx.fill();
+    ctx.fillStyle = '#ffffff';
+    this.poly(ctx, this.arcPts(x, y, SPOT_R * 0.45, 0, Math.PI * 2, 16));
+    ctx.fill();
+    if (!this.calm) {
+      const k = (this.t * 0.9) % 1;
+      ctx.strokeStyle = USER_YELLOW;
+      ctx.lineWidth = 1;
+      ctx.globalAlpha = 1 - k;
+      this.line(ctx, this.arcPts(x, y, SPOT_R * (1.2 + 1.6 * k), 0, Math.PI * 2, 28));
+      ctx.globalAlpha = 1;
     }
   }
 
