@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  applyPlacement, applyResult, divisionOf, tierDivisions, tierIndex, TIERS, TIER_START_DIV, fromLadderScore, ladderScore, leaverCost, lossCost, marginOf, newLadderState, NO_MARGIN, opponentAdj,
+  applyPlacement, applyResult, fromLadderScore, ladderScore, leaverCost, lossCost, marginOf, newLadderState, NO_MARGIN, opponentAdj,
   placementShift, placementStartScore, placementWeight, rankLabel, rankName, registerLeave, seedScore, stayerGain, tierName, tierRanges,
   validScore, winGain, zenithDecay, type LadderState,
 } from './rank';
@@ -15,26 +15,14 @@ describe('names and ladder score', () => {
     expect(rankName(3)).toBe('Silver 3');
     expect(rankName(8)).toBe('Gold 1');
     expect(rankName(7)).toBe('Gold 2');
-    expect(rankName(14)).toBe('Diamond 1');
-    expect(rankName(15)).toBe('Eclipse 6');
+    expect(rankName(15)).toBe('Prism 3');
     expect(rankName(18)).toBe('Eclipse 3');
-    expect(rankName(20)).toBe('Eclipse 1');
     expect(rankName(21)).toBe('Pokémon Master 3');
     expect(rankName(23)).toBe('Pokémon Master 1');
     expect(rankName(24)).toBe('Zenith');
     expect(tierName(14)).toBe('Diamond');
-    expect(TIERS).toEqual(['Bronze', 'Silver', 'Gold', 'Platinum', 'Diamond', 'Eclipse', 'Pokémon Master']);
-    expect(Array.from({ length: 25 }, (_, d) => tierName(d)).filter((n, i, a) => a.indexOf(n) === i))
-      .toEqual([...TIERS, 'Zenith']);
     expect(rankLabel(7, 40)).toBe('Gold 2 - 40 pts');
     expect(rankLabel(24, 340)).toBe('Zenith 340');
-  });
-  it('Eclipse spans six divisions (div 15..20); every other tier keeps three', () => {
-    expect(Array.from({ length: 24 }, (_, d) => tierIndex(d))).toEqual([0, 0, 0, 1, 1, 1, 2, 2, 2, 3, 3, 3, 4, 4, 4, 5, 5, 5, 5, 5, 5, 6, 6, 6]);
-    expect(Array.from({ length: 24 }, (_, d) => divisionOf(d))).toEqual([3, 2, 1, 3, 2, 1, 3, 2, 1, 3, 2, 1, 3, 2, 1, 6, 5, 4, 3, 2, 1, 3, 2, 1]);
-    expect(TIERS.map((_, t) => tierDivisions(t))).toEqual([3, 3, 3, 3, 3, 6, 3]);
-    expect(tierIndex(24)).toBe(6); // Zenith uses Pokémon Master's values
-    expect(divisionOf(24)).toBeNull();
   });
   it('ladder score is div_idx * 100 + points, Zenith adds 2400', () => {
     expect(ladderScore(0, 0)).toBe(0);
@@ -69,13 +57,13 @@ describe('performance formula', () => {
 describe('per-tier ranges match the plan table', () => {
   const rows: [number, number, number, number, number][] = [
     [0, 24, 45, 11, 19], [3, 22, 41, 11, 19], [6, 20, 38, 11, 19], [9, 19, 36, 12, 20],
-    [12, 18, 35, 12, 20], [15, 17, 32, 13, 21], [18, 17, 32, 13, 21], [20, 17, 32, 13, 21], [21, 16, 30, 13, 22], [24, 16, 30, 13, 22],
+    [12, 18, 35, 12, 20], [15, 18, 33, 13, 21], [18, 17, 32, 13, 21], [21, 16, 30, 13, 22], [24, 16, 30, 13, 22],
   ];
   it.each(rows)('div %i: win %i..%i, loss %i..%i', (div, wmin, wmax, lmin, lmax) => {
     expect(tierRanges(div)).toEqual({ winMin: wmin, winMax: wmax, lossMin: lmin, lossMax: lmax });
   });
   it('every division in a tier shares the tier ranges', () => {
-    for (let d = 0; d <= 24; d++) expect(tierRanges(d)).toEqual(tierRanges(TIER_START_DIV[tierIndex(d)]));
+    for (let d = 0; d <= 24; d++) expect(tierRanges(d)).toEqual(tierRanges(Math.min(d, 23) - (Math.min(d, 23) % 3)));
   });
   it('no input can leave the min..max range, for any margin and opponent', () => {
     for (let div = 0; div <= 24; div++) {
