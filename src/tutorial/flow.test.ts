@@ -42,6 +42,7 @@ const perfect: Record<DrillId, RunnerAction[]> = {
   layups: [...times(9, [ev('release'), ev('score', { how: 'layup' })]).flat(), tick(45)],
   jumpshots: [...times(10, [ev('release'), ev('score', { how: 'jump' })]).flat(), tick(60)],
   passing: [tick(5), ...times(8, ev('pass'))],
+  alleyoop: [tick(5), ...times(5, [ev('oop'), ev('score', { how: 'dunk', oop: true })]).flat()],
   defense: [ev('block'), ev('steal'), ...times(30, [sig({ type: 'defending', dt: 1 }), tick(1)]).flat()],
   steals: [tick(5), ...times(3, ev('steal'))],
 };
@@ -52,6 +53,7 @@ const weak: Record<DrillId, RunnerAction[]> = {
   layups: [...times(3, [ev('release'), ev('score', { how: 'dunk' })]).flat(), tick(45)],
   jumpshots: [...times(4, [ev('release'), ev('score', { how: 'jump' })]).flat(), ...times(4, ev('release')), tick(60)],
   passing: [...times(4, ev('pass')), tick(40)],
+  alleyoop: [...times(2, [ev('oop'), ev('score', { how: 'dunk', oop: true })]).flat(), ev('oop'), tick(45)],
   defense: [...times(20, [sig({ type: 'defending', dt: 1 }), tick(1)]).flat(), tick(10)],
   steals: [ev('steal'), tick(45)],
 };
@@ -125,7 +127,7 @@ describe('each drill completes and awards stars', () => {
       expect(h.state.phase).toBe('done');
       expect(h.results[0]).toMatchObject({ id, score: 0, stars: 0, skipped: false });
     }
-    expect(Object.values(loadBestStars())).toEqual(times(6, 0));
+    expect(Object.values(loadBestStars())).toEqual(times(DRILL_IDS.length, 0));
   });
 
   it('a single drill run finishes after Next with that one outcome and marks the tutorial done', () => {
@@ -139,7 +141,7 @@ describe('each drill completes and awards stars', () => {
 });
 
 describe('Run all', () => {
-  it('advances through all six drills in order and finishes', () => {
+  it('advances through all seven drills in order and finishes', () => {
     const h = harness(startRunAll());
     for (const id of DRILL_IDS) {
       expect(h.drills[h.drills.length - 1]).toBe(id);
@@ -174,13 +176,13 @@ describe('Run all', () => {
     h.send({ type: 'start' }, tick(COUNTDOWN_S), tick(3), ev('release'), { type: 'skip' }); // jumpshots: mid-drill
     h.play(perfect.passing);
     h.send({ type: 'skip' }); // passing: on its results card → advances, keeps the real result
-    h.send({ type: 'skip' }, { type: 'skip' }); // defense, steals
+    h.send({ type: 'skip' }, { type: 'skip' }, { type: 'skip' }); // alley-oop, defense, steals
     expect(h.drills).toEqual([...DRILL_IDS]);
     expect(h.finished?.exited).toBe(false);
     expect(h.finished?.outcomes.map((o) => [o.id, o.skipped])).toEqual([
-      ['movement', true], ['layups', true], ['jumpshots', true], ['passing', false], ['defense', true], ['steals', true],
+      ['movement', true], ['layups', true], ['jumpshots', true], ['passing', false], ['alleyoop', true], ['defense', true], ['steals', true],
     ]);
-    expect(loadBestStars()).toEqual({ movement: 0, layups: 0, jumpshots: 0, passing: 3, defense: 0, steals: 0 });
+    expect(loadBestStars()).toEqual({ movement: 0, layups: 0, jumpshots: 0, passing: 3, alleyoop: 0, defense: 0, steals: 0 });
   });
 });
 
@@ -347,7 +349,7 @@ describe('in a real practice game', () => {
     expect(getBestStars('movement')).toBe(h.results[0].stars);
   });
 
-  it('Run all with an idle user advances through all six staged drills and finishes', () => {
+  it('Run all with an idle user advances through all seven staged drills and finishes', () => {
     const h = playInGame(startRunAll(), () => {});
     expect(h.drills).toEqual([...DRILL_IDS]);
     expect(h.finished?.exited).toBe(false);

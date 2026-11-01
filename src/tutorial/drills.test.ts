@@ -34,8 +34,8 @@ const run = (id: DrillId, signals: DrillSignal[], elapsed = 0): DrillStats => {
 const times = <T,>(n: number, x: T): T[] => Array.from({ length: n }, () => x);
 
 describe('drill definitions', () => {
-  it('has the six drills in order, keyed by id', () => {
-    expect(DRILL_IDS).toEqual(['movement', 'layups', 'jumpshots', 'passing', 'defense', 'steals']);
+  it('has the seven drills in order, keyed by id', () => {
+    expect(DRILL_IDS).toEqual(['movement', 'layups', 'jumpshots', 'passing', 'alleyoop', 'defense', 'steals']);
     for (const id of DRILL_IDS) expect(DRILLS[id].id).toBe(id);
   });
 
@@ -60,6 +60,7 @@ describe('drill definitions', () => {
       layups: run('layups', times(10, ev('score', { how: 'layup' })), 45),
       jumpshots: run('jumpshots', [...times(10, ev('release')), ...times(10, ev('score', { how: 'jump' }))], 60),
       passing: run('passing', times(8, ev('pass')), 20),
+      alleyoop: run('alleyoop', [...times(5, ev('oop')), ...times(5, ev('score', { how: 'dunk', oop: true }))], 20),
       defense: run('defense', [{ type: 'defending', dt: 30 }, ev('steal'), ev('block')], 30),
       steals: run('steals', times(3, ev('steal')), 20),
     };

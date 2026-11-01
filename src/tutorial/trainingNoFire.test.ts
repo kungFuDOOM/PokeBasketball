@@ -23,7 +23,7 @@ function live(g: Game) {
 type Internals = { scoreBasket(p: unknown, pts: number, how: string): void; setFire(p: unknown): void };
 
 describe('training drills: no on-fire', () => {
-  it.each(['layups', 'jumpshots', 'passing', 'movement', 'defense', 'steals'] as PracticeDrill[])(
+  it.each(['layups', 'jumpshots', 'passing', 'alleyoop', 'movement', 'defense', 'steals'] as PracticeDrill[])(
     '%s: ten straight makes (and a blaze special) never set fire', (d) => {
       const g = new Game(cfg(d));
       const me = g.teamPlayers(0)[0];

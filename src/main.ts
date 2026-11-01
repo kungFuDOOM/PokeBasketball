@@ -199,7 +199,7 @@ function tutorial(start: TutorialStart = 'all') {
     t.tutorialScreen(app, settings, audio, { menu, quick: () => quick('draft'), training }, start));
 }
 
-/** The Training menu (six drills + Run all). First-time players skip it and go straight into Run all. */
+/** The Training menu (the drills + Run all). First-time players skip it and go straight into Run all. */
 function training() {
   if (!isTutorialDone()) return tutorial('all');
   void import('./screens/training').then((t) =>

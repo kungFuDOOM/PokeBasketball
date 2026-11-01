@@ -5,7 +5,7 @@ import {
   backDir, clamp, dist, emptyIntent, hoopX, isThree, lerp, seededRng,
   type Ball, type GameConfig, type GameEvent, type Grade, type Intent, type Marker, type Player, type Rng, type TeamDef, type TeamId,
 } from './types';
-import { PRACTICE_STAGES, stageX, type PracticeDrill } from './practice';
+import { PRACTICE_STAGES, stageX, type PracticeDrill, type PracticeStage } from './practice';
 
 /** Meter value (0..1 fill) at which a jump shot is released perfectly. */
 export const IDEAL_RELEASE = 0.8;
@@ -173,6 +173,8 @@ export class Game {
   private dribblePh = 0;
   /** The training drill this practice game stages (null in every normal game). */
   private drillId: PracticeDrill | null = null;
+  /** Alley-oop drill: seconds the ball has been loose (a missed oop) before the rep restarts. */
+  private drillLooseT = 0;
 
   constructor(cfg: GameConfig) {
     if (cfg.engineVersion !== undefined && cfg.engineVersion !== ENGINE_VERSION) {
@@ -396,6 +398,21 @@ export class Game {
   /** The team the user plays for (the human side of a practice game). */
   private practiceUser(): TeamId {
     return this.teams[0].human ? 0 : 1;
+  }
+
+  /** Alley-oop drill: walk back to (and wait on) this player's stage spot; nothing else. */
+  private holdSpotIntent(p: Player, st: PracticeStage): Intent {
+    const it = emptyIntent();
+    const [x, y] = (p.team === this.practiceUser() ? st.user : st.cpu)[p.slot] ?? [47, 25];
+    const dx = stageX(x, this.practiceUser()) - p.x;
+    const dy = y - p.y;
+    const d = Math.hypot(dx, dy);
+    if (d >= 0.6) {
+      const k = Math.min(1, d / 2.5) / d;
+      it.mx = dx * k;
+      it.my = dy * k;
+    }
+    return it;
   }
 
   /** Puts everyone on their drill spots and hands the ball to the drill's ball handler, after a short pause. */
@@ -681,6 +698,7 @@ export class Game {
       if (stage?.cpuDribbleOnly && !p.human && b.owner === p) {
         p.intent = { ...p.intent, shoot: false, shootHeld: false, pass: false, special: false, passTo: undefined };
       }
+      if (stage?.holdSpots && !p.human && b.owner !== p) p.intent = this.holdSpotIntent(p, stage);
     }
     for (const p of this.players) {
       if (this.phase === 'live') this.act(p, dt);
@@ -688,12 +706,26 @@ export class Game {
     }
     this.separate();
     this.updateBall(dt);
+    // Alley-oop drill: a missed oop dunk nobody grabs within a moment restarts the rep (everyone else holds a spot).
+    if (stage?.holdSpots && this.phase === 'live' && b.mode === 'loose') {
+      this.drillLooseT += dt;
+      if (this.drillLooseT > 1.2) {
+        this.drillLooseT = 0;
+        this.phase = 'dead';
+        this.phaseT = 0.5;
+      }
+    } else this.drillLooseT = 0;
     // Drills: the wrong side holding the ball (a CPU rebound, a user steal) ends the rep; inbound() restages it.
     if (stage && this.phase === 'live' && b.owner && b.mode === 'held') {
       const u = this.practiceUser();
       if ((b.owner.team === u) !== stage.userBall) {
         this.phase = 'dead';
         this.phaseT = 1;
+      } else if (stage.holdSpots && b.owner.slot !== 0 && b.owner.state === 'free') {
+        // Alley-oop drill: a teammate holding the ball (a plain pass, a rebound) means no oop; reset the rep.
+        // An oop catch goes straight up for the dunk (state 'dunk'), so it never lands here.
+        this.phase = 'dead';
+        this.phaseT = 0.8;
       }
     }
 

@@ -7,7 +7,7 @@
 export type InputKind = 'keys' | 'touch';
 
 /** Engine events the tutorial cares about (a subset of GameEvent kinds, plus 'pass'). */
-export type TutorialEventKind = 'pass' | 'release' | 'score' | 'special' | 'steal' | 'block';
+export type TutorialEventKind = 'pass' | 'release' | 'score' | 'special' | 'steal' | 'block' | 'oop';
 
 /** Signals produced by the watcher (watcher.ts) from engine state. */
 export type Signal =
@@ -15,17 +15,20 @@ export type Signal =
   | { type: 'moved'; dist: number }
   /** The user spent `dt` seconds on defense this frame. */
   | { type: 'defending'; dt: number }
-  /** An engine event; `byUser` is true when the user's team/player did it. */
-  | { type: 'event'; kind: TutorialEventKind; byUser: boolean; how?: 'jump' | 'layup' | 'dunk' }
+  /**
+   * An engine event; `byUser` is true when the user's team/player did it. `oop` marks a score that finished an
+   * alley-oop (and an 'oop' event is the lob being caught for the dunk).
+   */
+  | { type: 'event'; kind: TutorialEventKind; byUser: boolean; how?: 'jump' | 'layup' | 'dunk'; oop?: boolean }
   | { type: 'skipStep' }
   | { type: 'skipAll' };
 
 /** Signals a drill can consume: watcher signals plus "the user reached the target spot". */
 export type DrillSignal = Signal | { type: 'spot' };
 
-export type DrillId = 'movement' | 'layups' | 'jumpshots' | 'passing' | 'defense' | 'steals';
+export type DrillId = 'movement' | 'layups' | 'jumpshots' | 'passing' | 'alleyoop' | 'defense' | 'steals';
 
-export const DRILL_IDS: readonly DrillId[] = ['movement', 'layups', 'jumpshots', 'passing', 'defense', 'steals'];
+export const DRILL_IDS: readonly DrillId[] = ['movement', 'layups', 'jumpshots', 'passing', 'alleyoop', 'defense', 'steals'];
 
 export type Stars = 0 | 1 | 2 | 3;
 
@@ -174,6 +177,30 @@ const DEFS: readonly DrillDef[] = [
       great: 'Floor general! Crisp passing.',
       good: 'Nice ball movement. Be quicker.',
       retry: 'Look for the arrow, then pass.',
+    },
+  },
+  {
+    id: 'alleyoop',
+    title: 'Alley-Oop',
+    // The game's own oop input: pass while holding turbo to a free teammate within 17 ft of the rim.
+    goal: { keys: 'Hold Shift and press K to lob to the glowing spot', touch: 'Hold TURBO and tap A to lob to the glowing spot' },
+    repTarget: 5,
+    timeLimit: 45,
+    stars: [200, 400, 650],
+    count: (s) => {
+      if (userEvent(s, 'oop')) return { attempts: 1 };
+      const made = userEvent(s, 'score');
+      return made?.oop ? { reps: 1 } : null;
+    },
+    // 100 per alley-oop finished, plus 10 per second left if all 5 were made.
+    score: (st) => clampInt(st.reps * 100 + (st.reps >= 5 ? timeLeft(st, 45) * 10 : 0)),
+    coach: {
+      intro: 'Throw it up! Lob it to your big on the spot.',
+      tip: 'Keep turbo held as you pass. That makes it a lob.',
+      rep: 'Alley-oop!',
+      great: 'Showtime! Perfect lobs every time.',
+      good: 'Nice lobs. Throw them up quicker.',
+      retry: 'Hold turbo, then pass to the spot.',
     },
   },
   {

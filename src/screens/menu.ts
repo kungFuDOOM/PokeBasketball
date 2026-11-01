@@ -214,7 +214,7 @@ export function menuScreen(root: HTMLElement, settings: Settings, onChange: () =
             <p class="setup-note">Pick any Gym Leader or the Elite Four, draft five Pokémon against them and play on any court. Pure arcade.</p>
             <div class="actions">
               <button class="btn big" data-go="quick">Quick Play</button>
-              <button class="btn" data-go="tutorial" aria-label="Training: six drills with star grades, or run them all">Training</button>
+              <button class="btn" data-go="tutorial" aria-label="Training: seven drills with star grades, or run them all">Training</button>
             </div>
             <p class="tut-hint-menu"${isTutorialDone() ? ' hidden' : ''}>New? Try the tutorial</p>
           </section>

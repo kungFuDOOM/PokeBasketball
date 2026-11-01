@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { POKEMON, POSITIONS } from '../data/pokemon';
 import { Game } from '../game/game';
-import { movementSpot, reachedSpot } from '../game/practice';
+import { movementSpot, oopSpot, reachedSpot } from '../game/practice';
 import { HOOP_Y, emptyIntent, hoopX, type GameConfig, type GameEvent, type Intent, type TeamDef } from '../game/types';
 import { DRILLS, DRILL_IDS, type DrillId } from './drills';
 import { activeTag, runPos, startRun, startRunAll, step, type DrillOutcome, type RunnerAction, type RunnerState } from './runner';
@@ -79,6 +79,19 @@ const passer: Script = (g, s, frame) => {
   return { ...emptyIntent(), pass };
 };
 
+/**
+ * Alley-oop: the game's own oop input. The point guard holds turbo and taps pass (no stick) once the center is
+ * waiting on the oop marker; the lob goes up and the center dunks it.
+ */
+const lobber: Script = (g, s, frame) => {
+  const u = g.user;
+  if (!u || s.phase !== 'active' || g.phase !== 'live' || g.ball.owner !== u || u.state !== 'free') return emptyIntent();
+  const spot = oopSpot(0);
+  const big = g.teamPlayers(0).find((p) => p.slot === 4)!;
+  const ready = Math.hypot(big.x - spot.x, big.y - spot.y) < 1.5 && big.state === 'free';
+  return { ...emptyIntent(), turbo: true, pass: ready && frame % 2 === 0 };
+};
+
 /** Steals: stay on the dribbler's hip and swipe. */
 const thief: Script = (g, s) => {
   const u = g.user;
@@ -95,6 +108,7 @@ const scripts: Record<DrillId, () => Script> = {
   layups: () => layupMaker,
   jumpshots: jumpShooter,
   passing: () => passer,
+  alleyoop: () => lobber,
   defense: () => idle,
   steals: () => thief,
 };
@@ -213,6 +227,45 @@ describe('every scored drill plays to its goal and shows results', () => {
     expect(p.results[0]).toMatchObject({ id: 'layups', skipped: false, score: made.length * 2, stars: 3 });
   });
 
+  it('alley-oop: Shift (turbo) + K lobs to the big on the marker, every oop finish counts, then the results card', () => {
+    const p = play(startRun('alleyoop'));
+    const oops = p.events.filter((e) => e.kind === 'oop');
+    const made = userScores(p);
+    expect(oops.length).toBeGreaterThanOrEqual(DRILLS.alleyoop.repTarget!);
+    // Every lob went to the center waiting on the marker, and the drill ended on its 5th oop finish.
+    expect(oops.every((e) => e.kind === 'oop' && e.player.team === 0 && e.player.slot === 4)).toBe(true);
+    expect(made.length).toBe(DRILLS.alleyoop.repTarget);
+    expect(made.every((e) => e.how === 'dunk' && e.player.slot === 4)).toBe(true);
+    expect(p.events.some((e) => e.kind === 'fire')).toBe(false);
+    expect(p.results).toHaveLength(1);
+    expect(p.results[0]).toMatchObject({ id: 'alleyoop', skipped: false });
+    expect(p.results[0].score).toBeGreaterThanOrEqual(500);
+    expect(p.results[0].stars).toBeGreaterThanOrEqual(2);
+    expect(p.state.stats).toMatchObject({ reps: 5 });
+    // The strip ticked through the reps toward the goal.
+    expect(p.tags.some((t) => t.endsWith(' · 4/5'))).toBe(true);
+  });
+
+  it('alley-oop: a plain pass (no turbo) is not an oop and does not count', () => {
+    const plain: Script = (g, s, frame) => ({ ...lobber(g, s, frame), turbo: false });
+    const game = new Game(cfgFor('alleyoop'));
+    const watch = createWatcher();
+    let st = startRun('alleyoop').state;
+    st = step(st, { type: 'start' }).state;
+    const evs: GameEvent[] = [];
+    for (let n = 0; n < 60 * 15; n++) {
+      const intent = plain(game, st, n);
+      game.userInput = intent;
+      game.update(DT);
+      st = step(st, { type: 'tick', dt: DT }).state;
+      for (const signal of watch(game, game.events, intent, DT)) st = step(st, { type: 'signal', signal }).state;
+      evs.push(...game.events);
+      game.events.length = 0;
+    }
+    expect(evs.some((e) => e.kind === 'oop')).toBe(false);
+    expect(st.stats.reps).toBe(0);
+  });
+
   it('defense: the timed drill runs its clock out and shows results', () => {
     const p = play(startRun('defense'));
     expect(p.results).toHaveLength(1);
@@ -225,6 +278,8 @@ describe('every scored drill plays to its goal and shows results', () => {
   it('Run all: every drill completes with a real result, then the run finishes', () => {
     const p = play(startRunAll(), 60 * 900);
     expect(p.drills).toEqual([...DRILL_IDS]);
+    expect(p.drills).toHaveLength(7);
+    expect(p.drills).toContain('alleyoop');
     expect(p.results.map((r) => r.id)).toEqual([...DRILL_IDS]);
     for (const r of p.results) expect(r.skipped).toBe(false);
     for (const r of p.results) if (r.id !== 'defense') expect(r.stars).toBeGreaterThanOrEqual(1);
@@ -236,7 +291,10 @@ describe('every scored drill plays to its goal and shows results', () => {
 describe('strip label', () => {
   it('spells out the Run all position so it never reads as a make counter', () => {
     const all = startRunAll().state;
-    expect(runPos({ ...all, index: 2 })).toBe('Drill 3/6 · ');
+    expect(runPos({ ...all, index: 2 })).toBe('Drill 3/7 · ');
+    expect(all.queue[4]).toBe('alleyoop');
+    expect(runPos({ ...all, index: 4 })).toBe('Drill 5/7 · ');
+    expect(runPos({ ...all, index: 6 })).toBe('Drill 7/7 · ');
     expect(runPos(startRun('jumpshots').state)).toBe('');
   });
   it('shows makes for the timed shooting drills and reps/target for goal drills', () => {
@@ -244,6 +302,7 @@ describe('strip label', () => {
     expect(activeTag(s('jumpshots', 7))).toBe(' 0:45 · 7 made');
     expect(activeTag(s('layups', 4))).toBe(' 0:30 · 4 made');
     expect(activeTag(s('passing', 3))).toBe(' 0:25 · 3/8');
+    expect(activeTag(s('alleyoop', 2))).toBe(' 0:30 · 2/5');
     expect(activeTag(s('defense', 1))).toBe(' 0:15');
   });
 });

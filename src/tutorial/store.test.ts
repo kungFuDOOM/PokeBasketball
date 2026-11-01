@@ -130,7 +130,7 @@ describe('drill best stars', () => {
     }
     store.set(DRILL_STARS_KEY, JSON.stringify({ layups: 9, jumpshots: -2, passing: '3', defense: 2.7, steals: null, bogus: 3 }));
     const all = loadBestStars();
-    expect(all).toEqual({ movement: 0, layups: 3, jumpshots: 0, passing: 0, defense: 2, steals: 0 });
+    expect(all).toEqual({ movement: 0, layups: 3, jumpshots: 0, passing: 0, alleyoop: 0, defense: 2, steals: 0 });
     expect('bogus' in all).toBe(false);
   });
 
