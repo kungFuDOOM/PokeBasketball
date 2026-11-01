@@ -268,7 +268,7 @@ function defend(g: Game, p: Player, it: Intent, dt: number) {
     const range = owner.state === 'dunk' ? 10 : 6.5;
     if (dist(p.x, p.y, owner.x, owner.y) < range) p.ai.jumpIn = g.reactTime(p);
   }
-  if (owner && p.special >= 1) {
+  if (owner && p.special >= 1 && !(g.cfg.practice && !g.teams[p.team].human)) {
     const k = p.mon.special;
     const d = dist(p.x, p.y, owner.x, owner.y);
     if ((k === 'quake' && d < 9) || k === 'freeze') it.special = true;

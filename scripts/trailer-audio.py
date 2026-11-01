@@ -75,6 +75,8 @@ STYLES = {
 }
 # Watch: short and punchy, so it borrows the vertical cut's groove.
 STYLES['watch'] = STYLES['vertical']
+# Training: the upbeat franchise anthem fits a practice montage.
+STYLES['training'] = STYLES['franchise']
 rng = np.random.default_rng(7)
 
 
