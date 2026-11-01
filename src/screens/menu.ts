@@ -194,6 +194,7 @@ export function menuScreen(root: HTMLElement, settings: Settings, onChange: () =
           : '<canvas class="attract-canvas"></canvas>'}
         <div class="attract-dim"></div>
       </div>
+      <a class="x-link tg-link" href="https://t.me/PokeJamSol" target="_blank" rel="noopener noreferrer" aria-label="PokeJam on Telegram" title="PokeJam on Telegram"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false"><path fill="currentColor" d="M21.94 3.4a1 1 0 0 0-1.02-.17L2.7 10.26a1 1 0 0 0 .08 1.88l4.6 1.45 1.78 5.64a1 1 0 0 0 1.62.45l2.57-2.3 4.6 3.4a1 1 0 0 0 1.57-.6l3.2-16.1a1 1 0 0 0-.38-.98zM9.8 13.9l7.9-5.9-6.3 6.7-.3 2.9z"/></svg></a>
       <a class="x-link" href="https://x.com/pokejamsol" target="_blank" rel="noopener noreferrer" aria-label="PokeJam on X" title="PokeJam on X"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false"><path fill="currentColor" d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg></a>
       <div class="menu-in">
         <header class="title">

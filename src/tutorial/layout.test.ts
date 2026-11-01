@@ -37,6 +37,10 @@ describe('tutorial prompt strip layout', () => {
     expect(rule('.x-link')).toMatch(/right: calc\(max\(10px, env\(safe-area-inset-right, 0px\)\) \+ 40px \+ 10px\)/);
     expect(rule('.x-link')).toMatch(/width: 40px/);
   });
+  it('puts the Telegram link left of the X link on the menu', () => {
+    expect(rule('.x-link.tg-link')).toMatch(/right: calc\(max\(10px, env\(safe-area-inset-right, 0px\)\) \+ 40px \+ 10px \+ 40px \+ 10px\)/);
+    expect(menu).toMatch(/class="x-link tg-link" href="https:\/\/t\.me\/PokeJamSol" target="_blank" rel="noopener noreferrer" aria-label="PokeJam on Telegram" title="PokeJam on Telegram"/);
+  });
   it('only its buttons take pointer events', () => {
     expect(rule('.tut-strip')).toMatch(/pointer-events: none/);
     expect(rule('.tut-btn')).toMatch(/pointer-events: auto/);
