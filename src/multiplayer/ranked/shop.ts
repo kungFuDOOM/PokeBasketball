@@ -1,9 +1,9 @@
-// Rank Shield shop sheet (behind MODE_SHIELD_SHOP): loads the packs, sends a sku to the shield-create-checkout Edge Function,
+// Rank Shield shop sheet (behind MODE_SHIELD_SHOP; the card path needs MODE_SHIELD_STRIPE, USDC needs MODE_SHIELD_USDC): loads the packs, sends a sku to the shield-create-checkout Edge Function,
 // and hands the player to Stripe's hosted page. It never sees card data or a price it could change, and it never credits
 // anything: coming back from Stripe it only waits (polls pokejam_shield_me) for the webhook's credit to show up.
 import { supabase } from '../shared/supabase';
 import type { SupabaseMatchService } from '../shared/onlineMatchService';
-import { MODE_SHIELD_USDC, SHIELD_USDC_CLUSTER } from '../../config/features';
+import { MODE_SHIELD_STRIPE, MODE_SHIELD_USDC, SHIELD_USDC_CLUSTER } from '../../config/features';
 import { getPhantomProvider, type WalletUser } from '../../wallet/phantom';
 import { SHOP_NOTICES, USDC_NOTICES, gotShields, pollForRise, shopBodyHtml, shopHtml, usdcOption, type ShopModel, type ShopNotice } from './shopView';
 import { UsdcPayError, parseIntent, pollConfirm, prepareTransfer, rpcFor, signAndSend, type ConfirmAnswer, type PayProvider } from './usdcPay';
@@ -57,7 +57,7 @@ export interface ShopOptions {
 /** Opens the shop sheet over the Ranked home. Removes itself on close. */
 export function openShop(svc: SupabaseMatchService, o: ShopOptions = {}) {
   const prev = document.activeElement as HTMLElement | null;
-  const m: ShopModel = { info: null, signedIn: true, agreed: store()?.getItem(CONSENT_KEY) === '1', busy: null, notice: null };
+  const m: ShopModel = { info: null, signedIn: true, agreed: store()?.getItem(CONSENT_KEY) === '1', busy: null, notice: null, card: MODE_SHIELD_STRIPE };
   const host = document.createElement('div');
   host.innerHTML = shopHtml(m);
   const sheet = host.firstElementChild as HTMLElement;
@@ -87,7 +87,7 @@ export function openShop(svc: SupabaseMatchService, o: ShopOptions = {}) {
   sheet.querySelector<HTMLElement>('[data-a="shop-close"]')?.focus();
 
   async function buyPack(sku: string) {
-    if (!sku || !m.agreed || m.busy) return;
+    if (!MODE_SHIELD_STRIPE || !sku || !m.agreed || m.busy) return;
     m.busy = sku;
     say(null);
     try {
@@ -200,7 +200,7 @@ export function openShop(svc: SupabaseMatchService, o: ShopOptions = {}) {
     await refresh();
     if (!open()) return;
     if (wallet) void resumeUsdc();
-    if (o.returned === 'cancel') say(SHOP_NOTICES.cancelled);
+    if (!MODE_SHIELD_STRIPE) { /* no card payments: a Stripe return means nothing here */ } else if (o.returned === 'cancel') say(SHOP_NOTICES.cancelled);
     else if (o.returned === 'success') void waitForPayment();
   })();
 }

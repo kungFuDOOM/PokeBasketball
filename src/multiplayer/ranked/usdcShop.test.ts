@@ -25,16 +25,29 @@ describe('who sees the USDC option', () => {
     expect(usdcOption(null, true, 'devnet')).toBeNull();
     expect(usdcOption({ app_metadata: { provider: 'google' }, user_metadata: { address: '5njibWvkiFg4LSyzq4ySFhyCsFEF4YhTqRLJo8Z9q16p' } }, true, 'devnet')).toBeNull();
   });
-  it('the build flag needs the shop flag and VITE_SHIELD_USDC=true', async () => {
+  it('the build flags: USDC needs only Ranked + VITE_SHIELD_USDC, Stripe only Ranked + VITE_SHIELD_SHOP, shop is either', async () => {
     const flags = async (env: Record<string, string>) => {
       vi.resetModules();
       for (const k of ['VITE_MODE_RANKED', 'VITE_SHIELD_SHOP', 'VITE_SHIELD_USDC', 'VITE_SHIELD_USDC_CLUSTER']) vi.stubEnv(k, env[k] ?? '');
       const m = await import('../../config/features');
       return [m.MODE_SHIELD_USDC, m.SHIELD_USDC_CLUSTER] as const;
     };
+    const combo = async (env: Record<string, string>) => {
+      vi.resetModules();
+      for (const k of ['VITE_MODE_RANKED', 'VITE_SHIELD_SHOP', 'VITE_SHIELD_USDC']) vi.stubEnv(k, env[k] ?? '');
+      const m = await import('../../config/features');
+      return { stripe: m.MODE_SHIELD_STRIPE, usdc: m.MODE_SHIELD_USDC, shop: m.MODE_SHIELD_SHOP };
+    };
+    const R = { VITE_MODE_RANKED: 'true' };
+    expect(await combo(R)).toEqual({ stripe: false, usdc: false, shop: false });
+    expect(await combo({ ...R, VITE_SHIELD_SHOP: 'true' })).toEqual({ stripe: true, usdc: false, shop: true });
+    expect(await combo({ ...R, VITE_SHIELD_USDC: 'true' })).toEqual({ stripe: false, usdc: true, shop: true });
+    expect(await combo({ ...R, VITE_SHIELD_SHOP: 'true', VITE_SHIELD_USDC: 'true' })).toEqual({ stripe: true, usdc: true, shop: true });
+    expect(await combo({ VITE_SHIELD_SHOP: 'true', VITE_SHIELD_USDC: 'true' })).toEqual({ stripe: false, usdc: false, shop: false });
     expect(await flags({ VITE_MODE_RANKED: 'true', VITE_SHIELD_SHOP: 'true', VITE_SHIELD_USDC: 'true' })).toEqual([true, 'devnet']);
     expect(await flags({ VITE_MODE_RANKED: 'true', VITE_SHIELD_SHOP: 'true' })).toEqual([false, 'devnet']);
-    expect(await flags({ VITE_MODE_RANKED: 'true', VITE_SHIELD_USDC: 'true' })).toEqual([false, 'devnet']);
+    expect(await flags({ VITE_MODE_RANKED: 'true', VITE_SHIELD_USDC: 'true' })).toEqual([true, 'devnet']);
+    expect(await flags({ VITE_SHIELD_USDC: 'true' })).toEqual([false, 'devnet']);
     expect(await flags({ VITE_MODE_RANKED: 'true', VITE_SHIELD_SHOP: 'true', VITE_SHIELD_USDC: 'true', VITE_SHIELD_USDC_CLUSTER: 'mainnet-beta' })).toEqual([true, 'mainnet-beta']);
     expect(await flags({ VITE_MODE_RANKED: 'true', VITE_SHIELD_SHOP: 'true', VITE_SHIELD_USDC: 'true', VITE_SHIELD_USDC_CLUSTER: 'main' })).toEqual([true, 'devnet']);
     vi.unstubAllEnvs();
@@ -186,5 +199,38 @@ describe('usdcPay', () => {
       expect(await pollConfirm(async () => ({ status: 'pending' }), { ...clock(), stop: () => true })).toBe('timeout');
       await expect(pollConfirm(async () => { throw new Error('The payment amount does not match the price'); }, clock())).rejects.toThrow('does not match');
     });
+  });
+});
+
+describe('shop sheet by payment flags', () => {
+  const hasCard = (h: string) => h.includes('data-a="buy"');
+  const hasUsdc = (h: string) => h.includes('data-a="buy-usdc"');
+  const phantom = { cluster: 'devnet' as const };
+  it('Stripe only: card button, no USDC', () => {
+    const h = shopBodyHtml(model({ card: true, usdc: null }));
+    expect(hasCard(h)).toBe(true);
+    expect(hasUsdc(h)).toBe(false);
+    expect(h).toContain('Stripe');
+  });
+  it('USDC only: USDC button, no card button, no Stripe text', () => {
+    const h = shopBodyHtml(model({ card: false, usdc: phantom }));
+    expect(hasCard(h)).toBe(false);
+    expect(hasUsdc(h)).toBe(true);
+    expect(h).not.toContain('Stripe');
+    expect(h).toContain('Pay 1.99 USDC');
+  });
+  it('both on: both buttons', () => {
+    const h = shopBodyHtml(model({ card: true, usdc: phantom }));
+    expect(hasCard(h)).toBe(true);
+    expect(hasUsdc(h)).toBe(true);
+  });
+  it('USDC only for a non-Phantom player: no buy buttons at all, a hint instead', () => {
+    const h = shopBodyHtml(model({ card: false, usdc: null }));
+    expect(hasCard(h) || hasUsdc(h)).toBe(false);
+    expect(h).toContain('Sign in with Phantom');
+  });
+  it('both off: no shop button on the hub', async () => {
+    const { shieldItemHtml } = await import('./view');
+    expect(shieldItemHtml({ count: 1, armed: false, locked: false, arm_block: null, next_use_at: null } as never, Date.now(), false)).not.toContain('data-a="shop"');
   });
 });

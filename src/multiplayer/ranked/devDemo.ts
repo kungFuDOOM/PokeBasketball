@@ -7,7 +7,7 @@ import type { RankedMe, RankedResult } from './serverRank';
 import { renderRankBadge } from '../../ranked/badge';
 import { postMatchHtml, rankChipHtml, shieldItemHtml, shieldTagHtml, signInPanelHtml, usernamePickerHtml, weeklyCardHtml } from './view';
 import { parseShieldStatus, parseShopInfo } from './serverRank';
-import { MODE_SHIELD_SHOP } from '../../config/features';
+import { MODE_SHIELD_SHOP, MODE_SHIELD_STRIPE } from '../../config/features';
 import { SHOP_NOTICES, USDC_NOTICES, gotShields, shopHtml, type ShopModel } from './shopView';
 import { profileHtml, type ProfileModel } from '../../screens/profile';
 import { checkUsername, nameErrorText } from './username';
@@ -96,7 +96,7 @@ export const devRankedScreen = (): string | null => {
 const shopInfo = (held = 3, left = 39) => parseShopInfo({ held, cap: 14, purchases_left: left, blocked: false,
   products: [{ sku: 'shield_3', units: 3, price_cents: 199, usdc_amount: 1990000 }, { sku: 'shield_7', units: 7, price_cents: 399, usdc_amount: 3990000 }, { sku: 'shield_14', units: 14, price_cents: 699, usdc_amount: 6990000 }] });
 const phantom = { cluster: 'devnet' } as const;
-const shopModel = (o: Partial<ShopModel> = {}): ShopModel => ({ info: shopInfo(), signedIn: true, agreed: false, busy: null, notice: null, ...o });
+const shopModel = (o: Partial<ShopModel> = {}): ShopModel => ({ info: shopInfo(), signedIn: true, agreed: false, busy: null, notice: null, card: MODE_SHIELD_STRIPE, ...o });
 const SHOP_SHEETS: Record<string, () => ShopModel> = {
   shop: () => shopModel(),
   'shop-checked': () => shopModel({ agreed: true }),
