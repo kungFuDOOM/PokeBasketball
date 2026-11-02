@@ -4,7 +4,7 @@
 // ranked username filter. "Severe" terms are blocked anywhere inside a name; "mild" terms only as a whole word, so common
 // words that merely contain them (Classic, Assassins, Titans, Analysts) pass. A short allow list lets known innocent words
 // that contain a severe term through (Scunthorpe, Shiitake, Dickens). Client-side only: the server is not the authority here.
-import data from './multiplayer/ranked/nameFilterData.json';
+import data from './multiplayer/ranked/nameFilterData.json' with { type: 'json' }; // the attribute: Deno (the judge's bundle) requires it
 
 /** Extra terms on top of the shared lists: compounds the lists miss (a mild term inside a longer word), and spellings. */
 const EXTRA_SEVERE = ['asshole', 'arsehole', 'kissass', 'dumbass', 'jackass', 'smartass', 'fatass', 'asswipe', 'asslick', 'cocksuck', 'phuck', 'dumbfuck'];
@@ -59,3 +59,8 @@ export const NAME_BLOCKED_MESSAGE = "That team name isn't allowed. Please pick a
 
 /** A name that is safe to show: itself, or `fallback` (the team's default name) if it is blocked. */
 export const safeName = (name: string, fallback: string): string => (isNameBlocked(name) ? fallback : name);
+
+/** What a player without a username is called on screens that name players. */
+export const FALLBACK_NAME = 'Player';
+/** The name to show for a player: their username, or "Player". */
+export const displayName = (name: string | null | undefined): string => (name && name.trim() !== '' ? name : FALLBACK_NAME);

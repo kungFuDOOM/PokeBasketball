@@ -2,6 +2,7 @@
 // supabase/functions/README.md. Optional secret: JUDGE_ALLOWED_ORIGINS.
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { judgeConfig, judgeHandler } from '../_shared/judge/handler.ts';
+import { judgeSetupFromRow, type ServerMatchRow } from '../../../src/multiplayer/shared/matchSetup.ts';
 
 const url = Deno.env.get('SUPABASE_URL')!;
 const anonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
@@ -19,10 +20,10 @@ Deno.serve((req) => judgeHandler(req, judgeConfig((k) => Deno.env.get(k)), {
     }
     return data === true;
   },
-  async keysOf(id) {
-    const { data, error } = await admin.from('pokejam_matches').select('host_key, guest_key').eq('id', id).maybeSingle();
+  async setupOf(id) {
+    const { data, error } = await admin.rpc('pokejam_match_setup', { p_match: id });
     if (error) throw new Error(error.message);
-    return data;
+    return data ? judgeSetupFromRow(data as ServerMatchRow) : null;
   },
   async hasVerdict(id) {
     const { data, error } = await admin.from('pokejam_match_verdicts').select('match_id').eq('match_id', id).maybeSingle();
@@ -39,6 +40,7 @@ Deno.serve((req) => judgeHandler(req, judgeConfig((k) => Deno.env.get(k)), {
     const { error } = await admin.rpc('pokejam_record_verdict', {
       p_match: v.match, p_status: v.status, p_winner_side: v.winnerSide, p_cheater_side: v.cheaterSide,
       p_score_host: v.scoreHost, p_score_guest: v.scoreGuest, p_ticks: v.ticks, p_notes: v.notes,
+      p_last_host: v.lastFrameHost, p_last_guest: v.lastFrameGuest,
     });
     if (error) throw new Error(error.message);
   },

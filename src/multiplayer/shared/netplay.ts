@@ -7,13 +7,12 @@
 import type { RealtimeChannel, SupabaseClient } from '@supabase/supabase-js';
 import { userCourt } from '../../data/courts';
 import { monByDex } from '../../data/pokemon';
-import { USER_STYLE, contrastAway } from '../../franchise/league';
 import { ENGINE_VERSION, type GameConfig } from '../../game/types';
-import { abbr } from '../../util';
 import { BusyError, isChannelFailure } from './capacity';
 import { EvidenceLog } from './evidence';
 import type { Lockstep, NetMsg, Transport } from './lockstep';
 import { rosterDigest } from '../ranked/presets';
+import { setupFromRow } from './matchSetup';
 import { rostersFor } from './roster';
 import { RtcLink } from './rtc';
 import type { OnlineMatch, SupabaseMatchService } from './onlineMatchService';
@@ -21,7 +20,7 @@ import { planRtt, startDelay, type RttStats } from './netDelay';
 import { Pinger } from './ping';
 import { parsePre, type Pre } from './pre';
 import { backoffMs } from './throttle';
-import { gameConfigFor, matchKey, type MatchKeys, type MatchSetup, type MatchTeam } from './winnerCheck';
+import { gameConfigFor, matchKey, type MatchKeys, type MatchSetup } from './winnerCheck';
 
 /**
  * `ack` marks an answer to the other side's hi, which is never answered (so two finished sides don't echo).
@@ -59,11 +58,11 @@ export function setupFor(match: OnlineMatch, quarterLen = match.game.quarterLen)
   const drafted = match.game.rosters;
   if (!drafted && match.queue === 'ranked') throw new Error('ranked match has no preset rosters');
   const [homeMons, awayMons] = drafted ? [drafted[0].map(monByDex), drafted[1].map(monByDex)] : rostersFor(match.game.seed, match.queue);
-  const names: [string, string] = match.side === 0 ? [match.me.name, match.opponent.name] : [match.opponent.name, match.me.name];
-  const home = { name: names[0], abbr: abbr(names[0]), ...USER_STYLE, human: true, roster: homeMons };
-  const away = contrastAway(home, { name: names[1], abbr: abbr(names[1]), ...USER_STYLE, color: '#7a3fd8', color2: '#24124a', human: true, roster: awayMons });
-  const team = (t: typeof home): MatchTeam => ({ name: t.name, abbr: t.abbr, color: t.color, color2: t.color2, roster: t.roster.map((m) => m.dex) });
-  return { matchId: match.id, engineVersion: ENGINE_VERSION, seed: match.game.seed, quarterLen, home: team(home), away: team(away) };
+  const [hostName, guestName] = match.side === 0 ? [match.me.name, match.opponent.name] : [match.opponent.name, match.me.name];
+  return setupFromRow({
+    id: match.id, seed: match.game.seed, quarterLen, hostName, guestName,
+    rosters: [homeMons.map((m) => m.dex), awayMons.map((m) => m.dex)],
+  });
 }
 
 /** The game for a match, the same on both sides and for the judge: gameConfigFor(setupFor(match)), plus the court art. */

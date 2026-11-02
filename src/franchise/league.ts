@@ -5,6 +5,7 @@ import type { Difficulty, GameConfig, PStats, TeamDef } from '../game/types';
 import type { DraftState } from '../screens/draft';
 import { safeName } from '../nameFilter';
 import { fixAbbr } from '../util';
+import { USER_STYLE, contrastAway } from '../multiplayer/shared/matchSetup';
 
 const SAVE_KEY = 'pokejam.franchise.v1';
 /** XP needed to go from `level` to the next one; each level costs a bit more. */
@@ -37,7 +38,7 @@ export const LEAGUE: LeagueTeam[] = [
   { name: 'Viridian Quakes', abbr: 'VIR', color: '#7c9a3a', color2: '#1e2a0e', leader: 'Giovanni', types: ['Ground'], boost: 3, gym: 8, badge: 'Earth' },
   { name: 'Indigo Elite', abbr: 'E4', color: '#d4a017', color2: '#2a2106', leader: 'The Elite Four', types: ['Ice', 'Fighting', 'Ghost', 'Dragon'], boost: 4, elite: true },
 ];
-export const USER_STYLE = { color: '#3b6fd8', color2: '#16224a' };
+export { USER_STYLE, contrastAway };
 
 export interface SeasonStats extends PStats { gp: number }
 
@@ -403,18 +404,6 @@ export function teamDef(f: Franchise, id: number, human: boolean): { def: TeamDe
   };
   const roster = starters.map(toMon);
   return { def: { name: t.name, abbr: t.abbr, color: t.color, color2: t.color2, roster, bench: bench.map(toMon), human, boost: t.boost, coach: t.leader }, uidOf };
-}
-
-/** Two blues (you vs Misty) are hard to tell apart on the floor: give the second team a contrasting color. */
-export function contrastAway(home: TeamDef, away: TeamDef): TeamDef {
-  if (colorDistance(home.color, away.color) >= 110) return away;
-  return { ...away, color: colorDistance(home.color, '#e3350d') < 110 ? '#f4f1e8' : '#e3350d' };
-}
-
-function colorDistance(a: string, b: string): number {
-  const rgb = (h: string) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
-  const [x, y] = [rgb(a), rgb(b)];
-  return Math.hypot(x[0] - y[0], x[1] - y[1], x[2] - y[2]);
 }
 
 /** The home team's floor. */

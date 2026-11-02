@@ -3,9 +3,10 @@
 import { MODE_RANKED } from '../../config/features';
 import type { DraftView } from './draft';
 import { cooldownSeconds, counted, outcomeBetween, parseMatchRanks, parseMe, parsePickState, parsePresetIds, parseProfile, parseRankResult, parseShieldStatus, parseShopInfo, type PickState, type RankedMe, type RankedResult, type ServerRank, type ShieldStatus, type ShopInfo } from '../ranked/serverRank';
-import { displayName, serverNameError } from '../ranked/username';
+import { serverNameError } from '../ranked/username';
 import type { BadgeRank } from '../../ranked/badge';
 import { safeName } from '../../nameFilter';
+import { gameFromRow, namesFromRow } from './matchSetup';
 import { isBusy } from './capacity';
 import { RateLimit, backoffMs, jitter, singleFlight, sleep } from './throttle';
 import type { MatchResult, MatchService, Opponent, Queue, ReportOutcome } from './matchService';
@@ -253,21 +254,15 @@ export class SupabaseMatchService implements MatchService {
     if (!m || !m.guest) throw new OnlineError('match not found');
     if (m.seed === null || m.seed === undefined) throw new OnlineError('This match was made by an older server. Refresh to update.');
     const side: 0 | 1 = m.host === this.userId ? 0 : 1;
-    // Names come from the other player's profile: a blocked one (a modified client, or an old name) shows as the default.
-    let opp = side === 0 ? { id: m.guest, name: safeName(m.guest_name ?? 'Trainer', 'Trainer') } : { id: m.host, name: safeName(m.host_name ?? 'Trainer', 'Trainer') };
-    let me = safeName((side === 0 ? m.host_name : m.guest_name) ?? 'Trainer', 'Trainer');
-    if (m.queue === 'ranked') {
-      // Ranked shows usernames, not team names or ids; a player without one reads as "Player".
-      const u = await this.call<{ host?: string | null; guest?: string | null } | null>('pokejam_match_usernames', { p_match: id }).catch(() => null);
-      me = displayName(side === 0 ? u?.host : u?.guest);
-      opp = { ...opp, name: displayName(side === 0 ? u?.guest : u?.host) };
-    }
+    // Ranked shows usernames, not team names or ids, which come from their own call.
+    const u = m.queue === 'ranked'
+      ? await this.call<{ host?: string | null; guest?: string | null } | null>('pokejam_match_usernames', { p_match: id }).catch(() => null)
+      : null;
+    const names = m.queue === 'ranked' ? namesFromRow(m.queue, u?.host, u?.guest) : namesFromRow(m.queue, m.host_name, m.guest_name);
     return {
-      id: m.id, queue: m.queue, side, me: { id: this.userId, name: me }, opponent: { ...opp, mmr: 1000, simulated: false },
-      game: {
-        seed: Number(m.seed) >>> 0, quarterLen: m.quarter_len === 60 ? 60 : 120,
-        rosters: m.host_roster?.length === 5 && m.guest_roster?.length === 5 ? [m.host_roster, m.guest_roster] : null,
-      },
+      id: m.id, queue: m.queue, side, me: { id: this.userId, name: names[side] },
+      opponent: { id: side === 0 ? m.guest : m.host, name: names[1 - side], mmr: 1000, simulated: false },
+      game: gameFromRow(m),
       keys: [m.host_key ?? null, m.guest_key ?? null],
       status: m.status,
     };

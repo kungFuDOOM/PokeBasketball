@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { Game } from '../../game/game';
 import { emptyIntent, seededRng, ENGINE_VERSION, type Intent } from '../../game/types';
 import { EvidenceLog, cover, mergeEvidence, pack, unpack } from './evidence';
-import { Lockstep, type NetMsg } from './lockstep';
+import { Lockstep, MIN_DELAY, type NetMsg } from './lockstep';
 import { gameConfigFor, judge, matchKey, signTicks, type Evidence, type MatchSetup, type SignedInputs } from './winnerCheck';
 
 const setup: MatchSetup = {
@@ -135,16 +135,24 @@ describe('evidence bookkeeping', () => {
     const b: Evidence = { setup: { ...setup, seed: 1 }, keys: [forger.publicKey, guest.publicKey], inputs: [forged, guestBatch], applied: [], lockstep: { emptyTicks: 9 } };
     expect((await judge(b)).notes.join()).not.toMatch(/bad shape or signature/); // judged on its own keys, the forgery passes
 
-    const m = mergeEvidence(b, a, [host.publicKey, guest.publicKey]);
+    const m = mergeEvidence(b, a, [host.publicKey, guest.publicKey], setup);
     expect(m.keys).toEqual([host.publicKey, guest.publicKey]);
-    expect(m.setup).toBe(b.setup);
-    expect(m.lockstep).toEqual({ emptyTicks: 9 });
     expect(m.inputs).toEqual([forged, guestBatch, hostBatch, guestBatch]);
     const v = await judge({ ...m, setup, lockstep: { emptyTicks: 0 } });
     expect(v.status).toBe('incomplete');
     expect(v.ticks).toBe(3);
     expect(v.notes).toContain('ignored a host input batch with a bad shape or signature');
-    expect(mergeEvidence(a, null, a.keys).inputs).toEqual(a.inputs);
+    expect(mergeEvidence(a, null, a.keys, setup).inputs).toEqual(a.inputs);
+  });
+
+  it('mergeEvidence takes the setup from the server and the warm-up from lockstep, whatever the uploads say', () => {
+    const lied: MatchSetup = { ...setup, seed: 1, quarterLen: 600, home: { ...setup.home, name: 'Cheater', roster: [150, 151, 249, 250, 384] } };
+    const up = (lockstep?: Evidence['lockstep']): Evidence => ({ setup: lied, keys: ['a', 'b'], inputs: [], applied: [], ...(lockstep ? { lockstep } : {}) });
+    for (const [a, b] of [[up({ emptyTicks: 60 }), up({ emptyTicks: 0 })], [up(), null]] as const) {
+      const m = mergeEvidence(a, b, ['c', 'd'], setup);
+      expect(m.setup).toBe(setup);
+      expect(m.lockstep).toEqual({ emptyTicks: MIN_DELAY });
+    }
   });
 
   it('unpack refuses evidence that unzips past the limit', async () => {
