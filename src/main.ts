@@ -99,9 +99,10 @@ const syncTrack = () => {
   music.setTrack(trackFor(app.className));
   // Games keep their own sound toggle in the pause menu, and that corner belongs to the pause button.
   musicBtn.hidden = app.classList.contains('screen-game');
-  // Draft boards and the franchise hub have buttons in that corner, so the music button joins them there;
+  // Draft boards, the franchise hub and the Advertise page have buttons in that corner, so the music button joins them
+  // there (on the Advertise page it scrolls away with the page instead of floating over the plans and checkout);
   // elsewhere it floats top-right.
-  const dock = app.querySelector('.draft-head .head-actions, .hub-head');
+  const dock = app.querySelector('.draft-head .head-actions, .hub-head, .ad-top');
   if (dock) {
     if (musicBtn.parentElement !== dock) dock.appendChild(musicBtn);
   } else if (musicBtn.parentElement !== document.body) document.body.appendChild(musicBtn);
