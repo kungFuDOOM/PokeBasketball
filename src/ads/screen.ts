@@ -15,6 +15,7 @@ import { drawLedBoard } from '../game/ledBoard';
 import { esc } from '../util';
 import { ADS_CONFIGURED, AdsError, adsApi, explorer, replaceMessage, shortTokens, tokens, type Board, type Booking, type Quote } from './api';
 import { applyBoard } from './board';
+import { BurnGuardError, burnNeeded, checkBurnTransaction } from './burnGuard';
 import { DM_CONTACTS, DM_ONLY, isPlan, offers, pickPlan, savePercent, type PayMethod, type Plan } from './plans';
 import { heldBy, readPending, relaying, settleBurn, settleUsdc, type PendingPay, type PollOptions, type Settled } from './settle';
 import { UsdcPayError, checkTransfer, parseUsdcIntent, usd } from './usdcPay';
@@ -63,6 +64,8 @@ interface State {
   court: string;
   wallet: Connected | null;
   balance: bigint | null;
+  /** Burn credit: short burns this wallet made, counted toward its next full slot (null while unknown). */
+  credit: bigint | null;
   lamports: number | null;
   busy: boolean;
   step: number;
@@ -98,7 +101,7 @@ export function openAdvertise(root: HTMLElement, back: () => void) {
     board: null, text: typeof draft.text === 'string' ? cleanAdText(draft.text) : '', theme: draft.theme && draft.theme in AD_THEMES ? draft.theme : 'gold',
     plan: isPlan(draft.plan) ? draft.plan : 'day',
     pay: draft.pay === 'usdc' ? 'usdc' : 'burn', usdcPlan: isPlan(draft.usdcPlan) ? draft.usdcPlan : 'week', start: null, quote: null, court: PREVIEW_COURTS[0],
-    wallet: null, balance: null, lamports: null, busy: false, step: 0, error: '', done: null, verdict: null, mine: null,
+    wallet: null, balance: null, credit: null, lamports: null, busy: false, step: 0, error: '', done: null, verdict: null, mine: null,
   };
   let alive = true;
   let raf = 0;
@@ -178,7 +181,7 @@ export function openAdvertise(root: HTMLElement, back: () => void) {
         </ol>
         <ul class="ad-fine">
           <li>The board has a few spots, and live ads take turns. If it fills up while you're signing, your ad runs at the next opening for the full time you paid for.</li>
-          <li>Payments are final: burns can't be undone, and USDC payments aren't refunded unless the law requires it. A burn or payment made through this page is found even if you close the page while it's going through: your wallet's history and a scan of the chain both look for it.</li>
+          <li>Payments are final: burns can't be undone or refunded, and USDC payments aren't refunded unless the law requires it. The page only ever builds a burn of exactly the price, and won't let you sign less. If a burn below the price still reaches us (only a hand-made transaction can), it books nothing, not even a shorter slot, but it isn't lost: it becomes burn credit for the wallet that made it. The page shows that credit, and the next burn for a full slot is only the price minus your credit. Credit belongs to that wallet, each burn counts once, and it can't be moved or cashed out. A burn or payment made through this page is found even if you close the page while it's going through: your wallet's history and a scan of the chain both look for it.</li>
           <li>Ads are checked before you burn: no explicit words, slurs, links, giveaway or wallet scams, or posing as staff. If moderators still take one down, you keep the time it had left and can run it with new text. Only wallets banned for abuse lose it.</li>
           <li>One spot per advertiser at a time, so nobody can buy the whole board.</li>
           <li>Every ad is marked AD on the board.</li>
@@ -416,6 +419,11 @@ export function openAdvertise(root: HTMLElement, back: () => void) {
     } catch {
       s.balance = null;
     }
+    try {
+      s.credit = BigInt((await adsApi.credit(s.wallet.address)).credit);
+    } catch {
+      s.credit = null;
+    }
   }
 
   function renderWallet() { renderCheckout(); }
@@ -451,7 +459,10 @@ export function openAdvertise(root: HTMLElement, back: () => void) {
     const price = qp?.price ? BigInt(qp.price) : boardPrice('burn', s.plan);
     const dec = b?.decimals ?? 6;
     const textOk = adTextOk(s.text);
-    const short = s.wallet && s.balance !== null && price !== null && s.balance < price;
+    // Burn credit counts toward the price: the burn is the price less the credit, and never less than that.
+    const credit = s.credit ?? 0n;
+    const need = price !== null ? burnNeeded(price, credit) : null;
+    const short = s.wallet && s.balance !== null && need !== null && s.balance < need;
     const noSol = s.wallet && s.lamports !== null && s.lamports < 20_000;
     const can = !!(b && !b.paused && qp?.price && textOk && s.verdict?.ok && s.wallet && !short && !noSol && !s.busy && !held().length);
     const steps = ['Booking', `Approve in ${s.wallet?.name ?? 'your wallet'}`, 'Burning on Solana', 'On the board'];
@@ -462,20 +473,22 @@ export function openAdvertise(root: HTMLElement, back: () => void) {
         <dl>
           <dt>Runs</dt><dd>${qp ? `${esc(fmtTime(qp.starts_at))} → ${esc(fmtTime(qp.ends_at))}` : '…'}</dd>
           <dt>Length</dt><dd>${PLAN_LABEL[s.plan].name}</dd>
-          <dt>Burn</dt><dd class="ad-burn">${price !== null ? `${tokens(price, dec)} <small>$PJAM</small>` : '…'}</dd>
+          ${credit > 0n && price !== null ? `<dt>Price</dt><dd>${tokens(price, dec)} <small>$PJAM</small></dd><dt>Your burn credit</dt><dd>−${tokens(credit > price ? price : credit, dec)} <small>$PJAM</small></dd>` : ''}
+          <dt>Burn</dt><dd class="ad-burn">${need !== null ? `${tokens(need, dec)} <small>$PJAM</small>` : '…'}</dd>
         </dl>
         ${qp?.moved ? `<p class="ad-warn">The board is full at that time, so this would start at the next opening.</p>` : ''}
       </div>
       ${walletHtml()}
       ${b?.paused ? '<p class="ad-err">Ad sales are paused right now.</p>' : ''}
-      ${short ? `<p class="ad-err">This wallet has ${tokens(s.balance!, dec)} $PJAM; this ad burns ${tokens(price!, dec)}.</p>` : ''}
+      ${short ? `<p class="ad-err">This wallet has ${tokens(s.balance!, dec)} $PJAM; this ad burns ${tokens(need!, dec)}.</p>` : ''}
       ${noSol ? '<p class="ad-err">This wallet needs a little SOL for the network fee.</p>' : ''}
       ${s.text && (!textOk || s.verdict?.ok === false) ? '<p class="ad-err">Fix your message first (see above).</p>' : ''}
-      <button class="btn primary big ad-go" data-a="burn"${can ? '' : ' disabled'}>${s.busy ? 'Working…' : price !== null ? `Burn ${tokens(price, dec)} $PJAM` : 'Burn $PJAM'}</button>
+      <button class="btn primary big ad-go" data-a="burn"${can ? '' : ' disabled'}>${s.busy ? 'Working…' : need !== null ? `Burn ${tokens(need, dec)} $PJAM` : 'Burn $PJAM'}</button>
       ${s.step ? `<ol class="ad-steps">${steps.map((x, i) => `<li class="${i + 1 < s.step ? 'done' : i + 1 === s.step ? 'on' : ''}">${esc(x)}</li>`).join('')}</ol>` : ''}
       ${s.error ? `<p class="ad-err">${esc(s.error)}</p>` : ''}
       ${heldHtml()}
-      <p class="ad-fineprint">Burning is permanent. Your wallet shows exactly what you sign: one burn of ${price !== null ? tokens(price, dec) : 'the price'} $PJAM from your own account, and a memo naming this booking.</p>`;
+      ${credit > 0n ? `<p class="ad-note">You have ${tokens(credit, dec)} $PJAM of burn credit from an earlier burn that was below a price. It counts toward this ad, and is used up when this burn books it.</p>` : ''}
+      <p class="ad-fineprint">Burning is permanent and can't be refunded. Your wallet shows exactly what you sign: one burn of ${need !== null ? tokens(need, dec) : 'the price'} $PJAM from your own account, and a memo naming this booking. The page checks the burn before your wallet sees it and never offers one below the price${credit > 0n ? ' less your credit' : ''}.</p>`;
     bindCheckout();
   }
 
@@ -526,6 +539,7 @@ export function openAdvertise(root: HTMLElement, back: () => void) {
       await s.wallet?.disconnect();
       s.wallet = null;
       s.balance = null;
+      s.credit = null;
       s.mine = null;
       store.set(WALLET_KEY, '');
       renderMine();
@@ -639,6 +653,16 @@ export function openAdvertise(root: HTMLElement, back: () => void) {
         throw e;
       }
       id = prep.booking.id;
+      // Burned tokens can't come back: only a burn of exactly the locked price (less the credit the page showed) is signed.
+      const shown = s.credit ?? 0n;
+      try {
+        if ((prep.credit ?? '0') !== shown.toString()) throw new BurnGuardError('Your burn credit just changed, so nothing was burned. Check the new amount and try again.');
+        checkBurnTransaction(prep.tx, { owner: s.wallet.address, mint: s.board.mint, code: prep.booking.code, price: BigInt(prep.booking.price), credit: shown });
+        if (BigInt(prep.booking.price) !== BigInt(expect)) throw new BurnGuardError('The price just changed, so nothing was burned. Check the new price and try again.');
+      } catch (e) {
+        if (e instanceof BurnGuardError) void refreshBalance().then(() => alive && renderCheckout());
+        throw e;
+      }
       s.step = 2;
       renderCheckout();
       // Nothing is burned unless the wallet signs: a refusal here costs nothing.
@@ -728,7 +752,7 @@ export function openAdvertise(root: HTMLElement, back: () => void) {
     const now = Date.now();
     switch (a.state) {
       case 'pending': return pending().some((p) => p.id === a.id) ? '<span class="ad-tag wait">Waiting for your burn to land…</span>' : '<span class="ad-tag">Not paid (nothing burned)</span>';
-      case 'dust': return '<span class="ad-tag bad">Burn below the price: not running</span>';
+      case 'dust': return '<span class="ad-tag bad">Burn below the price: kept as credit, not running</span>';
       case 'removed':
         if (a.banned) return `<span class="ad-tag bad">Taken down: wallet banned</span>`;
         if (a.replaced_by) return '<span class="ad-tag">Taken down, replaced with new text</span>';
@@ -915,8 +939,8 @@ function themeChip(t: AdTheme, on: boolean) {
 function receiptHtml(b: Booking, board: Board | null) {
   if (b.state !== 'paid') {
     return `<div class="ad-receipt"><p class="ad-kicker">Burn received</p>
-      <h2>${b.state === 'dust' ? 'Too small to run' : 'Not on the board'}</h2>
-      <p class="ad-warn">${b.state === 'dust' ? "That burn was less than this plan's price, so the ad doesn't run."  : 'This wallet is banned from advertising, so the ad stays down.'}</p>
+      <h2>${b.state === 'dust' ? 'Saved as burn credit' : 'Not on the board'}</h2>
+      <p class="ad-warn">${b.state === 'dust' ? "That burn was less than this plan's price, so the ad doesn't run and no shorter slot was booked. The burn is kept as burn credit for your wallet: it counts toward a full slot, so book it again and the page asks you to burn only the difference. Burns can't be refunded."  : 'This wallet is banned from advertising, so the ad stays down.'}</p>
       <button class="btn" data-a="another">Back</button></div>`;
   }
   const live = b.starts_at && Date.parse(b.starts_at) <= Date.now() + 60_000;

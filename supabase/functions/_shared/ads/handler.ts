@@ -101,7 +101,7 @@ export const VERDICTS: Record<string, string> = {
 // Per IP, per window (seconds). The board is cached instead.
 const LIMITS: Record<string, [number, number]> = {
   check: [120, 60], quote: [60, 60], wallet: [30, 60], prepare: [30, 3600], confirm: [120, 60], mine: [30, 60],
-  replace: [10, 3600], report: [10, 3600], faucet: [3, 86_400], 'usdc-intent': [30, 3600], 'usdc-confirm': [120, 60],
+  credit: [60, 60], replace: [10, 3600], report: [10, 3600], faucet: [3, 86_400], 'usdc-intent': [30, 3600], 'usdc-confirm': [120, 60],
 };
 
 /** A mistake the caller can fix: shown to them as-is. */
@@ -321,22 +321,27 @@ export async function adsHandler(req: Request, cfg: AdsConfig, rawDeps: AdsDeps)
         }
         const [accounts, lamports, mint, blockhash] = await Promise.all([
           tokenAccounts(cfg, deps.rpc, w), solBalance(deps.rpc, w), mintInfo(cfg, deps.rpc), deps.rpc.latestBlockhash()]);
-        // One account must hold the whole price: the burn comes out of a single account.
-        const from = accounts.find((a) => a.amount >= price);
+        // Live: burn credit (earlier short burns by this wallet) counts toward the price, so the burn is price - credit. The
+        // page is told both and refuses to sign anything else. Never less than one base unit: a burn needs an amount, and
+        // with credit alone a burn is what triggers the booking.
+        const credit = cfg.strictBurn && cfg.dbName ? BigInt(await deps.db<string>('pokejam_ad_credit', { p_wallet: w })) : 0n;
+        const burnAmount = price > credit ? price - credit : 1n;
+        // One account must hold the whole burn: it comes out of a single account.
+        const from = accounts.find((a) => a.amount >= burnAmount);
         const total = accounts.reduce((s, a) => s + a.amount, 0n);
         if (!from) {
-          throw new Refusal(total >= price ? 'Your $PJAM is split across token accounts: move it into one first.' : 'Not enough $PJAM in this wallet for that plan.',
-            400, { short: true, balance: total.toString(), price: price.toString() });
+          throw new Refusal(total >= burnAmount ? 'Your $PJAM is split across token accounts: move it into one first.' : 'Not enough $PJAM in this wallet for that plan.',
+            400, { short: true, balance: total.toString(), price: burnAmount.toString() });
         }
         if (lamports < FEE_RESERVE) throw new Refusal('This wallet needs a little SOL for the network fee.', 400, { noSol: true });
         const b = await deps.db<Booking>('pokejam_ad_create', {
           p_wallet: w, p_text: str('text', 200), p_theme: theme, p_plan: plan, p_start: start(), p_expect: price.toString(), p_blockhash: blockhash,
         });
         const tx = buildBurnTransaction({
-          owner: w, tokenAccount: from.address, mint: cfg.mint, tokenProgram: mint.tokenProgram, amount: BigInt(b.price),
+          owner: w, tokenAccount: from.address, mint: cfg.mint, tokenProgram: mint.tokenProgram, amount: BigInt(b.price) > credit ? BigInt(b.price) - credit : 1n,
           decimals: mint.decimals, code: b.code, recentBlockhash: blockhash, priorityMicroLamports: cfg.priorityMicroLamports,
         });
-        return json({ booking: b, tx, cluster: cfg.cluster });
+        return json({ booking: b, tx, cluster: cfg.cluster, credit: credit.toString() });
       }
       case 'confirm': {
         let b = await booking();
@@ -395,6 +400,11 @@ export async function adsHandler(req: Request, cfg: AdsConfig, rawDeps: AdsDeps)
           return json({ booking: b, expired: true, error: "Your burn didn't go through in time, so nothing was burned. Try again." });
         }
         return json({ booking: b, landing: true });
+      }
+      case 'credit': {
+        // Live only: the burn credit this wallet has (short burns it made), which counts toward its next full slot.
+        if (!cfg.strictBurn || !cfg.dbName) throw new Refusal('There is no burn credit here.', 404);
+        return json({ credit: await deps.db<string>('pokejam_ad_credit', { p_wallet: wallet() }) });
       }
       case 'mine': {
         const w = wallet();

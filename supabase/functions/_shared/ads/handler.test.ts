@@ -549,3 +549,119 @@ describe('griefing the server', () => {
     expect((await t.call({ action: 'faucet', wallet: base58Encode(randomBytes(32)) })).body.error).toMatch(/Too many requests/);
   });
 });
+
+describe('the live board keeps a short burn as credit, and never as airtime', () => {
+  const LIVE: Partial<AdsConfig> = { cluster: 'mainnet-beta', dbName: liveDbName, strictBurn: { decimals: 6, commitment: 'finalized' },
+    usdc: { mint: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v', receiver: 'FPwoDYkHTFef4Fg45o1wzReXiVoYGP6KXEgRyfqqBpyk', commitment: 'finalized' } };
+  const credit = async (t: Awaited<ReturnType<typeof setup>>, wallet = t.me.address) => (await t.call({ action: 'credit', wallet })).body.credit as string;
+  /** The amount a prepared (unsigned) burn takes. */
+  const amountOf = (b64: string) => new DataView(decodeTransaction(base64Decode(b64)).instructions.find((i) => i.data[0] === 15)!.data.buffer,
+    decodeTransaction(base64Decode(b64)).instructions.find((i) => i.data[0] === 15)!.data.byteOffset + 1, 8).getBigUint64(0, true);
+
+  it('the page-built burn is exactly the price; a short hand-made burn becomes credit and a top-up of exactly the difference books the full slot', async () => {
+    const t = await setup(LIVE);
+    const first = await t.prepare({ plan: 'hour' });
+    expect(amountOf(first.body.tx)).toBe(HOUR);
+    expect(first.body.credit).toBe('0');
+    // A hand-made burn of 40% of the hour: no airtime, no pro-rating, but not lost.
+    const short = await t.call({ action: 'confirm', id: first.body.booking.id, signature: t.land(await crafted(t.me, MY_ACCOUNT, first.body.booking.code, HOUR * 4n / 10n)) });
+    expect(short.body.booking).toMatchObject({ state: 'dust', starts_at: null });
+    expect(await credit(t)).toBe(String(HOUR * 4n / 10n));
+    expect((await t.call({ action: 'board' })).body.live).toEqual([]);
+    // The next booking asks for exactly the rest.
+    const second = await t.prepare({ plan: 'hour', text: 'second try' });
+    expect(second.body.credit).toBe(String(HOUR * 4n / 10n));
+    expect(amountOf(second.body.tx)).toBe(HOUR * 6n / 10n);
+    const done = await t.call({ action: 'confirm', id: second.body.booking.id, tx: await t.sign(second.body.tx) });
+    expect(done.body.booking.state).toBe('paid');
+    expect(run(done.body.booking)).toBe(H); // the plan, in full, not a minute more
+    expect(await credit(t)).toBe('0');
+    expect(t.balances.get(MY_ACCOUNT)).toBe(10n * DAY - HOUR);
+  });
+
+  it('credit larger than the price still needs a burn, of one base unit, and books the plan', async () => {
+    const t = await setup(LIVE);
+    for (const text of ['one', 'two']) {
+      const p = await t.prepare({ plan: 'hour', text });
+      if (text === 'one') await t.call({ action: 'confirm', id: p.body.booking.id, signature: t.land(await crafted(t.me, MY_ACCOUNT, p.body.booking.code, HOUR * 9n / 10n)) });
+    }
+    await t.db.sql(`update public.pokejam_live_ad_burn_credit set amount = $1`, [String(HOUR * 3n)]);
+    const p = await t.prepare({ plan: 'hour', text: 'credit rich' });
+    expect(amountOf(p.body.tx)).toBe(1n);
+    expect((await t.call({ action: 'confirm', id: p.body.booking.id, tx: await t.sign(p.body.tx) })).body.booking.state).toBe('paid');
+  });
+
+  it("a burn from someone else is never credited: not a stranger's, not a delegate's", async () => {
+    const t = await setup(LIVE);
+    const p = await t.prepare({ plan: 'hour' });
+    const { keypair: friend } = await generateKeypair();
+    t.owners.set(FRIEND_ACCOUNT, friend.address);
+    // The friend burns their own tokens, naming my booking: they signed, but I didn't.
+    const stranger = t.land(await crafted(friend, FRIEND_ACCOUNT, p.body.booking.code, HOUR / 2n));
+    expect((await t.call({ action: 'confirm', id: p.body.booking.id, signature: stranger })).status).toBe(400);
+    // I burn from the friend's account as their delegate: I signed, but the account isn't mine.
+    const delegate = t.land(await crafted(t.me, FRIEND_ACCOUNT, p.body.booking.code, HOUR / 2n));
+    const d = await t.call({ action: 'confirm', id: p.body.booking.id, signature: delegate });
+    expect(d.status).toBe(400);
+    expect(d.body.error).toMatch(/did not come from the wallet/);
+    await t.sweep();
+    expect(await credit(t)).toBe('0');
+    expect(await credit(t, friend.address)).toBe('0');
+    expect(await t.db.sql('select signature from public.pokejam_live_ad_burn_credit')).toHaveLength(0);
+  });
+
+  it('a short burn is credited only after the same checks as any burn: finalized, age, decimals, mint', async () => {
+    const t = await setup(LIVE);
+    const p = await t.prepare({ plan: 'hour' });
+    const code = p.body.booking.code;
+    // Landed but not finalized: not yet.
+    const young = t.land(await crafted(t.me, MY_ACCOUNT, code, HOUR / 4n));
+    t.sw.notFinal.add(young);
+    expect((await t.call({ action: 'confirm', id: p.body.booking.id, signature: young })).body).toMatchObject({ landing: true });
+    expect(await credit(t)).toBe('0');
+    // Older than the booking.
+    const old = t.land(await crafted(t.me, MY_ACCOUNT, code, HOUR / 4n));
+    t.txs.get(old)!.blockTime = Math.floor(Date.now() / 1000) - 3600;
+    expect((await t.call({ action: 'confirm', id: p.body.booking.id, signature: old })).status).toBe(400);
+    // Other decimals than the mint's.
+    const odd = t.land(await crafted(t.me, MY_ACCOUNT, code, HOUR / 4n));
+    (t.txs.get(odd)!.transaction.message.instructions[0].parsed as { info: { tokenAmount: { decimals: number } } }).info.tokenAmount.decimals = 9;
+    expect((await t.call({ action: 'confirm', id: p.body.booking.id, signature: odd })).status).toBe(400);
+    // Another token.
+    const other = t.land(await crafted(t.me, MY_ACCOUNT, code, HOUR / 4n, OTHER_MINT));
+    expect((await t.call({ action: 'confirm', id: p.body.booking.id, signature: other })).status).toBe(400);
+    expect(await credit(t)).toBe('0');
+    // And once final, the first one is credited, once.
+    t.sw.notFinal.delete(young);
+    expect((await t.call({ action: 'confirm', id: p.body.booking.id, signature: young })).body.booking.state).toBe('dust');
+    expect((await t.call({ action: 'confirm', id: p.body.booking.id, signature: young })).body.booking.state).toBe('dust');
+    expect(await credit(t)).toBe(String(HOUR / 4n));
+  });
+
+  it('the sweep credits a short burn it finds, once', async () => {
+    const t = await setup(LIVE);
+    const p = await t.prepare({ plan: 'hour' });
+    t.land(await crafted(t.me, MY_ACCOUNT, p.body.booking.code, HOUR / 2n));
+    expect((await t.sweep()).body).toMatchObject({ burns: 1 });
+    expect(await credit(t)).toBe(String(HOUR / 2n));
+    await t.sweep();
+    expect(await credit(t)).toBe(String(HOUR / 2n));
+    expect((await t.call({ action: 'board' })).body.live).toEqual([]);
+  });
+
+  it('a short burn then a full one for the same booking: the second is an extra run at the full price, the first stays credit', async () => {
+    const t = await setup(LIVE);
+    const p = await t.prepare({ plan: 'hour' });
+    await t.call({ action: 'confirm', id: p.body.booking.id, signature: t.land(await crafted(t.me, MY_ACCOUNT, p.body.booking.code, HOUR / 2n)) });
+    const full = await t.call({ action: 'confirm', id: p.body.booking.id, signature: t.land(await crafted(t.me, MY_ACCOUNT, p.body.booking.code, HOUR)) });
+    expect(full.body.booking).toMatchObject({ state: 'paid' });
+    expect(run(full.body.booking)).toBe(H);
+    expect(await credit(t)).toBe(String(HOUR / 2n));
+  });
+
+  it('is live only: the devnet function has no credit', async () => {
+    const t = await setup();
+    expect((await t.call({ action: 'credit', wallet: t.me.address })).status).toBe(404);
+    expect((await t.prepare({ plan: 'hour' })).body.credit).toBe('0');
+  });
+});

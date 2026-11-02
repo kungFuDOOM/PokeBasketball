@@ -106,7 +106,9 @@ export const adsApi = {
   wallet: (wallet: string) => call<{ balance: string; lamports: number; decimals: number }>({ action: 'wallet', wallet }),
   check: (text: string) => call<{ ok: boolean; reason: string | null; message: string | null }>({ action: 'check', text }),
   prepare: (a: { wallet: string; text: string; theme: AdTheme; plan: Plan; start: string | null; expect: string }) =>
-    call<{ booking: Booking; tx: string; cluster: Board['cluster'] }>({ action: 'prepare', ...a }),
+    call<{ booking: Booking; tx: string; cluster: Board['cluster']; credit?: string }>({ action: 'prepare', ...a }),
+  /** The wallet's burn credit (short burns it made, kept for it), in base units. */
+  credit: (wallet: string) => call<{ credit: string }>({ action: 'credit', wallet }),
   /** Never throws for a burn that didn't pay: the answer says what happened (expired, notBurned, error). */
   confirm: (id: string, proof: { signature?: string; tx?: string } = {}) => confirmCall(id, proof),
   mine: (wallet: string) => call<{ ads: Booking[] }>({ action: 'mine', wallet }),

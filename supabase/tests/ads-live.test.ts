@@ -13,6 +13,7 @@ const DIR = new URL('../migrations/', import.meta.url);
 const FILES = readdirSync(DIR).filter((f) => f.endsWith('.sql')).sort();
 const MIGRATIONS = FILES.map((f) => readFileSync(new URL(f, DIR), 'utf8'));
 const LIVE_FILE = '20261204_pokejam_ads_live.sql';
+const CREDIT_FILE = '20261205_pokejam_ads_burn_credit.sql';
 const LIVE_SQL = readFileSync(new URL(LIVE_FILE, DIR), 'utf8');
 // sha256 of pokejam-test's 20261104_pokejam_ads.sql, renamed since and now 20261203_pokejam_ads.sql, already applied on the shared project.
 const DEVNET_SHA256 = 'adf6c2b432673feb800146593f6eeb87567c6a051678521d47a5d3c6a3c04cd0';
@@ -85,8 +86,8 @@ describe('the migration is additive', () => {
     expect(createHash('sha256').update(devnet).digest('hex')).toBe(DEVNET_SHA256);
   });
 
-  it('runs after every earlier migration', () => {
-    expect(FILES[FILES.length - 1]).toBe(LIVE_FILE);
+  it('runs after every earlier migration, and before the burn credit migration that builds on it', () => {
+    expect(FILES.slice(-2)).toEqual([LIVE_FILE, CREDIT_FILE]);
   });
 
   it('drops, alters, truncates and deletes nothing, and redefines none of the devnet functions', () => {
@@ -108,11 +109,12 @@ describe('the migration is additive', () => {
   it('runs twice without error (safe to re-apply)', async () => {
     const t = await testDb();
     await t.db.exec(LIVE_SQL);
+    await t.db.exec(readFileSync(new URL(CREDIT_FILE, DIR), 'utf8'));
     expect((await t.create()).state).toBe('pending');
   });
 
   it('sorts after every other migration, keeping the devnet file first', () => {
-    expect(FILES.slice(-2)).toEqual(['20261203_pokejam_ads.sql', LIVE_FILE]);
+    expect(FILES.slice(-3)).toEqual(['20261203_pokejam_ads.sql', LIVE_FILE, CREDIT_FILE]);
     expect(FILES).toContain('20261201_pokejam_judge_decides.sql');
     expect(new Set(FILES.map((f) => f.slice(0, 8))).size).toBe(FILES.length);
   });
@@ -123,6 +125,7 @@ describe('the migration is additive', () => {
     await t.service('pokejam_live_ad_set_cfg', ['ad_spots', '7']);
     await t.db.exec(readFileSync(new URL('20261203_pokejam_ads.sql', DIR), 'utf8'));
     await t.db.exec(LIVE_SQL);
+    await t.db.exec(readFileSync(new URL(CREDIT_FILE, DIR), 'utf8'));
     const b = await t.service<{ spots: number; live: { id: string }[] }>('pokejam_live_ad_board');
     expect(b.spots).toBe(7);
     expect(b.live.map((x) => x.id)).toEqual([a.id]);
@@ -132,7 +135,7 @@ describe('the migration is additive', () => {
     const list = readFileSync(new URL('./testDb.ts', import.meta.url), 'utf8').match(/const MIGRATIONS = \[[^\]]*\]/)![0];
     const listed = [...list.matchAll(/'([^']+\.sql)'/g)].map((m) => m[1]);
     expect(listed).toEqual([...listed].sort());
-    expect(listed.slice(-2)).toEqual(['20261203_pokejam_ads.sql', LIVE_FILE]);
+    expect(listed.slice(-3)).toEqual(['20261203_pokejam_ads.sql', LIVE_FILE, CREDIT_FILE]);
   });
 });
 
@@ -206,8 +209,8 @@ describe('a burn pays for its plan and no less', () => {
     const r = await t.pay(week, BigInt(week.price) / 168n);
     expect(r).toMatchObject({ state: 'dust', starts_at: null });
     expect((await t.service<{ live: unknown[] }>('pokejam_live_ad_board')).live).toHaveLength(0);
-    // One base unit short is still short.
-    const hour = await t.create('ALMOST', 'hour');
+    // One base unit short is still short (another wallet: the first one's credit would top it up, see ads-burn-credit.test.ts).
+    const hour = await t.create('ALMOST', 'hour', OTHER);
     expect((await t.pay(hour, BigInt(hour.price) - 1n)).state).toBe('dust');
   });
 
@@ -220,11 +223,12 @@ describe('a burn pays for its plan and no less', () => {
     expect(ms(paid.ends_at) - ms(paid.starts_at)).toBe(48 * H);
   });
 
-  it('a short burn is refused from the extra-run path too', async () => {
+  it('a short burn buys no extra run either: it is kept as credit and the ad is unchanged', async () => {
     const t = await testDb();
     const a = await t.pay(await t.create('FIRST', 'day'));
     const r = await t.pay(a, BigInt(a.price) - 1n);
-    expect(r).toMatchObject({ state: 'dust', extra_of: a.id });
+    expect(r).toMatchObject({ id: a.id, state: 'paid', extra_of: null });
+    expect(await t.sql(`select id from public.pokejam_live_ads where extra_of is not null`)).toHaveLength(0);
   });
 
   it('a booking older than a day, or an extra run, pays the current price if it went up', async () => {
@@ -237,7 +241,7 @@ describe('a burn pays for its plan and no less', () => {
     expect(fresh.price).toBe('300000000000');
     await t.sql(`update public.pokejam_live_ads set created_at = now() - interval '2 days' where id = $1`, [old.id]);
     expect((await t.pay(old, old.price)).state).toBe('dust');
-    expect((await t.pay(paidOnce, paidOnce.price)).state).toBe('dust');
+    expect(await t.pay(paidOnce, paidOnce.price)).toMatchObject({ id: paidOnce.id, state: 'paid', extra_of: null }); // short: kept as credit, no extra run
     const old2 = await t.create('OLD TWO', 'hour', FOURTH);
     await t.sql(`update public.pokejam_live_ads set created_at = now() - interval '2 days', price = 100000000000 where id = $1`, [old2.id]);
     const r = await t.pay(old2, '300000000000');
@@ -264,7 +268,9 @@ describe('a burn pays for its plan and no less', () => {
     const t = await testDb();
     const r = await t.usdcPay(await t.intent('USDC AD', 'week'));
     await t.sql(`update public.pokejam_live_ad_plans set enabled = false where method = 'burn' and plan = 'hour'`);
-    expect((await t.service<Ad>('pokejam_live_ad_pay', [r.ad!.id, 'crafted', '999000000000', WALLET])).state).toBe('dust');
+    // No hourly price: nothing can be booked, so the burn is kept as credit and no extra run exists.
+    expect(await t.service<Ad>('pokejam_live_ad_pay', [r.ad!.id, 'crafted', '999000000000', WALLET])).toMatchObject({ id: r.ad!.id, extra_of: null });
+    expect(await t.sql(`select id from public.pokejam_live_ads where extra_of is not null`)).toHaveLength(0);
   });
 });
 

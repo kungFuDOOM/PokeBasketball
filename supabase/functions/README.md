@@ -63,7 +63,7 @@ Prices and the number of spots (`ad_spots`, default 3) change with one `update p
 | The page gave up waiting, then the burn landed | Paid by the sweeper or the next visit. |
 | A burn lands days late (a durable nonce) | Paid: bookings are never deleted, and the price is locked when booked. |
 | A second burn for an ad that's already paid | An extra run of the same ad, straight after. |
-| A hand-made burn of more or less than the price | Airtime in proportion, at the locked rate. Under a minute's worth is recorded as dust. |
+| A hand-made burn of more or less than the price | Devnet: airtime in proportion, at the locked rate. Under a minute's worth is recorded as dust. Live: a burn below the price books nothing and is kept as burn credit; more runs longer. |
 | Someone else burns for the ad | It runs: anyone may pay for an ad. |
 | The node refuses the burn, it fails on-chain, or it expires unsent | Nothing was burned, and the page says exactly that. |
 | The page showed an old price | Refused before signing (`expect`), so the wallet never shows a surprise amount. |
@@ -169,7 +169,7 @@ A booking keeps the price it was made at for one day. After that, and for any ex
 - Its top-level memo is exactly `pokejam-ad:<code>` for this booking, and it's no older than the booking.
 - The booking's wallet signed it, and only burns that wallet authorised from its own token account count (the owner comes from the chain's token balances). A delegate's, a multisig's or a stranger's burn doesn't count.
 - The token is the configured mint under the program that owns it. The mint must have 6 decimals, or the function refuses to sell, because the prices assume them.
-- `pokejam_live_ad_pay` compares the amount with the price. **Less than the price runs nothing:** it's recorded as `dust` and the tokens stay burned. This differs from the devnet board, which pro-rates: on the live board a pro-rated burn would buy hours at the week's cheaper rate. The server builds the exact amount, so only a hand-crafted transaction can be short. More than the price runs longer at the plan's rate.
+- `pokejam_live_ad_pay` compares the amount with the price. **Less than the price books nothing, not even a shorter slot** (a pro-rated burn would buy hours at the week's cheaper rate; the devnet board still pro-rates). The server builds the exact amount, so only a hand-crafted transaction can be short. Burned tokens can't come back, so a short burn is kept as **burn credit** (`20261205_pokejam_ads_burn_credit.sql`, table `pokejam_live_ad_burn_credit`) for the wallet that signed it and owns the burned account, after the same checks as any burn (finalized, mint, decimals, age, one signature once). A booking is paid when its burn plus that wallet's unspent credit reaches the locked price; credit rows are used whole, oldest first, only as many as needed, under the same advisory lock as every pay function, and never by another wallet. `prepare` builds the burn for the price minus the wallet's credit (one base unit if credit already covers it), and the page refuses to sign any other amount. More than the price (burn plus credit) runs longer at the plan's rate, as before. Credit alone books nothing. The sweep credits short burns it finds.
 - `burn_sig` is unique and payments take an advisory lock, so a signature pays once, across burns and USDC.
 
 **How a USDC payment works** (`_shared/ads/usdc-*.ts`, adapted from the USDC payment pattern on `origin/claude/shield-usdc-only`, copied, not merged):
@@ -190,7 +190,7 @@ A booking keeps the price it was made at for one day. After that, and for any ex
 
 ### On kungFuDOOM's OK (mainnet, the live site)
 
-1. **Migrations**, in this order, after every other migration: `20261203_pokejam_ads`, then `20261204_pokejam_ads_live`. Both are additive and safe to re-apply.
+1. **Migrations**, in this order, after every other migration: `20261203_pokejam_ads`, then `20261204_pokejam_ads_live`, then `20261205_pokejam_ads_burn_credit`. All are additive and safe to re-apply.
 2. **Check the prices:** `select * from public.pokejam_live_ad_plans;`. They're seeded with the confirmed amounts.
 3. **Secrets:**
    ```sh

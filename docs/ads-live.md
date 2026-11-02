@@ -14,7 +14,7 @@ The operator's reference, covering secrets, the deploy steps and how a payment i
 | Live Edge Function | `supabase/functions/pokejam-ads-live/index.ts`. It uses the same handler as the devnet `pokejam-ads`, which is unchanged. |
 | Config | `adsConfigLive` in `supabase/functions/_shared/ads/config.ts`. Mainnet only when `ADS_ALLOW_MAINNET` is exactly `"true"`. The faucet is hard-off on mainnet. |
 | USDC payment | `supabase/functions/_shared/ads/usdc-{chain,verify,handlers}.ts`, adapted from `origin/claude/shield-usdc-only` (copied, not merged). |
-| Database | `supabase/migrations/20261204_pokejam_ads_live.sql`. It is additive: it adds `pokejam_live_*` tables (including the prices, `pokejam_live_ad_plans`) and functions and `live_*` config keys. `20261203_pokejam_ads.sql` is byte-identical to pokejam-test's, which is already applied. |
+| Database | `supabase/migrations/20261204_pokejam_ads_live.sql`, then `20261205_pokejam_ads_burn_credit.sql` (short burns kept as credit for the burning wallet, never as airtime). Both are additive. The first adds `pokejam_live_*` tables (including the prices, `pokejam_live_ad_plans`) and functions and `live_*` config keys. `20261203_pokejam_ads.sql` is byte-identical to pokejam-test's, which is already applied. |
 | Client | `src/ads/` (`api.ts` calls `pokejam-ads-live` only, `usdcPay.ts`, `screen.ts`), `src/game/ledBoard.ts`, `src/data/ads.ts`. |
 | CSP | `vite.config.ts`. Nothing new by default, because the endpoint is on the Supabase origin and the browser never calls a Solana RPC. There are no inline scripts. |
 
