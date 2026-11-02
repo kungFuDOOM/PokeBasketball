@@ -4,7 +4,8 @@ import { monByDex } from '../../data/pokemon';
 import { Game } from '../../game/game';
 import { snapshot, stateHash, stepGame, type Snapshot } from '../../game/sync';
 import { emptyIntent, seededRng, type GameConfig, type Intent, type TeamDef } from '../../game/types';
-import { HASH_EVERY, Lockstep, SEND_MS, plausibleVitals, type LockstepOptions, type NetMsg, type Vitals } from './lockstep';
+import { JUDGE_AUTHORITATIVE } from '../../config/features';
+import { HASH_EVERY, Lockstep, SEND_MS, plausibleVitals, resyncLimitFor, type LockstepOptions, type NetMsg, type Vitals } from './lockstep';
 import { rttStats, startDelay } from './netDelay';
 import { PACE_DIRECT_MS } from './netplay';
 
@@ -497,6 +498,36 @@ describe('the guest takes a snapshot only after its own detected desync', () => 
     offer(second);
     expect(ls.stats.rejected).toBe(0);
     expect(ls.stats.resyncs).toBe(2);
+  });
+
+  it('Ranked allows 12 resyncs until the judge decides, then 3; Social always keeps 12', () => {
+    expect(resyncLimitFor('ranked', false)).toBe(12);
+    expect(resyncLimitFor('ranked', true)).toBe(3);
+    expect(resyncLimitFor('social', false)).toBe(12);
+    expect(resyncLimitFor('social', true)).toBe(12);
+  });
+
+  it('the judge flag is off unless the build turns it on', () => {
+    expect(JUDGE_AUTHORITATIVE).toBe(false);
+  });
+
+  it('a Ranked game survives a 4th resync with the judge off, and stops there with it on', () => {
+    const fourResyncs = (judge: boolean) => {
+      const { ls, playTo, mismatch, offer, tick } = gated({ resyncLimit: resyncLimitFor('ranked', judge) });
+      for (let n = 1; n <= 4; n++) {
+        playTo(60 * n);
+        mismatch(60 * n - 1);
+        offer();
+        tick(1600);
+      }
+      return ls;
+    };
+    const off = fourResyncs(false);
+    expect(off.stats.resyncs).toBe(4);
+    expect(off.problem).toBeNull();
+    const on = fourResyncs(true);
+    expect(on.stats.resyncs).toBe(3);
+    expect(on.problem).toMatch(/out of sync/);
   });
 
   it('resyncLimit: the snapshot past the limit stops the game, and only after a detected desync', () => {

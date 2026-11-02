@@ -16,7 +16,7 @@ import { isGuest, signInWithGoogle } from './account';
 import { badgeImgForTier } from '../../ranked/badge';
 import { TIER_COLORS, view, type MatchOutcome, type RankView } from './rank';
 import { LocalRankStore } from './rankStore';
-import { rankChipHtml, postMatchHtml, shieldItemHtml, shieldTagHtml, signInPanelHtml, weeklyCardHtml } from './view';
+import { judgeNoteHtml, rankChipHtml, postMatchHtml, shieldItemHtml, shieldTagHtml, signInPanelHtml, weeklyCardHtml } from './view';
 import { mountUsernamePicker } from './picker';
 import { MODE_SHIELD_SHOP, MODE_SHIELD_STRIPE } from '../../config/features';
 import { shopReturnOf } from './shopView';
@@ -57,9 +57,11 @@ function badge(v: RankView): string {
 const localBadge = () => badge(view(store.get()));
 
 function outcomeHtml(out: ReportOutcome): string {
-  if (out.result) return postMatchHtml(out); // Season 1 server
+  const judgeNote = judgeNoteHtml(out);
+  if (out.result) return `${judgeNote}${postMatchHtml(out)}`; // Season 1 server
   const o = out.rank as MatchOutcome | undefined;
   if (!o) {
+    if (judgeNote) return judgeNote;
     if (out.status === 'pending') return '<p class="note center">Waiting for your opponent to confirm the result. Your rank updates when they do.</p>';
     if (out.status === 'void') return '<p class="note center">The two results did not match, so this match was not rated.</p>';
     return '';
@@ -70,7 +72,7 @@ function outcomeHtml(out: ReportOutcome): string {
     : o.event === 'demoted' ? `Demoted to ${name}`
     : o.event === 'shielded' ? 'Demotion protection saved your division.'
     : o.after.label;
-  return `<div class="mp-outcome">${badge(o.after)}<p><strong>${esc(msg)}</strong></p><p class="note">MMR ${o.mmrDelta >= 0 ? '+' : ''}${o.mmrDelta}</p></div>`;
+  return `${judgeNote}<div class="mp-outcome">${badge(o.after)}<p><strong>${esc(msg)}</strong></p><p class="note">MMR ${o.mmrDelta >= 0 ? '+' : ''}${o.mmrDelta}</p></div>`;
 }
 
 const PRACTICE_NOTE = '<p class="note center">Practice match: unranked, your rating is unchanged.</p>';

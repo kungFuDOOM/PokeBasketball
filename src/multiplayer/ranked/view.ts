@@ -159,6 +159,14 @@ export function versusHtml(names: ReportOutcome['names'], ranks: { me?: BadgeRan
   return `<p class="rk-vs">${card('rk-you', names.me, ranks.me)} <i>vs</i> ${card('rk-opp', names.opp, ranks.opp)}</p>`;
 }
 
+/** The server is judging the match, or has, or nothing is unusual (''). Plain words, in the same note line as the rest. */
+export function judgeNoteHtml(out: ReportOutcome): string {
+  if (out.status === 'judging') return '<p class="note center">Checking the result… This can take a few minutes. Your rank updates when it is done.</p>';
+  if (out.status === 'void' && out.judged) return '<p class="note center">The server could not decide this match, so it was not rated.</p>';
+  if (out.corrected) return '<p class="note center">The result was corrected by the server: its replay of the game has a different winner from the one you saw.</p>';
+  return '';
+}
+
 function postBlock(out: ReportOutcome, won?: boolean): string {
   if (out.status === 'pending') return '<p class="note center">Waiting for your opponent to confirm the result. Your rank updates when they do.</p>';
   if (out.status === 'void') return '<p class="note center">The two results did not match, so this match was not rated.</p>';

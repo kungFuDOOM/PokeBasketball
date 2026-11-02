@@ -83,6 +83,15 @@ const MAX_AHEAD = 4 * MAX_DELAY + 60;
 const MAX_MSGS_PER_SEC = 200;
 /** Resyncs the guest accepts per game, and how often: a host sending more is broken or cheating. */
 const DEFAULT_RESYNC_LIMIT = 12;
+/** Ranked's limit once the judge decides disputes: each resync could be a forged state, and the judge settles a stopped game. */
+const JUDGED_RANKED_RESYNC_LIMIT = 3;
+/**
+ * Resyncs allowed before the game stops. Only Ranked with the judge deciding gets the low limit: without the judge, a
+ * guest stopped by a desync just claims a forfeit, so honest games must get the same room as Social.
+ * The caller passes the flag (JUDGE_AUTHORITATIVE in config/features.ts): this module also loads under Deno, without Vite.
+ */
+export const resyncLimitFor = (queue: 'social' | 'ranked', judgeAuthoritative: boolean) =>
+  (queue === 'ranked' && judgeAuthoritative ? JUDGED_RANKED_RESYNC_LIMIT : DEFAULT_RESYNC_LIMIT);
 const MIN_RESYNC_MS = 1500;
 /** How long after its last mismatching hash the guest will take a snapshot. */
 const DESYNC_WINDOW_MS = 5000;

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { ReportOutcome } from '../shared/matchService';
 import { parseMe, parseRankResult, type RankedMe } from './serverRank';
-import { postMatchHtml, rankChipHtml, signInPanelHtml, tierClass } from './view';
+import { judgeNoteHtml, postMatchHtml, rankChipHtml, signInPanelHtml, tierClass } from './view';
 
 const me = (o: Partial<RankedMe> = {}): RankedMe => ({
   season: 1, daysLeft: 31, placing: false, placementsPlayed: 5, divIdx: 7, points: 40, zenith: false, shieldCharge: 1, shieldLossesLeft: null,
@@ -112,6 +112,17 @@ describe('post-match points', () => {
   it('copes with a result that has almost nothing in it', () => {
     expect(() => postMatchHtml(done({ placing: false }))).not.toThrow();
     expect(() => postMatchHtml(done({ placing: false, event: 'promoted' }))).not.toThrow();
+  });
+});
+
+describe('judge notes', () => {
+  it('says plainly when the server is checking, could not decide, or changed the result, and nothing otherwise', () => {
+    expect(judgeNoteHtml({ queue: 'ranked', status: 'judging' })).toContain('Checking the result…');
+    expect(judgeNoteHtml({ queue: 'ranked', status: 'void', judged: true })).toContain('could not decide');
+    expect(judgeNoteHtml({ queue: 'ranked', status: 'done', judged: true, corrected: true })).toContain('corrected by the server');
+    expect(judgeNoteHtml({ queue: 'ranked', status: 'done', judged: true, corrected: false })).toBe('');
+    expect(judgeNoteHtml({ queue: 'ranked', status: 'void' })).toBe('');
+    expect(judgeNoteHtml({ queue: 'ranked', status: 'pending' })).toBe('');
   });
 });
 

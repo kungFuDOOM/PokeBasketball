@@ -17,6 +17,7 @@ const post = (auth = `Bearer ${KEY}`, method = 'POST') => new Request('https://f
 /** Fakes for the queue and the judge. `verdictFor` throws for a match to stand in for a failing run. */
 function fakes(jobs: JudgeJob[]) {
   const finished: [string, boolean][] = [];
+  const applied: string[] = [];
   const claims: number[] = [];
   const recorded: string[] = [];
   const judge: JudgeMatchDeps = {
@@ -28,9 +29,10 @@ function fakes(jobs: JudgeJob[]) {
   const deps: WorkerDeps = {
     claim: async (n) => { claims.push(n); return jobs; },
     finish: async (m, ok) => { finished.push([m, ok]); },
+    apply: async (m) => { applied.push(m); },
     judge,
   };
-  return { deps, finished, claims, recorded };
+  return { deps, finished, claims, recorded, applied };
 }
 
 describe('pokejam-judge-worker', () => {
@@ -158,9 +160,24 @@ describe('a Ranked match through the queue, on the real judge', () => {
 
   it('a job whose verdict already exists (a moderator got there first) is closed without judging again', async () => {
     vi.spyOn(console, 'log').mockImplementation(() => {});
-    const { deps, finished } = fakes([{ match_id: 'seen', rejudge: false }]);
+    const { deps, finished, applied } = fakes([{ match_id: 'seen', rejudge: false }]);
     deps.judge.hasVerdict = async () => true;
     expect(await runWorker(deps)).toEqual([{ match_id: 'seen', result: 'skipped', reason: 'already judged' }]);
     expect(finished).toEqual([['seen', true]]);
+    expect(applied).toEqual(['seen']); // a moderator's verdict still decides a disputed match
+  });
+
+  it('with no uploads the match waits for a late one, and a failed apply is retried through the lease', async () => {
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const empty = fakes([{ match_id: 'none', rejudge: false }]);
+    expect(await runWorker(empty.deps)).toEqual([{ match_id: 'none', result: 'skipped', reason: 'no evidence' }]);
+    expect(empty.applied).toEqual([]);
+    expect(empty.finished).toEqual([['none', true]]);
+    const failing = fakes([{ match_id: 'seen', rejudge: false }]);
+    failing.deps.judge.hasVerdict = async () => true;
+    failing.deps.apply = async () => { throw new Error('database down'); };
+    expect(await runWorker(failing.deps)).toEqual([{ match_id: 'seen', result: 'error', reason: 'database down' }]);
+    expect(failing.finished).toEqual([]);
   });
 });

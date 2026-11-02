@@ -1,11 +1,12 @@
 // Plays one online match: connect → lockstep game → both players report the result.
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { JUDGE_AUTHORITATIVE } from '../../config/features';
 import type { Game } from '../../game/game';
 import { playGame, type PlayHandle } from '../../screens/play';
 import { resultsScreen } from '../../screens/results';
 import { esc } from '../../util';
 import { classify } from './capacity';
-import { Lockstep } from './lockstep';
+import { Lockstep, resyncLimitFor } from './lockstep';
 import { panel } from './matchFlow';
 import type { ReportOutcome } from './matchService';
 import { pack } from './evidence';
@@ -26,6 +27,8 @@ const PEER_TIMEOUT_MS = 15_000;
 const DIRECT_WAIT_MS = 6000;
 /** How often a player in the game tells the server they're still there (service.alive). */
 const HEARTBEAT_MS = 30_000;
+const CHECKING = 'Checking the result… This can take a few minutes.';
+const STILL_CHECKING = 'The server is still checking this match. Your rank updates when it is done.';
 
 /** Dev builds only: ?ql=10 plays 10-second quarters (used by the two-browser end-to-end test). Otherwise the server's. */
 function quarterLenOverride(): number | undefined {
@@ -144,11 +147,11 @@ export async function playOnline(ctx: ModeContext, o: OnlineGameOptions) {
   // While the game is on, a heartbeat: if both players vanish without a leave arriving, the server calls it off.
   void service.alive(match.id);
   const beat = setInterval(() => void service.alive(match.id), HEARTBEAT_MS);
-  const end = async (title: string, note: string, peerLost = false) => {
+  const end = async (title: string, note: string, peerLost = false, desync = false) => {
     if (over) return;
     over = true;
     offExit();
-    clearInterval(beat);
+    if (!desync) clearInterval(beat); // a desync: still here while the server looks at it
     clearInterval(watch);
     stopIntro();
     handle?.stop();
@@ -156,14 +159,33 @@ export async function playOnline(ctx: ModeContext, o: OnlineGameOptions) {
     sendNetStats();
     uploadEvidence();
     link.close();
-    // Ranked, and the other player is the one who went: I'm not a leaver, so I don't leave. The server settles it.
-    if (peerLost && match.queue === 'ranked') void service.claimForfeit(match.id);
-    else await service.leave(match.id);
-    message(ctx, title, note, { service, match });
+    if (!peerLost || match.queue !== 'ranked') {
+      await service.leave(match.id);
+      message(ctx, title, note, { service, match });
+      return;
+    }
+    // Ranked, and the other player is the one who went, or the games went out of sync: I'm not a leaver, so I don't
+    // leave. The server settles it, maybe through the judge.
+    message(ctx, title, desync ? `${note} ${CHECKING}` : note, { service, match });
+    const tag = root.querySelector('.tag');
+    const say = (out: ReportOutcome | null) => {
+      if (tag && out?.status === 'judging') tag.textContent = out.later ? CHECKING : STILL_CHECKING;
+      else if (tag && out?.judged) tag.textContent = out.status === 'void' ? 'The server could not decide this match, so it was not rated.' : 'The server checked this match and your rank is up to date.';
+    };
+    void (async () => {
+      let out = desync ? await service.desync(match.id) : null;
+      if (!out) {
+        if (desync && tag) tag.textContent = `${note} No result was recorded.`; // the server isn't judging disputes
+        out = await service.claimForfeit(match.id);
+      }
+      say(out);
+      const final = await out?.later;
+      if (final) say({ ...final, later: undefined });
+    })().catch(() => {}).finally(() => clearInterval(beat));
   };
   const watch = setInterval(() => {
     if (!ls || over) return;
-    if (ls.problem) void end('GAME STOPPED', `${ls.problem} No result was recorded.`, true);
+    if (ls.problem) void (match.queue === 'ranked' ? end('GAME STOPPED', ls.problem, true, true) : end('GAME STOPPED', `${ls.problem} No result was recorded.`, true));
     else if (ls.peerLeft) void end('OPPONENT LEFT', `${match.opponent.name} left the game. No result was recorded.`, true);
     else if (performance.now() - ls.lastHeard > PEER_TIMEOUT_MS) void end('CONNECTION LOST', `Lost the connection to ${match.opponent.name}. No result was recorded.`, true);
   }, 1000);
@@ -200,7 +222,7 @@ export async function playOnline(ctx: ModeContext, o: OnlineGameOptions) {
       online: {
         viewTeam: match.side,
         start: (g) => {
-          const l = (ls = new Lockstep(g, link, { side: match.side, delay: startDelay, resyncLimit: 12 }));
+          const l = (ls = new Lockstep(g, link, { side: match.side, delay: startDelay, resyncLimit: resyncLimitFor(match.queue, JUDGE_AUTHORITATIVE) }));
           startedAt = performance.now();
           link.attach(l);
           // Read-only counters for the lag tests (no ids or secrets).
@@ -236,7 +258,7 @@ export async function playOnline(ctx: ModeContext, o: OnlineGameOptions) {
     let later: Promise<ReportOutcome> | undefined;
     try {
       const opp: OnlineOpponent = { ...match.opponent, matchId: match.id, mySide: match.side };
-      const out = await service.reportResult(match.queue, opp, { won, score: [mine, theirs], engineVersion: g.engineVersion, seed: g.seed });
+      const out = await service.reportResult(match.queue, opp, { won, score: [mine, theirs], engineVersion: g.engineVersion, seed: g.seed, resyncs: ls?.stats.resyncs ?? 0 });
       if (match.queue === 'ranked') oppRank = (await service.matchRanks(match.id, match.side)).opp; // fails soft: no badge on an error
       note = show(out);
       later = out.later;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { bansHtml, judgeShadowHtml, personLabel, reportsHtml, type Check, type Reported } from './reportsView';
+import { bansHtml, judgeFlagsHtml, judgeShadowHtml, personLabel, reportsHtml, type Check, type Reported } from './reportsView';
 
 const check = (over: Partial<Check> = {}): Check => ({
   match_id: 'm1', queue: 'ranked', has_evidence: true, status: null, agrees: null, cheater_is_reported: null, ...over,
@@ -89,6 +89,23 @@ describe('admin Reported tab', () => {
   it('confirm text names which person it is about', () => {
     expect(personLabel('Kissass', 'reporter')).toBe('Kissass (the reporter)');
     expect(personLabel('Fvcker', 'reported')).toBe('Fvcker (the reported player)');
+  });
+});
+
+describe('admin judge flags panel', () => {
+  const f = { id: 1, match_id: 'abcdef12-0000', user_id: 'u1234567-x', username: '<b>Ash</b>', reason: 'bad_upload', detail: 'engine <v9>', created_at: '2026-11-02T00:00:00Z', reviewed: false };
+
+  it('says why in words and escapes what players control', () => {
+    const html = judgeFlagsHtml([f, { ...f, id: 2, user_id: null, username: null, reason: 'something_new', detail: null }]);
+    expect(html).toContain('Fake or unreadable upload');
+    expect(html).toContain('&lt;b&gt;Ash&lt;/b&gt;');
+    expect(html).toContain('engine &lt;v9&gt;');
+    expect(html).toContain('something_new');
+    expect(html).toContain('abcdef12');
+  });
+
+  it('says so when there are none', () => {
+    expect(judgeFlagsHtml([])).toContain('No flags');
   });
 });
 

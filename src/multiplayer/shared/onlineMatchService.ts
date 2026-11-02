@@ -69,8 +69,15 @@ export class RankedCooldownError extends OnlineError {
 }
 
 const POLL_MS = 2000;
-/** After reporting a Ranked result, wait this long for the other player's report before giving up on showing the rating change. */
-const SETTLE_MS = 30_000;
+/**
+ * After reporting a Ranked result, wait this long for the rating change before giving up on showing it. A match the
+ * judge has to decide takes a minute or two: up to 120 s for a missing report, 90 s for uploads, then a queue that runs
+ * once a minute. The server still settles it after this.
+ */
+export const SETTLE_MS = 5 * 60_000;
+/** Poll every POLL_MS at first, when the other player's report is about to arrive, then more gently while the judge works. */
+const SETTLE_FAST_MS = 30_000;
+const SETTLE_POLL_MS = 5000;
 /** A poll that hits a capacity limit is retried this many times (backoff with jitter) before it is reported. */
 const POLL_RETRIES = 2;
 /** Room-code tries allowed per minute, so a code can't be guessed by hammering the join button. */
@@ -113,6 +120,8 @@ export class SupabaseMatchService implements MatchService {
 
   /** My rating as of just before the current Ranked match, so the result screen can show what the match changed. */
   private rankBefore: ServerRank | null = null;
+  /** Counts Ranked searches: a wait for an earlier match's rating stops when a new one starts, and leaves rankBefore alone. */
+  private searches = 0;
 
   /** A matchmaking call, behind the human check: checked first if needed, and once more if the server still refuses. */
   private async gated<T>(run: () => Promise<T>, checkFirst = true): Promise<T> {
@@ -313,7 +322,10 @@ export class SupabaseMatchService implements MatchService {
    */
   async quickMatch(queue: Queue, signal?: AbortSignal): Promise<OnlineMatch> {
     this.allow(queue);
-    if (MODE_RANKED && queue === 'ranked') this.rankBefore = await this.myRank();
+    if (MODE_RANKED && queue === 'ranked') {
+      this.searches++;
+      this.rankBefore = await this.myRank();
+    }
     // Gets leaving on page exit ready (warm). Before searching, leaving the queue is a no-op apart from calling off a
     // match made for me that I never opened, which is stale by now; awaited, so it can't land after a new pairing.
     await this.warm('pokejam_leave_queue');
@@ -458,23 +470,42 @@ export class SupabaseMatchService implements MatchService {
     const hostWon = o.mySide === 0 ? result.won : !result.won;
     // Ranked: the final score goes first. The server only uses it once both players sent the same one (else a photo finish).
     if (MODE_RANKED && queue === 'ranked') await this.reportScore(o.matchId, o.mySide, result.score);
-    const res = await this.call<{ status?: string; rank?: unknown } | null>('pokejam_report_result', { p_match: o.matchId, p_host_won: hostWon });
+    const resyncs = queue === 'ranked' ? result.resyncs ?? 0 : 0;
+    const res = await this.call<{ status?: string; rank?: unknown } | null>('pokejam_report_result', { p_match: o.matchId, p_host_won: hostWon, ...(resyncs > 0 ? { p_resyncs: resyncs } : {}) });
     if (!MODE_RANKED || queue !== 'ranked') return { queue };
     // Ranked: Season 1 sends my rank change with the result; an older server doesn't, then the rating is read back from my profile.
     if (res?.status === 'done') return this.rated(parseRankResult(res.rank));
     if (res?.status === 'void') return { queue, status: 'void' };
-    return { queue, status: 'pending', later: this.settle(o.matchId).catch((): ReportOutcome => ({ queue, status: 'pending' })) };
+    return this.waiting(o.matchId, res?.status === 'judging' ? 'judging' : 'pending', result.won);
   }
 
-  /** The other player hasn't reported yet: poll the match until the server has rated it, or give up. */
-  private async settle(matchId: string): Promise<ReportOutcome> {
-    const until = Date.now() + SETTLE_MS;
+  /** The match isn't settled yet: the answer to show now, with the rest to come. */
+  private waiting(matchId: string, status: 'pending' | 'judging', won?: boolean): ReportOutcome {
+    return { queue: 'ranked', status, later: this.settle(matchId, won, status === 'judging').catch((): ReportOutcome => ({ queue: 'ranked', status })) };
+  }
+
+  /**
+   * Poll the match until the server has rated it, or give up. It may go to the judge while this runs. `won`: what this
+   * player saw, to say so when the replay decided otherwise. Stops if a new Ranked search starts.
+   */
+  private async settle(matchId: string, won?: boolean, judging = false, forMs = SETTLE_MS): Promise<ReportOutcome> {
+    const start = Date.now();
+    const search = this.searches;
+    let judged = judging;
+    const open = (): ReportOutcome => ({ queue: 'ranked', status: judged ? 'judging' : 'pending' });
     for (;;) {
-      await sleep(jitter(POLL_MS));
-      const s = await this.call<{ status?: string } | null>('pokejam_match_status', { p_match: matchId }, { retries: POLL_RETRIES });
-      if (s?.status === 'done') return this.rated(); // (the result screen reads the numbers in PR 3: pokejam_ranked_match_result)
-      if (!s || s.status === 'void') return { queue: 'ranked', status: 'void' };
-      if (Date.now() >= until) return { queue: 'ranked', status: 'pending' };
+      await sleep(jitter(Date.now() - start < SETTLE_FAST_MS ? POLL_MS : SETTLE_POLL_MS));
+      if (search !== this.searches) return open();
+      const s = await this.call<{ status?: string; winner?: string | null } | null>('pokejam_match_status', { p_match: matchId }, { retries: POLL_RETRIES });
+      if (s?.status === 'judging') judged = true;
+      if (s?.status === 'done') {
+        if (search !== this.searches) return open();
+        const out = await this.rated(); // (the result screen reads the numbers in PR 3: pokejam_ranked_match_result)
+        if (!judged) return out;
+        return { ...out, judged, corrected: won !== undefined && !!s.winner && (s.winner === this.userId) !== won };
+      }
+      if (!s || s.status === 'void') return judged ? { queue: 'ranked', status: 'void', judged } : { queue: 'ranked', status: 'void' };
+      if (Date.now() - start >= forMs) return open();
     }
   }
 
@@ -498,9 +529,23 @@ export class SupabaseMatchService implements MatchService {
       void this.alive(matchId);
       const r = await this.call<{ status?: string; rank?: unknown } | null>('pokejam_ranked_forfeit', { p_match: matchId }).catch(() => null);
       if (r?.status === 'done') return this.rated(parseRankResult(r.rank));
+      if (r?.status === 'judging') return this.waiting(matchId, 'judging');
       if (r && r.status !== 'active') return { queue: 'ranked', status: 'void' };
       await sleep(jitter(5000));
     }
+    return null;
+  }
+
+  /**
+   * My game stopped on a desync (lockstep's `problem`): ask the server to judge the match. Null when it won't (the flag
+   * is off, I'm the host, or an older server): the caller claims a forfeit, as before.
+   */
+  async desync(matchId: string): Promise<ReportOutcome | null> {
+    if (!MODE_RANKED) return null;
+    const r = await this.call<{ status?: string } | null>('pokejam_ranked_desync', { p_match: matchId }).catch(() => null);
+    if (r?.status === 'judging') return this.waiting(matchId, 'judging');
+    if (r?.status === 'done') return { ...(await this.rated()), judged: true };
+    if (r?.status === 'void') return { queue: 'ranked', status: 'void', judged: true };
     return null;
   }
 

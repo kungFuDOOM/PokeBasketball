@@ -33,12 +33,12 @@ function dbDeps(t: Db, sessions: Record<string, string>, judge?: JudgeDeps['judg
       return (await t.sql('select 1 from public.pokejam_match_verdicts where match_id = $1', [id])).length > 0;
     },
     async uploadsOf(id) {
-      return (await t.sql('select evidence from public.pokejam_match_evidence where match_id = $1 order by created_at, user_id', [id]))
-        .map((r) => r.evidence as string);
+      return (await t.sql('select evidence, user_id from public.pokejam_match_evidence where match_id = $1 order by created_at, user_id', [id]))
+        .map((r) => ({ evidence: r.evidence as string, user: r.user_id as string }));
     },
     async record(v) {
-      await t.service('select public.pokejam_record_verdict($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)',
-        [v.match, v.status, v.winnerSide, v.cheaterSide, v.scoreHost, v.scoreGuest, v.ticks, v.notes, v.lastFrameHost, v.lastFrameGuest]);
+      await t.service('select public.pokejam_record_verdict($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)',
+        [v.match, v.status, v.winnerSide, v.cheaterSide, v.scoreHost, v.scoreGuest, v.ticks, v.notes, v.lastFrameHost, v.lastFrameGuest, v.faultUser]);
     },
     judge: judge && (async (ev) => { judged.push(ev.setup.matchId); return judge(ev); }),
   };
@@ -200,17 +200,62 @@ describe('pokejam-judge', () => {
       expect((await verdicts(w.t))[0]).toMatchObject({ status: 'incomplete', ticks: MIN_DELAY + 120 });
     });
 
-    it('an upload from another engine is invalid, even if the other upload is current', async () => {
+    const faultOf = async (t: Db) => (await t.sql('select at_fault from public.pokejam_match_verdicts'))[0].at_fault;
+    const version = (id: string, engineVersion: unknown, pub: [string, string]) =>
+      ({ setup: { ...setupFor(id), engineVersion }, keys: pub, inputs: [], applied: [] }) as unknown as Evidence;
+
+    for (const [name, fake] of [['an old', ENGINE_VERSION - 1], ['a made-up', 999], ['a missing', undefined]] as const) {
+      it(`${name} engine version next to a current upload: thrown out, the match is judged on the other, and the sender is at fault`, async () => {
+        const w = await world();
+        const seen: Evidence[] = [];
+        const m = await w.match('ranked', async (id, k) => [version(id, ENGINE_VERSION, k.pub), version(id, fake, k.pub)]);
+        const { deps } = dbDeps(w.t, w.sessions, async (ev) => {
+          seen.push(ev);
+          return { status: 'final', winner: 0, score: [3, 1], ticks: 7200, hash: 1, lastFrame: [7204, 7204], notes: [] };
+        });
+        expect((await (await call(deps, { match_ids: [m.id] })).json()).results).toEqual([{ match_id: m.id, result: 'recorded', status: 'final' }]);
+        expect(seen).toHaveLength(1);
+        expect((await verdicts(w.t))[0].notes).toContain(`ignored an upload: recorded on engine v${fake}`);
+        expect(await faultOf(w.t)).toBe(m.guest.id);
+      });
+    }
+
+    it('the only upload, on a wrong engine: invalid, and its sender is at fault', async () => {
       const w = await world();
       const judged = vi.fn();
-      const m = await w.match('ranked', async (id, k) => [
-        { setup: setupFor(id), keys: k.pub, inputs: [], applied: [] },
-        { setup: { ...setupFor(id), engineVersion: ENGINE_VERSION - 1 }, keys: k.pub, inputs: [], applied: [] },
-      ]);
+      const m = await w.match('ranked', async (id, k) => [version(id, 999, k.pub)]);
       const { deps } = dbDeps(w.t, w.sessions, judged);
-      expect(await (await call(deps, { match_ids: [m.id] })).json()).toEqual({ ok: true, results: [{ match_id: m.id, result: 'recorded', status: 'invalid' }] });
+      expect((await (await call(deps, { match_ids: [m.id] })).json()).results[0]).toMatchObject({ status: 'invalid' });
       expect(judged).not.toHaveBeenCalled();
-      expect((await verdicts(w.t))[0]).toMatchObject({ status: 'invalid', winner_side: null, agrees: null, notes: expect.stringContaining(`recorded on engine v${ENGINE_VERSION - 1}`) });
+      expect(await faultOf(w.t)).toBe(m.host.id);
+    });
+
+    it('both uploads on the same old engine: the judge moved on mid-match, invalid, nobody at fault', async () => {
+      const w = await world();
+      const judged = vi.fn();
+      const m = await w.match('ranked', async (id, k) => [version(id, ENGINE_VERSION - 1, k.pub), version(id, ENGINE_VERSION - 1, k.pub)]);
+      const { deps } = dbDeps(w.t, w.sessions, judged);
+      expect((await (await call(deps, { match_ids: [m.id] })).json()).results[0]).toMatchObject({ status: 'invalid' });
+      expect(judged).not.toHaveBeenCalled();
+      expect((await verdicts(w.t))[0]).toMatchObject({ winner_side: null, agrees: null, notes: expect.stringContaining(`recorded on engine v${ENGINE_VERSION - 1}`) });
+      expect(await faultOf(w.t)).toBeNull();
+    });
+
+    it('both uploads on wrong engines that differ: invalid, and neither can be named', async () => {
+      const w = await world();
+      const m = await w.match('ranked', async (id, k) => [version(id, 998, k.pub), version(id, 999, k.pub)]);
+      const { deps } = dbDeps(w.t, w.sessions, vi.fn());
+      expect((await (await call(deps, { match_ids: [m.id] })).json()).results[0]).toMatchObject({ status: 'invalid', match_id: m.id });
+      expect(await faultOf(w.t)).toBeNull();
+    });
+
+    it('an unreadable upload as the only one: invalid, and its sender is at fault', async () => {
+      const w = await world();
+      const m = await w.match('ranked');
+      await w.t.sql('insert into public.pokejam_match_evidence(match_id, user_id, evidence) values ($1, $2, $3)', [m.id, m.guest.id, 'gz1:AAAA']);
+      const { deps } = dbDeps(w.t, w.sessions, vi.fn());
+      expect((await (await call(deps, { match_ids: [m.id] })).json()).results[0]).toMatchObject({ status: 'invalid' });
+      expect(await faultOf(w.t)).toBe(m.guest.id);
     });
 
     it('an upload with no setup at all is invalid, not an error', async () => {
@@ -234,7 +279,7 @@ describe('pokejam-judge', () => {
       const w = await world();
       const id = crypto.randomUUID();
       const { deps } = dbDeps(w.t, w.sessions);
-      deps.uploadsOf = async () => ['gz1:x'];
+      deps.uploadsOf = async () => [{ evidence: 'gz1:x', user: 'u' }];
       expect((await (await call(deps, { match_ids: [id] })).json()).results).toEqual([{ match_id: id, result: 'skipped', reason: 'no such match' }]);
     });
   });

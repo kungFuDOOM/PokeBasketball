@@ -6,7 +6,12 @@
 // 20261128; mergeEvidence: an uploader can't pick the game or the keys they're judged by), replays the match with
 // judge() and saves the result (pokejam_record_verdict, which maps the judge's sides to player ids). Matches already
 // judged, or with no uploads (Social), are skipped. One bad match doesn't stop the rest. judgeMatch is also what the
-// queue's pokejam-judge-worker runs (worker.ts).
+// queue's pokejam-judge-worker runs (worker.ts). This function only records: pokejam_judge_apply acts on the verdict.
+//
+// The engine version in an upload isn't signed, so a player can write anything there, and a match that can't be judged is
+// not rated. An upload that is the odd one out is therefore thrown out and its uploader named (`faultUser`), so a loser
+// can't buy a void with it. Only when both uploads carry the same old version is the engine really at issue: the judge
+// was deployed mid-match, and nobody is at fault.
 import { mergeEvidence, unpack } from '../../../../src/multiplayer/shared/evidence.ts';
 import { judge as realJudge, type Evidence, type MatchKeys, type MatchSetup, type Verdict } from '../../../../src/multiplayer/shared/winnerCheck.ts';
 import { ENGINE_VERSION } from '../../../../src/game/types.ts';
@@ -22,6 +27,9 @@ export const MAX_UNZIPPED_BYTES = 32_000_000;
  * so this bounds the CPU a hostile upload can cost (docs/multiplayer.md). An honest full match is about 4,400 per upload.
  */
 export const MAX_UPLOAD_BATCHES = 12_000;
+
+/** Why a match with no uploads is skipped. */
+export const NO_EVIDENCE = 'no evidence';
 
 export interface JudgeConfig {
   /** Sites allowed to call (exact origins). Empty: any origin (the session and the admin check still apply). */
@@ -39,6 +47,14 @@ export interface RecordArgs {
   notes: string;
   lastFrameHost: number;
   lastFrameGuest: number;
+  /** The player whose upload was thrown out as unreadable, oversized or from another engine, if there is exactly one. */
+  faultUser: string | null;
+}
+
+/** One player's upload. */
+export interface Upload {
+  evidence: string;
+  user: string;
 }
 
 export interface JudgeMatchDeps {
@@ -48,8 +64,8 @@ export interface JudgeMatchDeps {
    */
   setupOf(matchId: string): Promise<{ setup: MatchSetup | null; keys: { host_key: string | null; guest_key: string | null } } | null>;
   hasVerdict(matchId: string): Promise<boolean>;
-  /** The match's uploads (pack() strings), oldest first. */
-  uploadsOf(matchId: string): Promise<string[]>;
+  /** The match's uploads (pack() strings and who sent them), oldest first. */
+  uploadsOf(matchId: string): Promise<Upload[]>;
   /** pokejam_record_verdict. */
   record(v: RecordArgs): Promise<void>;
   /** The judge; tests may stand one in. */
@@ -90,32 +106,40 @@ async function readUpload(u: string): Promise<{ ev: Evidence } | { refused: stri
 async function judgeOne(id: string, deps: JudgeMatchDeps, force: boolean): Promise<MatchResult> {
   if (!force && await deps.hasVerdict(id)) return { match_id: id, result: 'skipped', reason: 'already judged' };
   const uploads = await deps.uploadsOf(id);
-  if (!uploads.length) return { match_id: id, result: 'skipped', reason: 'no evidence' };
+  if (!uploads.length) return { match_id: id, result: 'skipped', reason: NO_EVIDENCE };
   const m = await deps.setupOf(id);
   if (!m) return { match_id: id, result: 'skipped', reason: 'no such match' };
   if (!m.keys.host_key || !m.keys.guest_key) return { match_id: id, result: 'skipped', reason: 'no keys registered' };
-  if (uploads.some((u) => u.length > MAX_UPLOAD_CHARS)) return { match_id: id, result: 'skipped', reason: 'evidence too large' };
-  const read = await Promise.all(uploads.slice(0, 2).map(readUpload));
+  if (uploads.some((u) => u.evidence.length > MAX_UPLOAD_CHARS)) return { match_id: id, result: 'skipped', reason: 'evidence too large' };
+  const taken = uploads.slice(0, 2);
+  const read = await Promise.all(taken.map((u) => readUpload(u.evidence)));
   const refusals = read.flatMap((r, i) => ('refused' in r ? [`ignored upload ${i + 1} of ${read.length}: ${r.refused}`] : []));
-  const evs = read.flatMap((r) => ('ev' in r ? [r.ev] : []));
-  const invalid = async (note: string): Promise<MatchResult> => {
+  const readable = read.flatMap((r, i) => ('ev' in r ? [{ ev: r.ev, user: taken[i].user }] : []));
+  // The setup is the server's, but the engine a match was played on is only in the uploads. If the judge deployed
+  // mid-match, replaying on the new engine would silently be a different game.
+  const version = (e: Evidence) => e?.setup?.engineVersion;
+  const current = readable.filter((r) => version(r.ev) === ENGINE_VERSION);
+  const others = readable.filter((r) => version(r.ev) !== ENGINE_VERSION);
+  const engineNotes = others.map((r) => `recorded on engine v${version(r.ev)}, this judge runs engine v${ENGINE_VERSION}`);
+  const thrownOut = taken.map((u) => u.user).filter((user) => !current.some((r) => r.user === user));
+  const sameOldEngine = others.length === 2 && version(others[0].ev) === version(others[1].ev);
+  const faultUser = thrownOut.length === 1 ? thrownOut[0] : null;
+  const notes = [...refusals, ...(current.length ? engineNotes.map((n) => `ignored an upload: ${n}`) : engineNotes)];
+  const invalid = async (note: string | null, fault: string | null): Promise<MatchResult> => {
     await deps.record({
-      match: id, status: 'invalid', winnerSide: null, cheaterSide: null, scoreHost: 0, scoreGuest: 0, ticks: 0, notes: [...refusals, note].join('\n'), lastFrameHost: 0, lastFrameGuest: 0,
+      match: id, status: 'invalid', winnerSide: null, cheaterSide: null, scoreHost: 0, scoreGuest: 0, ticks: 0, notes: [...notes, ...(note ? [note] : [])].join('\n'), lastFrameHost: 0, lastFrameGuest: 0, faultUser: fault,
     });
     return { match_id: id, result: 'recorded', status: 'invalid' };
   };
-  if (!evs.length) return invalid('no usable upload');
-  // The setup is the server's, but the engine a match was played on is only in the uploads. If the judge deployed
-  // mid-match, replaying on the new engine would silently be a different game.
-  const old = evs.find((e) => e?.setup?.engineVersion !== ENGINE_VERSION);
-  if (old) return invalid(`recorded on engine v${old.setup?.engineVersion}, this judge runs engine v${ENGINE_VERSION}`);
-  if (!m.setup) return invalid('the match row has no seed or rosters');
+  if (!current.length) return invalid(readable.length ? null : 'no usable upload', sameOldEngine ? null : faultUser);
+  const evs = current.map((r) => r.ev);
+  if (!m.setup) return invalid('the match row has no seed or rosters', null);
   const keys: MatchKeys = [m.keys.host_key, m.keys.guest_key];
   const v = await (deps.judge ?? realJudge)(mergeEvidence(evs[0], evs[1], keys, m.setup));
   await deps.record({
     match: id, status: v.status, winnerSide: v.winner, cheaterSide: v.cheater ?? null,
-    scoreHost: v.score[0], scoreGuest: v.score[1], ticks: v.ticks, notes: [...refusals, ...v.notes].join('\n'),
-    lastFrameHost: v.lastFrame[0], lastFrameGuest: v.lastFrame[1],
+    scoreHost: v.score[0], scoreGuest: v.score[1], ticks: v.ticks, notes: [...notes, ...v.notes].join('\n'),
+    lastFrameHost: v.lastFrame[0], lastFrameGuest: v.lastFrame[1], faultUser,
   });
   return { match_id: id, result: 'recorded', status: v.status };
 }
