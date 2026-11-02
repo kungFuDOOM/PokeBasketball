@@ -11,6 +11,7 @@ import { MODE_SHIELD_SHOP, MODE_SHIELD_STRIPE } from '../../config/features';
 import { SHOP_NOTICES, USDC_NOTICES, gotShields, shopHtml, type ShopModel } from './shopView';
 import { profileHtml, type ProfileModel } from '../../screens/profile';
 import { checkUsername, nameErrorText } from './username';
+import { initialPickModel, presetPickHtml } from './presetPick';
 
 const me = (o: Partial<RankedMe> = {}): RankedMe => ({
   season: 1, daysLeft: 31, placing: false, placementsPlayed: 5, divIdx: 7, points: 40, zenith: false, shieldCharge: 1, shieldLossesLeft: null,
@@ -64,6 +65,10 @@ const SCREENS: Record<string, () => string> = {
   'usdc-success': () => shieldHome(),
   'usdc-error': () => shieldHome(),
   'shield-queue': () => panel('SEARCHING', 'Looking for a ranked opponent near your skill…', `${shieldTagHtml(shield({ armed: true }))}<div class="actions center"><button class="btn ghost" data-a="cancel">Cancel</button></div>`),
+  // Ranked team pick (presetPick.ts): nothing chosen, a card tapped, and locked in waiting on the opponent.
+  pick: () => presetPickHtml(initialPickModel(17)),
+  'pick-selected': () => presetPickHtml({ ...initialPickModel(12), selected: 'C' }),
+  'pick-locked': () => presetPickHtml({ ...initialPickModel(4), selected: 'C', locked: 'C' }),
   placing: () => home(rankChipHtml(me({ placing: true, placementsPlayed: 2, divIdx: null, points: null }))),
   signin: () => signIn({ kind: 'install', href: 'https://phantom.app/download' }),
   'signin-phantom': () => signIn({ kind: 'sign-in' }),

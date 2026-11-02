@@ -2,7 +2,7 @@
 // clients can only read their own rows. See supabase/migrations/.
 import { MODE_RANKED } from '../../config/features';
 import type { DraftView } from './draft';
-import { cooldownSeconds, counted, outcomeBetween, parseMatchRanks, parseMe, parseProfile, parseRankResult, parseShieldStatus, parseShopInfo, type RankedMe, type RankedResult, type ServerRank, type ShieldStatus, type ShopInfo } from '../ranked/serverRank';
+import { cooldownSeconds, counted, outcomeBetween, parseMatchRanks, parseMe, parsePickState, parsePresetIds, parseProfile, parseRankResult, parseShieldStatus, parseShopInfo, type PickState, type RankedMe, type RankedResult, type ServerRank, type ShieldStatus, type ShopInfo } from '../ranked/serverRank';
 import { displayName, serverNameError } from '../ranked/username';
 import type { BadgeRank } from '../../ranked/badge';
 import { safeName } from '../../nameFilter';
@@ -40,6 +40,8 @@ export interface OnlineOpponent extends Opponent {
   matchId: string;
   /** The side I (not the opponent) play: 0 = host, 1 = guest. */
   mySide: 0 | 1;
+  /** The match's server rosters (host, guest; Pokédex numbers by position): Ranked's preset picks, Social's draft. */
+  rosters?: [number[], number[]] | null;
 }
 
 /** The room the host was waiting in is over: the friend left, it was closed, or nobody joined in time. */
@@ -82,7 +84,7 @@ const WARM_MS = 20 * 60_000;
 const NO_MATCH = '00000000-0000-0000-0000-000000000000';
 const NO_ROOM = '';
 /** A server without the RPC (an older migration set): the client stops asking. */
-const missingRpc = (e: unknown) => e instanceof OnlineError && /PGRST202|42883/.test(e.code ?? '');
+export const missingRpc = (e: unknown) => e instanceof OnlineError && /PGRST202|42883/.test(e.code ?? '');
 
 export class SupabaseMatchService implements MatchService {
   /**
@@ -194,6 +196,24 @@ export class SupabaseMatchService implements MatchService {
   async setShieldArmed(on: boolean): Promise<ShieldStatus | null> {
     if (!MODE_RANKED) throw new OnlineError('Ranked is not available');
     return parseShieldStatus(await this.call('pokejam_shield_arm', { p_on: on }));
+  }
+
+  /** The preset team ids the server offers (pokejam_ranked_presets), cross-checked against the client's RANKED_PRESETS. */
+  async rankedPresets(): Promise<string[]> {
+    if (!MODE_RANKED) throw new OnlineError('Ranked is not available');
+    return parsePresetIds(await this.call('pokejam_ranked_presets'));
+  }
+
+  /** Locks in my blind preset pick for a Ranked match (preset id only; the server builds the roster). */
+  async rankedPick(matchId: string, presetId: string): Promise<void> {
+    if (!MODE_RANKED) throw new OnlineError('Ranked is not available');
+    await this.call('pokejam_ranked_pick', { p_match: matchId, p_preset: presetId });
+  }
+
+  /** My pick, seconds left and whether both have picked. The opponent's pick is never sent before the reveal. */
+  async rankedPickState(matchId: string): Promise<PickState> {
+    if (!MODE_RANKED) throw new OnlineError('Ranked is not available');
+    return parsePickState(await this.call('pokejam_ranked_pick_state', { p_match: matchId }, { retries: POLL_RETRIES }));
   }
 
   /** Both players' public rank for a Ranked match's name cards. Fails soft: any error (e.g. the server lacks the function) gives {}. */
@@ -429,7 +449,7 @@ export class SupabaseMatchService implements MatchService {
   /** MatchService: a quick match with no way to cancel (the Social screen uses quickMatch directly). */
   async findMatch(queue: Queue): Promise<Opponent> {
     const m = await this.quickMatch(queue);
-    return { ...m.opponent, matchId: m.id, mySide: m.side } as OnlineOpponent;
+    return { ...m.opponent, matchId: m.id, mySide: m.side, rosters: m.game.rosters ?? null } as OnlineOpponent;
   }
 
   /**

@@ -19,6 +19,7 @@ import { rankChipHtml, postMatchHtml, shieldItemHtml, shieldTagHtml, signInPanel
 import { mountUsernamePicker } from './picker';
 import { MODE_SHIELD_SHOP, MODE_SHIELD_STRIPE } from '../../config/features';
 import { shopReturnOf } from './shopView';
+import { RankedUpdatingError, pickedMatch } from './presetPick';
 
 /** The Rank Shield chip, with its Shop button when the shop is switched on. */
 const chipHtml = (st: Parameters<typeof shieldItemHtml>[0]) => shieldItemHtml(st, Date.now(), MODE_SHIELD_SHOP);
@@ -222,6 +223,16 @@ function failed(ctx: ModeContext, e: unknown) {
   ctx.root.querySelector('[data-a="back"]')!.addEventListener('click', () => openRanked(ctx));
 }
 
+/** The server is older than the preset picks: say so and stop (no random-team fallback). */
+function updating(ctx: ModeContext) {
+  ctx.root.className = 'screen-menu';
+  ctx.root.innerHTML = panel('RANKED IS UPDATING', 'Ranked is updating to preset teams. Try again in a few minutes.', `<div class="actions center">
+      <button class="btn primary" data-a="cpu">Practice vs CPU (unranked)</button>
+      <button class="btn ghost" data-a="back">Back</button></div>`);
+  ctx.root.querySelector('[data-a="cpu"]')!.addEventListener('click', () => playPractice(ctx));
+  ctx.root.querySelector('[data-a="back"]')!.addEventListener('click', () => openRanked(ctx));
+}
+
 async function quickMatch(ctx: ModeContext) {
   const { root } = ctx;
   const abort = new AbortController();
@@ -242,8 +253,18 @@ async function quickMatch(ctx: ModeContext) {
     const svc = await online(ctx);
     // Fail soft: no tag if the server has no Rank Shield (or the lookup fails).
     void svc.shieldStatus().then((st) => { if (st?.armed && root.querySelector('[data-a="cancel"]')) root.querySelector('.actions')?.insertAdjacentHTML('beforebegin', shieldTagHtml(st)); }, () => {});
-    const match = await svc.quickMatch('ranked', abort.signal);
+    const found = await svc.quickMatch('ranked', abort.signal);
     clearTimeout(offer);
+    // Both players blind-pick a preset team (the server auto-picks on timeout), then the match is read again with
+    // both rosters. No pick RPCs on the server: abort; Ranked never falls back to random teams.
+    let match;
+    try {
+      match = await pickedMatch(root, svc, found.id, abort.signal);
+    } catch (e) {
+      await svc.leave(found.id).catch(() => {});
+      if (e instanceof RankedUpdatingError) return updating(ctx);
+      throw e;
+    }
     const home: ModeContext = { ...ctx, back: () => openRanked(ctx) };
     void playOnline(home, { sb: supabase(), service: svc, match, playAgain: () => void quickMatch(ctx), outcomeHtml });
   } catch (e) {
