@@ -116,6 +116,8 @@ export interface TitleOptions {
   onRoster: () => void;
   /** Only set when at least one multiplayer mode is enabled at build time. */
   onMultiplayer?: () => void;
+  /** Opens the player profile. */
+  onProfile?: () => void;
 }
 
 const TIPS = [
@@ -194,6 +196,7 @@ export function menuScreen(root: HTMLElement, settings: Settings, onChange: () =
           : '<canvas class="attract-canvas"></canvas>'}
         <div class="attract-dim"></div>
       </div>
+      <a class="x-link pf-link" href="https://pump.fun/coin/GQe9QiBBV4G6bRUCxx2JgKrzT7G7RD17FJquBWgVpump" target="_blank" rel="noopener noreferrer" aria-label="PJAM on pump.fun" title="PJAM on pump.fun"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false"><g transform="rotate(45 12 12)" stroke="#0a0d1f" stroke-width="1.6" stroke-linejoin="round"><path fill="#fff" d="M7 12V6.5a5 5 0 0 1 10 0V12z"/><path fill="#86EFAC" d="M7 12v5.5a5 5 0 0 0 10 0V12z"/></g></svg></a>
       <a class="x-link tg-link" href="https://t.me/PokeJamSol" target="_blank" rel="noopener noreferrer" aria-label="PokeJam on Telegram" title="PokeJam on Telegram"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false"><path fill="currentColor" d="M21.94 3.4a1 1 0 0 0-1.02-.17L2.7 10.26a1 1 0 0 0 .08 1.88l4.6 1.45 1.78 5.64a1 1 0 0 0 1.62.45l2.57-2.3 4.6 3.4a1 1 0 0 0 1.57-.6l3.2-16.1a1 1 0 0 0-.38-.98zM9.8 13.9l7.9-5.9-6.3 6.7-.3 2.9z"/></svg></a>
       <a class="x-link" href="https://x.com/pokejamsol" target="_blank" rel="noopener noreferrer" aria-label="PokeJam on X" title="PokeJam on X"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false"><path fill="currentColor" d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg></a>
       <div class="menu-in">
@@ -207,6 +210,7 @@ export function menuScreen(root: HTMLElement, settings: Settings, onChange: () =
           </label>
           <button class="btn play-btn" data-go="season" aria-label="Season Draft: draft 10, sim a season, get your grade">DRAFT &amp; GET GRADED<small>Draft 10 · sim a season · get your grade</small></button>
           ${opts.onMultiplayer ? `<button class="btn online-btn" data-go="multiplayer" aria-label="Play online: quick match or a room code with a friend">PLAY ONLINE<small>Quick match · room code</small></button>` : ''}
+          ${opts.onProfile ? `<button class="btn ghost profile-btn" data-go="profile" aria-label="Your profile and stats">Profile</button>` : ''}
         </div>
         ${opts.drafted ? `<p class="mode-saved hero-saved"><span class="lbl">My drafted team</span> ${esc(opts.drafted)}</p>` : ''}
         <div class="mode-grid">
@@ -321,6 +325,7 @@ export function menuScreen(root: HTMLElement, settings: Settings, onChange: () =
   });
   $('[data-go="roster"]')!.addEventListener('click', leave(opts.onRoster));
   if (opts.onMultiplayer) $('[data-go="multiplayer"]')!.addEventListener('click', leave(opts.onMultiplayer));
+  if (opts.onProfile) $('[data-go="profile"]')!.addEventListener('click', leave(opts.onProfile));
   startNew.addEventListener('click', tryNew);
   $('[data-go="continue"]')?.addEventListener('click', leave(opts.onContinue));
   $('[data-go="resume-draft"]')?.addEventListener('click', leave(opts.onResumeDraft));

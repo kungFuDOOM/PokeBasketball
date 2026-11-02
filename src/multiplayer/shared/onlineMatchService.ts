@@ -2,7 +2,9 @@
 // clients can only read their own rows. See supabase/migrations/.
 import { MODE_RANKED } from '../../config/features';
 import type { DraftView } from './draft';
-import { counted, outcomeBetween, parseProfile, type ServerRank } from '../ranked/serverRank';
+import { cooldownSeconds, counted, outcomeBetween, parseMatchRanks, parseMe, parsePickState, parsePresetIds, parseProfile, parseRankResult, parseShieldStatus, parseShopInfo, type PickState, type RankedMe, type RankedResult, type ServerRank, type ShieldStatus, type ShopInfo } from '../ranked/serverRank';
+import { displayName, serverNameError } from '../ranked/username';
+import type { BadgeRank } from '../../ranked/badge';
 import { safeName } from '../../nameFilter';
 import { isBusy } from './capacity';
 import { RateLimit, backoffMs, jitter, singleFlight, sleep } from './throttle';
@@ -38,6 +40,8 @@ export interface OnlineOpponent extends Opponent {
   matchId: string;
   /** The side I (not the opponent) play: 0 = host, 1 = guest. */
   mySide: 0 | 1;
+  /** The match's server rosters (host, guest; Pokédex numbers by position): Ranked's preset picks, Social's draft. */
+  rosters?: [number[], number[]] | null;
 }
 
 /** The room the host was waiting in is over: the friend left, it was closed, or nobody joined in time. */
@@ -52,6 +56,14 @@ const stopIfAborted = (signal?: AbortSignal) => { if (signal?.aborted) throw abo
 export class OnlineError extends Error {
   constructor(message: string, public code?: string, public status?: number) {
     super(message);
+  }
+}
+
+/** Ranked search refused: this player is on a leaver cooldown (migration 20261112). `seconds` is what is left of it. */
+export class RankedCooldownError extends OnlineError {
+  name = 'RankedCooldownError';
+  constructor(public seconds: number, code?: string, status?: number) {
+    super(`You can search for Ranked again in ${Math.ceil(seconds / 60)} min.`, code, status);
   }
 }
 
@@ -72,7 +84,7 @@ const WARM_MS = 20 * 60_000;
 const NO_MATCH = '00000000-0000-0000-0000-000000000000';
 const NO_ROOM = '';
 /** A server without the RPC (an older migration set): the client stops asking. */
-const missingRpc = (e: unknown) => e instanceof OnlineError && /PGRST202|42883/.test(e.code ?? '');
+export const missingRpc = (e: unknown) => e instanceof OnlineError && /PGRST202|42883/.test(e.code ?? '');
 
 export class SupabaseMatchService implements MatchService {
   /**
@@ -162,6 +174,76 @@ export class SupabaseMatchService implements MatchService {
     return parseProfile(await this.call('pokejam_ensure_profile', { p_name: null }));
   }
 
+  /** My Season 1 rank (pokejam_ranked_me): season, placements, points, shield. Null if the server answers with nothing usable. */
+  async rankedMe(): Promise<RankedMe | null> {
+    if (!MODE_RANKED) throw new OnlineError('Ranked is not available');
+    return parseMe(await this.call('pokejam_ranked_me'));
+  }
+
+  /** My Rank Shield item and this week's challenge (pokejam_shield_me). Null if the server has none or answers with nothing usable. */
+  async shieldStatus(): Promise<ShieldStatus | null> {
+    if (!MODE_RANKED) throw new OnlineError('Ranked is not available');
+    return parseShieldStatus(await this.call('pokejam_shield_me'));
+  }
+
+  /** The Rank Shield shop (pokejam_shield_shop): products, how many I hold, how many I may still buy. Null if the server has none. */
+  async shieldShop(): Promise<ShopInfo | null> {
+    if (!MODE_RANKED) throw new OnlineError('Ranked is not available');
+    return parseShopInfo(await this.call('pokejam_shield_shop'));
+  }
+
+  /** Arms or disarms the Rank Shield for my next ranked match. Throws an OnlineError with player-facing text when the server refuses. */
+  async setShieldArmed(on: boolean): Promise<ShieldStatus | null> {
+    if (!MODE_RANKED) throw new OnlineError('Ranked is not available');
+    return parseShieldStatus(await this.call('pokejam_shield_arm', { p_on: on }));
+  }
+
+  /** The preset team ids the server offers (pokejam_ranked_presets), cross-checked against the client's RANKED_PRESETS. */
+  async rankedPresets(): Promise<string[]> {
+    if (!MODE_RANKED) throw new OnlineError('Ranked is not available');
+    return parsePresetIds(await this.call('pokejam_ranked_presets'));
+  }
+
+  /** Locks in my blind preset pick for a Ranked match (preset id only; the server builds the roster). */
+  async rankedPick(matchId: string, presetId: string): Promise<void> {
+    if (!MODE_RANKED) throw new OnlineError('Ranked is not available');
+    await this.call('pokejam_ranked_pick', { p_match: matchId, p_preset: presetId });
+  }
+
+  /** My pick, seconds left and whether both have picked. The opponent's pick is never sent before the reveal. */
+  async rankedPickState(matchId: string): Promise<PickState> {
+    if (!MODE_RANKED) throw new OnlineError('Ranked is not available');
+    return parsePickState(await this.call('pokejam_ranked_pick_state', { p_match: matchId }, { retries: POLL_RETRIES }));
+  }
+
+  /** Both players' public rank for a Ranked match's name cards. Fails soft: any error (e.g. the server lacks the function) gives {}. */
+  async matchRanks(matchId: string, side: 0 | 1): Promise<{ me?: BadgeRank; opp?: BadgeRank }> {
+    if (!MODE_RANKED) return {};
+    try {
+      return parseMatchRanks(await this.call('pokejam_match_ranks', { p_match: matchId }), side);
+    } catch {
+      return {};
+    }
+  }
+
+  /** My username and when I may change it (null = now). A guest, or a player who hasn't picked, has none. */
+  async myUsername(): Promise<{ username: string | null; nextChangeAt: string | null }> {
+    const r = await this.call<{ username?: string | null; next_change_at?: string | null } | null>('pokejam_my_username');
+    return { username: typeof r?.username === 'string' ? r.username : null, nextChangeAt: typeof r?.next_change_at === 'string' ? r.next_change_at : null };
+  }
+
+  /** Pick or change my username. Throws an OnlineError with player-facing text if the server refuses it. */
+  async setUsername(name: string): Promise<string> {
+    try {
+      const r = await this.call<{ username: string }>('pokejam_set_username', { p_name: name });
+      return r.username;
+    } catch (e) {
+      const text = serverNameError((e as Error).message);
+      if (text) throw new OnlineError(text);
+      throw e;
+    }
+  }
+
   /** Who is in a match, from my side. */
   async matchInfo(id: string): Promise<OnlineMatch> {
     const m = await this.call<{
@@ -172,8 +254,14 @@ export class SupabaseMatchService implements MatchService {
     if (m.seed === null || m.seed === undefined) throw new OnlineError('This match was made by an older server. Refresh to update.');
     const side: 0 | 1 = m.host === this.userId ? 0 : 1;
     // Names come from the other player's profile: a blocked one (a modified client, or an old name) shows as the default.
-    const opp = side === 0 ? { id: m.guest, name: safeName(m.guest_name ?? 'Trainer', 'Trainer') } : { id: m.host, name: safeName(m.host_name ?? 'Trainer', 'Trainer') };
-    const me = safeName((side === 0 ? m.host_name : m.guest_name) ?? 'Trainer', 'Trainer');
+    let opp = side === 0 ? { id: m.guest, name: safeName(m.guest_name ?? 'Trainer', 'Trainer') } : { id: m.host, name: safeName(m.host_name ?? 'Trainer', 'Trainer') };
+    let me = safeName((side === 0 ? m.host_name : m.guest_name) ?? 'Trainer', 'Trainer');
+    if (m.queue === 'ranked') {
+      // Ranked shows usernames, not team names or ids; a player without one reads as "Player".
+      const u = await this.call<{ host?: string | null; guest?: string | null } | null>('pokejam_match_usernames', { p_match: id }).catch(() => null);
+      me = displayName(side === 0 ? u?.host : u?.guest);
+      opp = { ...opp, name: displayName(side === 0 ? u?.guest : u?.host) };
+    }
     return {
       id: m.id, queue: m.queue, side, me: { id: this.userId, name: me }, opponent: { ...opp, mmr: 1000, simulated: false },
       game: {
@@ -247,6 +335,8 @@ export class SupabaseMatchService implements MatchService {
       }
     } catch (e) {
       if (signal?.aborted) await this.call('pokejam_leave_queue').catch(() => {});
+      const wait = queue === 'ranked' ? cooldownSeconds((e as Error).message ?? '') : null;
+      if (wait !== null) throw new RankedCooldownError(wait, (e as OnlineError).code, (e as OnlineError).status);
       throw e;
     }
   }
@@ -359,7 +449,7 @@ export class SupabaseMatchService implements MatchService {
   /** MatchService: a quick match with no way to cancel (the Social screen uses quickMatch directly). */
   async findMatch(queue: Queue): Promise<Opponent> {
     const m = await this.quickMatch(queue);
-    return { ...m.opponent, matchId: m.id, mySide: m.side } as OnlineOpponent;
+    return { ...m.opponent, matchId: m.id, mySide: m.side, rosters: m.game.rosters ?? null } as OnlineOpponent;
   }
 
   /**
@@ -371,10 +461,12 @@ export class SupabaseMatchService implements MatchService {
     const o = opp as Partial<OnlineOpponent>;
     if (!o.matchId || (o.mySide !== 0 && o.mySide !== 1)) throw new OnlineError('not an online match');
     const hostWon = o.mySide === 0 ? result.won : !result.won;
-    const res = await this.call<{ status?: string } | null>('pokejam_report_result', { p_match: o.matchId, p_host_won: hostWon });
+    // Ranked: the final score goes first. The server only uses it once both players sent the same one (else a photo finish).
+    if (MODE_RANKED && queue === 'ranked') await this.reportScore(o.matchId, o.mySide, result.score);
+    const res = await this.call<{ status?: string; rank?: unknown } | null>('pokejam_report_result', { p_match: o.matchId, p_host_won: hostWon });
     if (!MODE_RANKED || queue !== 'ranked') return { queue };
-    // Ranked: the rating is only ever read back from my server profile, after the server has rated the match.
-    if (res?.status === 'done') return this.rated();
+    // Ranked: Season 1 sends my rank change with the result; an older server doesn't, then the rating is read back from my profile.
+    if (res?.status === 'done') return this.rated(parseRankResult(res.rank));
     if (res?.status === 'void') return { queue, status: 'void' };
     return { queue, status: 'pending', later: this.settle(o.matchId).catch((): ReportOutcome => ({ queue, status: 'pending' })) };
   }
@@ -385,15 +477,45 @@ export class SupabaseMatchService implements MatchService {
     for (;;) {
       await sleep(jitter(POLL_MS));
       const s = await this.call<{ status?: string } | null>('pokejam_match_status', { p_match: matchId }, { retries: POLL_RETRIES });
-      if (s?.status === 'done') return this.rated();
+      if (s?.status === 'done') return this.rated(); // (the result screen reads the numbers in PR 3: pokejam_ranked_match_result)
       if (!s || s.status === 'void') return { queue: 'ranked', status: 'void' };
       if (Date.now() >= until) return { queue: 'ranked', status: 'pending' };
     }
   }
 
-  /** The server has rated the match: read my new rating from my profile. */
-  private async rated(): Promise<ReportOutcome> {
+  /** My final score for a Ranked match (host score first), before the result. Best effort: a refusal or an older server just means no margin. */
+  private async reportScore(matchId: string, side: 0 | 1, score: [number, number]) {
+    const [mine, theirs] = score;
+    try {
+      await this.call('pokejam_ranked_report_score', { p_match: matchId, p_host_score: side === 0 ? mine : theirs, p_guest_score: side === 0 ? theirs : mine });
+    } catch { /* the result still counts, as a photo finish */ }
+  }
+
+  /**
+   * I'm the stayer: the other player's heartbeat went quiet. Asks the server to settle the match (it forfeits them once
+   * they've been silent for 45 s) every few seconds for up to `forMs`, keeping my own heartbeat going meanwhile. Resolves
+   * with the outcome once settled, or null if it never was (a lag spike: nothing is penalised, the sweep decides later).
+   */
+  async claimForfeit(matchId: string, forMs = 70_000): Promise<ReportOutcome | null> {
+    if (!MODE_RANKED) return null;
+    const until = Date.now() + forMs;
+    while (Date.now() < until) {
+      void this.alive(matchId);
+      const r = await this.call<{ status?: string; rank?: unknown } | null>('pokejam_ranked_forfeit', { p_match: matchId }).catch(() => null);
+      if (r?.status === 'done') return this.rated(parseRankResult(r.rank));
+      if (r && r.status !== 'active') return { queue: 'ranked', status: 'void' };
+      await sleep(jitter(5000));
+    }
+    return null;
+  }
+
+  /** The server has rated the match: read my new rating (Season 1: the answer I was given; older server: my profile). */
+  private async rated(result: RankedResult | null = null): Promise<ReportOutcome> {
     if (!MODE_RANKED) return { queue: 'ranked', status: 'void' };
+    if (result) {
+      const me = await this.rankedMe().catch(() => null); // the shield state after the match; the screen copes without it
+      return { queue: 'ranked', status: 'done', result, me: me ?? undefined };
+    }
     const before = this.rankBefore;
     const after = await this.myRank();
     this.rankBefore = after;

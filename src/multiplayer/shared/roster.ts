@@ -1,4 +1,4 @@
-import { POKEMON, POSITIONS, type Mon } from '../../data/pokemon';
+import { POKEMON, POSITIONS, monByDex, type Mon } from '../../data/pokemon';
 import { seededRng } from '../../game/types';
 
 /** One random Pokémon for each position. */
@@ -25,6 +25,27 @@ export const RANKED_EXCLUDED: readonly number[] = [
   382, // Kyogre, C 92
   380, // Latias, SF 91
 ];
+
+/** Every lore legendary in the dex: the RANKED_EXCLUDED nine plus the birds, beasts and Celebi. None may be on a
+ * Ranked preset team. */
+export const RANKED_LEGENDARIES: readonly number[] = [
+  ...RANKED_EXCLUDED,
+  144, // Articuno
+  145, // Zapdos
+  146, // Moltres
+  243, // Raikou
+  244, // Entei
+  245, // Suicune
+  251, // Celebi
+];
+
+/** No Ranked preset member may be rated above this. */
+export const RANKED_MAX_OVR = 88;
+
+/** Whether a Pokémon may be on a Ranked preset team: OVR at most RANKED_MAX_OVR and not a legendary. */
+export function isRankedLegal(m: Mon): boolean {
+  return m.ovr <= RANKED_MAX_OVR && !RANKED_LEGENDARIES.includes(m.dex);
+}
 
 // Ranked balance: change the caps here.
 /** Ranked teams' total OVR may differ by at most this much (out of about 350). */
@@ -82,4 +103,23 @@ export function rostersFor(seed: number, queue: 'social' | 'ranked' = 'social'):
   // Its own stream, kept apart from the game's (which is seeded with the same number).
   const rng = seededRng((seed ^ 0x5bd1e995) >>> 0);
   return queue === 'ranked' ? balancedRosters(rng) : [randomFive(rng), randomFive(rng)];
+}
+
+/**
+ * The two fives for a match-flow game, mine first. Ranked plays the online match's server rosters (host, guest;
+ * Pokédex numbers by position); only CPU practice (and the offline simulated opponent, which has no server) gets two
+ * balanced teams from a seed. Social: random fives.
+ */
+export function flowRosters(
+  opts: { queue: 'social' | 'ranked'; practice?: boolean },
+  opp: { simulated: boolean; rosters?: [number[], number[]] | null; mySide?: 0 | 1 },
+  seed = (Math.random() * 2 ** 32) >>> 0,
+): [Mon[], Mon[]] {
+  if (opts.queue !== 'ranked') return [randomFive(), randomFive()];
+  if (opp.rosters) {
+    const [host, guest] = opp.rosters.map((t) => t.map(monByDex));
+    return opp.mySide === 1 ? [guest, host] : [host, guest];
+  }
+  if (opts.practice || opp.simulated) return rostersFor(seed, 'ranked');
+  throw new Error('ranked match has no preset rosters');
 }
