@@ -1,9 +1,10 @@
 // The browser half of paying for Rank Shields in USDC with Phantom: build the SPL TransferChecked transaction for a server
-// intent, hand it to the wallet to sign and send, and wait for the server to confirm it. No private key, no Solana SDK: the
+// intent, hand it to the wallet to sign and send (Phantom submits it through its own RPC), and wait for the server to confirm
+// it. This file never calls a Solana RPC; the server does that. No private key, no Solana SDK: the
 // transaction bytes come from the same code the Edge Functions use to check the payment (usdc-chain.ts). The wallet is the
 // only thing that can move the player's funds; the server credits only after it has read the payment back from Solana.
 import { base58Decode, base58Encode } from '../../../supabase/functions/_shared/pack/bytes.ts';
-import { PUBLIC_RPC, buildUsdcTransfer, type BuiltTransfer, type UsdcCluster } from '../../../supabase/functions/_shared/shield/usdc-chain.ts';
+import { buildUsdcTransfer, type BuiltTransfer, type UsdcCluster } from '../../../supabase/functions/_shared/shield/usdc-chain.ts';
 
 /** shield-usdc-intent's answer. */
 export interface UsdcIntent {
@@ -16,12 +17,16 @@ export interface UsdcIntent {
   /** Base units, as a string. */
   amount: string;
   decimals: number;
+  /** Recent blockhash the server read for this payment (base58). */
+  blockhash: string;
 }
 
 export class UsdcPayError extends Error {
   name = 'UsdcPayError';
-  constructor(message: string, public kind: 'rejected' | 'no-phantom' | 'wrong-wallet' | 'shop-wallet' | 'failed' = 'failed') { super(message); }
+  constructor(message: string, public kind: 'rejected' | 'no-phantom' | 'wrong-wallet' | 'failed' = 'failed') { super(message); }
 }
+
+const isBlockhash = (v: string) => { try { return base58Decode(v).length === 32; } catch { return false; } };
 
 /** Reads the fields of a shield-usdc-intent answer; throws if any is missing (a changed server is not guessed at). */
 export function parseIntent(raw: unknown): UsdcIntent {
@@ -31,35 +36,16 @@ export function parseIntent(raw: unknown): UsdcIntent {
   if (cluster !== 'devnet' && cluster !== 'mainnet-beta') throw new UsdcPayError('Could not start the payment. Try again in a moment.');
   const decimals = Number(r?.decimals);
   if (!/^[0-9]{1,18}$/.test(s('amount')) || decimals !== 6) throw new UsdcPayError('Could not start the payment. Try again in a moment.');
-  return { intentId: s('intentId'), reference: s('reference'), memo: s('memo'), receiver: s('receiver'), mint: s('mint'), cluster, amount: s('amount'), decimals };
-}
-
-export type RpcCall = <T>(method: string, params: unknown[]) => Promise<T>;
-
-/** A minimal JSON-RPC caller for the cluster's public endpoint (blockhash and an account check only). */
-export function rpcFor(cluster: UsdcCluster, fetchFn: typeof fetch = (...a) => fetch(...a), url = PUBLIC_RPC[cluster]): RpcCall {
-  let id = 0;
-  return async <T>(method: string, params: unknown[]) => {
-    const res = await fetchFn(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: ++id, method, params }) });
-    if (!res.ok) throw new Error(`RPC ${method}: HTTP ${res.status}`);
-    const body = (await res.json()) as { result?: T; error?: { message?: string } };
-    if (body.error) throw new Error(`RPC ${method}: ${body.error.message ?? 'error'}`);
-    return body.result as T;
-  };
+  if (!isBlockhash(s('blockhash'))) throw new UsdcPayError('Could not start the payment. Try again in a moment.');
+  return { blockhash: s('blockhash'), intentId: s('intentId'), reference: s('reference'), memo: s('memo'), receiver: s('receiver'), mint: s('mint'), cluster, amount: s('amount'), decimals };
 }
 
 /**
- * The unsigned transfer for an intent. Needs the shop wallet's USDC token account to exist (the owner creates it once);
- * a missing one is reported before the player is asked to sign anything.
+ * The unsigned transfer for an intent. No network: the server read the blockhash and checked the shop wallet's USDC token
+ * account when it made the intent, so the browser never calls a Solana RPC (CSP stays closed; no RPC key can leak).
  */
-export async function prepareTransfer(intent: UsdcIntent, payer: string, rpc: RpcCall): Promise<BuiltTransfer> {
-  const blockhash = await rpc<{ value: { blockhash: string } }>('getLatestBlockhash', [{ commitment: 'confirmed' }]).then((r) => r.value.blockhash).catch(() => {
-    throw new UsdcPayError('Could not reach Solana. Try again in a moment.');
-  });
-  const built = await buildUsdcTransfer({ payer, mint: intent.mint, receiver: intent.receiver, amount: BigInt(intent.amount), decimals: intent.decimals, reference: intent.reference, memo: intent.memo, blockhash });
-  const dest = await rpc<{ value: unknown }>('getAccountInfo', [built.destination, { encoding: 'base64', commitment: 'confirmed' }]).catch(() => null);
-  if (dest && dest.value === null) throw new UsdcPayError('USDC payments are not ready yet. Try again later.', 'shop-wallet');
-  return built;
+export function prepareTransfer(intent: UsdcIntent, payer: string): Promise<BuiltTransfer> {
+  return buildUsdcTransfer({ payer, mint: intent.mint, receiver: intent.receiver, amount: BigInt(intent.amount), decimals: intent.decimals, reference: intent.reference, memo: intent.memo, blockhash: intent.blockhash });
 }
 
 /** The slice of Phantom's injected Solana provider used to pay. */
@@ -112,20 +98,74 @@ export async function signAndSend(provider: PayProvider, built: BuiltTransfer, p
 
 export interface ConfirmAnswer { status: 'credited' | 'pending'; credited?: number; /** Shields over the hold cap: refunded by hand. */ short?: number }
 
+/** A payment with a signature that the server has not settled yet. Money may have moved, so it is kept until the server answers. */
+export interface PendingPayment { intentId: string; signature: string; wallet: string; at: number }
+type PendingStore = Pick<Storage, 'getItem' | 'setItem' | 'removeItem' | 'key' | 'length'>;
+const PENDING_PREFIX = 'pokejam.shop.usdc.';
+
+/** Remembers a payment under its intent id. False when it could not be written (the caller keeps it in memory instead). */
+export function savePending(st: PendingStore | null, p: PendingPayment): boolean {
+  try {
+    if (!st) return false;
+    st.setItem(PENDING_PREFIX + p.intentId, JSON.stringify(p));
+    return true;
+  } catch { return false; }
+}
+
+/** This wallet's unsettled payments, oldest first. Another account's on the same device are left alone. */
+export function loadPending(st: PendingStore | null, wallet: string): PendingPayment[] {
+  const out: PendingPayment[] = [];
+  try {
+    for (let i = 0; st && i < st.length; i++) {
+      const key = st.key(i);
+      if (!key?.startsWith(PENDING_PREFIX)) continue;
+      let r: Partial<PendingPayment> | null = null;
+      try { r = JSON.parse(st.getItem(key) ?? 'null'); } catch { /* not ours: skipped */ }
+      if (r && r.intentId === key.slice(PENDING_PREFIX.length) && typeof r.signature === 'string' && r.wallet === wallet) out.push({ intentId: r.intentId, signature: r.signature, wallet, at: Number(r.at) || 0 });
+    }
+  } catch { /* storage unavailable */ }
+  return out.sort((a, b) => a.at - b.at);
+}
+
+export function clearPending(st: PendingStore | null, intentId: string): void {
+  try { st?.removeItem(PENDING_PREFIX + intentId); } catch { /* ignore */ }
+}
+
+/** The shield-usdc-confirm refusals that retrying cannot change. Anything else (RPC, database, network, an expired session) is retried. */
+const FINAL_CODES = new Set(['bad_request', 'no_intent', 'wrong_signer', 'cluster_changed', 'intent_done', 'signature_used', 'expired', 'tx_failed', 'bad_tx', 'too_early',
+  'missing_reference', 'missing_memo', 'no_transfer', 'wrong_mint', 'wrong_recipient', 'wrong_amount', 'multiple_transfers']);
+export const isFinalRefusal = (e: unknown): boolean => {
+  const code = (e as { code?: unknown } | null)?.code;
+  return typeof code === 'string' && FINAL_CODES.has(code);
+};
+
+/**
+ * Sends the payment and remembers its signature before anything else can fail, so a lost network, a failed RPC or a reload
+ * can never leave the player charged with nothing to retry.
+ */
+export async function sendAndRemember(provider: PayProvider, built: BuiltTransfer, payer: string, intentId: string, remember: (p: PendingPayment) => void, now: () => number = Date.now): Promise<PendingPayment> {
+  const p: PendingPayment = { intentId, signature: await signAndSend(provider, built, payer), wallet: payer, at: now() };
+  remember(p);
+  return p;
+}
+
 /**
  * Asks the server to confirm until it says 'credited' (resolves with that answer) or the time runs out (resolves with
- * 'timeout'). A refusal (the confirm call throws) ends the wait. The same signature can be confirmed again at any time.
+ * 'timeout'). A thrown error ends the wait if `isFinal` says so (default: all do); any other counts as "not yet". The same signature can
+ * be confirmed again at any time.
  */
 export async function pollConfirm(confirm: () => Promise<ConfirmAnswer>, o: {
-  intervalMs?: number; timeoutMs?: number; sleep?: (ms: number) => Promise<void>; now?: () => number; stop?: () => boolean;
+  intervalMs?: number; timeoutMs?: number; sleep?: (ms: number) => Promise<void>; now?: () => number; stop?: () => boolean; isFinal?: (e: unknown) => boolean;
 } = {}): Promise<ConfirmAnswer | 'timeout'> {
   const interval = o.intervalMs ?? 2500;
   const sleep = o.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
   const now = o.now ?? Date.now;
   const end = now() + (o.timeoutMs ?? 90_000);
+  const isFinal = o.isFinal ?? (() => true);
   for (;;) {
-    const a = await confirm();
-    if (a.status === 'credited') return a;
+    let a: ConfirmAnswer | null = null;
+    try { a = await confirm(); } catch (e) { if (isFinal(e)) throw e; }
+    if (a?.status === 'credited') return a;
     if (o.stop?.() || now() + interval > end) return 'timeout';
     await sleep(interval);
   }

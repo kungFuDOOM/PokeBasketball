@@ -14,6 +14,7 @@ vi.setConfig({ testTimeout: 60_000 });
 
 const newAddress = async () => (await generateKeypair()).keypair.address;
 const MINT = USDC_MINT.devnet;
+const BLOCKHASH = base58Encode(new Uint8Array(32).fill(9));
 
 describe('Solana helpers', () => {
   it('knows curve points from non-points', async () => {
@@ -286,6 +287,8 @@ async function setup() {
     getIntent: (id, user) => rpc('pokejam_shield_usdc_intent_get', [id, user]),
     credit: (i, u, s) => rpc('pokejam_shield_credit_usdc', [i, u, s]),
     getTransaction: async (s) => txs.get(s) ?? null,
+    latestBlockhash: async () => BLOCKHASH,
+    accountExists: async () => true,
   };
   const player = async (name: string, o: { anonymous?: boolean; wallet?: string | null } = {}) => {
     const u = await t.user(name, o.anonymous);
@@ -401,7 +404,65 @@ describe('shield-usdc-intent', () => {
   });
 });
 
+describe('shield-usdc-intent reads the chain for the browser', () => {
+  const attempts = async (s: Awaited<ReturnType<typeof setup>>) => (await s.t.sql('select 1 from public.pokejam_shield_usdc_intents')).length + (await s.t.sql('select 1 from public.pokejam_shield_checkouts')).length;
+  it('returns a recent blockhash, after checking the receiver\'s token account (not the one the client names)', async () => {
+    const s = await setup();
+    const a = await s.player('A');
+    const asked: string[] = [];
+    s.deps.accountExists = async (addr) => { asked.push(addr); return true; };
+    const r = await s.post(usdcIntentHandler, { sku: 'shield_3', ageConfirmed: true, receiver: a.wallet, blockhash: 'nope' }, a.jwt);
+    expect(r.body).toMatchObject({ blockhash: BLOCKHASH });
+    expect(asked).toEqual([await deriveAta(s.cfg.receiver, s.cfg.mint)]);
+  });
+  it('a missing shop account (503) or an RPC failure (502) stops the sale and uses up no checkout attempt', async () => {
+    const s = await setup();
+    const a = await s.player('A');
+    s.deps.accountExists = async () => false;
+    expect(await s.intent(a)).toMatchObject({ status: 503, body: { code: 'shop_wallet' } });
+    s.deps.accountExists = async () => { throw new Error('RPC getAccountInfo: HTTP 429'); };
+    expect(await s.intent(a)).toMatchObject({ status: 502, body: { code: 'rpc' } });
+    s.deps.accountExists = async () => true;
+    s.deps.latestBlockhash = async () => { throw new Error('RPC getLatestBlockhash: HTTP 403'); };
+    expect(await s.intent(a)).toMatchObject({ status: 502, body: { code: 'rpc' } });
+    expect(await attempts(s)).toBe(0);
+    expect(s.logs.join()).toMatch(/HTTP 403/);
+    expect(s.logs.join()).toMatch(/does not exist/);
+  });
+  it('never touches the RPC for a request the front door refuses', async () => {
+    const s = await setup();
+    const a = await s.player('A');
+    const f = vi.fn(async () => BLOCKHASH);
+    s.deps.latestBlockhash = f;
+    expect((await s.post(usdcIntentHandler, { sku: 'shield_3' }, a.jwt)).status).toBe(400);
+    expect((await s.post(usdcIntentHandler, { sku: 'shield_3', ageConfirmed: true }, null)).status).toBe(401);
+    expect(f).not.toHaveBeenCalled();
+  });
+});
+
 describe('shield-usdc-confirm', () => {
+  it('a retry after a lost answer reports what was credited, and credits nothing more', async () => {
+    const s = await setup();
+    const a = await s.player('A');
+    const i = (await s.intent(a, 'shield_3')).body!;
+    const sig = await s.pay(a, i);
+    await s.confirm(a, i.intentId, sig);
+    expect((await s.confirm(a, i.intentId, sig)).body).toMatchObject({ status: 'credited', credited: 3, short: 0, duplicate: true });
+    s.deps.credit = async () => { throw new Error('db down'); };
+    expect(await s.confirm(a, i.intentId, sig)).toMatchObject({ status: 200, body: { status: 'credited', duplicate: true } });
+    expect(await s.held(a)).toBe(3);
+  });
+  it('a database failure reading the intent is retryable, never "unknown purchase"', async () => {
+    const s = await setup();
+    const a = await s.player('A');
+    const i = (await s.intent(a)).body!;
+    const sig = await s.pay(a, i);
+    const real = s.deps.getIntent;
+    s.deps.getIntent = async () => { throw new Error('db down'); };
+    expect(await s.confirm(a, i.intentId, sig)).toMatchObject({ status: 502, body: { code: 'db' } });
+    s.deps.getIntent = real;
+    expect((await s.confirm(a, i.intentId, sig)).body).toMatchObject({ status: 'credited', credited: 3 });
+  });
   it('credits the shields once for a correct payment, and a repeat with the same signature changes nothing', async () => {
     const s = await setup();
     const a = await s.player('A');
