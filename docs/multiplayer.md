@@ -124,6 +124,30 @@ Before a prize moves, the result comes from replaying the match's inputs, not fr
 - **Older setups degrade gracefully:** a browser without Ed25519, or a database without the migration, plays on without evidence. That's fine for Social; Ranked and Pack Battles must require it.
 - **The judge runs on demand for moderation:** the `pokejam-judge` Edge Function (`supabase/functions/README.md`) is admin-only. When the moderation page's Reported tab finds reported matches with uploads but no verdict, it asks the function to judge them, at most once per page load. The function reads `pokejam_match_evidence` with the service role, merges both uploads under the keys registered on the match row (`mergeEvidence`), runs `judge()` and stores the result in `pokejam_match_verdicts` (migration `20261122_pokejam_match_verdicts.sql`; service role only, and kept after the 30-day evidence prune). `pokejam_admin_reports` returns those verdicts as per-match `checks` (`20261123_pokejam_admin_reports_checks.sql`), which the page shows as Clean / Flagged / No check. Judging every match on upload, and moving prizes or ratings on the verdict, are still to build.
 
+### What judging costs, and where it runs
+
+Measured on 2026-11-01 with `scripts/judge-bench.ts` (how to run it is at the top of that file). Two real `Lockstep` clients played 5 full matches with random inputs over a lossy link (120 s quarters, 31.4–31.9k ticks, none reached overtime), signing with the real `EvidenceLog`. Each fixture was then judged twice, each time in a fresh process, so 10 runs per row. All values are p50 / p95, and with 10 runs p95 is close to the slowest run. The machine was an 8-core Intel Xeon box, not Supabase's hardware.
+
+| Runtime | Scenario | Upload (KB) | Batches | Unpack (ms) | Signatures (ms) | Replay (ms) | Total wall (ms) | Process CPU (ms) | Heap + external (MB) | RSS (MB) |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Deno 2.5.4 | honest | 538 / 546 | 8608 / 8686 | 107 / 121 | 313 / 344 | 200 / 242 | **619 / 673** | **862 / 956** | 78 / 122 | 271 / 282 |
+| Deno 2.5.4 | hostile | 3267 / 3308 | 35920 / 36247 | 286 / 329 | 1944 / 2121 | 185 / 201 | **2428 / 2608** | **2773 / 3005** | 154 / 176 | 355 / 357 |
+| Node 24.22 | honest | 538 / 546 | 8608 / 8686 | 103 / 112 | 732 / 837 | 214 / 231 | 1047 / 1174 | 1284 / 1409 | 99 / 109 | 256 / 258 |
+| Node 24.22 | hostile | 3267 / 3308 | 35920 / 36247 | 301 / 319 | 4954 / 5420 | 189 / 205 | 5456 / 5935 | 5486 / 6052 | 101 / 116 | 303 / 304 |
+
+"Hostile" is the costliest upload we tried within the 4,000,000-character cap: a player signs every one of their frames as its own batch, and the other player's honest upload covers the rest. Process CPU counts all threads, including GC and crypto workers, so it is an upper bound on what a CPU limit would count. RSS includes about 60 MB for the runtime and the benchmark's own copies of the data.
+
+**Limits assumed, not checked against the live docs or this project's plan:** 2 s CPU per request, 150 s wall on Free and 400 s on paid, 256 MB memory. Confirm them before PR 7 ships.
+
+**Decision: judge one match per Edge Function call, with no checkpoints.** An honest match stays under the 1 s bar at p95 (Deno is what the Edge runtime is built on), about half the assumed CPU limit. Don't judge inside `pokejam_report_result`: it's Postgres, the evidence arrives after the report, and a player's request shouldn't wait on CPU.
+
+Risks the numbers leave open:
+- **A hostile upload can exceed the assumed limit:** about 3 s of CPU, nearly all of it signature checks. If the limit kills the worker, that match gets no verdict, so a player could dodge the judge by uploading this. Checkpointing wouldn't be the cheapest fix: PR 7 should cap the number of batches per upload before checking any signature (an honest merged pair is about 8.7k) and decide what an over-cap upload means.
+- **`pokejam-judge` still accepts up to 20 matches per call (`MAX_MATCHES`), and the moderation page sends every unjudged match at once.** Several matches in one call can exceed the assumed limit; about 2 is the most that fits. PR 7's worker should claim 1 per run, and the page should send one match per call.
+- **No margin for slower hardware:** at 956 ms CPU here, Edge hardware 2× slower would be right at the limit. PR 7 should log each judging's duration so shadow mode shows the real figure.
+- **Long overtime:** cost grows with ticks. A game running to the 45-minute hard stop (162,000 ticks, 5× a normal match) would exceed the limit, though ties that long should be very rare.
+- **Memory:** RSS passes 256 MB, while heap + external stays well under. We don't know which one Supabase's limit counts, so check this on a real deployment.
+
 What the judge rules:
 - **`final`:** the replay reached the buzzer; `winner` comes from the replay.
 - **`incomplete`:** the log stops early (someone left or went silent); the score is where it stopped, and the mode's forfeit rule applies.

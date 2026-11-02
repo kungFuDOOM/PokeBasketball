@@ -395,9 +395,6 @@ export function bestEffectiveness(atk: PokeType[], def: PokeType[]): number {
   return Math.max(...atk.map((t) => effectiveness(t, def)));
 }
 
-/** Sprites are served from the site itself (public/sprites, filled by scripts/fetch-sprites.mjs). */
-const SPRITE_BASE = `${import.meta.env.BASE_URL}sprites`;
-
 declare global {
   interface Window {
     __POKE_SPRITES?: Record<string, string>;
@@ -408,5 +405,8 @@ export function spriteUrl(dex: number, back = false): string {
   const key = (back ? 'b' : 'f') + dex;
   const inline = window.__POKE_SPRITES?.[key];
   if (inline) return inline;
-  return back ? `${SPRITE_BASE}/back/${dex}.png` : `${SPRITE_BASE}/${dex}.png`;
+  // Sprites are served from the site itself (public/sprites, filled by scripts/fetch-sprites.mjs). Read here, not at
+  // module level: the winner check's Edge Function imports this file under Deno, which has no import.meta.env.
+  const base = `${import.meta.env.BASE_URL}sprites`;
+  return back ? `${base}/back/${dex}.png` : `${base}/${dex}.png`;
 }
