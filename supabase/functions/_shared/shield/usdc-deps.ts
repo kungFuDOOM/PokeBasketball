@@ -28,6 +28,8 @@ export function usdcRuntime(): { cfg: UsdcConfig; deps: UsdcDeps } {
     getIntent: (id, user) => call('pokejam_shield_usdc_intent_get', { p_intent: id, p_user: user }),
     credit: (intent, user, signature) => call('pokejam_shield_credit_usdc', { p_intent: intent, p_user: user, p_signature: signature }),
     getTransaction: (signature) => fetchTransaction((m, p) => rpc.call(m, p), signature, cfg.commitment),
+    latestBlockhash: () => rpc.latestBlockhash(),
+    accountExists: async (address) => (await rpc.accountInfo(address)) !== null,
   };
   return { cfg, deps };
 }

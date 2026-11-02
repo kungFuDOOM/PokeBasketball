@@ -6,19 +6,19 @@ import type { SupabaseMatchService } from '../shared/onlineMatchService';
 import { MODE_SHIELD_STRIPE, MODE_SHIELD_USDC, SHIELD_USDC_CLUSTER } from '../../config/features';
 import { getPhantomProvider, type WalletUser } from '../../wallet/phantom';
 import { SHOP_NOTICES, USDC_NOTICES, gotShields, pollForRise, shopBodyHtml, shopHtml, usdcOption, type ShopModel, type ShopNotice } from './shopView';
-import { UsdcPayError, parseIntent, pollConfirm, prepareTransfer, rpcFor, signAndSend, type ConfirmAnswer, type PayProvider } from './usdcPay';
+import { UsdcPayError, clearPending, isFinalRefusal, loadPending, parseIntent, pollConfirm, prepareTransfer, savePending, sendAndRemember, type ConfirmAnswer, type PayProvider, type PendingPayment } from './usdcPay';
 
 /** The held count just before leaving for Stripe, so the page that comes back knows what "more" means. */
 const BEFORE_KEY = 'pokejam.shop.before';
 const CONSENT_KEY = 'pokejam.shop.age';
-/** A USDC payment that was sent but not yet confirmed by the server: {intentId, signature}. Lets the shop finish it after a reload. */
-const USDC_KEY = 'pokejam.shop.usdc';
 
 const store = () => { try { return window.sessionStorage; } catch { return null; } };
+/** Sent USDC payments outlive the tab: see savePending. */
+const lasting = () => { try { return window.localStorage; } catch { return null; } };
 
 /** A failed Edge Function call: the player-facing text, and the HTTP status when there was one. */
 class FnError extends Error {
-  constructor(message: string, public status = 0) { super(message); }
+  constructor(message: string, public status = 0, public code?: string) { super(message); }
 }
 
 /** A player-facing reason from a failed Edge Function call. */
@@ -26,8 +26,8 @@ async function checkoutError(error: unknown): Promise<FnError> {
   const e = error as { name?: string; context?: unknown };
   if (e?.name === 'FunctionsFetchError' || e?.name === 'FunctionsRelayError') return new FnError('Could not reach the shop. Try again in a moment.');
   if (e?.context instanceof Response) {
-    const body = (await e.context.clone().json().catch(() => null)) as { error?: unknown } | null;
-    if (typeof body?.error === 'string' && body.error) return new FnError(body.error, e.context.status);
+    const body = (await e.context.clone().json().catch(() => null)) as { error?: unknown; code?: unknown } | null;
+    if (typeof body?.error === 'string' && body.error) return new FnError(body.error, e.context.status, typeof body.code === 'string' ? body.code : undefined);
     return new FnError('Could not start checkout. Try again in a moment.', e.context.status);
   }
   return new FnError('Could not start checkout. Try again in a moment.');
@@ -76,6 +76,7 @@ export function openShop(svc: SupabaseMatchService, o: ShopOptions = {}) {
     if (buy && !buy.disabled) void buyPack(buy.dataset.sku ?? '');
     const usdc = t.closest<HTMLButtonElement>('[data-a="buy-usdc"]');
     if (usdc && !usdc.disabled) void buyUsdc(usdc.dataset.sku ?? '');
+    if (t.closest<HTMLButtonElement>('[data-a="retry-usdc"]')) void settleUsdc();
   });
   sheet.addEventListener('change', (e) => {
     const box = (e.target as Element).closest<HTMLInputElement>('[data-a="age"]');
@@ -102,6 +103,7 @@ export function openShop(svc: SupabaseMatchService, o: ShopOptions = {}) {
   /** Pay in USDC: server intent -> Phantom signs and sends -> the server reads the payment back from Solana and credits. */
   async function buyUsdc(sku: string) {
     if (!sku || !m.agreed || m.busy || !wallet) return;
+    if (unsettled().length) return settleUsdc(); // sent from another tab since this sheet opened: never pay twice
     m.busy = sku;
     m.rail = 'usdc';
     m.usdcStep = 'approve';
@@ -112,51 +114,71 @@ export function openShop(svc: SupabaseMatchService, o: ShopOptions = {}) {
       if (intent.cluster !== SHIELD_USDC_CLUSTER) throw new UsdcPayError('The shop is on a different Solana network than this page. Reload and try again.');
       const provider = getPhantomProvider() as PayProvider | null;
       if (!provider) throw new UsdcPayError(USDC_NOTICES.noPhantom.text, 'no-phantom');
-      const built = await prepareTransfer(intent, wallet, rpcFor(intent.cluster));
+      const built = await prepareTransfer(intent, wallet);
       say(USDC_NOTICES.approve);
-      const signature = await signAndSend(provider, built, wallet);
-      try { store()?.setItem(USDC_KEY, JSON.stringify({ intentId: intent.intentId, signature })); } catch { /* the payment still confirms below */ }
-      await finishUsdc(intent.intentId, signature);
+      await finishUsdc(await sendAndRemember(provider, built, wallet, intent.intentId, (p) => { if (!savePending(lasting(), p)) unsaved.set(p.intentId, p); }));
     } catch (e) {
       if (open()) say(e instanceof UsdcPayError && e.kind === 'rejected' ? USDC_NOTICES.rejected : { tone: 'bad', text: e instanceof Error ? e.message : 'The payment did not go through.' });
     } finally {
       m.busy = null;
       m.rail = 'card';
       m.usdcStep = null;
+      m.usdcUnconfirmed = unsettled().length > 0;
       if (open()) render();
     }
   }
 
-  /** Waits for the server to confirm a sent payment (it credits only after reading it from Solana), then refreshes the shop. */
-  async function finishUsdc(intentId: string, signature: string) {
+  /** Payments with a signature that the server has not settled: saved ones, plus any that storage refused. */
+  function unsettled(): PendingPayment[] {
+    const saved = wallet ? loadPending(lasting(), wallet) : [];
+    return [...saved, ...[...unsaved.values()].filter((u) => !saved.some((p) => p.intentId === u.intentId))];
+  }
+  const forget = (p: PendingPayment) => { clearPending(lasting(), p.intentId); unsaved.delete(p.intentId); };
+
+  /**
+   * Waits for the server to settle a sent payment (it credits only after reading it from Solana), then refreshes the shop. The
+   * record goes only on an answer that retrying cannot change; otherwise it stays for a retry. Returns whether it was settled.
+   */
+  async function finishUsdc(p: PendingPayment): Promise<boolean> {
     m.usdcStep = 'confirm';
     say(USDC_NOTICES.confirming);
     let r: ConfirmAnswer | 'timeout';
     try {
-      r = await pollConfirm(() => callFn<ConfirmAnswer>('shield-usdc-confirm', { intentId, signature }), { stop: () => !open() });
+      r = await pollConfirm(() => callFn<ConfirmAnswer>('shield-usdc-confirm', { intentId: p.intentId, signature: p.signature }), { stop: () => !open(), isFinal: isFinalRefusal });
     } catch (e) {
-      // A refusal (4xx other than rate limiting) is final: don't retry it on the next open.
-      if (e instanceof FnError && e.status >= 400 && e.status < 500 && e.status !== 429) try { store()?.removeItem(USDC_KEY); } catch { /* ignore */ }
-      throw e;
+      forget(p);
+      const text = e instanceof Error ? e.message : 'The payment did not go through.';
+      if (open()) say({ tone: 'bad', text: (e as FnError).code === 'tx_failed' ? text : `${text.replace(/\.$/, '')}. If USDC left your wallet, email kungfudoom@mail.grokbot.com.` });
+      return true;
     }
-    if (!open()) return;
-    if (r === 'timeout') return say(USDC_NOTICES.timeout);
-    try { store()?.removeItem(USDC_KEY); } catch { /* ignore */ }
+    if (r === 'timeout') {
+      if (open()) say(USDC_NOTICES.timeout);
+      return false;
+    }
+    forget(p);
+    if (!open()) return true;
     const short = r.short ?? 0;
-    say(short > 0 ? { tone: 'warn', text: `Payment confirmed: +${r.credited ?? 0}. ${short} were over your limit of ${m.info?.cap ?? 14}: email kungfudoom@mail.grokbot.com for a refund.` } : gotShields(r.credited ?? 0));
+    say(short > 0 ? { tone: 'warn', text: `Payment confirmed: +${r.credited ?? 0}. ${short} were over your limit of ${m.info?.cap ?? 14}: email kungfudoom@mail.grokbot.com for a refund.` } : typeof r.credited === 'number' ? gotShields(r.credited) : USDC_NOTICES.confirmed);
     await refresh();
+    return true;
   }
 
-  async function resumeUsdc() {
-    let saved: { intentId?: unknown; signature?: unknown } | null = null;
-    try { saved = JSON.parse(store()?.getItem(USDC_KEY) ?? 'null'); } catch { /* none */ }
-    if (typeof saved?.intentId !== 'string' || typeof saved.signature !== 'string' || m.busy) return;
+  /** Finishes every unsettled payment, on opening the shop and from the retry button. Stops at the first still unconfirmed. */
+  async function settleUsdc() {
+    const list = unsettled();
+    if (!list.length || m.busy) return;
     m.busy = '-';
     m.rail = 'usdc';
-    try { await finishUsdc(saved.intentId, saved.signature); } catch (e) { if (open()) say({ tone: 'bad', text: e instanceof Error ? e.message : 'The payment did not go through.' }); } finally {
+    m.usdcUnconfirmed = true;
+    try {
+      for (const p of list) if (!(await finishUsdc(p))) break;
+    } catch (e) {
+      if (open()) say({ tone: 'bad', text: e instanceof Error ? e.message : 'The payment did not go through.' });
+    } finally {
       m.busy = null;
       m.rail = 'card';
       m.usdcStep = null;
+      m.usdcUnconfirmed = unsettled().length > 0;
       if (open()) render();
     }
   }
@@ -190,6 +212,8 @@ export function openShop(svc: SupabaseMatchService, o: ShopOptions = {}) {
 
   // USDC is for players signed in with Phantom only: the wallet comes from the Supabase user (the server re-reads it from the JWT).
   let wallet = '';
+  /** Payments that could not be written to storage (private mode, full): they only last while this sheet is open. */
+  const unsaved = new Map<string, PendingPayment>();
   void (async () => {
     if (MODE_SHIELD_USDC) {
       const { data } = await supabase().auth.getSession().catch(() => ({ data: { session: null } }));
@@ -199,7 +223,7 @@ export function openShop(svc: SupabaseMatchService, o: ShopOptions = {}) {
     }
     await refresh();
     if (!open()) return;
-    if (wallet) void resumeUsdc();
+    if (wallet) void settleUsdc();
     if (!MODE_SHIELD_STRIPE) { /* no card payments: a Stripe return means nothing here */ } else if (o.returned === 'cancel') say(SHOP_NOTICES.cancelled);
     else if (o.returned === 'success') void waitForPayment();
   })();

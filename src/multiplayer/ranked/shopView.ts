@@ -28,6 +28,8 @@ export interface ShopModel {
   rail?: 'card' | 'usdc';
   /** Where the USDC payment is: waiting for Phantom, or for Solana to confirm. */
   usdcStep?: 'approve' | 'confirm' | null;
+  /** A sent USDC payment the server has not settled: offer to check it again, and no new USDC payment until it is settled. */
+  usdcUnconfirmed?: boolean;
 }
 
 /**
@@ -63,7 +65,7 @@ function packHtml(p: ShopProduct, m: ShopModel, best: boolean): string {
   const cardLabel = here && m.rail !== 'usdc' ? 'Opening…' : usdc ? `Card ${usd(p.priceCents)}` : usd(p.priceCents);
   const usdcLabel = here && m.rail === 'usdc' ? (m.usdcStep === 'confirm' ? 'Confirming…' : 'Approve…') : `Pay ${usdcText(p.usdcAmount ?? 0)} USDC`;
   const buttons = (card ? `<button class="btn primary shop-buy" type="button" data-a="buy" data-sku="${esc(p.sku)}"${can ? '' : ' disabled'}>${cardLabel}</button>` : '')
-    + (usdc ? `<button class="btn shop-buy shop-usdc" type="button" data-a="buy-usdc" data-sku="${esc(p.sku)}"${can ? '' : ' disabled'}>${usdcLabel}</button>` : '');
+    + (usdc ? `<button class="btn shop-buy shop-usdc" type="button" data-a="buy-usdc" data-sku="${esc(p.sku)}"${can && !m.usdcUnconfirmed ? '' : ' disabled'}>${usdcLabel}</button>` : '');
   return `<div class="shop-card${best ? ' best' : ''}${usdc ? ' has-usdc' : ''}" data-sku="${esc(p.sku)}">
     <span class="shop-units" aria-hidden="true">🛡<b>${p.units}</b></span>
     <span class="shop-name"><strong>${p.units} Rank Shields</strong><em>${esc(perShield(p))}${best ? ' · best value' : ''}</em>${block ? `<small>${esc(block)}</small>` : ''}</span>
@@ -87,14 +89,15 @@ export function shopBodyHtml(m: ShopModel, o: ShopViewOpts = {}): string {
   if (!m.signedIn) {
     return `<div class="shop-solo"><p class="shop-msg">Sign in to buy</p><p class="note">Rank Shields belong to your account. Sign in with ${(o.google ?? SIGNIN_GOOGLE) ? 'Google or Phantom' : 'Phantom'} from the Ranked screen.</p>${notice}</div>`;
   }
-  if (!m.info) return `<div class="shop-solo">${notice || '<p class="note">Loading the shop…</p>'}</div>`;
+  const retry = m.usdcUnconfirmed ? `<button class="btn primary" type="button" data-a="retry-usdc"${m.busy ? ' disabled' : ''}>Check my payment again</button>` : '';
+  if (!m.info) return `<div class="shop-solo">${notice || '<p class="note">Loading the shop…</p>'}${retry}</div>`;
   const packs = m.info.products;
   if (!packs.length) return `<div class="shop-solo"><p class="shop-msg">Shop coming soon</p>${notice}</div>`;
   const best = packs[packs.length - 1];
   return `<div class="shop-packs">${packs.map((p) => packHtml(p, m, p === best && packs.length > 1)).join('')}</div>
     <div class="shop-side">
       <p class="shop-held">Held <strong>${m.info.held} / ${m.info.cap}</strong></p>
-      ${notice}
+      ${notice}${retry}
       <label class="shop-age"><input type="checkbox" data-a="age"${m.agreed ? ' checked' : ''}${m.busy ? ' disabled' : ''}> <span>I'm 18+ or have a parent's permission</span></label>
       <p class="shop-fine">${m.card !== false ? '🔒 Secure checkout by Stripe. ' : ''}Digital item: one use per 24 hours, tied to your account, no cash value.</p>
       ${m.usdc && packs.some((p) => p.usdcAmount !== null) ? USDC_FINE(m.usdc.cluster) : ''}
@@ -123,11 +126,11 @@ export const SHOP_NOTICES = {
 export const USDC_NOTICES = {
   approve: { tone: 'wait', text: 'Approve in Phantom…' },
   confirming: { tone: 'wait', text: 'Confirming on Solana…' },
-  timeout: { tone: 'warn', text: 'Still confirming on Solana. Your payment is safe: reopen the shop in a minute and it will finish. If your shields don\'t show up, email kungfudoom@mail.grokbot.com.' },
+  timeout: { tone: 'warn', text: 'Your payment was sent but is not confirmed yet. Do not pay again: check it below, or reopen the shop later. If your shields don\'t show up, email kungfudoom@mail.grokbot.com.' },
+  confirmed: { tone: 'ok', text: 'Payment confirmed. Your Rank Shields are on your account.' },
   rejected: { tone: 'warn', text: 'Cancelled in Phantom. You were not charged.' },
   noPhantom: { tone: 'bad', text: 'Open PokeJam in the Phantom app or browser extension to pay with USDC.' },
   wrongWallet: { tone: 'bad', text: 'Switch Phantom to the wallet you signed in with, then try again.' },
-  shopWallet: { tone: 'warn', text: 'USDC payments are not ready yet. Try again later.' },
 } as const satisfies Record<string, ShopNotice>;
 
 export const gotShields = (n: number): ShopNotice => ({ tone: 'ok', text: `Payment confirmed: +${n} Rank Shield${n === 1 ? '' : 's'}.` });
