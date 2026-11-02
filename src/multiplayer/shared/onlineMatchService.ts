@@ -2,7 +2,7 @@
 // clients can only read their own rows. See supabase/migrations/.
 import { MODE_RANKED } from '../../config/features';
 import type { DraftView } from './draft';
-import { cooldownSeconds, counted, outcomeBetween, parseMatchRanks, parseMe, parseProfile, parseRankResult, type RankedMe, type RankedResult, type ServerRank } from '../ranked/serverRank';
+import { cooldownSeconds, counted, outcomeBetween, parseMatchRanks, parseMe, parseProfile, parseRankResult, parseShieldStatus, type RankedMe, type RankedResult, type ServerRank, type ShieldStatus } from '../ranked/serverRank';
 import { displayName, serverNameError } from '../ranked/username';
 import type { BadgeRank } from '../../ranked/badge';
 import { safeName } from '../../nameFilter';
@@ -176,6 +176,18 @@ export class SupabaseMatchService implements MatchService {
   async rankedMe(): Promise<RankedMe | null> {
     if (!MODE_RANKED) throw new OnlineError('Ranked is not available');
     return parseMe(await this.call('pokejam_ranked_me'));
+  }
+
+  /** My Rank Shield item and this week's challenge (pokejam_shield_me). Null if the server has none or answers with nothing usable. */
+  async shieldStatus(): Promise<ShieldStatus | null> {
+    if (!MODE_RANKED) throw new OnlineError('Ranked is not available');
+    return parseShieldStatus(await this.call('pokejam_shield_me'));
+  }
+
+  /** Arms or disarms the Rank Shield for my next ranked match. Throws an OnlineError with player-facing text when the server refuses. */
+  async setShieldArmed(on: boolean): Promise<ShieldStatus | null> {
+    if (!MODE_RANKED) throw new OnlineError('Ranked is not available');
+    return parseShieldStatus(await this.call('pokejam_shield_arm', { p_on: on }));
   }
 
   /** Both players' public rank for a Ranked match's name cards. Fails soft: any error (e.g. the server lacks the function) gives {}. */

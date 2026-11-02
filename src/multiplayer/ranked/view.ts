@@ -7,7 +7,7 @@ import type { PhantomAction } from '../../wallet/phantom';
 import { badgeImgHtml, badgeRankOf, renderRankBadge, type BadgeRank } from '../../ranked/badge';
 import { DIV_POINTS, ZENITH_IDX, fromLadderScore, rankName, tierIndex, tierRanges } from '../../ranked/rank';
 import type { ReportOutcome } from '../shared/matchService';
-import type { RankedMe, RankedResult } from './serverRank';
+import type { RankedMe, RankedResult, ShieldItem, ShieldStatus, WeeklyChallenge } from './serverRank';
 import { displayName } from './username';
 
 const PLACEMENT_GAMES = 5;
@@ -25,11 +25,61 @@ function pips(played: number): string {
   return `<span class="rk-pips" aria-hidden="true">${Array.from({ length: PLACEMENT_GAMES }, (_, i) => `<i${i < played ? ' class="on"' : ''}></i>`).join('')}</span>`;
 }
 
+const HOUR = 3_600_000;
+/** "5 h 12 m" / "12 m": a wait, rounded up to the minute. */
+export function waitText(ms: number): string {
+  const m = Math.max(1, Math.ceil(ms / 60_000));
+  return m >= 60 ? `${Math.floor(m / 60)} h ${m % 60} m` : `${m} m`;
+}
+/** "3 d" (whole days) or, inside the last day, "5 h". */
+export function resetsText(ms: number): string {
+  return ms >= 24 * HOUR ? `${Math.floor(ms / (24 * HOUR))} d` : `${Math.max(1, Math.ceil(ms / HOUR))} h`;
+}
+
+const blockText = (it: ShieldItem, now: number): string => {
+  switch (it.block) {
+    case 'used_today': return it.nextUseAt ? `Used today - back in ${waitText(Date.parse(it.nextUseAt) - now)}` : 'Used today';
+    case 'placing': return "Placement games can't be shielded";
+    case 'nothing_to_lose': return 'Nothing to lose';
+    case 'zenith': return 'Not in Zenith';
+    case 'empty': return 'None left. Earn one in the weekly challenge';
+    default: return '';
+  }
+};
+
+/** The Rank Shield item for the Ranked home: icon, count, an ARM toggle and the reason it is off (or "Armed for this match"). */
+export function shieldItemHtml(it: ShieldItem | null | undefined, now = Date.now()): string {
+  if (!it) return '';
+  const note = it.armed ? (it.locked ? 'Armed for this match' : 'Armed: saves the points of your next loss') : blockText(it, now);
+  const can = !it.locked && (it.armed || it.block === null);
+  return `<div class="rk-item${it.armed ? ' armed' : ''}" data-rk="shield">
+    <span class="rk-item-ico" aria-hidden="true">🛡</span>
+    <span class="rk-item-name"><strong>Rank Shield</strong><b class="rk-item-count" title="Rank Shields you hold">x${it.count}</b></span>
+    <button class="btn rk-arm${it.armed ? ' on' : ''}" type="button" data-a="arm" aria-pressed="${it.armed}"${can ? '' : ' disabled'}>${it.armed ? 'ARMED' : 'ARM'}</button>
+    ${note ? `<span class="rk-item-note" role="status">${esc(note)}</span>` : ''}</div>`;
+}
+
+/** The weekly challenge card: "Play 10 ranked games - 6/10 - resets in 3 d" with the reward, or "Done this week". */
+export function weeklyCardHtml(w: WeeklyChallenge | null | undefined, now = Date.now()): string {
+  if (!w) return '';
+  const title = w.kind === 'wins' ? `Win ${w.goal} ranked games` : w.kind === 'days' ? `Play ranked on ${w.goal} different days` : `Play ${w.goal} ranked games`;
+  const resets = w.resetsAt ? ` - resets in ${resetsText(Date.parse(w.resetsAt) - now)}` : '';
+  const pct = Math.round((100 * w.progress) / w.goal);
+  return `<div class="rk-weekly${w.done ? ' done' : ''}" data-rk="weekly">
+    <span class="rk-weekly-line"><strong>${esc(title)}</strong> - ${w.progress}/${w.goal}${esc(resets)}</span>
+    <div class="rk-bar" role="img" aria-label="${w.progress} of ${w.goal}"><i style="width:${pct}%"></i></div>
+    <span class="rk-reward">${w.done ? 'Done this week' : '1 free Rank Shield'}</span></div>`;
+}
+
+/** The small tag on the searching screen. */
+export const shieldTagHtml = (st: ShieldItem | ShieldStatus | null | undefined) =>
+  st?.armed ? '<p class="rk-queue-tag" data-rk="shield-tag">🛡 Shield armed</p>' : '';
+
 function shieldNote(me: RankedMe | null): string {
   if (!me || !me.shieldActive || me.shieldCharge === null) return '';
-  if (me.shieldCharge === 1) return '<span class="rk-shield on" title="Blocks your next demotion">🛡 Shield ready</span>';
+  if (me.shieldCharge === 1) return '<span class="rk-shield on" title="Blocks your next demotion">🛡 Demotion Guard ready</span>';
   const n = me.shieldLossesLeft;
-  return `<span class="rk-shield" title="Used. Recharges after 3 losses">🛡 Recharges${n !== null ? ` in ${plural(n, 'loss')}` : ''}</span>`;
+  return `<span class="rk-shield" title="Used. Recharges after 3 losses">🛡 Guard recharges${n !== null ? ` in ${plural(n, 'loss')}` : ''}</span>`;
 }
 
 /** The rank chip for the Ranked home: tier + division + Zenith/points bar + shield + season badge; during placements only the progress. */
@@ -128,10 +178,10 @@ function postBlock(out: ReportOutcome, won?: boolean): string {
     return `<div class="rk-post" data-rk="post-placed">${verdict}${reveal('placed', r.divIdx, `Placed: ${rankText(r.divIdx, r.points)}`)}
       <div class="rk-bar" role="img" aria-label="${r.points} of ${DIV_POINTS} points"><i style="width:${r.divIdx >= ZENITH_IDX ? 100 : r.points}%"></i></div>${season}</div>`;
   }
-  return rankedBlock(r, me, verdict, season);
+  return rankedBlock(r, me, verdict, season, won);
 }
 
-function rankedBlock(r: RankedResult, me: RankedMe | null, verdict: string, season: string): string {
+function rankedBlock(r: RankedResult, me: RankedMe | null, verdict: string, season: string, won?: boolean): string {
   const delta = r.delta;
   const after = r.divIdx !== null && r.points !== null ? { divIdx: r.divIdx, points: r.points } : r.after !== null ? atScore(r.after) : null;
   const before = r.before !== null ? atScore(r.before) : null;
@@ -141,12 +191,14 @@ function rankedBlock(r: RankedResult, me: RankedMe | null, verdict: string, seas
   const move = before && after ? `<span class="rk-sub">${esc(rankText(before.divIdx, before.points))} → ${esc(rankText(after.divIdx, after.points))}</span>` : after ? `<span class="rk-sub">${esc(rankText(after.divIdx, after.points))}</span>` : '';
   const bar = after && after.divIdx < ZENITH_IDX ? `<div class="rk-bar" role="img" aria-label="${after.points} of ${DIV_POINTS} points"><i style="width:${Math.max(0, Math.min(100, after.points))}%"></i></div>` : '';
   let shield = '';
-  if (r.event === 'shielded') shield = '<span class="rk-shield used">🛡 Shield used: your demotion was blocked.</span>';
+  if (r.event === 'shielded') shield = '<span class="rk-shield used">🛡 Demotion Guard used: your demotion was blocked.</span>';
   const charge = shieldNote(me);
+  const item = r.shield?.used ? `<span class="rk-shield used">🛡 Rank Shield saved you ${plural(r.shield.saved, 'point')}</span>`
+    : r.shield?.armed && (won ?? (delta !== null && delta > 0)) ? '<span class="rk-shield on">🛡 Shield kept - you won</span>' : '';
   if (charge && (r.event === 'shielded' || me?.shieldCharge === 0)) shield += charge;
   const anim = after && up ? reveal('up', after.divIdx, r.event === 'zenith' ? 'Welcome to Zenith!' : `Rank up! ${rankName(after.divIdx)}`)
     : after && down ? reveal('down', after.divIdx, `Demoted to ${rankName(after.divIdx)}`) : '';
-  return `<div class="rk-post ${after ? tierClass(after.divIdx) : ''}" data-rk="post">${verdict}${after && !anim ? badgeImgHtml(after.divIdx, 'rk-post-img') : ''}${pts}${anim}${move}${bar}${shield}${season}</div>`;
+  return `<div class="rk-post ${after ? tierClass(after.divIdx) : ''}" data-rk="post">${verdict}${after && !anim ? badgeImgHtml(after.divIdx, 'rk-post-img') : ''}${pts}${anim}${move}${bar}${item}${shield}${season}</div>`;
 }
 
 /** The win/loss ranges for a division's tier, for the explainer ("Gold: win 20..38, loss 11..19"). */

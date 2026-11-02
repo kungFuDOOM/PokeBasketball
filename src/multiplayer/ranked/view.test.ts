@@ -39,7 +39,7 @@ describe('rank chip', () => {
     expect(h).toContain('Gold 2'); // div_idx 7
     expect(h).toContain('40 / 100');
     expect(h).toContain('S1');
-    expect(h).toContain('Shield ready');
+    expect(h).toContain('Demotion Guard ready');
     expect(h).toContain('31 days left');
     expect(h).toContain(tierClass(7));
   });
@@ -54,11 +54,11 @@ describe('rank chip', () => {
     expect(h).toContain('340 pts');
     expect(h).toContain('tier-z');
     expect(h).not.toContain('rk-bar');
-    expect(h).not.toContain('Shield');
+    expect(h).not.toContain('Guard');
   });
   it('a spent shield says when it recharges; above Gold the shield is not mentioned; no data is a quiet message', () => {
-    expect(rankChipHtml(me({ shieldCharge: 0, shieldLossesLeft: 1 }))).toContain('Recharges in 1 loss');
-    expect(rankChipHtml(me({ shieldActive: false }))).not.toContain('Shield');
+    expect(rankChipHtml(me({ shieldCharge: 0, shieldLossesLeft: 1 }))).toContain('Guard recharges in 1 loss');
+    expect(rankChipHtml(me({ shieldActive: false }))).not.toContain('Guard');
     expect(rankChipHtml(null)).toContain('Rank unavailable');
   });
 });
@@ -86,12 +86,12 @@ describe('post-match points', () => {
     const d = postMatchHtml(done({ placing: false, event: 'demoted', before: 805, after: 778, delta: -27, div_idx: 7, points: 78 }, me({ shieldCharge: 0, shieldLossesLeft: 3 })));
     expect(d).toContain('rk-down');
     expect(d).toContain('Demoted to');
-    expect(d).toContain('Recharges in 3 losses');
+    expect(d).toContain('Guard recharges in 3 losses');
   });
   it('a shielded loss says the shield was used and when it recharges', () => {
     const h = postMatchHtml(done({ placing: false, event: 'shielded', before: 700, after: 700, delta: -19, div_idx: 7, points: 0 }, me({ points: 0, shieldCharge: 0, shieldLossesLeft: 3 })));
-    expect(h).toContain('Shield used');
-    expect(h).toContain('Recharges in 3 losses');
+    expect(h).toContain('Demotion Guard used');
+    expect(h).toContain('Guard recharges in 3 losses');
   });
   it('mid-placement shows progress and never a number of points', () => {
     const h = postMatchHtml(done({ placing: true, placements_played: 3, event: null, before: 400, after: 400, delta: 12, div_idx: 4, points: 0 }), true);
