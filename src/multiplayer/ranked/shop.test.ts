@@ -16,7 +16,7 @@ describe('parseShopInfo', () => {
     expect(info().products.map((p) => [p.sku, p.units, p.priceCents])).toEqual([['shield_3', 3, 199], ['shield_7', 7, 399], ['shield_14', 14, 699]]);
   });
   it('drops unusable products and returns null for nonsense', () => {
-    expect(info({ products: [{ sku: 'x', units: 0, price_cents: 5 }, { units: 3, price_cents: 5 }, null, { sku: 'ok', units: '3', price_cents: '199' }] }).products).toEqual([{ sku: 'ok', units: 3, priceCents: 199 }]);
+    expect(info({ products: [{ sku: 'x', units: 0, price_cents: 5 }, { units: 3, price_cents: 5 }, null, { sku: 'ok', units: '3', price_cents: '199' }] }).products).toEqual([{ sku: 'ok', units: 3, priceCents: 199, usdcAmount: null }]);
     expect(parseShopInfo(null)).toBeNull();
     expect(parseShopInfo([])).toBeNull();
     expect(parseShopInfo({ products: [] })).toBeNull();
@@ -65,9 +65,9 @@ describe('shop sheet', () => {
   });
   it('formats prices, per-shield costs and block reasons', () => {
     expect(usd(199)).toBe('$1.99');
-    expect(perShield({ sku: 's', units: 14, priceCents: 699 })).toBe('$0.50 each');
-    expect(packBlock({ sku: 's', units: 3, priceCents: 199 }, info({ held: 12 }))).toBe('Max 14 held');
-    expect(packBlock({ sku: 's', units: 3, priceCents: 199 }, info())).toBeNull();
+    expect(perShield({ sku: 's', units: 14, priceCents: 699, usdcAmount: null })).toBe('$0.50 each');
+    expect(packBlock({ sku: 's', units: 3, priceCents: 199, usdcAmount: null }, info({ held: 12 }))).toBe('Max 14 held');
+    expect(packBlock({ sku: 's', units: 3, priceCents: 199, usdcAmount: null }, info())).toBeNull();
     expect(gotShields(1).text).toBe('Payment confirmed: +1 Rank Shield.');
     expect(gotShields(7).text).toBe('Payment confirmed: +7 Rank Shields.');
   });

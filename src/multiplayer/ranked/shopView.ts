@@ -2,6 +2,7 @@
 // unit-tests in node. Menus only: nothing here is drawn over the court or the in-game HUD. shop.ts wires the buttons.
 import { SIGNIN_GOOGLE } from '../../config/features';
 import { esc } from '../../util';
+import { getSolanaAddress, type WalletUser } from '../../wallet/phantom';
 import type { ShopInfo, ShopProduct } from './serverRank';
 
 export interface ShopNotice {
@@ -19,10 +20,27 @@ export interface ShopModel {
   /** The sku being sent to checkout. */
   busy: string | null;
   notice: ShopNotice | null;
+  /** Set only for a player signed in with Phantom, with the USDC flag on: the "Pay with USDC" buttons. null/absent = card only. */
+  usdc?: { cluster: 'devnet' | 'mainnet-beta' } | null;
+  /** Which payment `busy` is for (default card). */
+  rail?: 'card' | 'usdc';
+  /** Where the USDC payment is: waiting for Phantom, or for Solana to confirm. */
+  usdcStep?: 'approve' | 'confirm' | null;
+}
+
+/**
+ * The USDC option for this player: only when the flag is on AND the Supabase user signed in with a Phantom (Solana) wallet.
+ * Guests and Google users get null. The server re-reads the wallet from the verified JWT and trusts nothing sent from here.
+ */
+export function usdcOption(user: WalletUser | null | undefined, enabled: boolean, cluster: 'devnet' | 'mainnet-beta'): { wallet: string; cluster: 'devnet' | 'mainnet-beta' } | null {
+  const wallet = enabled ? getSolanaAddress(user) : null;
+  return wallet ? { wallet, cluster } : null;
 }
 
 /** 199 -> "$1.99". */
 export const usd = (cents: number) => `$${(cents / 100).toFixed(2)}`;
+/** 1_990_000 (6 decimals) -> "1.99". */
+export const usdcText = (amount: number) => (amount / 1_000_000).toFixed(2);
 /** "$0.66 each" (rounded to the cent). */
 export const perShield = (p: ShopProduct) => `${usd(Math.round(p.priceCents / p.units))} each`;
 
@@ -37,11 +55,21 @@ export function packBlock(p: ShopProduct, info: ShopInfo): string | null {
 function packHtml(p: ShopProduct, m: ShopModel, best: boolean): string {
   const block = packBlock(p, m.info!);
   const can = !block && m.agreed && !m.busy;
-  return `<div class="shop-card${best ? ' best' : ''}" data-sku="${esc(p.sku)}">
+  const usdc = m.usdc && p.usdcAmount !== null;
+  const here = m.busy === p.sku;
+  const cardLabel = here && m.rail !== 'usdc' ? 'Opening…' : usdc ? `Card ${usd(p.priceCents)}` : usd(p.priceCents);
+  const usdcLabel = here && m.rail === 'usdc' ? (m.usdcStep === 'confirm' ? 'Confirming…' : 'Approve…') : `Pay ${usdcText(p.usdcAmount ?? 0)} USDC`;
+  const buttons = `<button class="btn primary shop-buy" type="button" data-a="buy" data-sku="${esc(p.sku)}"${can ? '' : ' disabled'}>${cardLabel}</button>`
+    + (usdc ? `<button class="btn shop-buy shop-usdc" type="button" data-a="buy-usdc" data-sku="${esc(p.sku)}"${can ? '' : ' disabled'}>${usdcLabel}</button>` : '');
+  return `<div class="shop-card${best ? ' best' : ''}${usdc ? ' has-usdc' : ''}" data-sku="${esc(p.sku)}">
     <span class="shop-units" aria-hidden="true">🛡<b>${p.units}</b></span>
     <span class="shop-name"><strong>${p.units} Rank Shields</strong><em>${esc(perShield(p))}${best ? ' · best value' : ''}</em>${block ? `<small>${esc(block)}</small>` : ''}</span>
-    <button class="btn primary shop-buy" type="button" data-a="buy" data-sku="${esc(p.sku)}"${can ? '' : ' disabled'}>${m.busy === p.sku ? 'Opening…' : usd(p.priceCents)}</button></div>`;
+    <span class="shop-pay">${buttons}</span></div>`;
 }
+
+const USDC_FINE = (c: 'devnet' | 'mainnet-beta') => `<p class="shop-fine shop-usdc-note">${c === 'devnet'
+  ? '<span class="shop-net" data-net="devnet">Devnet test USDC</span> Phantom must be on devnet. No real money.'
+  : '<span class="shop-net" data-net="mainnet-beta">USDC on Solana</span>'} USDC payments are final on-chain.</p>`;
 
 const LINKS = `<span class="shop-links"><a href="terms.html#sale" target="_blank" rel="noopener">Terms of sale</a><a href="terms.html#refunds" target="_blank" rel="noopener">Refunds</a><a href="privacy.html" target="_blank" rel="noopener">Privacy</a></span>`;
 
@@ -66,6 +94,7 @@ export function shopBodyHtml(m: ShopModel, o: ShopViewOpts = {}): string {
       ${notice}
       <label class="shop-age"><input type="checkbox" data-a="age"${m.agreed ? ' checked' : ''}${m.busy ? ' disabled' : ''}> <span>I'm 18+ or have a parent's permission</span></label>
       <p class="shop-fine">🔒 Secure checkout by Stripe. Digital item: one use per 24 hours, tied to your account, no cash value.</p>
+      ${m.usdc && packs.some((p) => p.usdcAmount !== null) ? USDC_FINE(m.usdc.cluster) : ''}
       ${LINKS}</div>`;
 }
 
@@ -85,6 +114,17 @@ export const SHOP_NOTICES = {
   waiting: { tone: 'wait', text: 'Waiting for payment confirmation…' },
   cancelled: { tone: 'warn', text: 'Checkout cancelled. You were not charged.' },
   timeout: { tone: 'warn', text: "Still waiting. Payments can take a minute: check back soon. If your shields don't show up, email kungfudoom@mail.grokbot.com." },
+} as const satisfies Record<string, ShopNotice>;
+
+/** The USDC payment, step by step. Errors from the server carry their own text. */
+export const USDC_NOTICES = {
+  approve: { tone: 'wait', text: 'Approve in Phantom…' },
+  confirming: { tone: 'wait', text: 'Confirming on Solana…' },
+  timeout: { tone: 'warn', text: 'Still confirming on Solana. Your payment is safe: reopen the shop in a minute and it will finish. If your shields don\'t show up, email kungfudoom@mail.grokbot.com.' },
+  rejected: { tone: 'warn', text: 'Cancelled in Phantom. You were not charged.' },
+  noPhantom: { tone: 'bad', text: 'Open PokeJam in the Phantom app or browser extension to pay with USDC.' },
+  wrongWallet: { tone: 'bad', text: 'Switch Phantom to the wallet you signed in with, then try again.' },
+  shopWallet: { tone: 'warn', text: 'USDC payments are not ready yet. Try again later.' },
 } as const satisfies Record<string, ShopNotice>;
 
 export const gotShields = (n: number): ShopNotice => ({ tone: 'ok', text: `Payment confirmed: +${n} Rank Shield${n === 1 ? '' : 's'}.` });
