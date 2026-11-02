@@ -70,6 +70,8 @@ export interface RankedResult {
   delta: number | null;
   divIdx: number | null;
   points: number | null;
+  /** Rank Shield item: present only when I had one armed for this match. `saved` = points it saved (0 when it was kept). */
+  shield?: { armed: boolean; used: boolean; saved: number };
 }
 
 const EVENTS: readonly unknown[] = ['promoted', 'demoted', 'shielded', 'placed', 'zenith'];
@@ -90,8 +92,14 @@ export function parseRankResult(raw: unknown): RankedResult | null {
     placing,
     event: EVENTS.includes(r.event) ? (r.event as RankedResult['event']) : null,
     placementsPlayed: nullable(r.placements_played), before: nullable(r.before), after: nullable(r.after), delta: nullable(r.delta),
-    divIdx: nullable(r.div_idx), points: nullable(r.points),
+    divIdx: nullable(r.div_idx), points: nullable(r.points), ...parseResultShield(r.shield),
   };
+}
+
+function parseResultShield(raw: unknown): { shield?: NonNullable<RankedResult['shield']> } {
+  const s = raw as Record<string, unknown> | null | undefined;
+  if (!s || typeof s !== 'object' || s.armed !== true) return {};
+  return { shield: { armed: true, used: s.used === true, saved: Math.max(0, nullable(s.saved) ?? 0) } };
 }
 
 /** The wait left on a Ranked cooldown, from find_match's refusal ('ranked cooldown: N seconds left'); null for any other error. */
@@ -121,6 +129,58 @@ export interface RankedMe {
   /** Highest division index reached this season (only once placed). */
   peakIdx?: number | null;
   cooldownUntil: string | null;
+  /** The Rank Shield item (not the automatic Demotion Guard above). Absent on an older server. */
+  shieldItem?: ShieldItem;
+}
+
+/** Why the Rank Shield can't be armed right now (server: pokejam_shield_block). */
+export type ShieldBlock = 'empty' | 'used_today' | 'placing' | 'zenith' | 'nothing_to_lose';
+const BLOCKS: readonly unknown[] = ['empty', 'used_today', 'placing', 'zenith', 'nothing_to_lose'];
+
+export interface ShieldItem {
+  count: number;
+  armed: boolean;
+  /** A ranked match is on: the arm can't be toggled. */
+  locked: boolean;
+  /** ISO time the next shield may be used (null = now). */
+  nextUseAt: string | null;
+  block: ShieldBlock | null;
+}
+
+function parseItem(r: { count: unknown; armed: unknown; locked: unknown; next: unknown; block: unknown }): ShieldItem | null {
+  const count = nullable(r.count);
+  if (count === null) return null;
+  return { count: Math.max(0, Math.floor(count)), armed: r.armed === true, locked: r.locked === true,
+    nextUseAt: typeof r.next === 'string' ? r.next : null, block: BLOCKS.includes(r.block) ? (r.block as ShieldBlock) : null };
+}
+
+/** The weekly challenge that grants a free Rank Shield. */
+export interface WeeklyChallenge {
+  kind: 'games' | 'wins' | 'days';
+  goal: number;
+  progress: number;
+  done: boolean;
+  /** ISO time the week resets (Monday 00:00 UTC). */
+  resetsAt: string | null;
+}
+
+/** `pokejam_shield_me()`: the item and this week's challenge. */
+export interface ShieldStatus extends ShieldItem {
+  weekly: WeeklyChallenge | null;
+}
+
+/** Reads `pokejam_shield_me()` / `pokejam_shield_arm()`; null for anything unusable. Never throws. */
+export function parseShieldStatus(raw: unknown): ShieldStatus | null {
+  const r = raw as Record<string, unknown> | null | undefined;
+  if (!r || typeof r !== 'object' || Array.isArray(r)) return null;
+  const item = parseItem({ count: r.count, armed: r.armed, locked: r.locked, next: r.next_use_at, block: r.arm_block });
+  if (!item) return null;
+  const w = r.weekly as Record<string, unknown> | null | undefined;
+  const goal = w && typeof w === 'object' ? nullable(w.goal) : null;
+  const weekly: WeeklyChallenge | null = !w || goal === null || goal < 1 ? null : {
+    kind: w.kind === 'wins' || w.kind === 'days' ? w.kind : 'games', goal, progress: Math.min(goal, Math.max(0, nullable(w.progress) ?? 0)),
+    done: w.done === true, resetsAt: typeof w.resets_at === 'string' ? w.resets_at : null };
+  return { ...item, weekly };
 }
 
 const PLACEMENT_GAMES = 5;
@@ -139,7 +199,13 @@ export function parseMe(raw: unknown): RankedMe | null {
     shieldCharge: charge === null ? null : charge > 0 ? 1 : 0, shieldLossesLeft: nullable(r.shield_losses_left),
     shieldActive: r.shield_active === true, wins: nullable(r.wins) ?? 0, losses: nullable(r.losses) ?? 0, peakIdx: placing ? null : nullable(r.peak_idx),
     cooldownUntil: typeof r.cooldown_until === 'string' ? r.cooldown_until : null,
+    ...itemOf(r),
   };
+}
+
+function itemOf(r: Record<string, unknown>): { shieldItem?: ShieldItem } {
+  const item = parseItem({ count: r.shield_item_count, armed: r.shield_item_armed, locked: r.shield_item_locked, next: r.shield_item_next_use, block: r.shield_item_block });
+  return item ? { shieldItem: item } : {};
 }
 
 /** One player's public rank from `pokejam_match_ranks`: placed (division index), in placements, or none; undefined when unusable. */
