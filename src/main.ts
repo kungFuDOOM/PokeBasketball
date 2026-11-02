@@ -37,7 +37,7 @@ import { safeName } from './nameFilter';
 import { gamesScreen } from './screens/games';
 import type { TutorialStart } from './screens/tutorial';
 import { isTutorialDone } from './tutorial/store';
-import { ANY_MULTIPLAYER, MODE_SHIELD_SHOP } from './config/features';
+import { ANY_MULTIPLAYER, MODE_SHIELD_STRIPE } from './config/features';
 import { badgeSvg } from './ui/badges';
 import { guardZoom } from './ui/noZoom';
 import { abbr, esc, guardNameInputs, lettersName, shuffle } from './util';
@@ -481,7 +481,7 @@ const returnTo = ANY_MULTIPLAYER ? (() => {
   } catch { return null; }
 })() : null;
 // Back from Stripe Checkout (?shop=success / ?shop=cancel): reopen Ranked, which opens the shop on the result.
-const backFromShop = MODE_SHIELD_SHOP && /[?&]shop=(success|cancel)\b/.test(location.search);
+const backFromShop = MODE_SHIELD_STRIPE && /[?&]shop=(success|cancel)\b/.test(location.search);
 const backToRanked = returnTo === 'ranked' || backFromShop;
 // Dev only: ?introshot=offline|online renders a frozen intro for screenshots (scripts/screenshot-intro.mjs).
 const introShot = import.meta.env.DEV ? new URLSearchParams(location.search).get('introshot') : null;

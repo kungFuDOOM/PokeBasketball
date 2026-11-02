@@ -22,6 +22,8 @@ export interface ShopModel {
   notice: ShopNotice | null;
   /** Set only for a player signed in with Phantom, with the USDC flag on: the "Pay with USDC" buttons. null/absent = card only. */
   usdc?: { cluster: 'devnet' | 'mainnet-beta' } | null;
+  /** Draw the card (Stripe) Buy button. Default true; shop.ts sets it from MODE_SHIELD_STRIPE. */
+  card?: boolean;
   /** Which payment `busy` is for (default card). */
   rail?: 'card' | 'usdc';
   /** Where the USDC payment is: waiting for Phantom, or for Solana to confirm. */
@@ -57,14 +59,15 @@ function packHtml(p: ShopProduct, m: ShopModel, best: boolean): string {
   const can = !block && m.agreed && !m.busy;
   const usdc = m.usdc && p.usdcAmount !== null;
   const here = m.busy === p.sku;
+  const card = m.card !== false;
   const cardLabel = here && m.rail !== 'usdc' ? 'Opening…' : usdc ? `Card ${usd(p.priceCents)}` : usd(p.priceCents);
   const usdcLabel = here && m.rail === 'usdc' ? (m.usdcStep === 'confirm' ? 'Confirming…' : 'Approve…') : `Pay ${usdcText(p.usdcAmount ?? 0)} USDC`;
-  const buttons = `<button class="btn primary shop-buy" type="button" data-a="buy" data-sku="${esc(p.sku)}"${can ? '' : ' disabled'}>${cardLabel}</button>`
+  const buttons = (card ? `<button class="btn primary shop-buy" type="button" data-a="buy" data-sku="${esc(p.sku)}"${can ? '' : ' disabled'}>${cardLabel}</button>` : '')
     + (usdc ? `<button class="btn shop-buy shop-usdc" type="button" data-a="buy-usdc" data-sku="${esc(p.sku)}"${can ? '' : ' disabled'}>${usdcLabel}</button>` : '');
   return `<div class="shop-card${best ? ' best' : ''}${usdc ? ' has-usdc' : ''}" data-sku="${esc(p.sku)}">
     <span class="shop-units" aria-hidden="true">🛡<b>${p.units}</b></span>
     <span class="shop-name"><strong>${p.units} Rank Shields</strong><em>${esc(perShield(p))}${best ? ' · best value' : ''}</em>${block ? `<small>${esc(block)}</small>` : ''}</span>
-    <span class="shop-pay">${buttons}</span></div>`;
+    <span class="shop-pay">${buttons || '<small>Sign in with Phantom to pay with USDC</small>'}</span></div>`;
 }
 
 const USDC_FINE = (c: 'devnet' | 'mainnet-beta') => `<p class="shop-fine shop-usdc-note">${c === 'devnet'
@@ -93,7 +96,7 @@ export function shopBodyHtml(m: ShopModel, o: ShopViewOpts = {}): string {
       <p class="shop-held">Held <strong>${m.info.held} / ${m.info.cap}</strong></p>
       ${notice}
       <label class="shop-age"><input type="checkbox" data-a="age"${m.agreed ? ' checked' : ''}${m.busy ? ' disabled' : ''}> <span>I'm 18+ or have a parent's permission</span></label>
-      <p class="shop-fine">🔒 Secure checkout by Stripe. Digital item: one use per 24 hours, tied to your account, no cash value.</p>
+      <p class="shop-fine">${m.card !== false ? '🔒 Secure checkout by Stripe. ' : ''}Digital item: one use per 24 hours, tied to your account, no cash value.</p>
       ${m.usdc && packs.some((p) => p.usdcAmount !== null) ? USDC_FINE(m.usdc.cluster) : ''}
       ${LINKS}</div>`;
 }
