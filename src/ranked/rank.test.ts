@@ -317,3 +317,12 @@ describe('leavers', () => {
     expect(applyResult(at(6, 20), { won: true, mode: 'stay', oppIdx: 20 }).delta).toBe(20);
   });
 });
+
+describe('rank list copy', () => {
+  it('lists all 9 tiers in order, Zenith last', async () => {
+    const { ALL_TIER_NAMES, TIER_LIST_TEXT, TIER_RANGE_TEXT } = await import('./rank');
+    expect(ALL_TIER_NAMES).toEqual(['Bronze', 'Silver', 'Gold', 'Platinum', 'Diamond', 'Prism', 'Eclipse', 'Pokémon Master', 'Zenith']);
+    expect(TIER_LIST_TEXT).toBe('Bronze, Silver, Gold, Platinum, Diamond, Prism, Eclipse, Pokémon Master, then Zenith');
+    expect(TIER_RANGE_TEXT).toBe('Bronze to Zenith');
+  });
+});

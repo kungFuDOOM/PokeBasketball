@@ -2,6 +2,7 @@
 // Online (Supabase configured): two real players are matched by the server, which rates the match; the rating shown
 // here is always read back from the server. Not configured: the local mock (CPU opponent, rating in localStorage).
 import { SIGNIN_GOOGLE } from '../../config/features';
+import { TIER_LIST_TEXT } from '../../ranked/rank';
 import { esc } from '../../util';
 import { evidenceQueue } from '../shared/evidenceQueue';
 import { runMatch, panel } from '../shared/matchFlow';
@@ -84,7 +85,7 @@ export function openRanked(ctx: ModeContext) {
   const { root } = ctx;
   root.className = 'screen-menu';
   window.scrollTo(0, 0);
-  const intro = 'Play 5 placement matches to earn a rank: Bronze, Silver, Gold, Platinum, Diamond, then Pokémon Master.';
+  const intro = `Play 5 placement matches to earn a rank: ${TIER_LIST_TEXT}.`;
   if (!ONLINE_CONFIGURED) {
     root.innerHTML = panel('RANKED', `${intro} Online play is not set up in this build, so opponents are simulated and your rank stays on this device.`, `
       <div class="mp-outcome">${localBadge()}</div>

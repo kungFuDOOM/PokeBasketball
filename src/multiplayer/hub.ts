@@ -1,6 +1,7 @@
 // Multiplayer hub: lists only the modes whose build flag is on. Each mode loads via dynamic import,
 // so a disabled mode's code is left out of the bundle.
 import { MODE_PACK_BATTLES, MODE_RANKED, MODE_SOCIAL } from '../config/features';
+import { TIER_RANGE_TEXT } from '../ranked/rank';
 import type { ModeContext } from './shared/types';
 
 type OpenMode = (ctx: ModeContext) => void | Promise<void>;
@@ -9,7 +10,7 @@ interface ModeCard { id: string; title: string; note: string; load(): Promise<Op
 const MODES: ModeCard[] = [];
 if (MODE_SOCIAL) MODES.push({ id: 'social', title: 'Social', note: 'Casual and unranked. Quick match online or play a friend with a room code.',
   load: async () => (await import('./social/index')).openSocial });
-if (MODE_RANKED) MODES.push({ id: 'ranked', title: 'Ranked', note: '5 placement matches, then climb from Bronze to Zenith.',
+if (MODE_RANKED) MODES.push({ id: 'ranked', title: 'Ranked', note: `5 placement matches, then climb from ${TIER_RANGE_TEXT}.`,
   load: async () => (await import('./ranked/index')).openRanked });
 if (MODE_PACK_BATTLES) MODES.push({ id: 'pack', title: 'Pack Battles', note: 'Coming soon.',
   load: async () => (await import('./packBattles/index')).openPackBattles });

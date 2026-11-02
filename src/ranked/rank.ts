@@ -17,6 +17,13 @@ export const ZENITH_DECAY_POINTS = 25;
 export const DEMOTE_POINTS = 75;
 
 export const TIERS = ['Bronze', 'Silver', 'Gold', 'Platinum', 'Diamond', 'Prism', 'Eclipse', 'Pokémon Master'] as const;
+/** Every rank tier in climbing order, Zenith last. Source for user-facing rank lists. */
+export const ALL_TIER_NAMES: readonly string[] = [...TIERS, 'Zenith'];
+/** "Bronze, Silver, ..., Eclipse, Pokémon Master, then Zenith" (all 9 tiers, in order). */
+export const TIER_LIST_TEXT = `${ALL_TIER_NAMES.slice(0, -1).join(', ')}, then ${ALL_TIER_NAMES[ALL_TIER_NAMES.length - 1]}`;
+/** "Bronze to Zenith". */
+export const TIER_RANGE_TEXT = `${ALL_TIER_NAMES[0]} to ${ALL_TIER_NAMES[ALL_TIER_NAMES.length - 1]}`;
+
 /** Base win / full-cost loss per tier (Zenith uses Pokémon Master's). */
 export const TIER_WIN = [30, 27, 25, 24, 23, 22, 21, 20] as const;
 export const TIER_LOSS = [19, 19, 19, 20, 20, 21, 21, 22] as const;
