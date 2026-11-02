@@ -9,6 +9,7 @@ Two ways to sign in:
   or that Google account already has a PokeJam account, it falls back to a normal Google sign-in (that account opens instead).
 - **Phantom** (Sign in with Solana, `signInWithWeb3`). Supabase cannot link a wallet to a guest account, so this is a fresh
   account. No transaction, no payment: the wallet only signs the login message.
+  Phones without an injected wallet hand off to the Phantom app: see [`phantom-mobile-signin.md`](phantom-mobile-signin.md).
 
 **Launch flag:** Google is hidden unless the build sets `VITE_SIGNIN_GOOGLE=true` (`SIGNIN_GOOGLE` in `src/config/features.ts`);
 by default Ranked sign-in is Phantom-only, so the Google setup in section 1 can wait until the flag is turned on.

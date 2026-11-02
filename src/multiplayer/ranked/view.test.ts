@@ -132,13 +132,16 @@ describe('sign-in panel', () => {
     expect(base).toContain('data-a="google"');
     expect(base).toContain('data-a="phantom"');
     expect(base).toContain('Signing in with Google keeps your guest stats');
-    expect(signInPanelHtml({ kind: 'open-in-phantom', href: 'https://phantom.app/ul/browse/x?ref=y' })).toContain('href="https://phantom.app/ul/browse/x?ref=y"');
+    const phone = signInPanelHtml({ kind: 'deeplink', browseHref: 'https://phantom.app/ul/browse/x?ref=y' });
+    expect(phone).toContain('data-a="phantom-link"');
+    expect(phone).toContain('>Sign in with Phantom</a>');
+    expect(phone).toContain('href="https://phantom.app/ul/browse/x?ref=y"'); // the fallback: PokeJam in Phantom's browser
     const install = signInPanelHtml({ kind: 'install', href: 'https://phantom.app/download' });
     expect(install).toContain('https://phantom.app/download');
     expect(install).toContain('rel="noopener"');
   });
   it('Phantom-only (Google flag off): no Google button, copy or gap, and Phantom is the primary button', () => {
-    for (const a of [{ kind: 'sign-in' as const }, { kind: 'open-in-phantom' as const, href: 'https://phantom.app/ul/x' }, { kind: 'install' as const, href: 'https://phantom.app/download' }]) {
+    for (const a of [{ kind: 'sign-in' as const }, { kind: 'deeplink' as const, browseHref: 'https://phantom.app/ul/x' }, { kind: 'install' as const, href: 'https://phantom.app/download' }]) {
       const h = signInPanelHtml(a, { google: false });
       expect(h).not.toMatch(/google/i);
       expect(h).toMatch(/class="btn primary big" data-a="phantom/);

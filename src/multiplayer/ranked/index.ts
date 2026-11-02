@@ -13,6 +13,7 @@ import { OnlineError, SupabaseMatchService } from '../shared/onlineMatchService'
 import { ONLINE_CONFIGURED, ensureSignedIn, supabase } from '../shared/supabase';
 import type { ModeContext } from '../shared/types';
 import { phantomAction, signInWithPhantom, WalletError } from '../../wallet/phantom';
+import { startPhantomLink } from '../../wallet/phantomSheet';
 import { isGuest, signInWithGoogle } from './account';
 import { badgeImgForTier } from '../../ranked/badge';
 import { TIER_COLORS, view, type MatchOutcome, type RankView } from './rank';
@@ -203,6 +204,14 @@ export function mountSignIn(slot: HTMLElement, o: { returnTo: 'ranked' | 'profil
       signInWithGoogle(sb, location, undefined, o.returnTo).catch(fail); // on success the browser leaves for Google and comes back to this page
     });
   }
+  slot.querySelector<HTMLAnchorElement>('[data-a="phantom-link"]')?.addEventListener('click', (e) => {
+    try {
+      startPhantomLink(e.currentTarget as HTMLAnchorElement, o.returnTo);
+    } catch {
+      e.preventDefault(); // no sessionStorage (a locked-down browser): this tab can't hold the key
+      again('This browser is blocking the storage sign-in needs. Try Open PokeJam in Phantom.');
+    }
+  });
   slot.querySelector('[data-a="phantom"]')?.addEventListener('click', async () => {
     again(null, true);
     try {

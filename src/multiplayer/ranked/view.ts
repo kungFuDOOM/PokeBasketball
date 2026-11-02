@@ -3,7 +3,7 @@
 // over the court or the in-game HUD. Text and CSS only (index.ts wires the buttons; style.css has the look).
 import { SIGNIN_GOOGLE } from '../../config/features';
 import { esc } from '../../util';
-import type { PhantomAction } from '../../wallet/phantom';
+import { PHANTOM_DOWNLOAD_URL, type PhantomAction } from '../../wallet/phantom';
 import { badgeImgHtml, badgeRankOf, renderRankBadge, type BadgeRank } from '../../ranked/badge';
 import { DIV_POINTS, ZENITH_IDX, fromLadderScore, rankName, tierIndex, tierRanges } from '../../ranked/rank';
 import type { ReportOutcome } from '../shared/matchService';
@@ -110,21 +110,22 @@ export function signInPanelHtml(phantom: PhantomAction, o: { busy?: boolean; err
   const cls = google ? 'btn big' : 'btn primary big';
   const phantomBtn = phantom.kind === 'sign-in'
     ? `<button class="${cls}" data-a="phantom"${dis}>Sign in with Phantom</button>`
-    : phantom.kind === 'open-in-phantom'
-      ? `<a class="${cls}" data-a="phantom-open" href="${esc(phantom.href)}">Open in Phantom</a>`
+    : phantom.kind === 'deeplink'
+      // mountSignIn points this at Phantom during the tap. Until then it goes where a missing wallet would.
+      ? `<a class="${cls}" data-a="phantom-link" href="${esc(PHANTOM_DOWNLOAD_URL)}">Sign in with Phantom</a>`
       : `<a class="${cls}" data-a="phantom-install" href="${esc(phantom.href)}" target="_blank" rel="noopener">Get Phantom</a>`;
   const googleBtn = google ? `<button class="btn primary big" data-a="google"${dis}>Sign in with Google</button>` : '';
   const how = google
     ? 'Signing in with Google keeps your guest stats. A wallet is a fresh account. Signing only proves you own it. It costs nothing and never moves funds.'
     : 'A wallet is a fresh account. Signing only proves you own it. It costs nothing and never moves funds.';
-  const phantomNote = phantom.kind === 'open-in-phantom' ? 'Phantom was not found here. This opens PokeJam inside the Phantom app, where you can sign in.'
-    : phantom.kind === 'install' ? 'Phantom was not found in this browser. Install it, then come back and tap Sign in with Phantom.' : '';
+  const phantomNote = phantom.kind === 'install' ? 'Phantom was not found in this browser. Install it, then come back and tap Sign in with Phantom.' : '';
   return `<div class="rk-signin" data-rk="signin">
     <p class="rk-why">${esc(o.why ?? 'Ranked needs a signed-in account so your rank is yours. Guests can still play Social and offline.')}</p>
     <div class="actions center rk-signin-btns">
       ${googleBtn}${phantomBtn}
     </div>
     ${phantomNote ? `<p class="note center">${esc(phantomNote)}</p>` : ''}
+    ${phantom.kind === 'deeplink' ? `<p class="note center">Approve in the Phantom app, then come back. Stuck? <a data-a="phantom-browse" href="${esc(phantom.browseHref)}">Open PokeJam in Phantom</a></p>` : ''}
     <p class="note center">${how}</p>
     ${o.error ? `<p class="note center rk-error" role="alert">${esc(o.error)}</p>` : ''}
   </div>`;
