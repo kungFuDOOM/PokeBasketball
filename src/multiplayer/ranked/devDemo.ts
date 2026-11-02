@@ -6,7 +6,9 @@ import type { PhantomAction } from '../../wallet/phantom';
 import type { RankedMe, RankedResult } from './serverRank';
 import { renderRankBadge } from '../../ranked/badge';
 import { postMatchHtml, rankChipHtml, shieldItemHtml, shieldTagHtml, signInPanelHtml, usernamePickerHtml, weeklyCardHtml } from './view';
-import { parseShieldStatus } from './serverRank';
+import { parseShieldStatus, parseShopInfo } from './serverRank';
+import { MODE_SHIELD_SHOP } from '../../config/features';
+import { SHOP_NOTICES, shopHtml, type ShopModel } from './shopView';
 import { profileHtml, type ProfileModel } from '../../screens/profile';
 import { checkUsername, nameErrorText } from './username';
 
@@ -26,7 +28,7 @@ const shield = (o: Record<string, unknown> = {}, w: Record<string, unknown> = {}
   count: 3, armed: false, locked: false, next_use_at: null, arm_block: null,
   weekly: { kind: 'games', goal: 10, progress: 6, done: false, resets_at: new Date(Date.now() + 3.4 * 86_400_000).toISOString(), ...w }, ...o })!;
 const shieldHome = (st = shield()) => panel('RANKED', 'Play 5 placement matches to earn a rank.',
-  `<div class="rk-home"><div class="rk-left">${rankChipHtml(me())}${weeklyCardHtml(st.weekly)}</div><div class="rk-right"><button class="btn primary big" data-a="find">Find ranked match</button>${shieldItemHtml(st)}<button class="btn" data-a="cpu">Practice vs CPU (unranked)</button><button class="btn ghost" data-a="back">Back</button></div></div>`);
+  `<div class="rk-home"><div class="rk-left">${rankChipHtml(me())}${weeklyCardHtml(st.weekly)}</div><div class="rk-right"><button class="btn primary big" data-a="find">Find ranked match</button>${shieldItemHtml(st, Date.now(), MODE_SHIELD_SHOP)}<button class="btn" data-a="cpu">Practice vs CPU (unranked)</button><button class="btn ghost" data-a="back">Back</button></div></div>`);
 const signIn = (a: PhantomAction) => panel('RANKED', 'Play 5 placement matches to earn a rank.',
   `<div class="rk-home"><div class="rk-left">${signInPanelHtml(a)}</div><div class="rk-right"><button class="btn" data-a="cpu">Practice vs CPU (unranked)</button><button class="btn ghost" data-a="back">Back</button></div></div>`);
 const post = (html: string) => `<div class="menu"><section class="card setup"><div class="mp-outcome" data-outcome>${html}</div></section></div>`;
@@ -48,6 +50,12 @@ const SCREENS: Record<string, () => string> = {
   'shield-hub-used': () => shieldHome(shield({ arm_block: 'used_today', next_use_at: new Date(Date.now() + (5 * 60 + 12) * 60_000 + 30_000).toISOString() })),
   'shield-hub-placing': () => shieldHome(shield({ arm_block: 'placing' })),
   'shield-hub-done': () => shieldHome(shield({ count: 1 }, { progress: 10, done: true })),
+  // The shop sheet (shopView.ts) over the hub; devRanked() appends the sheet itself. Needs the shop flag for the Shop button.
+  shop: () => shieldHome(),
+  'shop-checked': () => shieldHome(),
+  'shop-waiting': () => shieldHome(),
+  'shop-cap': () => shieldHome(),
+  'shop-guest': () => shieldHome(),
   'shield-queue': () => panel('SEARCHING', 'Looking for a ranked opponent near your skill…', `${shieldTagHtml(shield({ armed: true }))}<div class="actions center"><button class="btn ghost" data-a="cancel">Cancel</button></div>`),
   placing: () => home(rankChipHtml(me({ placing: true, placementsPlayed: 2, divIdx: null, points: null }))),
   signin: () => signIn({ kind: 'install', href: 'https://phantom.app/download' }),
@@ -78,9 +86,21 @@ export const devRankedScreen = (): string | null => {
   return k && k in SCREENS ? k : null;
 };
 
+const shopInfo = (held = 3, left = 39) => parseShopInfo({ held, cap: 14, purchases_left: left, blocked: false,
+  products: [{ sku: 'shield_3', units: 3, price_cents: 199 }, { sku: 'shield_7', units: 7, price_cents: 399 }, { sku: 'shield_14', units: 14, price_cents: 699 }] });
+const shopModel = (o: Partial<ShopModel> = {}): ShopModel => ({ info: shopInfo(), signedIn: true, agreed: false, busy: null, notice: null, ...o });
+const SHOP_SHEETS: Record<string, () => ShopModel> = {
+  shop: () => shopModel(),
+  'shop-checked': () => shopModel({ agreed: true }),
+  'shop-waiting': () => shopModel({ agreed: true, notice: SHOP_NOTICES.waiting }),
+  'shop-cap': () => shopModel({ info: shopInfo(12), agreed: true }),
+  'shop-guest': () => shopModel({ info: null, signedIn: false }),
+};
+
 export function devRanked(root: HTMLElement, kind: string) {
   root.className = kind.startsWith('post') ? 'screen-results' : 'screen-menu';
   root.innerHTML = SCREENS[kind]();
+  if (kind in SHOP_SHEETS) document.body.insertAdjacentHTML('beforeend', shopHtml(SHOP_SHEETS[kind]()));
   // The reveal's Skip button (index.ts binds it for real play).
   root.addEventListener('click', (e) => (e.target as Element).closest('[data-rk-skip]')?.closest('.rk-anim')?.classList.add('skipped'));
 }
