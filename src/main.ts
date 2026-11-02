@@ -544,6 +544,11 @@ window.addEventListener('hashchange', advertise);
 // Back from the Phantom app, or reloaded while a Phantom sign-in is in progress in this tab.
 if (ANY_MULTIPLAYER) {
   const phantomCb = (window as unknown as { __phantomCb?: string }).__phantomCb;
-  const phantomPending = (() => { try { return !!sessionStorage.getItem('pokejam.phantom.pending'); } catch { return false; } })();
+  const phantomPending = (() => {
+    try {
+      // sessionStorage: an in-tab sign-in. localStorage: a home-screen app waiting for Safari, or Safari between its two Phantom trips.
+      return !!(sessionStorage.getItem('pokejam.phantom.pending') || localStorage.getItem('pokejam.phantom.handoff') || localStorage.getItem('pokejam.phantom.landing'));
+    } catch { return false; }
+  })();
   if (phantomCb || phantomPending) void import('./wallet/phantomSheet').then((m) => m.resumePhantom(phantomCb));
 }

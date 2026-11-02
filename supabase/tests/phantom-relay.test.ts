@@ -92,3 +92,21 @@ describe('phantom relay', () => {
     expect(await r.put(ID, box)).toBe(false);
   });
 });
+
+describe('phantom relay: home-screen handoff payloads (no migration needed)', () => {
+  it('takes a sealed refresh token ({k, n, d}) under a 44-char handoff id, once', async () => {
+    const r = await relay();
+    const id = 'H'.repeat(44);
+    // 32-byte ephemeral key, 24-byte nonce, and a box around {"rt":"<token>"}: a few hundred base58 chars at most.
+    const sealed = { k: 'J'.repeat(44), n: 'K'.repeat(33), d: 'M'.repeat(180) };
+    expect(await r.put(id, sealed)).toBe(true);
+    expect(await r.put(id, { e: '4001' })).toBe(false); // first write wins
+    expect(await r.take(id)).toEqual(sealed);
+    expect(await r.take(id)).toBeNull();
+  });
+  it('still refuses a token in the clear', async () => {
+    const r = await relay();
+    expect(await r.put(ID, { rt: 'refresh', k: 'J'.repeat(44), n: 'a', d: 'b' })).toBe(false);
+    expect(await r.put(ID, { refresh_token: 'x' })).toBe(false);
+  });
+});
