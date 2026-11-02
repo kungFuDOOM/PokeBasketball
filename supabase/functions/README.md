@@ -24,7 +24,7 @@ How a prize moves:
 5. It then either sends the card (a Core transfer, after checking the owner on-chain) or sells it back and credits the buyback.
 6. If CC refuses to sell `PRIZE_FALLBACK_ATTEMPTS` times (default 3), the winner is credited the whole pot. A house short of USDC keeps retrying instead.
 
-## Billboard ads (`pokejam-ads/`, `../migrations/20261104_pokejam_ads.sql`)
+## Billboard ads (`pokejam-ads/`, `../migrations/20261202_pokejam_ads.sql`)
 
 Advertisers put their message on the courtside LED board in every game, and pay by **burning $PJAM** from their own wallet. **Devnet only** until kungFuDOOM approves mainnet; the code refuses any other cluster (see `_shared/ads/config.ts`).
 
@@ -89,7 +89,7 @@ Prices and the number of spots (`ad_spots`, default 3) change with one `update p
 
 ### On kungFuDOOM's "Merge" (devnet, the test site)
 
-1. **Migration:** `20261104_pokejam_ads`.
+1. **Migration:** `20261202_pokejam_ads`.
 2. **The test token:**
    - `bun --use-system-ca scripts/ads-devnet-setup.ts <faucet-keypair.json>` makes "PJAM (devnet)": a Token-2022 mint with $PJAM's 6 decimals, whose mint authority is a new faucet keypair.
    - The faucet needs about 1 devnet SOL. Devnet's RPC airdrop is closed, so use https://faucet.solana.com.
@@ -115,7 +115,7 @@ Prices and the number of spots (`ad_spots`, default 3) change with one `update p
    2. `AD_MINT=<mint> AD_FAUCET_SECRET_FILE=<keypair.json> bun --use-system-ca scripts/ads-dev-server.ts`
    3. Open http://localhost:8787/#advertise.
 
-## Billboard ads on the live site (`pokejam-ads-live/`, `../migrations/20261125_pokejam_ads_live.sql`)
+## Billboard ads on the live site (`pokejam-ads-live/`, `../migrations/20261203_pokejam_ads_live.sql`)
 
 The live site (pokejam.xyz) books the same courtside LED board on **Solana mainnet**, through its own function. It runs the same handler as the devnet `pokejam-ads` above (`_shared/ads/handler.ts`), configured by `adsConfigLive` in `_shared/ads/config.ts`. The devnet function, its secrets and its tables are unchanged. The client (`src/ads/api.ts`) only ever calls `pokejam-ads-live`. Advertisers pay from their own wallet in one of two ways:
 - **Burn $PJAM**, exactly as above (an hour, a day or a week).
@@ -168,7 +168,7 @@ The USDC prices match the courtside banner half's list price on the contact page
 
 ### On kungFuDOOM's OK (mainnet, the live site)
 
-1. **Migration:** `20261125_pokejam_ads_live`, applied after `20261104_pokejam_ads`.
+1. **Migration:** `20261203_pokejam_ads_live`, applied after `20261202_pokejam_ads`.
 2. **Confirm the $PJAM mint** (see `ADS_PJAM_MINT` above), and set the PJAM burn prices.
 3. **Secrets:**
    ```sh

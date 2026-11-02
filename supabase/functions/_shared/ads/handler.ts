@@ -1,4 +1,4 @@
-// pokejam-ads: book the courtside LED board by burning $PJAM. See ../../../migrations/20261104_pokejam_ads.sql
+// pokejam-ads: book the courtside LED board by burning $PJAM. See ../../../migrations/20261202_pokejam_ads.sql
 // for how a booking moves, and supabase/functions/README.md for setup.
 //
 //   GET  ?action=board                        the ads live now, the next 14 days' bookings, prices, totals, the token
