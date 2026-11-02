@@ -3,6 +3,7 @@
 // here is always read back from the server. Not configured: the local mock (CPU opponent, rating in localStorage).
 import { SIGNIN_GOOGLE } from '../../config/features';
 import { esc } from '../../util';
+import { evidenceQueue } from '../shared/evidenceQueue';
 import { runMatch, panel } from '../shared/matchFlow';
 import { LocalMockMatchService, type ReportOutcome } from '../shared/matchService';
 import { playOnline } from '../shared/onlineGame';
@@ -118,6 +119,7 @@ async function renderHome(ctx: ModeContext) {
     if (!slot.isConnected) return;
     if (isGuest(data.session?.user)) return mountSignIn(slot, { returnTo: 'ranked', onSignedIn: () => openRanked(ctx) });
     const svc = await online(ctx);
+    void evidenceQueue.retryPending(svc); // uploads an earlier game couldn't finish (a closed tab, no network)
     const have = await svc.myUsername().catch(() => null);
     if (!slot.isConnected) return;
     // Ranked needs a username (the server refuses the queue without one): pick it before the first search.

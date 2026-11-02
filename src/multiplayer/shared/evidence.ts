@@ -23,15 +23,27 @@ export const expandRuns = (r: InputRun[]): WireInput[] => r.flatMap(([n, mx, my,
 export class EvidenceLog {
   readonly mine: SignedInputs[] = [];
   readonly theirs: SignedInputs[] = [];
+  private signing = 0;
+  private idle: (() => void)[] = [];
 
   constructor(private key: CryptoKey, private matchId: string, readonly side: 0 | 1) {}
 
   /** Sign an outgoing input batch: the same message, plus its signature (`g`). Our copy is kept. */
   async sign(m: InMsg): Promise<InMsg> {
     if (!m.r.length) return m;
-    const signed = await signTicks(this.key, this.matchId, this.side, m.s, expandRuns(m.r));
-    if (this.mine.length < MAX_BATCHES) this.mine.push(signed);
-    return { ...m, g: signed.sig };
+    this.signing++;
+    try {
+      const signed = await signTicks(this.key, this.matchId, this.side, m.s, expandRuns(m.r));
+      if (this.mine.length < MAX_BATCHES) this.mine.push(signed);
+      return { ...m, g: signed.sig };
+    } finally {
+      if (--this.signing === 0) this.idle.splice(0).forEach((done) => done());
+    }
+  }
+
+  /** Resolves once no signature is in flight, so `mine` holds every batch sent so far. Wait for this before packing. */
+  settled(): Promise<void> {
+    return this.signing ? new Promise((done) => this.idle.push(done)) : Promise.resolve();
   }
 
   /** Keep the other player's signed batch from an incoming message. Its signature is checked by the judge. */

@@ -162,6 +162,25 @@ describe('evidence bookkeeping', () => {
     await expect(unpack(packed, 50)).rejects.toThrow(/too large/);
   });
 
+  it('settled() waits for signatures in flight, so the last batch makes the upload', async () => {
+    const key = await matchKey();
+    const log = new EvidenceLog(key.privateKey, setup.matchId, 0);
+    await log.settled(); // nothing in flight: resolves at once
+    const batch = (s: number): Extract<NetMsg, { k: 'in' }> => ({ k: 'in', s, r: [[3, 0, 0, 0]], a: 0 });
+    void log.sign(batch(10));
+    void log.sign(batch(13));
+    expect(log.mine).toHaveLength(0); // signing is async: packing now would lose both
+    await log.settled();
+    expect(log.mine.map((b) => b.from)).toEqual([11, 14]);
+  });
+
+  it('settled() still resolves when a signature fails', async () => {
+    const log = new EvidenceLog({} as CryptoKey, setup.matchId, 0); // not a usable key
+    await expect(log.sign({ k: 'in', s: 1, r: [[1, 0, 0, 0]], a: 0 })).rejects.toThrow();
+    await log.settled();
+    expect(log.mine).toHaveLength(0);
+  });
+
   it('received() ignores anything that is not a well-formed signed batch', () => {
     const log = new EvidenceLog({} as CryptoKey, 'm', 0);
     const good = { k: 'in', s: 10, r: [[3, 0.5, -0.5, 2]], a: 0, g: 'a'.repeat(128) };

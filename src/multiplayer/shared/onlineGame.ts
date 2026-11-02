@@ -9,6 +9,7 @@ import { Lockstep } from './lockstep';
 import { panel } from './matchFlow';
 import type { ReportOutcome } from './matchService';
 import { pack } from './evidence';
+import { evidenceQueue, uploadOnExit } from './evidenceQueue';
 import { showIntro } from '../../screens/intro';
 import { INTRO_CAP_MS, INTRO_LEN_MS, IntroVotes, startingFiveEnabled } from '../../screens/intro.logic';
 import { PreGate } from './pre';
@@ -16,6 +17,7 @@ import { MatchOverError, connect, iceFor, type Connected, type MatchLink } from 
 import { netStatsRow, submitNetStats } from './netStats';
 import type { OnlineMatch, OnlineOpponent, ReportReason, SupabaseMatchService } from './onlineMatchService';
 import { onPageExit } from './pageExit';
+import { keepaliveRpc } from './supabase';
 import type { ModeContext } from './types';
 
 /** No word from the other player for this long ends the game. */
@@ -106,12 +108,24 @@ export async function playOnline(ctx: ModeContext, o: OnlineGameOptions) {
   }
   link.startMeter();
 
-  // After the game, each player uploads everything signed they hold, for the winner check (once; best effort).
+  // As soon as the game ends, each player uploads everything signed they hold, for the winner check (once per game;
+  // best effort). A copy stays on this device until the server has it, and the Ranked hub retries it (evidenceQueue.ts).
   let uploaded = false;
   const uploadEvidence = () => {
-    if (uploaded || !link.evidence || !conn.keys) return;
+    const log = link.evidence;
+    const keys = conn.keys;
+    if (uploaded || !log || !keys) return;
     uploaded = true;
-    void pack(link.evidence.evidence(conn.setup, conn.keys)).then((p) => service.submitEvidence(match.id, p)).catch(() => {});
+    void (async () => {
+      await log.settled(); // the last batches may still be signing
+      const packed = await pack(log.evidence(conn.setup, keys));
+      const offHide = uploadOnExit(match.id, packed, keepaliveRpc);
+      try {
+        await evidenceQueue.upload({ id: match.id, userId: service.userId, packed, createdAt: Date.now() }, service);
+      } finally {
+        offHide();
+      }
+    })().catch(() => {});
   };
 
   let ls: Lockstep | null = null;
@@ -208,12 +222,13 @@ export async function playOnline(ctx: ModeContext, o: OnlineGameOptions) {
     clearInterval(beat);
     clearInterval(watch);
     sendNetStats();
+    uploadEvidence();
     const mine = g.score[match.side];
     const theirs = g.score[1 - match.side];
     const won = mine > theirs;
     if (import.meta.env.DEV) (window as unknown as Record<string, unknown>).__pokejamOnline = { hash: ls?.hash(), score: [...g.score], side: match.side, stats: ls?.stats, delay: ls?.delay, matchId: match.id, sent: link.sent, direct: link.direct };
     // Let the last lockstep messages reach the other player before leaving the channel.
-    setTimeout(() => { uploadEvidence(); link.close(); }, 3000);
+    setTimeout(() => link.close(), 3000);
     const names = match.queue === 'ranked' ? { me: match.me.name, opp: match.opponent.name } : undefined;
     let oppRank: ReportOutcome['oppRank'];
     const show = (out: ReportOutcome) => (typeof o.outcomeHtml === 'function' ? o.outcomeHtml({ ...out, names: out.names ?? names, oppRank: out.oppRank !== undefined ? out.oppRank : oppRank }) : o.outcomeHtml);
