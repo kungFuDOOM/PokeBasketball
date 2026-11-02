@@ -32,6 +32,7 @@
 ### Flow
 - **Social** (flag `VITE_MODE_SOCIAL`): Quick match, Play a friend (6-character room code) and Play CPU.
   - Quick match polls `pokejam_find_match('social')` every 2 s. After 15 s with nobody around it offers **Play CPU instead** (the old simulated flow) and keeps searching until you pick.
+    - **Random host (migration `20261127_pokejam_random_host.sql`):** a server coin flip picks the host of every queue match, Ranked and Social, so nobody can choose to host by queueing first. In a room, whoever made the room still hosts.
     - **Heartbeat (migration `20261104_pokejam_queue_heartbeat.sql`):** every poll refreshes the queue row's `last_seen`, and only players seen in the last 15 s are matched, so a closed tab or locked phone stops being matchable within seconds.
     - While the page is hidden the search pauses: it leaves the queue (a `fetch` keepalive request) and starts again when the player is back (`searchWhileVisible`, `src/multiplayer/shared/pageExit.ts`). `pagehide` leaves the queue, closes the host's room, or leaves the match (draft, connecting, in game).
     - Cancel, Play CPU instead and Back always win: a match id that arrives after them is left on the server (`pokejam_leave_match`) and never starts a draft. `pokejam_leave_queue` also voids a quick Social match made for you since your last poll that you never opened.

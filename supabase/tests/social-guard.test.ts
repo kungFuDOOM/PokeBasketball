@@ -18,7 +18,7 @@ describe('the server picks the game', () => {
     expect(Number(ia.seed)).toBeGreaterThanOrEqual(0);
     expect(Number(ia.seed)).toBeLessThan(2 ** 32);
     expect(ia.quarter_len).toBe(120);
-    expect([ia.host_name, ia.guest_name]).toEqual(['Ash', 'Misty']);
+    expect([ia.host_name, ia.guest_name]).toEqual(ia.host === a.id ? ['Ash', 'Misty'] : ['Misty', 'Ash']);
     expect(await c.call('pokejam_match_info', [mid])).toBeNull();
     await expect(a.sql('update public.pokejam_matches set seed = 1')).rejects.toThrow(/permission denied/);
 

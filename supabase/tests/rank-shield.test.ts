@@ -2,7 +2,7 @@
 // first, the rolling 24 h cap, the weekly challenge and the hold cap, and no client writes.
 import { describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { testDb, type Db, type User } from './testDb';
+import { testDb, type Db, type User, pickBoth } from './testDb';
 
 vi.setConfig({ testTimeout: 60_000 });
 
@@ -24,10 +24,11 @@ const inv = async (t: Db, u: User) => (await t.sql('select * from public.pokejam
 const armedRows = async (t: Db, u: User) => Number((await t.sql('select count(*)::int as n from public.pokejam_shield_armed where user_id = $1', [u.id]))[0].n);
 const ledger = async (t: Db, u: User, reason: string) => t.sql('select * from public.pokejam_shield_ledger where user_id = $1 and reason = $2', [u.id, reason]);
 
-async function rankedPair(a: User, b: User) {
+async function rankedPair(t: Db, a: User, b: User) {
   expect(await a.call('pokejam_find_match', ['ranked'])).toBeNull();
   const mid = await b.call<string | null>('pokejam_find_match', ['ranked']);
   expect(mid).toBeTruthy();
+  await pickBoth(t, mid!);
   const info = await a.call<Record<string, string>>('pokejam_match_info', [mid!]);
   return { mid: mid!, host: info.host === a.id ? a : b, guest: info.host === a.id ? b : a };
 }
@@ -46,7 +47,7 @@ async function play(t: Db, a: User, aWins: boolean) {
   const b = await t.user('Opp');
   const ap = await prof(t, a.id); // same position as a, so the queue pairs them in its first window
   if (ap && ap.status === 'ranked') await setRank(t, b, { div: Number(ap.div_idx), points: Number(ap.points) });
-  const p = await rankedPair(a, b);
+  const p = await rankedPair(t, a, b);
   const out = await finish(p, aWins ? a : b);
   return { p, b, out };
 }
@@ -101,7 +102,7 @@ describe('arming', () => {
     const [a, b] = [await t.user('A'), await t.user('B')];
     for (const u of [a, b]) { await setRank(t, u, { div: 6, points: 50 }); await give(t, u, 1); }
     await a.call('pokejam_shield_arm', [true]);
-    const p = await rankedPair(a, b);
+    const p = await rankedPair(t, a, b);
     expect(await a.call<Row>('pokejam_shield_me')).toMatchObject({ armed: true, locked: true });
     await expect(a.call('pokejam_shield_arm', [false])).rejects.toThrow(/locked/);
     await expect(a.call('pokejam_shield_arm', [true])).rejects.toThrow(/locked/);
@@ -169,7 +170,7 @@ describe('consuming', () => {
     await setRank(t, b, { div: 10, points: 50 });
     await give(t, a, 1);
     await a.call('pokejam_shield_arm', [true]);
-    const p = await rankedPair(a, b);
+    const p = await rankedPair(t, a, b);
     await a.call('pokejam_match_alive', [p.mid]);
     await b.call('pokejam_match_alive', [p.mid]);
     await a.call('pokejam_leave_match', [p.mid]);
@@ -183,7 +184,7 @@ describe('consuming', () => {
     const t = await testDb();
     const [a, b] = [await t.user('A'), await t.user('B')];
     for (const u of [a, b]) { await setRank(t, u, { div: 10, points: 50 }); await give(t, u, 1); await u.call('pokejam_shield_arm', [true]); }
-    const p = await rankedPair(a, b);
+    const p = await rankedPair(t, a, b);
     await a.call('pokejam_leave_match', [p.mid]); // early leave = dodge
     expect((await t.sql('select status from public.pokejam_matches where id = $1', [p.mid]))[0].status).toBe('void');
     expect((await prof(t, a.id)).points).toBeLessThan(50);
@@ -199,7 +200,7 @@ describe('consuming', () => {
     const [a, b] = [await t.user('A'), await t.user('B')];
     for (const u of [a, b]) { await setRank(t, u, { div: 10, points: 50 }); await give(t, u, 1); }
     await a.call('pokejam_shield_arm', [true]);
-    const p = await rankedPair(a, b);
+    const p = await rankedPair(t, a, b);
     await p.host.call('pokejam_report_result', [p.mid, true]);
     expect((await p.guest.call<Row>('pokejam_report_result', [p.mid, false])).status).toBe('void');
     expect(await inv(t, a)).toMatchObject({ count: 1 });
@@ -293,7 +294,7 @@ describe('rolling 24 h cap', () => {
     await a.call('pokejam_shield_arm', [true]);
     const [o1, o2] = [await t.user('O1'), await t.user('O2')];
     for (const o of [o1, o2]) await setRank(t, o, { div: 10, points: 50 });
-    await finish(await rankedPair(a, o1), o1);
+    await finish(await rankedPair(t, a, o1), o1);
     expect(await inv(t, a)).toMatchObject({ count: 4 });
     const mid = (await t.sql(`insert into public.pokejam_matches(queue, host, guest, host_mmr, guest_mmr, seed, quarter_len, status, winner)
       values ('ranked', $1, $2, 1000, 1000, 1, 120, 'done', $2) returning id`, [o2.id, a.id]))[0].id as string;
@@ -369,7 +370,7 @@ describe('weekly challenge', () => {
     const [a, b] = [await t.user('A'), await t.user('B')];
     await setRank(t, a, { div: 10, points: 50 });
     await setRank(t, b, { div: 10, points: 50 });
-    const p = await rankedPair(a, b);
+    const p = await rankedPair(t, a, b);
     await a.call('pokejam_match_alive', [p.mid]);
     await b.call('pokejam_match_alive', [p.mid]);
     await a.call('pokejam_leave_match', [p.mid]);
@@ -383,7 +384,7 @@ describe('weekly challenge', () => {
     await setRank(t, b, { div: 10, points: 50 });
     for (let i = 0; i < 5; i++) {
       for (const u of [a, b]) await setRank(t, u, { div: 10, points: 50 }); // keep them within the queue window
-      const p = await rankedPair(a, b);
+      const p = await rankedPair(t, a, b);
       await finish(p, a);
       await t.sql(`update public.pokejam_matches set created_at = now() - interval '30 hours'`); // free the pair for matchmaking
     }

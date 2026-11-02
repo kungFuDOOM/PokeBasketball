@@ -1,7 +1,7 @@
 // Migration 20261113: Ranked refuses guest (anonymous) sessions, and a leave after the 30 s no-connect window is no longer
 // a free dodge.
 import { describe, expect, it, vi } from 'vitest';
-import { testDb, type Db } from './testDb';
+import { testDb, type Db, pickBoth } from './testDb';
 
 vi.setConfig({ testTimeout: 60_000 });
 
@@ -21,6 +21,7 @@ async function rankedPair(t: Db) {
   expect(await a.call('pokejam_find_match', ['ranked'])).toBeNull();
   const mid = await b.call<string | null>('pokejam_find_match', ['ranked']);
   expect(mid).toBeTruthy();
+  await pickBoth(t, mid!);
   const info = await a.call<Record<string, string>>('pokejam_match_info', [mid!]);
   return { mid: mid!, host: info.host === a.id ? a : b, guest: info.host === a.id ? b : a };
 }
