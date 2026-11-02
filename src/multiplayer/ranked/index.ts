@@ -17,6 +17,11 @@ import { TIER_COLORS, view, type MatchOutcome, type RankView } from './rank';
 import { LocalRankStore } from './rankStore';
 import { rankChipHtml, postMatchHtml, shieldItemHtml, shieldTagHtml, signInPanelHtml, weeklyCardHtml } from './view';
 import { mountUsernamePicker } from './picker';
+import { MODE_SHIELD_SHOP } from '../../config/features';
+import { shopReturnOf } from './shopView';
+
+/** The Rank Shield chip, with its Shop button when the shop is switched on. */
+const chipHtml = (st: Parameters<typeof shieldItemHtml>[0]) => shieldItemHtml(st, Date.now(), MODE_SHIELD_SHOP);
 
 // The Skip button on a rank-up / rank-down / placed reveal (view.ts): one listener for every reveal on the page.
 if (typeof document !== 'undefined' && !(document as unknown as { __rkSkip?: boolean }).__rkSkip) {
@@ -123,15 +128,31 @@ async function renderHome(ctx: ModeContext) {
     const shield = await svc.shieldStatus().catch(() => null); // an older server has no Rank Shield: the hub just doesn't show it
     if (!slot.isConnected) return;
     slot.innerHTML = rankChipHtml(me) + weeklyCardHtml(shield?.weekly);
-    actions.insertAdjacentHTML('afterbegin', `<button class="btn primary big" data-a="find">Find ranked match</button>${shieldItemHtml(shield)}`);
+    actions.insertAdjacentHTML('afterbegin', `<button class="btn primary big" data-a="find">Find ranked match</button>${chipHtml(shield)}`);
     actions.querySelector('[data-a="find"]')!.addEventListener('click', () => void quickMatch(ctx));
     actions.addEventListener('click', (e) => {
       const btn = (e.target as Element).closest<HTMLButtonElement>('[data-a="arm"]');
       if (btn && !btn.disabled) void toggleShield(svc, actions, btn.getAttribute('aria-pressed') !== 'true');
+      if (MODE_SHIELD_SHOP && (e.target as Element).closest('[data-a="shop"]')) void showShop(svc, actions);
     });
+    // Back from Stripe Checkout (?shop=success / ?shop=cancel): open the shop on the result, then drop the param.
+    const returned = MODE_SHIELD_SHOP ? shopReturnOf(location.search) : null;
+    if (returned) {
+      history.replaceState(null, '', location.pathname + location.hash);
+      void showShop(svc, actions, returned);
+    }
   } catch {
     if (slot.isConnected) slot.innerHTML = '<p class="note">Could not load your rank from the server.</p>';
   }
+}
+
+/** The Rank Shield shop sheet (lazy: not in the bundle's first load); on close the chip's count is refreshed. */
+async function showShop(svc: SupabaseMatchService, actions: HTMLElement, returned: 'success' | 'cancel' | null = null) {
+  const { openShop } = await import('./shop');
+  openShop(svc, { returned, onClose: () => void svc.shieldStatus().then((st) => {
+    const chip = actions.querySelector<HTMLElement>('[data-rk="shield"]');
+    if (st && chip?.isConnected) chip.outerHTML = chipHtml(st);
+  }, () => {}) });
 }
 
 /** ARM / ARMED on the hub. The server decides (24 h cap, placements, Zenith, lock); a refusal is shown in the chip's note. */
@@ -141,11 +162,11 @@ async function toggleShield(svc: SupabaseMatchService, actions: HTMLElement, on:
   chip.querySelector<HTMLButtonElement>('[data-a="arm"]')!.disabled = true;
   try {
     const st = await svc.setShieldArmed(on);
-    if (st && chip.isConnected) chip.outerHTML = shieldItemHtml(st);
+    if (st && chip.isConnected) chip.outerHTML = chipHtml(st);
   } catch (e) {
     const fresh = await svc.shieldStatus().catch(() => null); // show the real state and the reason it is off
     if (!chip.isConnected) return;
-    if (fresh) chip.outerHTML = shieldItemHtml(fresh);
+    if (fresh) chip.outerHTML = chipHtml(fresh);
     else chip.querySelector<HTMLButtonElement>('[data-a="arm"]')!.disabled = false;
     if (e instanceof OnlineError) actions.querySelector('[data-rk="shield"] .rk-item-note')?.replaceChildren(document.createTextNode(e.message));
   }
