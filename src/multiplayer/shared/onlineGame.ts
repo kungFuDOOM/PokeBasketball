@@ -186,7 +186,7 @@ export async function playOnline(ctx: ModeContext, o: OnlineGameOptions) {
       online: {
         viewTeam: match.side,
         start: (g) => {
-          const l = (ls = new Lockstep(g, link, { side: match.side, delay: startDelay }));
+          const l = (ls = new Lockstep(g, link, { side: match.side, delay: startDelay, resyncLimit: 12 }));
           startedAt = performance.now();
           link.attach(l);
           // Read-only counters for the lag tests (no ids or secrets).

@@ -73,6 +73,9 @@ export const ENGINE_VERSION = 3;
 // v1: the live pokejam.xyz odds, first seeded (#6). v2: pure skill, no rolls (#7). v3: back to the live game's
 // odds and CPU, every roll still on the match's seeded RNG, plus the live lineup rule and shot-clock horn.
 
+/** Seconds on the clock at the start of quarter `q` (overtime is above 4). */
+export const quarterClock = (q: number, quarterLen: number): number => (q > 4 ? Math.max(30, Math.round(quarterLen / 2)) : quarterLen);
+
 export interface GameConfig {
   home: TeamDef;
   away: TeamDef;
