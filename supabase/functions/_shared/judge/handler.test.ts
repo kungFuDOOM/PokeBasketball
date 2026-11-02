@@ -5,7 +5,7 @@ import { judgeSetupFromRow, type ServerMatchRow } from '../../../../src/multipla
 import { judge as realJudge, matchKey, signTicks, type Evidence, type MatchSetup, type Verdict } from '../../../../src/multiplayer/shared/winnerCheck.ts';
 import { ENGINE_VERSION } from '../../../../src/game/types.ts';
 import { type Db, testDb } from '../../../tests/testDb.ts';
-import { MAX_MATCHES, judgeConfig, judgeHandler, type JudgeDeps } from './handler.ts';
+import { MAX_MATCHES, MAX_UPLOAD_BATCHES, judgeConfig, judgeHandler, type JudgeDeps } from './handler.ts';
 
 vi.setConfig({ testTimeout: 30_000 });
 
@@ -149,11 +149,11 @@ describe('pokejam-judge', () => {
     const res = await (await call(deps, { match_ids: [first.id, broken.id, second.id, first.id] })).json();
     expect(res.results).toMatchObject([
       { match_id: first.id, result: 'skipped', reason: 'already judged' },
-      { match_id: broken.id, result: 'error' },
+      { match_id: broken.id, result: 'recorded', status: 'invalid' },
       { match_id: second.id, result: 'recorded', status: 'final' },
     ]);
     expect(judged).toEqual([first.id, second.id]);
-    expect((await verdicts(w.t)).map((v) => v.match_id).sort()).toEqual([first.id, second.id].sort());
+    expect((await verdicts(w.t)).map((v) => v.match_id).sort()).toEqual([first.id, broken.id, second.id].sort());
   });
 
   describe('the game comes from the server row', () => {
@@ -236,6 +236,58 @@ describe('pokejam-judge', () => {
       const { deps } = dbDeps(w.t, w.sessions);
       deps.uploadsOf = async () => ['gz1:x'];
       expect((await (await call(deps, { match_ids: [id] })).json()).results).toEqual([{ match_id: id, result: 'skipped', reason: 'no such match' }]);
+    });
+  });
+
+  describe('a hostile upload', () => {
+    const z = { mx: 0, my: 0, b: 0 };
+    /** `n` copies of one signed batch: cheap to make, and each still counts against the cap. */
+    const flood = async (id: string, key: CryptoKey, n: number) => Array(n).fill(await signTicks(key, id, 0, 0, [z]));
+
+    it('over the cap is dropped before any signature check, and the other upload still judges the match', async () => {
+      const w = await world();
+      let honest: Evidence['inputs'] = [];
+      const m = await w.match('ranked', async (id, k) => {
+        honest = [await signTicks(k.host, id, 0, MIN_DELAY, [z, z]), await signTicks(k.guest, id, 1, MIN_DELAY, [z, z])];
+        return [{ setup: setupFor(id), keys: k.pub, inputs: await flood(id, k.host, MAX_UPLOAD_BATCHES + 1), applied: [] },
+          { setup: setupFor(id), keys: k.pub, inputs: honest, applied: [] }];
+      });
+      const seen: Evidence[] = [];
+      const { deps } = dbDeps(w.t, w.sessions, async (ev) => { seen.push(ev); return realJudge(ev); });
+      expect((await (await call(deps, { match_ids: [m.id] })).json()).results).toEqual([{ match_id: m.id, result: 'recorded', status: 'incomplete' }]);
+      expect(seen[0].inputs).toEqual(honest);
+      expect((await verdicts(w.t))[0].notes).toMatch(new RegExp(`ignored upload 1 of 2: ${MAX_UPLOAD_BATCHES + 1} batches, over the cap`));
+    });
+
+    it('exactly at the cap is still read', async () => {
+      const w = await world();
+      const m = await w.match('ranked', async (id, k) => [{ setup: setupFor(id), keys: k.pub, inputs: await flood(id, k.host, MAX_UPLOAD_BATCHES), applied: [] }]);
+      const seen: Evidence[] = [];
+      const { deps } = dbDeps(w.t, w.sessions, async (ev) => { seen.push(ev); return realJudge(ev); });
+      await call(deps, { match_ids: [m.id] });
+      expect(seen[0].inputs).toHaveLength(MAX_UPLOAD_BATCHES);
+    });
+
+    it('both over the cap is invalid, with no judging at all', async () => {
+      const w = await world();
+      const judged = vi.fn();
+      const m = await w.match('ranked', async (id, k) => {
+        const inputs = await flood(id, k.host, MAX_UPLOAD_BATCHES + 1);
+        return [{ setup: setupFor(id), keys: k.pub, inputs, applied: [] }, { setup: setupFor(id), keys: k.pub, inputs, applied: [] }];
+      });
+      const { deps } = dbDeps(w.t, w.sessions, judged);
+      expect((await (await call(deps, { match_ids: [m.id] })).json()).results).toEqual([{ match_id: m.id, result: 'recorded', status: 'invalid' }]);
+      expect(judged).not.toHaveBeenCalled();
+      expect((await verdicts(w.t))[0].notes).toMatch(/no usable upload/);
+    });
+
+    it('junk next to an honest upload does not stop the match being judged', async () => {
+      const w = await world();
+      const m = await w.match('ranked', async (id, k) => [{ setup: setupFor(id), keys: k.pub, inputs: [await signTicks(k.host, id, 0, MIN_DELAY, [z]), await signTicks(k.guest, id, 1, MIN_DELAY, [z])], applied: [] }]);
+      await w.t.sql("insert into public.pokejam_match_evidence(match_id, user_id, evidence) values ($1, $2, 'gz1:not gzip')", [m.id, m.guest.id]);
+      const { deps } = dbDeps(w.t, w.sessions);
+      expect((await (await call(deps, { match_ids: [m.id] })).json()).results).toEqual([{ match_id: m.id, result: 'recorded', status: 'incomplete' }]);
+      expect((await verdicts(w.t))[0].notes).toMatch(/ignored upload 2 of 2: unreadable/);
     });
   });
 

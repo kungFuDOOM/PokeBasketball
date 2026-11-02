@@ -82,3 +82,26 @@ export function bansHtml(rows: Ban[]): string {
       <td class="acts">${actions(b, true)}</td></tr>`).join('')}
   </tbody></table></div>`;
 }
+
+export interface JudgeShadowRow {
+  day: string; browser_engine: string; n: number; final_n: number; incomplete_n: number; forfeit_n: number; invalid_n: number;
+  agree_n: number; disagree_n: number; agree_rate: number | null; resync_matches: number; resync_disagree_n: number;
+}
+export interface JudgeShadow {
+  rows: JudgeShadowRow[];
+  backlog: { pending: number; running: number; failed: number; oldest_ready_s: number | null; unjudged: number };
+}
+
+/** The judge's shadow verdicts against what the players reported, per day and host browser engine. */
+export function judgeShadowHtml(s: JudgeShadow): string {
+  const b = s.backlog;
+  const backlog = `<p class="note">Queue: ${b.pending} pending${b.oldest_ready_s === null ? '' : ` (oldest ready ${Math.round(b.oldest_ready_s)} s ago)`}, ${b.running} running, ${b.failed} failed. ${b.unjudged} finished with no verdict, mostly no uploads.</p>`;
+  if (!s.rows.length) return `<p class="note">No verdicts yet.</p>${backlog}`;
+  return `<div class="scroll"><table><thead><tr><th>Day (PT)</th><th>Host engine</th><th>Verdicts</th><th>Final</th><th>Agree</th><th>Disagree</th><th>Agree rate</th>
+      <th>With resyncs</th><th>Resyncs + disagree</th><th>Incomplete</th><th>Forfeit</th><th>Invalid</th></tr></thead><tbody>
+    ${s.rows.map((r) => `<tr><td>${esc(r.day)}</td><td>${esc(r.browser_engine)}</td><td>${r.n}</td><td>${r.final_n}</td><td>${r.agree_n}</td><td>${r.disagree_n}</td>
+      <td>${r.agree_rate === null ? '–' : `${Math.round(r.agree_rate * 100)}%`}</td><td>${r.resync_matches}</td><td>${r.resync_disagree_n}</td>
+      <td>${r.incomplete_n}</td><td>${r.forfeit_n}</td><td>${r.invalid_n}</td></tr>`).join('')}
+  </tbody></table></div><p class="note">Nothing here changes a result yet. Agree = the replay's winner is the match's winner; a void match counts as neither.
+    “unknown” engine = the host sent no stats, or an older client.</p>${backlog}`;
+}

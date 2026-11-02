@@ -11,6 +11,7 @@ Step 3 of the plan on issue #4: after a battle has a winner, buy the winner's Co
 | `../migrations/20261023_pokejam_pack_payouts.sql` | `pokejam_pack_machines`, `pokejam_pack_ledger`, `pokejam_pack_prizes`, and their functions. RLS is on: players read only their own prizes and ledger rows. Every write goes through service-role functions. |
 | `../migrations/20261024_pokejam_pack_keep_or_sell.sql` | Keep it or sell it back at the reveal: the `revealed` state, `choice` / `choose_by` / `sell_estimate`, and `pokejam_pack_choose_prize`, the one prize write a player makes. |
 | `pokejam-pack-payouts/` | The prize worker. Each run recovers stuck prizes, then settles up to 5. |
+| `pokejam-judge-worker/` | Judges the next Ranked match in the queue, one per run, in shadow mode. See "The judge queue" below. |
 | `pokejam-pack-machines/` | Refreshes `pokejam_pack_machines` from CC's live prices, odds and stock, for the lobby. |
 | `_shared/pack/` | Ported from the devnet-verified Bun prototype: CC client, Solana RPC, Core transfer, signing, machines and the worker. Imports use explicit `.ts` extensions, so the same files run in Deno and in vitest. |
 
@@ -79,16 +80,27 @@ When it's switched on, quick match, making a room and joining one each need a sh
 
 ## Moderation: the winner check on demand (`pokejam-judge/`)
 
-The moderation page's Reported tab shows a cheat-check tag per reported player. `pokejam-judge` makes those verdicts: given up to 20 `match_ids`, it skips matches already judged or with no uploads (Social matches have none), then for each of the rest reads both players' uploads with the service role, merges their signed inputs under the setup and keys from the match row (`pokejam_match_setup` in `../migrations/20261128_pokejam_match_setup.sql`, `mergeEvidence` in `src/multiplayer/shared/evidence.ts`, so an uploader can't choose the seed, rosters or keys), replays the match with `judge()` and saves the result with `pokejam_record_verdict`. Uploads must carry the engine version this judge runs, otherwise the verdict is `invalid`. Only moderators (`pokejam_is_admin`) get an answer; anyone else gets 403. One bad or oversized match is reported as skipped or an error and doesn't stop the rest.
+The moderation page's Reported tab shows a cheat-check tag per reported player. `pokejam-judge` makes those verdicts: given up to 20 `match_ids`, it skips matches already judged or with no uploads (Social matches have none), then for each of the rest reads both players' uploads with the service role, merges their signed inputs under the setup and keys from the match row (`pokejam_match_setup` in `../migrations/20261128_pokejam_match_setup.sql`, `mergeEvidence` in `src/multiplayer/shared/evidence.ts`, so an uploader can't choose the seed, rosters or keys), replays the match with `judge()` and saves the result with `pokejam_record_verdict`. Uploads must carry the engine version this judge runs, otherwise the verdict is `invalid`. An upload that can't be read or has more than `MAX_UPLOAD_BATCHES` batches is ignored with a note, and the match is judged on the other upload. Only moderators (`pokejam_is_admin`) get an answer; anyone else gets 403. One bad or oversized match is reported as skipped or an error and doesn't stop the rest.
 
 It imports the game engine from `src/` (the replay must be the game's own code), and `deno.json` turns on sloppy imports for those extensionless imports.
 
-Everything it imports must load without Vite: no `import.meta.env` or browser globals at module level. `_shared/judge/denoSafe.test.ts` guards that in Node. For a check in Deno itself, load the two modules that `index.ts` imports with `npx deno@2.5.4 run --config supabase/functions/pokejam-judge/deno.json --allow-read <script>`, where the script imports them.
+Everything it imports must load without Vite: no `import.meta.env` or browser globals at module level. `_shared/judge/denoSafe.test.ts` guards that in Node. For a check in Deno itself, load the modules that `index.ts` imports with `npx deno@2.5.4 run --config supabase/functions/pokejam-judge/deno.json --allow-read <script>`, where the script imports them.
 
 One call costs about 1 s of CPU per match, so judge one match per call. Numbers and open risks are in `docs/multiplayer.md` ("What judging costs, and where it runs").
 
 1. Apply `20261122_pokejam_match_verdicts.sql` and `20261128_pokejam_match_setup.sql` first.
 2. Deploy it with JWT verification on (the default; never `--no-verify-jwt`): `supabase functions deploy pokejam-judge`. Optionally `supabase secrets set JUDGE_ALLOWED_ORIGINS=https://pokejam.xyz,<test site>`.
+
+## The judge queue: every Ranked match, in shadow mode (`pokejam-judge-worker/`)
+
+Each run claims one ready job from `pokejam_judge_jobs` and judges that match with the same code as `pokejam-judge`. The verdict is saved and nothing else changes: no rating, winner or match status. Only a caller holding the service key gets an answer. Rules for jobs are in `docs/multiplayer.md`, and each judging logs its duration.
+
+1. Apply `20261129_pokejam_judge_jobs.sql`. From then on every Ranked match that ends gets a job, and they wait harmlessly until the worker runs.
+2. Deploy it: `supabase functions deploy pokejam-judge-worker`.
+3. Add two vault secrets, `pokejam_service_key` (the service role key) and `pokejam_functions_url` (`https://<project ref>.supabase.co/functions/v1`), then apply `20261130_pokejam_judge_cron.sql`. It schedules the every-minute job only if `pg_cron`, `pg_net` and both secrets are there; otherwise it raises a notice and changes nothing, so add what's missing and run it again. No key is stored in SQL, and a minute with nothing ready makes no Edge Function call.
+4. Deploy the moderation page for the "Judge, shadow mode" table. It reads `pokejam_admin_judge_shadow`, and says "unavailable" if the migration isn't applied yet.
+
+To stop it: `select cron.unschedule('pokejam-judge-worker');`. Jobs keep queueing and are judged when it's back, unless the uploads have passed their 30-day retention.
 
 ## Test locally
 
