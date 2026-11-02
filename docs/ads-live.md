@@ -38,6 +38,8 @@ Main's board has two fixed halves: `$PJAM · OFFICIAL POKEJAM TOKEN` and `YOUR A
 - The **$PJAM half stays a fixed house ad**, drawn as before.
 - Booked ads take **only the "YOUR AD HERE" half**. With several booked, they take turns, one per repeat of the ticker. With none booked, it shows YOUR AD HERE.
 
+On the Advertise page the music button sits in the page header and the page pads for every safe area, so nothing floats over the plans or checkout. The HUD banner starts below the board.
+
 The board is part of the court scenery. The Advertise page is a separate screen, reached from the title menu (Courtside Ads) or `#advertise`, so no ad UI ever covers the game. `NET_VERSION` stays 3, because the board is drawn locally and isn't part of the netcode.
 
 ## Legal copy
