@@ -1,0 +1,249 @@
+// "Sign in with Phantom" where no wallet is injected (iOS Safari, the iOS home-screen app, Android Chrome), using Phantom's
+// universal-link deeplinks: connect, then signMessage, each one a trip to the Phantom app and back. Pure logic: no DOM at import,
+// and storage, clock and network are passed in. phantomSheet.ts draws it. See docs/phantom-mobile-signin.md.
+//
+// Secrets (the dapp x25519 key, Phantom's session token) stay in this tab's sessionStorage and are never logged. Each trip has a
+// random one-time id in the redirect link: it rejects unsolicited or replayed callbacks and keys the relay.
+import { base58Decode, base58Encode, isAddress, randomBytes } from '../../supabase/functions/_shared/pack/bytes.ts';
+import { boxBefore, boxOpen, boxPublicKey, boxSeal } from './nacl';
+import { SIGN_IN_STATEMENT } from './phantom';
+
+export const PHANTOM_UL = 'https://phantom.com/ul/v1';
+/** The whole sign-in, and the lifetime of the signed message. */
+export const FLOW_TTL_MS = 10 * 60_000;
+export const PENDING_KEY = 'pokejam.phantom.pending';
+/** The query marker on the way back. public/phantom-return.js strips it, and Phantom's params, before anything else runs. */
+export const RETURN_PARAM = 'pj_phantom';
+export const APP_PARAM = 'pj_app';
+
+export type Store = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
+export type ReturnTo = 'ranked' | 'profile';
+
+export interface Pending {
+  v: 1;
+  /** The one-time id of the trip in progress: the state check, and the relay key. */
+  id: string;
+  step: 'connect' | 'sign';
+  /** Started in a home-screen app: only changes the wording of the landing page. */
+  app: boolean;
+  /** The player has tapped through to Phantom for this step, so a callback is expected. */
+  opened: boolean;
+  returnTo: ReturnTo;
+  expiresAt: number;
+  /** The dapp's x25519 secret key, base58. */
+  secret: string;
+  phantomPub?: string;
+  session?: string;
+  wallet?: string;
+  message?: string;
+  nonce?: string;
+}
+
+/** Phantom's answer, trimmed to fields we use. Also the exact shape stored in the relay: ciphertext, or an error code. */
+export interface PhantomResponse { k?: string; n?: string; d?: string; e?: string }
+export interface Callback { id: string; app: boolean; response: PhantomResponse }
+
+export class PhantomLinkError extends Error {
+  name = 'PhantomLinkError';
+  constructor(message: string, public cancelled = false) { super(message); }
+}
+
+const ID_RE = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
+const B58_RE = /^[1-9A-HJ-NP-Za-km-z]{1,3500}$/;
+const CODE_RE = /^-?\d{1,6}$/;
+
+/** A home-screen web app, where Phantom's redirect opens in the browser rather than back in this app. */
+export function isStandalone(w: { navigator?: { standalone?: boolean }; matchMedia?: (q: string) => { matches: boolean } }): boolean {
+  if (w.navigator?.standalone === true) return true;
+  try { return !!w.matchMedia?.('(display-mode: standalone)').matches; } catch { return false; }
+}
+
+// ---------- Sign in with Solana message ----------
+
+/** Builds the message the way supabase-js does for a wallet with signMessage, so Supabase verifies it the same way. */
+export function buildSiwsMessage(o: { host: string; uri: string; address: string; nonce: string; issuedAt: number; expiresAt: number }): string {
+  return [
+    `${o.host} wants you to sign in with your Solana account:`,
+    o.address,
+    '',
+    SIGN_IN_STATEMENT,
+    '',
+    'Version: 1',
+    `URI: ${o.uri}`,
+    `Issued At: ${new Date(o.issuedAt).toISOString()}`,
+    `Expiration Time: ${new Date(o.expiresAt).toISOString()}`,
+    'Chain ID: mainnet',
+    `Nonce: ${o.nonce}`,
+  ].join('\n');
+}
+
+/** Checks our own message before it goes to the server: right wallet, right nonce, not expired. */
+export function checkSiwsMessage(message: string, want: { address: string; nonce: string; now: number }): void {
+  const lines = message.split('\n');
+  const field = (name: string) => lines.find((l) => l.startsWith(`${name}: `))?.slice(name.length + 2);
+  const exp = Date.parse(field('Expiration Time') ?? '');
+  if (lines[1] !== want.address || field('Nonce') !== want.nonce) throw new PhantomLinkError('That sign-in did not match. Try again.');
+  if (!Number.isFinite(exp) || exp <= want.now) throw new PhantomLinkError('That sign-in expired. Try again.');
+}
+
+// ---------- Encryption ----------
+
+function seal(payload: unknown, shared: Uint8Array): { nonce: string; payload: string } {
+  const nonce = randomBytes(24);
+  return { nonce: base58Encode(nonce), payload: base58Encode(boxSeal(new TextEncoder().encode(JSON.stringify(payload)), nonce, shared)) };
+}
+
+function open(r: PhantomResponse, phantomPub: string, secret: string): Record<string, unknown> {
+  try {
+    const plain = boxOpen(base58Decode(r.d ?? ''), base58Decode(r.n ?? ''), boxBefore(base58Decode(phantomPub), base58Decode(secret)));
+    const parsed: unknown = plain && JSON.parse(new TextDecoder().decode(plain));
+    if (parsed && typeof parsed === 'object') return parsed as Record<string, unknown>;
+  } catch { /* the same answer as a bad tag */ }
+  throw new PhantomLinkError('Could not read the answer from Phantom. Try again.');
+}
+
+// ---------- Links ----------
+
+function redirectLink(loc: { origin: string; pathname: string }, id: string, app: boolean): string {
+  return `${loc.origin}${loc.pathname}?${RETURN_PARAM}=${id}${app ? `&${APP_PARAM}=1` : ''}`;
+}
+const newId = () => base58Encode(randomBytes(32));
+
+/** Starts a sign-in: stores a fresh key and id in this tab and returns the connect link. Synchronous, so it can run inside a tap. */
+export function beginConnect(store: Store, o: { loc: { origin: string; pathname: string }; app: boolean; returnTo: ReturnTo; now: number }): string {
+  const secret = randomBytes(32);
+  const p: Pending = { v: 1, id: newId(), step: 'connect', app: o.app, opened: true, returnTo: o.returnTo, expiresAt: o.now + FLOW_TTL_MS, secret: base58Encode(secret) };
+  savePending(store, p);
+  const q = new URLSearchParams({
+    app_url: o.loc.origin,
+    dapp_encryption_public_key: base58Encode(boxPublicKey(secret)),
+    redirect_link: redirectLink(o.loc, p.id, o.app),
+    cluster: 'mainnet-beta',
+  });
+  return `${PHANTOM_UL}/connect?${q}`;
+}
+
+/** The signMessage link for a pending 'sign' step. */
+export function signLink(p: Pending, loc: { origin: string; pathname: string }): string {
+  if (p.step !== 'sign' || !p.message || !p.session || !p.phantomPub) throw new PhantomLinkError('Start the sign-in again.');
+  const sealed = seal({ message: base58Encode(new TextEncoder().encode(p.message)), session: p.session, display: 'utf8' }, boxBefore(base58Decode(p.phantomPub), base58Decode(p.secret)));
+  const q = new URLSearchParams({
+    dapp_encryption_public_key: base58Encode(boxPublicKey(base58Decode(p.secret))),
+    nonce: sealed.nonce,
+    redirect_link: redirectLink(loc, p.id, p.app),
+    payload: sealed.payload,
+  });
+  return `${PHANTOM_UL}/signMessage?${q}`;
+}
+
+// ---------- Storage ----------
+
+export function savePending(store: Store, p: Pending): void { store.setItem(PENDING_KEY, JSON.stringify(p)); }
+export function clearPending(store: Store): void { try { store.removeItem(PENDING_KEY); } catch { /* nothing to clear */ } }
+
+/** The sign-in in progress in this tab. An expired one is wiped, and reported so the page can say so. */
+export function loadPending(store: Store, now: number): { pending: Pending | null; expired: boolean } {
+  let raw: string | null = null;
+  try { raw = store.getItem(PENDING_KEY); } catch { return { pending: null, expired: false }; }
+  if (!raw) return { pending: null, expired: false };
+  try {
+    const p = JSON.parse(raw) as Pending;
+    if (p?.v === 1 && typeof p.id === 'string' && typeof p.secret === 'string' && (p.step === 'connect' || p.step === 'sign')) {
+      if (p.expiresAt > now) return { pending: p, expired: false };
+      clearPending(store);
+      return { pending: null, expired: true };
+    }
+  } catch { /* corrupt: wiped below */ }
+  clearPending(store);
+  return { pending: null, expired: false };
+}
+
+// ---------- Coming back ----------
+
+/** Reads Phantom's callback out of a query string. Null when it isn't one, or has a field of the wrong shape. Phantom's free-text errorMessage is dropped: it's attacker-writable and we have our own copy. */
+export function parseCallback(search: string): Callback | null {
+  // Tolerates a second "?" in case a wallet appends its params without noticing the query already in the redirect link.
+  const q = new URLSearchParams(search.replace(/^\?/, '').replace(/\?/g, '&'));
+  const id = q.get(RETURN_PARAM);
+  if (!id || !ID_RE.test(id)) return null;
+  const app = q.get(APP_PARAM) === '1';
+  const e = q.get('errorCode');
+  if (e !== null) return CODE_RE.test(e) ? { id, app, response: { e } } : null;
+  const n = q.get('nonce');
+  const d = q.get('data');
+  const k = q.get('phantom_encryption_public_key');
+  if (!n || !d || !B58_RE.test(n) || !B58_RE.test(d) || (k !== null && !ID_RE.test(k))) return null;
+  return { id, app, response: k ? { k, n, d } : { n, d } };
+}
+
+/**
+ * What a landing page does with a callback. 'direct': it belongs to the trip in progress in this tab. 'relay': this tab doesn't
+ * hold that key (a home-screen app's redirect landing in Safari, or a browser that opened a new tab, as sessionStorage is per tab),
+ * so pass the ciphertext to the tab that does. Local state is untouched, so a forged or replayed callback changes nothing here.
+ */
+export function routeCallback(cb: Callback, pending: Pending | null): 'direct' | 'relay' {
+  return pending && pending.opened && pending.id === cb.id ? 'direct' : 'relay';
+}
+
+export type Advance =
+  | { kind: 'need-sign'; pending: Pending }
+  | { kind: 'signed'; message: string; signature: Uint8Array };
+
+/**
+ * Applies Phantom's answer to the trip in progress. The id is used up first, so the same callback can't be applied twice; any
+ * failure wipes the key and session. Throws PhantomLinkError.
+ */
+export function advance(store: Store, p: Pending, r: PhantomResponse, o: { host: string; uri: string; now: number }): Advance {
+  clearPending(store);
+  if (p.expiresAt <= o.now) throw new PhantomLinkError('That sign-in expired. Try again.');
+  if (r.e !== undefined) {
+    if (r.e === '4001') throw new PhantomLinkError('Sign-in cancelled in Phantom.', true);
+    throw new PhantomLinkError('Phantom could not finish that. Try again.');
+  }
+  if (p.step === 'connect') {
+    if (!r.k) throw new PhantomLinkError('Could not read the answer from Phantom. Try again.');
+    const body = open(r, r.k, p.secret);
+    const wallet = body.public_key;
+    const session = body.session;
+    if (!isAddress(wallet) || typeof session !== 'string' || !session) throw new PhantomLinkError('Could not read the answer from Phantom. Try again.');
+    const expiresAt = o.now + FLOW_TTL_MS;
+    const nonce = base58Encode(randomBytes(16));
+    const next: Pending = {
+      ...p, id: newId(), step: 'sign', opened: false, expiresAt, phantomPub: r.k, session, wallet, nonce,
+      message: buildSiwsMessage({ host: o.host, uri: o.uri, address: wallet, nonce, issuedAt: o.now, expiresAt }),
+    };
+    savePending(store, next);
+    return { kind: 'need-sign', pending: next };
+  }
+  if (!p.phantomPub || !p.message || !p.wallet || !p.nonce) throw new PhantomLinkError('Start the sign-in again.');
+  const sig = open(r, p.phantomPub, p.secret).signature;
+  let signature: Uint8Array | null = null;
+  try { signature = typeof sig === 'string' ? base58Decode(sig) : null; } catch { /* reported below */ }
+  if (!signature || signature.length !== 64) throw new PhantomLinkError('Could not read the answer from Phantom. Try again.');
+  checkSiwsMessage(p.message, { address: p.wallet, nonce: p.nonce, now: o.now });
+  return { kind: 'signed', message: p.message, signature };
+}
+
+// ---------- Relay ----------
+
+/** The part of the Supabase client the relay uses. Both calls work without a session: Safari may have none. */
+export interface RelayClient {
+  rpc(fn: string, args: Record<string, unknown>): PromiseLike<{ data: unknown; error: { message: string } | null }>;
+}
+
+/** Hands a callback to the tab that holds the key. Only ciphertext or an error code is ever sent. */
+export async function relayPut(sb: RelayClient, cb: Callback): Promise<boolean> {
+  const { k, n, d, e } = cb.response;
+  const payload: PhantomResponse = e !== undefined ? { e } : { ...(k ? { k } : {}), n, d };
+  const { data, error } = await sb.rpc('pokejam_phantom_relay_put', { p_id: cb.id, p_payload: payload });
+  return !error && data === true;
+}
+
+/** Fetches and deletes what the landing page left for this id, or null when nothing is there yet. */
+export async function relayTake(sb: RelayClient, id: string): Promise<PhantomResponse | null> {
+  const { data, error } = await sb.rpc('pokejam_phantom_relay_take', { p_id: id });
+  if (error || !data || typeof data !== 'object') return null;
+  const r = data as Record<string, unknown>;
+  const str = (v: unknown) => (typeof v === 'string' ? v : undefined);
+  return { k: str(r.k), n: str(r.n), d: str(r.d), e: str(r.e) };
+}

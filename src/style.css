@@ -2432,3 +2432,16 @@ body:has(.pause-btn) .music-btn:not(.docked) {
   }
   .game.has-touch:not(.tut-on) .battle.show { transform: translateX(-50%); opacity: 1; }
 }
+
+/* The Phantom hand-off sheet: menus only, opened from a sign-in panel. Fits a landscape phone without scrolling. */
+.ph-panel { width: min(100%, 440px); padding: 12px 16px 14px; text-align: center; display: flex; flex-direction: column; gap: 8px; }
+.ph-title { margin: 0; font: 0.8rem var(--pixel); color: var(--accent); letter-spacing: 0.04em; }
+.ph-body { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.ph-body .note { margin: 0; }
+.ph-step { margin: 0; color: var(--muted); font-size: 0.85rem; }
+.ph-msg { margin: 0; font-size: 1.05rem; }
+.ph-msg[data-tone="bad"] { color: #ff8a80; }
+.ph-msg[data-tone="warn"] { color: var(--accent); }
+.ph-btns { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
+.ph-body .btn { text-decoration: none; display: inline-flex; align-items: center; justify-content: center; min-height: 44px; }
+.rk-signin a[data-a="phantom-browse"] { color: inherit; }

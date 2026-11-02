@@ -530,3 +530,10 @@ if (introShot === 'offline' || introShot === 'online') {
     },
   });
 } else menu();
+
+// Back from the Phantom app, or reloaded while a Phantom sign-in is in progress in this tab.
+if (ANY_MULTIPLAYER) {
+  const phantomCb = (window as unknown as { __phantomCb?: string }).__phantomCb;
+  const phantomPending = (() => { try { return !!sessionStorage.getItem('pokejam.phantom.pending'); } catch { return false; } })();
+  if (phantomCb || phantomPending) void import('./wallet/phantomSheet').then((m) => m.resumePhantom(phantomCb));
+}
