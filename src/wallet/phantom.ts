@@ -1,6 +1,6 @@
 // Phantom (Solana) wallet helper. Detects the browser wallet, builds the mobile deep link, signs in to Supabase with
 // "Sign in with Solana" and reads the wallet address back off the Supabase user. No payments, no transactions: it only
-// ever asks the wallet to sign the login message. Kept free of DOM globals at import time so it unit-tests in node;
+// ever asks the wallet to sign the login message. Phones without an injected wallet sign in through phantomLink.ts. Kept free of DOM globals at import time so it unit-tests in node;
 // callers can pass a window-like object. Reused by Ranked sign-in now, and by Pack Battles later.
 import type { SolanaWallet } from '@supabase/supabase-js';
 
@@ -42,7 +42,7 @@ export function isMobile(w: WalletHost = host()): boolean {
   return n.platform === 'MacIntel' && (n.maxTouchPoints ?? 0) > 1;
 }
 
-/** Opens `url` inside Phantom's in-app browser, where the wallet is injected. https://docs.phantom.com/phantom-deeplinks */
+/** Opens `url` inside Phantom's in-app browser, where the wallet is injected. The fallback if the app hand-off fails. https://docs.phantom.com/phantom-deeplinks */
 export function phantomDeepLink(url: string, origin?: string): string {
   const ref = origin ?? safeOrigin(url);
   return `https://phantom.app/ul/browse/${encodeURIComponent(url)}?ref=${encodeURIComponent(ref)}`;
@@ -54,19 +54,20 @@ function safeOrigin(url: string): string {
 /** What the sign-in panel should offer for Phantom on this device. */
 export type PhantomAction =
   | { kind: 'sign-in' }
-  | { kind: 'open-in-phantom'; href: string }
+  /** A phone with no injected wallet: hand off to the Phantom app. `browseHref` is the fallback, PokeJam in Phantom's browser. */
+  | { kind: 'deeplink'; browseHref: string }
   | { kind: 'install'; href: string };
 
 export function phantomAction(w: WalletHost = host()): PhantomAction {
   if (isPhantomInstalled(w)) return { kind: 'sign-in' };
-  if (isMobile(w) && w.location) return { kind: 'open-in-phantom', href: phantomDeepLink(w.location.href, w.location.origin) };
+  if (isMobile(w) && w.location) return { kind: 'deeplink', browseHref: phantomDeepLink(w.location.href, w.location.origin) };
   return { kind: 'install', href: PHANTOM_DOWNLOAD_URL };
 }
 
 /** The part of the Supabase client used here. */
 export interface Web3Client {
   auth: {
-    signInWithWeb3(c: { chain: 'solana'; statement: string; wallet: SolanaWallet }): PromiseLike<{ data: unknown; error: { message: string } | null }>;
+    signInWithWeb3(c: { chain: 'solana'; statement: string; wallet: SolanaWallet } | { chain: 'solana'; message: string; signature: Uint8Array }): PromiseLike<{ data: unknown; error: { message: string } | null }>;
   };
 }
 

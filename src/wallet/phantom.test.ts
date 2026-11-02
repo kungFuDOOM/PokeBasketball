@@ -37,7 +37,7 @@ describe('the deep link and what to offer', () => {
   });
   it('signs in when the wallet is there; deep-links on a phone; sends desktops to the download page', () => {
     expect(phantomAction({ phantom: { solana: phantom }, navigator: { userAgent: DESKTOP }, location: loc })).toEqual({ kind: 'sign-in' });
-    expect(phantomAction({ navigator: { userAgent: IPHONE }, location: loc })).toEqual({ kind: 'open-in-phantom', href: phantomDeepLink(loc.href, loc.origin) });
+    expect(phantomAction({ navigator: { userAgent: IPHONE }, location: loc })).toEqual({ kind: 'deeplink', browseHref: phantomDeepLink(loc.href, loc.origin) });
     expect(phantomAction({ navigator: { userAgent: DESKTOP }, location: loc })).toEqual({ kind: 'install', href: PHANTOM_DOWNLOAD_URL });
   });
 });

@@ -1,0 +1,33 @@
+// The Phantom hand-off sheet as an HTML string. Pure, so it unit-tests in node. Opened from sign-in panels on menus only: nothing
+// here is drawn over a match. phantomSheet.ts wires it.
+import { esc } from '../util';
+
+export type SheetState =
+  | { kind: 'opening' }
+  | { kind: 'approve'; step: 1 | 2 }
+  | { kind: 'sign-ready'; href: string; newTab: boolean }
+  | { kind: 'working'; text: string }
+  | { kind: 'failed'; text: string; tone: 'warn' | 'bad' }
+  | { kind: 'go-back'; app: boolean };
+
+const CANCEL = '<button class="btn ghost" type="button" data-a="phantom-cancel">Cancel</button>';
+const CLOSE = '<button class="btn ghost" type="button" data-a="phantom-close">Close</button>';
+
+function inner(s: SheetState): string {
+  switch (s.kind) {
+    case 'opening': return `<p class="ph-msg">Opening Phantom…</p>${CANCEL}`;
+    case 'approve': return `<p class="ph-step">Step ${s.step} of 2</p><p class="ph-msg">Approve in Phantom, then come back.</p>${CANCEL}`;
+    case 'sign-ready': return `<p class="ph-step">Step 2 of 2</p><p class="ph-msg">Connected. Now sign in with Phantom.</p>
+      <p class="note center">Signing costs nothing and never moves funds.</p>
+      <div class="ph-btns"><a class="btn primary big" data-a="phantom-sign" href="${esc(s.href)}"${s.newTab ? ' target="_blank" rel="noopener"' : ''}>Sign in Phantom</a>${CANCEL}</div>`;
+    case 'working': return `<p class="ph-msg">${esc(s.text)}</p>`;
+    case 'failed': return `<p class="ph-msg" data-tone="${s.tone}" role="alert">${esc(s.text)}</p>${CLOSE}`;
+    case 'go-back': return `<p class="ph-msg">Phantom answered.</p><p class="note center">${s.app
+      ? 'Go back to the PokeJam app on your home screen to continue.'
+      : 'Go back to the PokeJam tab you started from to continue.'}</p>${CLOSE}`;
+  }
+}
+
+export const sheetBodyHtml = inner;
+export const sheetHtml = (s: SheetState): string =>
+  `<div class="shop-sheet ph-sheet" data-phantom-sheet><div class="shop-panel ph-panel" role="dialog" aria-modal="true" aria-label="Sign in with Phantom"><h2 class="ph-title">PHANTOM</h2><div class="ph-body" data-ph-body aria-live="polite">${inner(s)}</div></div></div>`;
