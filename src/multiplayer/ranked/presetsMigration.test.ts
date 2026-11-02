@@ -26,9 +26,9 @@ describe('ranked presets migration (static)', () => {
     expect(sql).not.toMatch(/drop\s+table|drop\s+function|delete\s+from/i);
   });
 
-  it('sorts after every other migration', () => {
+  it('sorts after the admin reports checks migration', () => {
     const files = readdirSync(DIR).filter((f: string) => f.endsWith('.sql')).sort();
-    expect(files[files.length - 1]).toBe(NAME);
+    expect(files.indexOf(NAME)).toBeGreaterThan(files.indexOf('20261123_pokejam_admin_reports_checks.sql'));
   });
 
   it('seeds exactly the client presets', () => {

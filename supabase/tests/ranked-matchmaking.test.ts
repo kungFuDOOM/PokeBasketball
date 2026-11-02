@@ -1,7 +1,7 @@
 // Season 1 Ranked matchmaking and leavers (migration 20261112): the rank window, cooldowns, heartbeat forfeits, dodges,
 // the stale-match sweep, and the Social queue left exactly as it was.
 import { describe, expect, it, vi } from 'vitest';
-import { quickPair, testDb, type Db, type User } from './testDb';
+import { quickPair, testDb, type Db, type User, pickBoth } from './testDb';
 
 vi.setConfig({ testTimeout: 60_000 });
 
@@ -31,6 +31,7 @@ async function rankedPair(t: Db) {
   expect(await a.call('pokejam_find_match', ['ranked'])).toBeNull();
   const mid = await b.call<string | null>('pokejam_find_match', ['ranked']);
   expect(mid).toBeTruthy();
+  await pickBoth(t, mid!);
   const info = await a.call<Record<string, string>>('pokejam_match_info', [mid!]);
   return { mid: mid!, host: info.host === a.id ? a : b, guest: info.host === a.id ? b : a };
 }
@@ -63,7 +64,8 @@ describe('the rank window', () => {
     await waited(t, b, 40); // window 500
     const mid = await b.call<string | null>('pokejam_find_match', ['ranked']);
     expect(mid).toBeTruthy();
-    expect((await t.sql('select host_mmr, guest_mmr from public.pokejam_matches where id = $1', [mid]))[0]).toEqual({ host_mmr: 0, guest_mmr: 500 });
+    const m = (await t.sql('select host, host_mmr, guest_mmr from public.pokejam_matches where id = $1', [mid]))[0];
+    expect([m.host_mmr, m.guest_mmr]).toEqual(m.host === a.id ? [0, 500] : [500, 0]);
     expect(await queued(t, a.id)).toBeUndefined();
   });
 

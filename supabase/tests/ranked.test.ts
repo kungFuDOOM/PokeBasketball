@@ -3,7 +3,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
 import { applyResult, marginOf, newLadderState, NO_MARGIN, placementShift, placementWeight, seedScore, zenithDecay, type Margin } from '../../src/ranked/rank';
-import { testDb, type Db, type User } from './testDb';
+import { testDb, type Db, type User, pickBoth } from './testDb';
 
 vi.setConfig({ testTimeout: 60_000 });
 
@@ -21,10 +21,11 @@ async function setRank(t: Db, u: User, set: { div: number; points?: number; char
 }
 
 /** Two players paired in the ranked queue; returns the match id and who is host. */
-async function rankedPair(a: User, b: User) {
+async function rankedPair(t: Db, a: User, b: User) {
   expect(await a.call('pokejam_find_match', ['ranked'])).toBeNull();
   const mid = await b.call<string | null>('pokejam_find_match', ['ranked']);
   expect(mid).toBeTruthy();
+  await pickBoth(t, mid!);
   const info = await a.call<Record<string, string>>('pokejam_match_info', [mid!]);
   return { mid: mid!, host: info.host === a.id ? a : b, guest: info.host === a.id ? b : a };
 }
@@ -103,7 +104,7 @@ describe('scoring a ranked match', () => {
     const [a, b] = [await t.user('A'), await t.user('B')];
     await setRank(t, a, { div: 4, points: 50 });
     await setRank(t, b, { div: 4, points: 50 });
-    const p = await rankedPair(a, b);
+    const p = await rankedPair(t, a, b);
     const out = await finish(p, 70, 20);
     expect(out.status).toBe('done');
     expect(out.winner).toBe(p.host.id);
@@ -127,7 +128,7 @@ describe('scoring a ranked match', () => {
     const t = await testDb();
     const [a, b, c, d] = [await t.user('A'), await t.user('B'), await t.user('C'), await t.user('D')];
     for (const u of [a, b, c, d]) await setRank(t, u, { div: 6, points: 50 });
-    const p = await rankedPair(a, b);
+    const p = await rankedPair(t, a, b);
     await p.host.call('pokejam_ranked_report_score', [p.mid, 90, 10]);
     await p.guest.call('pokejam_ranked_report_score', [p.mid, 51, 50]); // disagree
     await p.host.call('pokejam_report_result', [p.mid, true]);
@@ -135,7 +136,7 @@ describe('scoring a ranked match', () => {
     // Gold W 25, m = 0 -> 20
     expect((await t.sql('select host_delta, guest_delta, margin_share from public.pokejam_ranked_matches where match_id = $1', [p.mid]))[0])
       .toMatchObject({ host_delta: 20, guest_delta: -11, margin_share: null });
-    const q = await rankedPair(c, d);
+    const q = await rankedPair(t, c, d);
     await q.host.call('pokejam_ranked_report_score', [q.mid, 10, 90]); // both say the guest scored more...
     await q.guest.call('pokejam_ranked_report_score', [q.mid, 10, 90]);
     await q.host.call('pokejam_report_result', [q.mid, true]); // ...but the host won
@@ -146,7 +147,7 @@ describe('scoring a ranked match', () => {
   it('a disagreement on the winner is void and scores nothing', async () => {
     const t = await testDb();
     const [a, b] = [await t.user('A'), await t.user('B')];
-    const p = await rankedPair(a, b);
+    const p = await rankedPair(t, a, b);
     await p.host.call('pokejam_report_result', [p.mid, true]);
     expect((await p.guest.call<Row>('pokejam_report_result', [p.mid, false])).status).toBe('void');
     expect(await scored(t, p.mid)).toBe(0);
@@ -155,7 +156,7 @@ describe('scoring a ranked match', () => {
   it('withholds the numbers while placing, and places after the fifth match', async () => {
     const t = await testDb();
     const [a, b] = [await t.user('A'), await t.user('B')];
-    const p = await rankedPair(a, b);
+    const p = await rankedPair(t, a, b);
     const out = await finish(p, 70, 20);
     const mine = out.rank as Row;
     expect(mine).toEqual({ placing: true, placements_played: 1, event: null });
@@ -166,7 +167,7 @@ describe('scoring a ranked match', () => {
     const s = await season(t);
     await t.sql('update public.pokejam_ranked_profiles set placements_played = 4, placement_raw = 3.5, seed_score = 500 where user_id = any($1) and season_id = $2', [[a.id, b.id], s.id]);
     await t.sql(`update public.pokejam_matches set created_at = now() - interval '2 hours'`); // the same pair twice in a row is not paired
-    const q = await rankedPair(a, b);
+    const q = await rankedPair(t, a, b);
     const fin = await finish(q, 70, 20);
     const winner = fin.winner === a.id ? a : b;
     const wp = await prof(t, winner.id);
@@ -254,7 +255,7 @@ describe('leavers', () => {
     const [a, b] = [await t.user('A'), await t.user('B')];
     await setRank(t, a, { div: 7, points: 5 }); // Gold 2, 5 pts, shield up
     await setRank(t, b, { div: 7, points: 5 });
-    const p = await rankedPair(a, b);
+    const p = await rankedPair(t, a, b);
     await p.host.call('pokejam_match_alive', [p.mid]);
     await p.guest.call('pokejam_match_alive', [p.mid]);
     await p.guest.call('pokejam_leave_match', [p.mid]);
@@ -274,7 +275,7 @@ describe('leavers', () => {
     const [a, b] = [await t.user('A'), await t.user('B')];
     await setRank(t, a, { div: 7, points: 50 });
     await setRank(t, b, { div: 7, points: 50 });
-    const p = await rankedPair(a, b);
+    const p = await rankedPair(t, a, b);
     await p.guest.call('pokejam_leave_match', [p.mid]);
     expect((await t.sql('select status from public.pokejam_matches where id = $1', [p.mid]))[0].status).toBe('void');
     expect(await prof(t, p.guest.id)).toMatchObject({ points: 31, losses: 1 });
@@ -291,7 +292,7 @@ describe('leavers', () => {
       await setRank(t, b, { div: 12, points: 50 });
       await t.sql('update public.pokejam_ranked_profiles set cooldown_until = null'); // the cooldown is checked in ranked-matchmaking.test.ts
       const before = await prof(t, a.id);
-      const p = await rankedPair(a, b);
+      const p = await rankedPair(t, a, b);
       await a.call('pokejam_leave_match', [p.mid]); // dodge: only the leaver changes
       const after = await prof(t, a.id);
       costs.push(Number(before.points) - Number(after.points));
@@ -307,7 +308,7 @@ describe('leavers', () => {
   it('a stayer can claim the forfeit once the other heartbeat is silent for 45 s', async () => {
     const t = await testDb();
     const [a, b] = [await t.user('A'), await t.user('B')];
-    const p = await rankedPair(a, b);
+    const p = await rankedPair(t, a, b);
     await p.host.call('pokejam_match_alive', [p.mid]);
     await p.guest.call('pokejam_match_alive', [p.mid]);
     expect((await p.host.call<Row>('pokejam_ranked_forfeit', [p.mid])).status).toBe('active'); // too early
@@ -412,7 +413,7 @@ describe('SQL equals the TS rank module', () => {
     const [a, b] = [await t.user('A'), await t.user('B')];
     await setRank(t, a, { div: 22, points: 90 }); // Pokémon Master 2
     await setRank(t, b, { div: 23, points: 10 });
-    const p = await rankedPair(a, b);
+    const p = await rankedPair(t, a, b);
     await finish(p, 55, 40);
     const mg = marginOf(55, 40);
     const hostIs = p.host === a ? { div: 22, pts: 90, opp: 23 } : { div: 23, pts: 10, opp: 22 };

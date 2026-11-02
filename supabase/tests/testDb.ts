@@ -12,7 +12,7 @@ const MIGRATIONS = ['20261021_pokejam_online.sql', '20261022_pokejam_social.sql'
   '20261112_pokejam_ranked_matchmaking.sql', '20261113_pokejam_ranked_signin.sql', '20261114_pokejam_profiles.sql',
   '20261115_pokejam_match_ranks.sql', '20261116_pokejam_admin_reports_reporter.sql', '20261117_pokejam_rank_shield.sql', '20261118_pokejam_shield_shop.sql',
   '20261119_pokejam_shield_usdc.sql', '20261121_pokejam_report_dismiss.sql', '20261122_pokejam_match_verdicts.sql', '20261123_pokejam_admin_reports_checks.sql',
-  '20261126_pokejam_net_cost_stats.sql']
+  '20261124_pokejam_ranked_presets.sql', '20261126_pokejam_net_cost_stats.sql', '20261127_pokejam_random_host.sql']
   .map((f) => readFileSync(new URL(`../migrations/${f}`, import.meta.url), 'utf8'));
 
 // Auto usernames are Tr1, Tr2, ...: digits only after the prefix, so they can never spell a blocked word.
@@ -77,4 +77,11 @@ export async function quickPair(t: Db, a: User, b: User) {
   const mid = await b.call<string | null>('pokejam_find_match', ['social']);
   expect(mid).toBeTruthy();
   return mid!;
+}
+
+/** Both players of a Ranked match make their preset pick (a Ranked match can't be reported without them). */
+export async function pickBoth(t: Db, mid: string, presets: [string, string] = ['A', 'B']) {
+  const [m] = await t.sql('select host, guest from public.pokejam_matches where id = $1', [mid]);
+  await t.as('authenticated', m.host as string)('select public.pokejam_ranked_pick($1, $2)', [mid, presets[0]]);
+  await t.as('authenticated', m.guest as string)('select public.pokejam_ranked_pick($1, $2)', [mid, presets[1]]);
 }
