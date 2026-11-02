@@ -2,7 +2,7 @@
 // runs, and pay from your own wallet, either by burning $PJAM or in USDC. The plans and prices come from the server (the
 // board's `plans`, from pokejam_live_ad_plans); nothing here knows a price.
 // The live pokejam-ads-live Edge Function builds the burn or the transfer and checks it on-chain; see
-// supabase/migrations/20261202_pokejam_ads.sql and 20261203_pokejam_ads_live.sql for how a booking moves. No faucet here.
+// supabase/migrations/20261203_pokejam_ads.sql and 20261204_pokejam_ads_live.sql for how a booking moves. No faucet here.
 import './ads.css';
 import { COURTS } from '../data/courts';
 import { monByDex } from '../data/pokemon';

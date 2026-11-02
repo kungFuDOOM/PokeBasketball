@@ -3,6 +3,7 @@
 import { panel } from '../shared/matchFlow';
 import type { ReportOutcome } from '../shared/matchService';
 import type { PhantomAction } from '../../wallet/phantom';
+import { sheetHtml } from '../../wallet/phantomView';
 import type { RankedMe, RankedResult } from './serverRank';
 import { renderRankBadge } from '../../ranked/badge';
 import { postMatchHtml, rankChipHtml, shieldItemHtml, shieldTagHtml, signInPanelHtml, usernamePickerHtml, weeklyCardHtml } from './view';
@@ -72,7 +73,12 @@ const SCREENS: Record<string, () => string> = {
   placing: () => home(rankChipHtml(me({ placing: true, placementsPlayed: 2, divIdx: null, points: null }))),
   signin: () => signIn({ kind: 'install', href: 'https://phantom.app/download' }),
   'signin-phantom': () => signIn({ kind: 'sign-in' }),
-  'signin-mobile': () => signIn({ kind: 'open-in-phantom', href: 'https://phantom.app/ul/browse/x?ref=y' }),
+  'signin-mobile': () => signIn({ kind: 'deeplink', browseHref: 'https://phantom.app/ul/browse/x?ref=y' }),
+  'phantom-opening': () => signIn({ kind: 'deeplink', browseHref: 'https://phantom.app/ul/browse/x?ref=y' }) + sheetHtml({ kind: 'opening' }),
+  'phantom-approve': () => signIn({ kind: 'deeplink', browseHref: 'https://phantom.app/ul/browse/x?ref=y' }) + sheetHtml({ kind: 'approve', step: 1 }),
+  'phantom-sign': () => signIn({ kind: 'deeplink', browseHref: 'https://phantom.app/ul/browse/x?ref=y' }) + sheetHtml({ kind: 'sign-ready', href: '#', newTab: false }),
+  'phantom-goback': () => signIn({ kind: 'deeplink', browseHref: 'https://phantom.app/ul/browse/x?ref=y' }) + sheetHtml({ kind: 'go-back', app: true }),
+  'phantom-failed': () => signIn({ kind: 'deeplink', browseHref: 'https://phantom.app/ul/browse/x?ref=y' }) + sheetHtml({ kind: 'failed', tone: 'warn', text: 'Sign-in cancelled in Phantom.' }),
   'profile-signedin': () => profile(model()),
   'profile-placing': () => profile(model({ me: me({ placing: true, placementsPlayed: 2, divIdx: null, points: null }) })),
   'profile-guest': () => profile(model({ signedIn: false, username: null, me: null, social: { played: 3, won: 1 } })),

@@ -1,7 +1,7 @@
 -- PokeJam billboard ads on the LIVE site (pokejam.xyz, Solana mainnet), paid by burning real $PJAM or in USDC.
 --
 -- Additive only, and safe to apply again: every table and index is "if not exists", every seed row "on conflict do nothing"
--- (re-applying never resets a price), every function "create or replace". It needs 20261202_pokejam_ads.sql (the devnet
+-- (re-applying never resets a price), every function "create or replace". It needs 20261203_pokejam_ads.sql (the devnet
 -- test site's pokejam-ads), which is untouched: nothing here drops,
 -- alters or redefines any of its tables or functions, and none of its functions can see the rows below. Mainnet
 -- bookings live in their own tables (pokejam_live_*), so devnet test burns never share a board, a schedule, a total
@@ -18,7 +18,7 @@
 -- A price is checked again on every booking, and the page reads the plans from the board. Clients can't read or write it.
 --
 -- Two ways to pay for the same board (one schedule, one set of spots, one spot per wallet at a time):
---   Burn $PJAM: the booking flow of 20261202 (create → wallet burns with memo "pokejam-ad:<code>" → pay), except that a
+--   Burn $PJAM: the booking flow of 20261203 (create → wallet burns with memo "pokejam-ad:<code>" → pay), except that a
 --     burn of less than the price runs nothing (see pokejam_live_ad_pay), so a week's cheaper hourly rate can't be
 --     bought an hour at a time. Plans hour/day/week.
 --   USDC: pokejam_live_ad_usdc_intent checks everything that could refuse the ad (text, ban, paused sales, the price
@@ -61,7 +61,7 @@ insert into public.pokejam_live_ad_plans(method, plan, amount) values
   ('usdc', 'month', 500)
 on conflict (method, plan) do nothing;
 
--- The live board's bookings: 20261202's pokejam_ads, plus how it was paid and a month plan.
+-- The live board's bookings: 20261203's pokejam_ads, plus how it was paid and a month plan.
 create table if not exists public.pokejam_live_ads (
   id uuid primary key default gen_random_uuid(),
   code text not null unique,
@@ -250,7 +250,7 @@ begin
   if p_theme is null or p_theme not in ('gold', 'fire', 'water', 'grass', 'electric', 'psychic', 'ghost', 'ice') then raise exception 'pick a colour'; end if;
 end $$;
 
--- ---------- paying by burning $PJAM (20261202's flow, on the live tables) ----------
+-- ---------- paying by burning $PJAM (20261203's flow, on the live tables) ----------
 
 create or replace function public.pokejam_live_ad_create(p_wallet text, p_text text, p_theme text, p_plan text, p_start timestamptz,
   p_expect numeric default null, p_blockhash text default null)

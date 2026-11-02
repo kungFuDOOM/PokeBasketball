@@ -67,7 +67,7 @@ describe('ad text', () => {
     for (const bad of ['', ' ', 'EMOJI 🏀', '<B>', 'ÉCLAIR', 'X'.repeat(25)]) expect(adTextOk(bad)).toBe(false);
   });
   it('has the eight themes the server accepts', () => {
-    // supabase/migrations/20261202_pokejam_ads.sql: theme in (...)
+    // supabase/migrations/20261203_pokejam_ads.sql: theme in (...)
     expect(Object.keys(AD_THEMES).sort()).toEqual(['electric', 'fire', 'ghost', 'gold', 'grass', 'ice', 'psychic', 'water']);
   });
 });

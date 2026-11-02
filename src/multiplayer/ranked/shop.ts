@@ -107,11 +107,12 @@ export function openShop(svc: SupabaseMatchService, o: ShopOptions = {}) {
     m.usdcStep = 'approve';
     say(null);
     try {
+      // Checked first: a phone signed in through the Phantom app has no injected wallet here, and shouldn't use up an intent.
+      const provider = getPhantomProvider() as PayProvider | null;
+      if (!provider) throw new UsdcPayError(USDC_NOTICES.noPhantom.text, 'no-phantom');
       const intent = parseIntent(await callFn('shield-usdc-intent', { sku, ageConfirmed: true }));
       // The badge says which network this build is for: never send money on another one.
       if (intent.cluster !== SHIELD_USDC_CLUSTER) throw new UsdcPayError('The shop is on a different Solana network than this page. Reload and try again.');
-      const provider = getPhantomProvider() as PayProvider | null;
-      if (!provider) throw new UsdcPayError(USDC_NOTICES.noPhantom.text, 'no-phantom');
       const built = await prepareTransfer(intent, wallet, rpcFor(intent.cluster));
       say(USDC_NOTICES.approve);
       const signature = await signAndSend(provider, built, wallet);

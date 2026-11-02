@@ -1,4 +1,4 @@
-// Billboard ads (20261202_pokejam_ads.sql) on a real Postgres (PGlite) running every migration in order. Two promises
+// Billboard ads (20261203_pokejam_ads.sql) on a real Postgres (PGlite) running every migration in order. Two promises
 // are tested here from every side: a checked burn always becomes airtime, and nobody can grief the board or put
 // something vile on it.
 import { readFileSync, readdirSync } from 'node:fs';

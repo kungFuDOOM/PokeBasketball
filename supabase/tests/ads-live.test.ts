@@ -1,5 +1,5 @@
-// Live-site billboard ads (20261203_pokejam_ads_live.sql) on a real Postgres (PGlite) running every migration in order.
-// What's promised: the migration is additive (the devnet 20261202 file and its functions are untouched, and devnet and
+// Live-site billboard ads (20261204_pokejam_ads_live.sql) on a real Postgres (PGlite) running every migration in order.
+// What's promised: the migration is additive (the devnet 20261203 file and its functions are untouched, and devnet and
 // mainnet bookings never meet), the live board books by burn exactly like the devnet one, and a USDC payment books
 // exactly once per intent and once per signature, never short, never past the text rules.
 import { createHash } from 'node:crypto';
@@ -12,9 +12,9 @@ vi.setConfig({ testTimeout: 120_000 });
 const DIR = new URL('../migrations/', import.meta.url);
 const FILES = readdirSync(DIR).filter((f) => f.endsWith('.sql')).sort();
 const MIGRATIONS = FILES.map((f) => readFileSync(new URL(f, DIR), 'utf8'));
-const LIVE_FILE = '20261203_pokejam_ads_live.sql';
+const LIVE_FILE = '20261204_pokejam_ads_live.sql';
 const LIVE_SQL = readFileSync(new URL(LIVE_FILE, DIR), 'utf8');
-// sha256 of pokejam-test's 20261104_pokejam_ads.sql, here renamed 20261202_pokejam_ads.sql (commit a67c151), already applied on the shared project.
+// sha256 of pokejam-test's 20261104_pokejam_ads.sql, renamed since and now 20261203_pokejam_ads.sql, already applied on the shared project.
 const DEVNET_SHA256 = 'adf6c2b432673feb800146593f6eeb87567c6a051678521d47a5d3c6a3c04cd0';
 
 const WALLET = '9wqysMYY4DTcbPjSZpGQU3pF29YUw9w6A1a8XDKVhezh';
@@ -81,7 +81,7 @@ const ms = (iso: string) => new Date(iso).getTime();
 
 describe('the migration is additive', () => {
   it('leaves the applied devnet migration byte-identical to pokejam-test', () => {
-    const devnet = readFileSync(new URL('20261202_pokejam_ads.sql', DIR));
+    const devnet = readFileSync(new URL('20261203_pokejam_ads.sql', DIR));
     expect(createHash('sha256').update(devnet).digest('hex')).toBe(DEVNET_SHA256);
   });
 
@@ -112,7 +112,7 @@ describe('the migration is additive', () => {
   });
 
   it('sorts after every other migration, keeping the devnet file first', () => {
-    expect(FILES.slice(-2)).toEqual(['20261202_pokejam_ads.sql', LIVE_FILE]);
+    expect(FILES.slice(-2)).toEqual(['20261203_pokejam_ads.sql', LIVE_FILE]);
     expect(FILES).toContain('20261201_pokejam_judge_decides.sql');
     expect(new Set(FILES.map((f) => f.slice(0, 8))).size).toBe(FILES.length);
   });
@@ -121,7 +121,7 @@ describe('the migration is additive', () => {
     const t = await testDb();
     const a = await t.pay(await t.create('STAYS UP', 'day'));
     await t.service('pokejam_live_ad_set_cfg', ['ad_spots', '7']);
-    await t.db.exec(readFileSync(new URL('20261202_pokejam_ads.sql', DIR), 'utf8'));
+    await t.db.exec(readFileSync(new URL('20261203_pokejam_ads.sql', DIR), 'utf8'));
     await t.db.exec(LIVE_SQL);
     const b = await t.service<{ spots: number; live: { id: string }[] }>('pokejam_live_ad_board');
     expect(b.spots).toBe(7);
@@ -132,7 +132,7 @@ describe('the migration is additive', () => {
     const list = readFileSync(new URL('./testDb.ts', import.meta.url), 'utf8').match(/const MIGRATIONS = \[[^\]]*\]/)![0];
     const listed = [...list.matchAll(/'([^']+\.sql)'/g)].map((m) => m[1]);
     expect(listed).toEqual([...listed].sort());
-    expect(listed.slice(-2)).toEqual(['20261202_pokejam_ads.sql', LIVE_FILE]);
+    expect(listed.slice(-2)).toEqual(['20261203_pokejam_ads.sql', LIVE_FILE]);
   });
 });
 
