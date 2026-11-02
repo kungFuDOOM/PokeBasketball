@@ -330,7 +330,7 @@ describe('secrets stay out of the console', () => {
     expect(src).not.toMatch(/console\./);
     const sheet = readFileSync(new URL('./phantomSheet.ts', import.meta.url), 'utf8');
     expect(sheet).not.toMatch(/console\./);
-    expect(sheet.match(/localStorage\.[a-zA-Z]+\([^)]*\)/g)).toEqual(['localStorage.setItem(RETURN_KEY, p.returnTo)']); // just the "reopen Ranked" marker
+    expect(sheet.match(/localStorage\.[a-zA-Z]+\([^)]*\)/g)).toEqual(['localStorage.setItem(RETURN_KEY, rt)']); // just the "reopen Ranked" marker
   });
 });
 

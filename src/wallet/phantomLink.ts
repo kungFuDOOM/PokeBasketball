@@ -15,9 +15,16 @@ export const PENDING_KEY = 'pokejam.phantom.pending';
 /** The query marker on the way back. public/phantom-return.js strips it, and Phantom's params, before anything else runs. */
 export const RETURN_PARAM = 'pj_phantom';
 export const APP_PARAM = 'pj_app';
+/** Home-screen sign-ins: what Safari needs to carry on alone. See phantomHandoff.ts. */
+export const HANDOFF_ID_PARAM = 'pj_h';
+export const HANDOFF_PUB_PARAM = 'pj_hk';
+export const HANDOFF_SECRET_PARAM = 'pj_ds';
 
 export type Store = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
 export type ReturnTo = 'ranked' | 'profile';
+
+/** Rides in the redirect link of a home-screen sign-in: the app's handoff id and PUBLIC key, and the dapp secret for this one trip. */
+export interface HandoffRef { id: string; pub: string; secret: string }
 
 export interface Pending {
   v: 1;
@@ -37,11 +44,13 @@ export interface Pending {
   wallet?: string;
   message?: string;
   nonce?: string;
+  /** Set when Safari is finishing a home-screen app's sign-in. */
+  handoff?: HandoffRef;
 }
 
 /** Phantom's answer, trimmed to fields we use. Also the exact shape stored in the relay: ciphertext, or an error code. */
 export interface PhantomResponse { k?: string; n?: string; d?: string; e?: string }
-export interface Callback { id: string; app: boolean; response: PhantomResponse }
+export interface Callback { id: string; app: boolean; response: PhantomResponse; handoff?: HandoffRef }
 
 export class PhantomLinkError extends Error {
   name = 'PhantomLinkError';
@@ -104,10 +113,11 @@ function open(r: PhantomResponse, phantomPub: string, secret: string): Record<st
 
 // ---------- Links ----------
 
-function redirectLink(loc: { origin: string; pathname: string }, id: string, app: boolean): string {
-  return `${loc.origin}${loc.pathname}?${RETURN_PARAM}=${id}${app ? `&${APP_PARAM}=1` : ''}`;
+export function redirectLink(loc: { origin: string; pathname: string }, id: string, app: boolean, h?: HandoffRef): string {
+  const hand = h ? `&${HANDOFF_ID_PARAM}=${h.id}&${HANDOFF_PUB_PARAM}=${h.pub}&${HANDOFF_SECRET_PARAM}=${h.secret}` : '';
+  return `${loc.origin}${loc.pathname}?${RETURN_PARAM}=${id}${app ? `&${APP_PARAM}=1` : ''}${hand}`;
 }
-const newId = () => base58Encode(randomBytes(32));
+export const newId = () => base58Encode(randomBytes(32));
 
 /** Starts a sign-in: stores a fresh key and id in this tab and returns the connect link. Synchronous, so it can run inside a tap. */
 export function beginConnect(store: Store, o: { loc: { origin: string; pathname: string }; app: boolean; returnTo: ReturnTo; now: number }): string {
@@ -130,7 +140,7 @@ export function signLink(p: Pending, loc: { origin: string; pathname: string }):
   const q = new URLSearchParams({
     dapp_encryption_public_key: base58Encode(boxPublicKey(base58Decode(p.secret))),
     nonce: sealed.nonce,
-    redirect_link: redirectLink(loc, p.id, p.app),
+    redirect_link: redirectLink(loc, p.id, p.app, p.handoff),
     payload: sealed.payload,
   });
   return `${PHANTOM_UL}/signMessage?${q}`;
@@ -167,13 +177,20 @@ export function parseCallback(search: string): Callback | null {
   const id = q.get(RETURN_PARAM);
   if (!id || !ID_RE.test(id)) return null;
   const app = q.get(APP_PARAM) === '1';
+  // All three or none: a half-formed handoff is not one.
+  const hid = q.get(HANDOFF_ID_PARAM), hpub = q.get(HANDOFF_PUB_PARAM), hsec = q.get(HANDOFF_SECRET_PARAM);
+  let handoff: HandoffRef | undefined;
+  if (hid !== null || hpub !== null || hsec !== null) {
+    if (!hid || !hpub || !hsec || !ID_RE.test(hid) || !ID_RE.test(hpub) || !ID_RE.test(hsec)) return null;
+    handoff = { id: hid, pub: hpub, secret: hsec };
+  }
   const e = q.get('errorCode');
-  if (e !== null) return CODE_RE.test(e) ? { id, app, response: { e } } : null;
+  if (e !== null) return CODE_RE.test(e) ? { id, app, response: { e }, ...(handoff ? { handoff } : {}) } : null;
   const n = q.get('nonce');
   const d = q.get('data');
   const k = q.get('phantom_encryption_public_key');
   if (!n || !d || !B58_RE.test(n) || !B58_RE.test(d) || (k !== null && !ID_RE.test(k))) return null;
-  return { id, app, response: k ? { k, n, d } : { n, d } };
+  return { id, app, response: k ? { k, n, d } : { n, d }, ...(handoff ? { handoff } : {}) };
 }
 
 /**
