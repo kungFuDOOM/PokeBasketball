@@ -30,6 +30,13 @@ const SHOTS = {
   'shop-waiting': 'shop-waiting',
   'shop-cap': 'shop-cap',
   'shop-guest': 'shop-guest',
+  // The shop for a player signed in with Phantom: Pay-with-USDC buttons and the devnet badge (no wallet or network needed).
+  'usdc-shop': 'usdc-shop',
+  'usdc-shop-checked': 'usdc-shop-checked',
+  'usdc-approve': 'usdc-approve',
+  'usdc-confirming': 'usdc-confirming',
+  'usdc-success': 'usdc-success',
+  'usdc-error': 'usdc-error',
 };
 mkdirSync(OUT, { recursive: true });
 
@@ -59,7 +66,7 @@ try {
       await page.addStyleTag({ content: '*, *::before, *::after { animation: none !important; transition: none !important; }' });
       const m = await page.evaluate(() => {
         const d = document.documentElement;
-        const off = [...document.querySelectorAll('.rk-item, .rk-weekly, .rk-chip, .rk-post, .rk-queue-tag, .rk-right .btn, .shop-panel, .shop-card, .shop-buy, .shop-age')]
+        const off = [...document.querySelectorAll('.rk-item, .rk-weekly, .rk-chip, .rk-post, .rk-queue-tag, .rk-right .btn, .shop-panel, .shop-card, .shop-buy, .shop-age, .shop-pay, .shop-net, .shop-notice')]
           .filter((el) => { const r = el.getBoundingClientRect(); return r.right > innerWidth + 0.5 || r.left < -0.5; }).length;
         // With the shop sheet open the page behind it is covered; the sheet scrolls inside itself, so measure that instead.
         const sheet = document.querySelector('.shop-panel');

@@ -47,6 +47,23 @@ supabase functions deploy shield-stripe-webhook --no-verify-jwt
 
 Tests: `npx vitest run supabase/functions/_shared/shield supabase/tests/shield-shop.test.ts`.
 
+## Rank Shield shop: USDC via Phantom (`shield-usdc-intent/`, `shield-usdc-confirm/`)
+
+Phantom-signed-in players can pay for a Rank Shield pack in USDC on Solana (**devnet USDC-Dev only** until kungFuDOOM approves real money; `mainnet-beta` is refused unless `SHIELD_USDC_ALLOW_MAINNET=approved-by-kungfudoom`). The house only receives to a public address: no private key exists in this feature. The wallet always comes from the verified JWT user, never from the client. Logic is in `_shared/shield/usdc-*.ts` (explicit `.ts` imports, tested in vitest with mocked RPC). Setup, devnet test steps and the mainnet checklist: [`docs/rank-shield-usdc.md`](../../docs/rank-shield-usdc.md). Migration: `../migrations/20261119_pokejam_shield_usdc.sql` (after `20261117` and `20261118`). The receiver's USDC token account for the cluster's mint must already exist.
+
+| Function | JWT | Secrets | What it does |
+| --- | --- | --- | --- |
+| `shield-usdc-intent` | verified (default) | `SHIELD_USDC_RECEIVER`; optional `SHIELD_USDC_CLUSTER` (default `devnet`), `SHIELD_USDC_ALLOW_MAINNET`, `SHIELD_USDC_RPC_URL`, `SHIELD_ALLOWED_ORIGINS` | Takes `{ sku, ageConfirmed }` from a Phantom-signed-in player, runs `pokejam_shield_checkout_check` (caps shared with Stripe), stores a one-time 15-minute intent (`pokejam_shield_usdc_intent`), returns `{ intentId, reference, receiver, mint, amount, cluster, memo }`. |
+| `shield-usdc-confirm` | verified (default) | same | Takes `{ intentId, signature }`, reads the transaction from the RPC, checks mint, exact amount, recipient, signer, reference, memo and time window, then credits (`pokejam_shield_credit_usdc`). `202 pending` until confirmed; idempotent by intent and by signature. |
+
+```sh
+supabase secrets set SHIELD_USDC_RECEIVER=<house public address> SHIELD_USDC_CLUSTER=devnet
+supabase functions deploy shield-usdc-intent
+supabase functions deploy shield-usdc-confirm
+```
+
+Tests: `npx vitest run supabase/functions/_shared/shield supabase/tests/shield-usdc.test.ts`.
+
 ## Online play: the human check (`pokejam-human/`)
 
 When it's switched on, quick match, making a room and joining one each need a short "human" pass (issue #20). The game shows a Cloudflare Turnstile check, `pokejam-human` verifies the token with Cloudflare's Siteverify, and the function grants a 20-minute pass (`pokejam_grant_human`, in `../migrations/20261027_pokejam_human_check.sql`). It's off until all three steps are done, so local and preview builds keep working.
