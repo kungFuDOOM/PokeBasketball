@@ -83,6 +83,10 @@ The moderation page's Reported tab shows a cheat-check tag per reported player. 
 
 It imports the game engine from `src/` (the replay must be the game's own code), and `deno.json` turns on sloppy imports for those extensionless imports.
 
+Everything it imports must load without Vite: no `import.meta.env` or browser globals at module level. `_shared/judge/denoSafe.test.ts` guards that in Node. For a check in Deno itself, load the two modules that `index.ts` imports with `npx deno@2.5.4 run --config supabase/functions/pokejam-judge/deno.json --allow-read <script>`, where the script imports them.
+
+One call costs about 1 s of CPU per match, so judge one match per call. Numbers and open risks are in `docs/multiplayer.md` ("What judging costs, and where it runs").
+
 1. Apply `20261122_pokejam_match_verdicts.sql` and `20261128_pokejam_match_setup.sql` first.
 2. Deploy it with JWT verification on (the default; never `--no-verify-jwt`): `supabase functions deploy pokejam-judge`. Optionally `supabase secrets set JUDGE_ALLOWED_ORIGINS=https://pokejam.xyz,<test site>`.
 
