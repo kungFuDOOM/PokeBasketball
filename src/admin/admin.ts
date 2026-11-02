@@ -9,7 +9,7 @@ import '../style.css';
 import './admin.css';
 import { CAPTCHA_ON, captchaToken } from '../multiplayer/shared/captcha';
 import { esc } from '../util';
-import { bansHtml, judgeShadowHtml, personLabel, reportsHtml, when, type Ban, type JudgeShadow, type Reported } from './reportsView';
+import { bansHtml, judgeFlagsHtml, judgeShadowHtml, personLabel, reportsHtml, when, type Ban, type JudgeFlag, type JudgeShadow, type Reported } from './reportsView';
 
 const URL = import.meta.env.VITE_SUPABASE_URL;
 const KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -92,7 +92,9 @@ function dashboard(sb: SupabaseClient, email: string) {
       <h3>Net cost (online, last 7 days)</h3>
       <div data-netcost-body><p class="note">Loading…</p></div>
       <h3>Judge, shadow mode (Ranked, last 7 days)</h3>
-      <div data-shadow-body><p class="note">Loading…</p></div></section>
+      <div data-shadow-body><p class="note">Loading…</p></div>
+      <h3>Judge flags (Ranked, last 7 days)</h3>
+      <div data-flags-body><p class="note">Loading…</p></div></section>
     <nav class="tabs">
       <button class="on" data-tab="reports">Reported</button><button data-tab="bans">Suspended</button><button data-tab="log">History</button>
       <label>Last <select data-days><option>1</option><option selected>7</option><option>30</option></select> days</label>
@@ -161,6 +163,7 @@ function dashboard(sb: SupabaseClient, email: string) {
   const offlineBody = root.querySelector<HTMLElement>('[data-offline-body]')!;
   const netCostBody = root.querySelector<HTMLElement>('[data-netcost-body]')!;
   const shadowBody = root.querySelector<HTMLElement>('[data-shadow-body]')!;
+  const flagsBody = root.querySelector<HTMLElement>('[data-flags-body]')!;
   const loadStats = async () => {
     refresh.disabled = true;
     await Promise.all([
@@ -190,6 +193,13 @@ function dashboard(sb: SupabaseClient, email: string) {
           shadowBody.innerHTML = judgeShadowHtml(await call<JudgeShadow>('pokejam_admin_judge_shadow', { p_days: 7 }));
         } catch {
           shadowBody.innerHTML = '<p class="note">Judge stats unavailable.</p>';
+        }
+      })(),
+      (async () => {
+        try {
+          flagsBody.innerHTML = judgeFlagsHtml(await call<JudgeFlag[]>('pokejam_admin_judge_flags', { p_days: 7 }));
+        } catch {
+          flagsBody.innerHTML = '<p class="note">Judge flags unavailable.</p>';
         }
       })(),
     ]);

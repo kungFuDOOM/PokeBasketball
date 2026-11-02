@@ -83,6 +83,8 @@ const MAX_AHEAD = 4 * MAX_DELAY + 60;
 const MAX_MSGS_PER_SEC = 200;
 /** Resyncs the guest accepts per game, and how often: a host sending more is broken or cheating. */
 const DEFAULT_RESYNC_LIMIT = 12;
+/** Resyncs allowed before the game stops. Ranked is low: past this the judge decides, and each one could be a forged state. */
+export const resyncLimitFor = (queue: 'social' | 'ranked') => (queue === 'ranked' ? 3 : DEFAULT_RESYNC_LIMIT);
 const MIN_RESYNC_MS = 1500;
 /** How long after its last mismatching hash the guest will take a snapshot. */
 const DESYNC_WINDOW_MS = 5000;

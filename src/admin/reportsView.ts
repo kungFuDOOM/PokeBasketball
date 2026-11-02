@@ -92,6 +92,29 @@ export interface JudgeShadow {
   backlog: { pending: number; running: number; failed: number; oldest_ready_s: number | null; unjudged: number };
 }
 
+export interface JudgeFlag {
+  id: number; match_id: string; user_id: string | null; username: string | null; reason: string; detail: string | null; created_at: string; reviewed: boolean;
+}
+
+const FLAG_REASONS: Record<string, string> = {
+  report_mismatch: 'Report differs from the replay',
+  equivocation: 'Signed two versions of a frame',
+  bad_upload: 'Fake or unreadable upload',
+  false_report: 'Reported a result the log does not reach',
+  desync_void: 'Stopped the game on a desync, match voided',
+  invalid_verdict: 'Could not be judged, old rules applied',
+  no_verdict: 'No verdict in time, old rules applied',
+};
+
+/** What the judge flagged for a person to look at. A flag is not a penalty. */
+export function judgeFlagsHtml(flags: JudgeFlag[]): string {
+  if (!flags.length) return '<p class="note">No flags.</p>';
+  return `<div class="scroll"><table><thead><tr><th>When</th><th>Player</th><th>Why</th><th>Detail</th><th>Match</th></tr></thead><tbody>
+    ${flags.map((f) => `<tr><td>${esc(when(f.created_at))}</td><td>${esc(f.username ?? (f.user_id ? f.user_id.slice(0, 8) : '–'))}</td>
+      <td>${esc(FLAG_REASONS[f.reason] ?? f.reason)}</td><td>${esc(f.detail ?? '')}</td><td>${esc(f.match_id.slice(0, 8))}</td></tr>`).join('')}
+  </tbody></table></div><p class="note">The replay can honestly differ from a game played on another browser, so read a flag alongside the player's history.</p>`;
+}
+
 /** The judge's shadow verdicts against what the players reported, per day and host browser engine. */
 export function judgeShadowHtml(s: JudgeShadow): string {
   const b = s.backlog;
@@ -102,6 +125,6 @@ export function judgeShadowHtml(s: JudgeShadow): string {
     ${s.rows.map((r) => `<tr><td>${esc(r.day)}</td><td>${esc(r.browser_engine)}</td><td>${r.n}</td><td>${r.final_n}</td><td>${r.agree_n}</td><td>${r.disagree_n}</td>
       <td>${r.agree_rate === null ? '–' : `${Math.round(r.agree_rate * 100)}%`}</td><td>${r.resync_matches}</td><td>${r.resync_disagree_n}</td>
       <td>${r.incomplete_n}</td><td>${r.forfeit_n}</td><td>${r.invalid_n}</td></tr>`).join('')}
-  </tbody></table></div><p class="note">Nothing here changes a result yet. Agree = the replay's winner is the match's winner; a void match counts as neither.
+  </tbody></table></div><p class="note">Shadow verdicts only: these changed no result. Disputes the judge decided are under “Judge flags”. Agree = the replay's winner is the match's winner; a void match counts as neither.
     “unknown” engine = the host sent no stats, or an older client.</p>${backlog}`;
 }

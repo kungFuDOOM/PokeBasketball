@@ -4,7 +4,7 @@ import { monByDex } from '../../data/pokemon';
 import { Game } from '../../game/game';
 import { snapshot, stateHash, stepGame, type Snapshot } from '../../game/sync';
 import { emptyIntent, seededRng, type GameConfig, type Intent, type TeamDef } from '../../game/types';
-import { HASH_EVERY, Lockstep, SEND_MS, plausibleVitals, type LockstepOptions, type NetMsg, type Vitals } from './lockstep';
+import { HASH_EVERY, Lockstep, SEND_MS, plausibleVitals, resyncLimitFor, type LockstepOptions, type NetMsg, type Vitals } from './lockstep';
 import { rttStats, startDelay } from './netDelay';
 import { PACE_DIRECT_MS } from './netplay';
 
@@ -497,6 +497,11 @@ describe('the guest takes a snapshot only after its own detected desync', () => 
     offer(second);
     expect(ls.stats.rejected).toBe(0);
     expect(ls.stats.resyncs).toBe(2);
+  });
+
+  it('Ranked allows 3 resyncs, Social keeps 12', () => {
+    expect(resyncLimitFor('ranked')).toBe(3);
+    expect(resyncLimitFor('social')).toBe(12);
   });
 
   it('resyncLimit: the snapshot past the limit stops the game, and only after a detected desync', () => {
