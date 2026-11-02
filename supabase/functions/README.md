@@ -231,7 +231,7 @@ Phantom-signed-in players can pay for a Rank Shield pack in USDC on Solana (**de
 
 | Function | JWT | Secrets | What it does |
 | --- | --- | --- | --- |
-| `shield-usdc-intent` | verified (default) | `SHIELD_USDC_RECEIVER`; optional `SHIELD_USDC_CLUSTER` (default `devnet`), `SHIELD_USDC_ALLOW_MAINNET`, `SHIELD_USDC_RPC_URL`, `SHIELD_ALLOWED_ORIGINS` | Takes `{ sku, ageConfirmed }` from a Phantom-signed-in player, runs `pokejam_shield_checkout_check` (caps shared with Stripe), stores a one-time 15-minute intent (`pokejam_shield_usdc_intent`), returns `{ intentId, reference, receiver, mint, amount, cluster, memo }`. |
+| `shield-usdc-intent` | verified (default) | `SHIELD_USDC_RECEIVER`; optional `SHIELD_USDC_CLUSTER` (default `devnet`), `SHIELD_USDC_ALLOW_MAINNET`, `SHIELD_USDC_RPC_URL`, `SHIELD_ALLOWED_ORIGINS` | Takes `{ sku, ageConfirmed }` from a Phantom-signed-in player, runs `pokejam_shield_checkout_check` (caps shared with Stripe), stores a one-time 15-minute intent (`pokejam_shield_usdc_intent`), reads a recent blockhash and checks the receiver's token account (the browser never calls an RPC), returns `{ intentId, reference, receiver, mint, amount, cluster, memo, blockhash }`. |
 | `shield-usdc-confirm` | verified (default) | same | Takes `{ intentId, signature }`, reads the transaction from the RPC, checks mint, exact amount, recipient, signer, reference, memo and time window, then credits (`pokejam_shield_credit_usdc`). `202 pending` until confirmed; idempotent by intent and by signature. |
 
 ```sh

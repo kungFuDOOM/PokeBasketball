@@ -1,9 +1,10 @@
 // shield-usdc-intent and shield-usdc-confirm. The client sends a sku (intent) or an intent id plus a transaction signature
 // (confirm); everything else is decided here: the user and their Phantom wallet come from the verified JWT's user record, the
-// price and units from the database, the receiver and mint from config, and the payment itself from the Solana RPC.
+// price and units from the database, the receiver and mint from config, and the payment itself from the Solana RPC. Every RPC
+// call in this feature happens here (the public mainnet RPC refuses browser origins, and a private RPC's URL holds a key).
 // Nothing is credited on the client's say-so.
 import { base58Decode, base58Encode, randomBytes, randomId } from '../pack/bytes.ts';
-import { USDC_DECIMALS } from './usdc-chain.ts';
+import { USDC_DECIMALS, deriveAta } from './usdc-chain.ts';
 import { EXPIRY_GRACE_SECONDS, type UsdcConfig } from './usdc-config.ts';
 import { verifyUsdcTx, type ChainTx, type IntentFacts } from './usdc-verify.ts';
 
@@ -27,6 +28,10 @@ export interface UsdcDeps {
   credit(intent: string, user: string, signature: string): Promise<CreditCall>;
   /** getTransaction (jsonParsed) at the config's commitment; null when the cluster doesn't have it yet. */
   getTransaction(signature: string): Promise<ChainTx | null>;
+  /** A recent blockhash (base58) for the player's transaction. */
+  latestBlockhash(): Promise<string>;
+  /** Whether an account exists on the cluster. */
+  accountExists(address: string): Promise<boolean>;
   nowMs?: () => number;
   log?: (msg: string) => void;
 }
@@ -70,6 +75,20 @@ export async function usdcIntentHandler(req: Request, cfg: UsdcConfig, deps: Usd
   const sku = body?.sku;
   if (typeof sku !== 'string' || !/^[a-z0-9_]{1,32}$/.test(sku)) return json({ error: 'Unknown pack' }, 400);
   if (body?.ageConfirmed !== true) return json({ error: "Confirm you are 18+ or have a parent's permission", code: 'age' }, 400);
+  // Read the chain first: an RPC outage or a missing shop account must not use up one of the player's checkout attempts.
+  let blockhash: string;
+  try {
+    const destination = await deriveAta(cfg.receiver, cfg.mint);
+    const [hash, ready] = await Promise.all([deps.latestBlockhash(), deps.accountExists(destination)]);
+    if (!ready) {
+      deps.log?.(`shield-usdc-intent: the receiver's token account ${destination} does not exist on ${cfg.cluster}`);
+      return json({ error: 'USDC payments are not ready yet. Try again later.', code: 'shop_wallet' }, 503);
+    }
+    blockhash = hash;
+  } catch (e) {
+    deps.log?.(`shield-usdc-intent: RPC failed: ${e instanceof Error ? e.message : String(e)}`);
+    return json({ error: 'Could not reach Solana. Try again in a moment.', code: 'rpc' }, 502);
+  }
   const reference = base58Encode(randomBytes(32));
   const memo = `pj-${randomId(12)}`;
   let c: IntentCall;
@@ -82,7 +101,7 @@ export async function usdcIntentHandler(req: Request, cfg: UsdcConfig, deps: Usd
   if (!c.ok || !c.intent_id) return json({ error: c.message ?? 'Not available', code: c.code }, CODE_STATUS[c.code ?? ''] ?? 400);
   return json({
     intentId: c.intent_id, sku, units: c.units, reference, memo, receiver: cfg.receiver, mint: cfg.mint, cluster: cfg.cluster,
-    amount: String(c.amount), decimals: USDC_DECIMALS, expiresAt: c.expires_at,
+    amount: String(c.amount), decimals: USDC_DECIMALS, expiresAt: c.expires_at, blockhash,
   });
 }
 
@@ -107,14 +126,22 @@ export async function usdcConfirmHandler(req: Request, cfg: UsdcConfig, deps: Us
   const intentId = body?.intentId;
   const signature = body?.signature;
   if (typeof intentId !== 'string' || !UUID.test(intentId) || !isSignature(signature)) return json({ error: 'Bad request', code: 'bad_request' }, 400);
-  const intent = await deps.getIntent(intentId, user.id).catch(() => null);
+  let intent: IntentRow | null;
+  try {
+    intent = await deps.getIntent(intentId, user.id);
+  } catch (e) {
+    // Not "unknown purchase": that answer is final, and the client would stop retrying a payment that may have gone through.
+    deps.log?.(`shield-usdc-confirm: reading the intent failed: ${e instanceof Error ? e.message : String(e)}`);
+    return json({ error: 'Could not check the payment. Try again in a moment.', code: 'db' }, 502);
+  }
   if (!intent) return json({ error: 'Unknown purchase', code: 'no_intent' }, 404);
   if (intent.wallet !== user.wallet) return json({ error: 'The payment was not signed by your signed-in wallet', code: 'wrong_signer' }, 403);
   if (intent.cluster !== cfg.cluster || intent.mint !== cfg.mint) return json({ error: 'The shop switched networks. Start a new purchase', code: 'cluster_changed' }, 409);
   if (intent.status === 'credited') {
-    return intent.signature === signature
-      ? json({ status: 'credited', duplicate: true })
-      : json({ error: 'This purchase was already paid with another transaction', code: 'intent_done' }, 409);
+    if (intent.signature !== signature) return json({ error: 'This purchase was already paid with another transaction', code: 'intent_done' }, 409);
+    // A retry after a lost answer: report what was credited (the database changes nothing). The payment stands even if that read fails.
+    const done = await deps.credit(intent.id, user.id, signature).catch(() => null);
+    return json({ status: 'credited', credited: done?.credited, short: done?.short, duplicate: true });
   }
   let tx: ChainTx | null;
   try {
