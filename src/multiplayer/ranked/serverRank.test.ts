@@ -5,7 +5,7 @@ vi.hoisted(() => vi.stubEnv('VITE_MODE_RANKED', 'true'));
 
 import { ENGINE_VERSION } from '../../game/types';
 import { RankedCooldownError, SupabaseMatchService, type OnlineOpponent, type RpcClient } from '../shared/onlineMatchService';
-import { cooldownSeconds, outcomeBetween, parseProfile, parseRankResult, serverView } from './serverRank';
+import { cooldownSeconds, outcomeBetween, parsePickState, parsePresetIds, parseProfile, parseRankResult, serverView } from './serverRank';
 
 const row = (o: Record<string, unknown> = {}) => ({ mmr: 1000, placements: 0, ladder: 1000, shield: 0, tier: null, division: null, rp: 0, wins: 0, losses: 0, ...o });
 
@@ -51,6 +51,36 @@ function fakeServer(profiles: unknown[], answers: Record<string, unknown[]>) {
 const opp = (mySide: 0 | 1): OnlineOpponent => ({ id: 'them', name: 'Rival', mmr: 1000, simulated: false, matchId: 'm1', mySide });
 const result = (won: boolean) => ({ won, score: (won ? [50, 40] : [40, 50]) as [number, number], engineVersion: ENGINE_VERSION });
 const before = row({ placements: 4 });
+
+describe('Ranked preset picks', () => {
+  it('reads the pick state and fails soft on junk', () => {
+    expect(parsePickState({ mine: 'C', deadline_s: '12', done: true })).toEqual({ mine: 'C', deadline_s: 12, done: true });
+    expect(parsePickState({ mine: 'Z', deadline_s: -3, done: 'yes' })).toEqual({ mine: null, deadline_s: 0, done: false });
+    for (const junk of [null, undefined, 7, 'x', [], { deadline_s: NaN }]) expect(parsePickState(junk)).toEqual({ mine: null, deadline_s: 0, done: false });
+  });
+
+  it('keeps only preset ids the client knows, in client order', () => {
+    expect(parsePresetIds([{ id: 'B' }, 'A', { id: 'Q' }, null, 'F'])).toEqual(['A', 'B', 'F']);
+    expect(parsePresetIds({ id: 'A' })).toEqual([]);
+    expect(parsePresetIds(null)).toEqual([]);
+  });
+
+  it('sends the preset id only, and reads my own pick back', async () => {
+    const { db, calls } = fakeServer([], {
+      pokejam_ranked_presets: [[{ id: 'A' }, { id: 'B' }, { id: 'C' }, { id: 'D' }, { id: 'E' }, { id: 'F' }]],
+      pokejam_ranked_pick_state: [{ mine: 'D', deadline_s: 9, done: false }],
+    });
+    const svc = new SupabaseMatchService(db, 'me', ['ranked']);
+    expect(await svc.rankedPresets()).toEqual(['A', 'B', 'C', 'D', 'E', 'F']);
+    await svc.rankedPick('m1', 'D');
+    expect(await svc.rankedPickState('m1')).toEqual({ mine: 'D', deadline_s: 9, done: false });
+    expect(calls).toEqual([
+      { fn: 'pokejam_ranked_presets', args: undefined },
+      { fn: 'pokejam_ranked_pick', args: { p_match: 'm1', p_preset: 'D' } },
+      { fn: 'pokejam_ranked_pick_state', args: { p_match: 'm1' } },
+    ]);
+  });
+});
 const after = row({ mmr: 1030, placements: 5, ladder: 1030, tier: 'Silver', division: 'III', rp: 30, wins: 1 });
 
 describe('SupabaseMatchService (Ranked)', () => {
