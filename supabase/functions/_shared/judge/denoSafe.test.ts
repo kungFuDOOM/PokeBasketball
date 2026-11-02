@@ -12,10 +12,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { spriteUrl } from '../../../../src/data/pokemon';
 
 const here = dirname(fileURLToPath(import.meta.url));
-const indexFile = resolve(here, '../../pokejam-judge/index.ts');
+const indexFiles = ['pokejam-judge', 'pokejam-judge-worker'].map((f) => resolve(here, `../../${f}/index.ts`));
 
-/** What the Edge Function imports from this repo. Read from index.ts, so a new import is guarded automatically. */
-const localImports = () => [...readFileSync(indexFile, 'utf8').matchAll(/^import\s+(?!type\b)[^'"]*from\s+'(\.[^']+)'/gm)].map((m) => resolve(dirname(indexFile), m[1]));
+/** What the Edge Functions import from this repo. Read from index.ts, so a new import is guarded automatically. */
+const localImports = () => [...new Set(indexFiles.flatMap((file) => [...readFileSync(file, 'utf8').matchAll(/^import\s+(?!type\b)[^'"]*from\s+'(\.[^']+)'/gm)].map((m) => resolve(dirname(file), m[1]))))];
 
 /** Bundle the entry files as Vite would not: import.meta.env stays as it is in the source. */
 async function bundle(entries: string[]) {
@@ -34,11 +34,16 @@ describe('the judge modules load without Vite (Deno)', () => {
   const dirs: string[] = [];
   afterEach(() => { for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); vi.unstubAllGlobals(); });
 
-  it('reads the Edge Function\'s local imports', () => {
+  it('reads the Edge Functions\' local imports', () => {
     const files = localImports().map((f) => f.replace(/\\/g, '/'));
-    expect(files.some((f) => f.endsWith('_shared/judge/handler.ts'))).toBe(true);
-    expect(files.some((f) => f.endsWith('src/multiplayer/shared/matchSetup.ts'))).toBe(true);
+    for (const f of ['handler.ts', 'deps.ts', 'worker.ts']) expect(files.some((x) => x.endsWith(`_shared/judge/${f}`)), f).toBe(true);
   });
+
+  it('that graph includes the game code the judge replays', async () => {
+    const { dir, meta } = await bundle(localImports());
+    dirs.push(dir);
+    expect(Object.keys(meta.inputs).some((f) => f.endsWith('src/multiplayer/shared/matchSetup.ts'))).toBe(true);
+  }, 60_000);
 
   it('loads in a process with no import.meta.env and no browser globals', async () => {
     const { dir, out } = await bundle(localImports());
