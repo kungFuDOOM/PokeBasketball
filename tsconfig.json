@@ -9,7 +9,6 @@
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true,
     "isolatedModules": true,
-    "allowImportingTsExtensions": true,
     "skipLibCheck": true,
     "allowImportingTsExtensions": true,
     "noEmit": true

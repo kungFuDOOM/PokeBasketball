@@ -118,7 +118,7 @@ Prices and the number of spots (`ad_spots`, default 3) change with one `update p
 ## Billboard ads on the live site (`pokejam-ads-live/`, `../migrations/20261203_pokejam_ads_live.sql`)
 
 The live site (pokejam.xyz) books the same courtside LED board on **Solana mainnet**, through its own function. It runs the same handler as the devnet `pokejam-ads` above (`_shared/ads/handler.ts`), configured by `adsConfigLive` in `_shared/ads/config.ts`. The devnet function, its secrets and its tables are unchanged. The client (`src/ads/api.ts`) only ever calls `pokejam-ads-live`. Advertisers pay from their own wallet in one of two ways:
-- **Burn $PJAM**, exactly as above (an hour, a day or a week).
+- **Burn $PJAM** (an hour, a day or a week), like the devnet flow above except that the burn must cover the price and come from the booking's wallet.
 - **Pay in USDC** (a week or a month), sent to kungfudoom.sns.
 
 More detail, including the open questions, is in `docs/ads-live.md`.
@@ -131,8 +131,8 @@ More detail, including the open questions, is in `docs/ads-live.md`.
 | --- | --- | --- |
 | `ADS_ALLOW_MAINNET` | required on mainnet | Must be exactly `true`. Anything else, such as `TRUE`, ` true`, `1` or the devnet function's approval phrase, and the function refuses to start. |
 | `ADS_LIVE_CLUSTER` | optional | `devnet` runs this function against devnet (for a staging copy). Anything else, or unset, means `mainnet-beta`. This is the live counterpart of `ADS_CLUSTER`, which stays the devnet function's own and doesn't affect this one. |
-| `ADS_PJAM_MINT` | optional on mainnet | The token burned. It defaults to `GQe9QiBBV4G6bRUCxx2JgKrzT7G7RD17FJquBWgVpump`, hard-coded in #45. **Needs user confirmation:** kungFuDOOM must confirm this is the official $PJAM before mainnet is turned on. It is required on devnet, where there is no default. |
-| `ADS_USDC_RECEIVER` | optional | The wallet paid in USDC. It defaults to kungfudoom.sns, `FPwoDYkHTFef4Fg45o1wzReXiVoYGP6KXEgRyfqqBpyk`. The payment must land in that wallet's USDC associated token account. The USDC mint is never configurable: on mainnet it is Circle's `EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v`. |
+| `ADS_PJAM_MINT` | optional on mainnet | The token burned. It defaults to the official $PJAM, `GQe9QiBBV4G6bRUCxx2JgKrzT7G7RD17FJquBWgVpump`. It must be a valid address, and the mint must have 6 decimals. It's required on a devnet staging copy, which has no default. |
+| `ADS_USDC_RECEIVER` | optional | The wallet paid in USDC. It defaults to kungfudoom.sns, `FPwoDYkHTFef4Fg45o1wzReXiVoYGP6KXEgRyfqqBpyk`. Changing it also needs a client rebuild, because the page refuses to sign a transfer to any other receiver than `USDC_RECEIVER` in `_shared/ads/usdc-chain.ts`. The payment must land in that wallet's USDC associated token account. The USDC mint is never configurable: on mainnet it is Circle's `EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v`. |
 | `ADS_LIVE_RPC_URL` | strongly advised | A paid mainnet RPC. The public one rate-limits history lookups. All chain reads happen here; the browser never calls an RPC. |
 | `ADS_LIVE_ALLOWED_ORIGINS` | advised | `https://pokejam.xyz` (comma-separated exact origins). If it's empty, any origin may call. |
 | `ADS_LIVE_PRIORITY_MICROLAMPORTS` | optional | The priority fee on the burn. Default 20,000 on mainnet. |
@@ -140,16 +140,37 @@ More detail, including the open questions, is in `docs/ads-live.md`.
 
 **No faucet on mainnet**, whatever is set: `AD_FAUCET_SECRET` is ignored, the `faucet` action answers 404, the board reports `faucet: false` and the page hides the button.
 
-**Plans and prices.** Only the bookable courtside half is self-serve. The ticker and the ticker + courtside combo stay contact-sales, priced in USD and paid in SOL (`public/contact.html`).
+**Plans and prices.** Only the bookable courtside half is self-serve. The ticker ($75/week, $250/month) and the ticker + courtside combo ($650/month) are arranged by DM (X @pokejamsol or t.me/PokeJamSol) and paid in SOL. The Advertise page lists them with no checkout.
 
-| Plan | Burn $PJAM | USDC |
+Prices are rows in `public.pokejam_live_ad_plans` (`method`, `plan`, `amount`, `enabled`), in whole tokens. The Edge Function reads the table on every quote, booking and intent, and the page draws its plans from the board's `plans`, so a change needs no deploy and no client rebuild. The board is cached for 10 seconds.
+
+| Plan | Burn $PJAM (`burn`) | USDC (`usdc`) |
 | --- | --- | --- |
-| 1 hour | `live_ad_price_hour` (default 100,000 PJAM) | n/a |
-| 1 day | `live_ad_price_day` (default 1,500,000 PJAM) | n/a |
-| 1 week | `live_ad_price_week` (default 7,500,000 PJAM) | `live_ad_usdc_week` = $150 |
-| 1 month (720 h) | n/a | `live_ad_usdc_month` = $500 |
+| 1 hour (`hour`) | 100,000 | not on sale |
+| 1 day (`day`) | 1,500,000 | not on sale |
+| 1 week (`week`) | 7,500,000 | 150 |
+| 1 month, 720 h (`month`) | not on sale | 500 |
 
-The USDC prices match the courtside banner half's list price on the contact page. The PJAM defaults are the devnet ones: set real prices for the token's market before launch (`update public.pokejam_config …`, no deploy). The amounts are stored in base units (6 decimals for both tokens).
+```sql
+-- Change a price
+update public.pokejam_live_ad_plans set amount = 200000 where method = 'burn' and plan = 'hour';
+-- Stop selling a plan
+update public.pokejam_live_ad_plans set enabled = false where method = 'usdc' and plan = 'month';
+-- Sell a plan another way (plan is one of hour, day, week, month)
+insert into public.pokejam_live_ad_plans(method, plan, amount) values ('burn', 'month', 20000000);
+```
+
+A check constraint refuses a zero or negative price. The table has row-level security on and no grants to `anon` or `authenticated`. Re-applying the migration keeps any price you set.
+
+A booking keeps the price it was made at for one day. After that, and for any extra run, the current price applies if it's higher. `public/contact.html` also states the $150 and $500 prices as static text, so update it by hand if they change.
+
+**How a burn is checked** (`_shared/ads/verify.ts`, on the live board's strict settings, `strictBurn` in `adsConfigLive`):
+- The transaction succeeded, and is read at `finalized` commitment on mainnet (`confirmed` on a devnet staging copy).
+- Its top-level memo is exactly `pokejam-ad:<code>` for this booking, and it's no older than the booking.
+- The booking's wallet signed it, and only burns that wallet authorised from its own token account count (the owner comes from the chain's token balances). A delegate's, a multisig's or a stranger's burn doesn't count.
+- The token is the configured mint under the program that owns it. The mint must have 6 decimals, or the function refuses to sell, because the prices assume them.
+- `pokejam_live_ad_pay` compares the amount with the price. **Less than the price runs nothing:** it's recorded as `dust` and the tokens stay burned. This differs from the devnet board, which pro-rates: on the live board a pro-rated burn would buy hours at the week's cheaper rate. The server builds the exact amount, so only a hand-crafted transaction can be short. More than the price runs longer at the plan's rate.
+- `burn_sig` is unique and payments take an advisory lock, so a signature pays once, across burns and USDC.
 
 **How a USDC payment works** (`_shared/ads/usdc-*.ts`, adapted from the USDC payment pattern on `origin/claude/shield-usdc-only`, copied, not merged):
 1. `usdc-intent` first runs every check that could refuse the ad: the text filter, a ban, paused sales, the price the page showed, and the wallet's USDC and SOL. It then saves a one-time intent with an exact amount, a reference key and a memo, which expires in 15 minutes. It returns an unsigned SPL `TransferChecked` to the receiver's USDC account. The page rebuilds that transaction itself and checks it matches before the wallet signs.
@@ -168,8 +189,8 @@ The USDC prices match the courtside banner half's list price on the contact page
 
 ### On kungFuDOOM's OK (mainnet, the live site)
 
-1. **Migration:** `20261203_pokejam_ads_live`, applied after `20261202_pokejam_ads`.
-2. **Confirm the $PJAM mint** (see `ADS_PJAM_MINT` above), and set the PJAM burn prices.
+1. **Migrations**, in this order, after every other migration: `20261202_pokejam_ads`, then `20261203_pokejam_ads_live`. Both are additive and safe to re-apply.
+2. **Check the prices:** `select * from public.pokejam_live_ad_plans;`. They're seeded with the confirmed amounts.
 3. **Secrets:**
    ```sh
    supabase secrets set ADS_ALLOW_MAINNET=true ADS_LIVE_RPC_URL=<paid mainnet RPC> ADS_LIVE_ALLOWED_ORIGINS=https://pokejam.xyz

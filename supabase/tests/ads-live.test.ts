@@ -19,6 +19,8 @@ const DEVNET_SHA256 = 'adf6c2b432673feb800146593f6eeb87567c6a051678521d47a5d3c6a
 
 const WALLET = '9wqysMYY4DTcbPjSZpGQU3pF29YUw9w6A1a8XDKVhezh';
 const OTHER = 'A4ahkivAG4NoZAE8Sy4qv8nn2DU9yoXRQcttuCeGtTJv';
+const THIRD = 'BSmgKqfYR6ChrxHn7HkkYbZwbDq5E8ZfUJxcwGCNTP4w';
+const FOURTH = 'FrhfJgT4VUjzJ92qQUuy3TLKi9V6xwMsqtgVurkDniUL';
 const RECEIVER = 'FPwoDYkHTFef4Fg45o1wzReXiVoYGP6KXEgRyfqqBpyk';
 const USDC = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
 const H = 3_600_000;
@@ -34,7 +36,7 @@ let refN = 0;
 // A distinct base58 string of pubkey length for each intent's reference (base58 has no 0).
 const ref = () => String(++refN).replace(/0/g, 'z').padStart(40, 'R');
 
-async function testDb() {
+async function testDb(before = '') {
   const db = new PGlite();
   await db.exec(`
     create role anon; create role authenticated; create role service_role;
@@ -55,6 +57,7 @@ async function testDb() {
     grant execute on function extensions.gen_random_bytes(int) to public;
     grant usage on schema public to anon, authenticated, service_role;
   `);
+  if (before) await db.exec(before);
   for (const m of MIGRATIONS) await db.exec(m);
   const as = (role: string, uid: string | null = null) => async <T = unknown>(name: string, args: unknown[] = []) => db.transaction(async (tx) => {
     await tx.exec(`set local role ${role}`);
@@ -107,6 +110,213 @@ describe('the migration is additive', () => {
     await t.db.exec(LIVE_SQL);
     expect((await t.create()).state).toBe('pending');
   });
+
+  it('sorts after every other migration, keeping the devnet file first', () => {
+    expect(FILES.slice(-2)).toEqual(['20261202_pokejam_ads.sql', LIVE_FILE]);
+    expect(FILES).toContain('20261201_pokejam_judge_decides.sql');
+    expect(new Set(FILES.map((f) => f.slice(0, 8))).size).toBe(FILES.length);
+  });
+
+  it('re-applying both on a database already in use keeps its bookings and settings', async () => {
+    const t = await testDb();
+    const a = await t.pay(await t.create('STAYS UP', 'day'));
+    await t.service('pokejam_live_ad_set_cfg', ['ad_spots', '7']);
+    await t.db.exec(readFileSync(new URL('20261202_pokejam_ads.sql', DIR), 'utf8'));
+    await t.db.exec(LIVE_SQL);
+    const b = await t.service<{ spots: number; live: { id: string }[] }>('pokejam_live_ad_board');
+    expect(b.spots).toBe(7);
+    expect(b.live.map((x) => x.id)).toEqual([a.id]);
+  });
+
+  it('testDb.ts lists every migration, in file order', () => {
+    const list = readFileSync(new URL('./testDb.ts', import.meta.url), 'utf8').match(/const MIGRATIONS = \[[^\]]*\]/)![0];
+    const listed = [...list.matchAll(/'([^']+\.sql)'/g)].map((m) => m[1]);
+    expect(listed).toEqual([...listed].sort());
+    expect(listed.slice(-2)).toEqual(['20261202_pokejam_ads.sql', LIVE_FILE]);
+  });
+});
+
+describe('prices are one row each, read from the database', () => {
+  const planRow = (t: Awaited<ReturnType<typeof testDb>>, method: string, plan: string) =>
+    t.sql('select amount::text as amount, enabled from public.pokejam_live_ad_plans where method = $1 and plan = $2', [method, plan]);
+
+  it('is seeded with the confirmed amounts, and the board lists them for the page', async () => {
+    const t = await testDb();
+    const b = await t.service<{ plans: unknown[] }>('pokejam_live_ad_board');
+    expect(b.plans).toEqual([
+      { method: 'burn', plan: 'hour', hours: 1, amount: '100000000000' },
+      { method: 'burn', plan: 'day', hours: 24, amount: '1500000000000' },
+      { method: 'burn', plan: 'week', hours: 168, amount: '7500000000000' },
+      { method: 'usdc', plan: 'week', hours: 168, amount: '150000000' },
+      { method: 'usdc', plan: 'month', hours: 720, amount: '500000000' },
+    ]);
+  });
+
+  it('a single SQL update changes what the board, quotes, bookings and intents charge', async () => {
+    const t = await testDb();
+    await t.sql(`update public.pokejam_live_ad_plans set amount = 200000 where method = 'burn' and plan = 'hour'`);
+    await t.sql(`update public.pokejam_live_ad_plans set amount = 175.50 where method = 'usdc' and plan = 'week'`);
+    expect((await t.create()).price).toBe('200000000000');
+    expect((await t.intent()).amount).toBe('175500000');
+    const q = await t.service<{ price: string; usdc: string }>('pokejam_live_ad_quote', ['week', null, WALLET]);
+    expect(q).toMatchObject({ price: '7500000000000', usdc: '175500000' });
+    const b = await t.service<{ plans: { plan: string; method: string; amount: string }[] }>('pokejam_live_ad_board');
+    expect(b.plans.find((p) => p.plan === 'hour')!.amount).toBe('200000000000');
+  });
+
+  it('refuses a booking at a price the page no longer shows', async () => {
+    const t = await testDb();
+    await t.sql(`update public.pokejam_live_ad_plans set amount = 200000 where method = 'burn' and plan = 'hour'`);
+    await expect(t.service('pokejam_live_ad_create', [WALLET, 'HI', 'gold', 'hour', null, '100000000000', null])).rejects.toThrow(/price changed/);
+  });
+
+  it('a plan switched off or added takes effect straight away', async () => {
+    const t = await testDb();
+    await t.sql(`update public.pokejam_live_ad_plans set enabled = false where method = 'burn' and plan = 'hour'`);
+    await expect(t.create()).rejects.toThrow(/not paid by burning/);
+    expect((await t.service<{ plans: { plan: string }[] }>('pokejam_live_ad_board')).plans.map((p) => p.plan)).not.toContain('hour');
+    await t.sql(`insert into public.pokejam_live_ad_plans(method, plan, amount) values ('burn', 'month', 20000000), ('usdc', 'day', 40)`);
+    expect((await t.create('HI', 'month')).price).toBe('20000000000000');
+    expect(await t.intent('HI', 'day')).toMatchObject({ plan: 'day', hours: 24, amount: '40000000' });
+  });
+
+  it('refuses a price that makes no sense', async () => {
+    const t = await testDb();
+    await expect(t.sql(`update public.pokejam_live_ad_plans set amount = 0 where method = 'burn' and plan = 'hour'`)).rejects.toThrow(/check/);
+    await expect(t.sql(`update public.pokejam_live_ad_plans set amount = -5 where method = 'usdc' and plan = 'week'`)).rejects.toThrow(/check/);
+    await expect(t.sql(`insert into public.pokejam_live_ad_plans(method, plan, amount) values ('sol', 'week', 1)`)).rejects.toThrow(/check/);
+    await expect(t.sql(`insert into public.pokejam_live_ad_plans(method, plan, amount) values ('burn', 'year', 1)`)).rejects.toThrow(/check/);
+  });
+
+  it('re-applying the migration keeps a price the owner set', async () => {
+    const t = await testDb();
+    await t.sql(`update public.pokejam_live_ad_plans set amount = 123 where method = 'burn' and plan = 'hour'`);
+    await t.sql(`update public.pokejam_live_ad_plans set enabled = false where method = 'usdc' and plan = 'month'`);
+    await t.db.exec(LIVE_SQL);
+    expect((await planRow(t, 'burn', 'hour'))[0].amount).toBe('123.000000');
+    expect((await planRow(t, 'usdc', 'month'))[0].enabled).toBe(false);
+  });
+});
+
+describe('a burn pays for its plan and no less', () => {
+  it('a short burn runs nothing, so a week booking cannot buy hours at the week rate', async () => {
+    const t = await testDb();
+    const week = await t.create('CHEAP HOURS', 'week');
+    // 1/168th of the week's price: an hour at about 45% of the hour plan's price.
+    const r = await t.pay(week, BigInt(week.price) / 168n);
+    expect(r).toMatchObject({ state: 'dust', starts_at: null });
+    expect((await t.service<{ live: unknown[] }>('pokejam_live_ad_board')).live).toHaveLength(0);
+    // One base unit short is still short.
+    const hour = await t.create('ALMOST', 'hour');
+    expect((await t.pay(hour, BigInt(hour.price) - 1n)).state).toBe('dust');
+  });
+
+  it('the exact price runs the plan; more runs longer, at the same rate', async () => {
+    const t = await testDb();
+    const a = await t.pay(await t.create('EXACT', 'hour'));
+    expect(ms(a.ends_at) - ms(a.starts_at)).toBe(H);
+    const b = await t.create('DOUBLE', 'day', OTHER);
+    const paid = await t.pay(b, BigInt(b.price) * 2n);
+    expect(ms(paid.ends_at) - ms(paid.starts_at)).toBe(48 * H);
+  });
+
+  it('a short burn is refused from the extra-run path too', async () => {
+    const t = await testDb();
+    const a = await t.pay(await t.create('FIRST', 'day'));
+    const r = await t.pay(a, BigInt(a.price) - 1n);
+    expect(r).toMatchObject({ state: 'dust', extra_of: a.id });
+  });
+
+  it('a booking older than a day, or an extra run, pays the current price if it went up', async () => {
+    const t = await testDb();
+    const old = await t.create('OLD PRICE', 'hour');
+    const paidOnce = await t.pay(await t.create('PAID ONCE', 'hour', OTHER));
+    await t.sql(`update public.pokejam_live_ad_plans set amount = 300000 where method = 'burn' and plan = 'hour'`);
+    // Fresh: the price the advertiser was shown still holds.
+    const fresh = await t.create('NEW PRICE', 'hour', THIRD);
+    expect(fresh.price).toBe('300000000000');
+    await t.sql(`update public.pokejam_live_ads set created_at = now() - interval '2 days' where id = $1`, [old.id]);
+    expect((await t.pay(old, old.price)).state).toBe('dust');
+    expect((await t.pay(paidOnce, paidOnce.price)).state).toBe('dust');
+    const old2 = await t.create('OLD TWO', 'hour', FOURTH);
+    await t.sql(`update public.pokejam_live_ads set created_at = now() - interval '2 days', price = 100000000000 where id = $1`, [old2.id]);
+    const r = await t.pay(old2, '300000000000');
+    expect(r.state).toBe('paid');
+    expect(ms(r.ends_at) - ms(r.starts_at)).toBe(H);
+  });
+
+  it('a booking within its first day keeps its locked price after a rise', async () => {
+    const t = await testDb();
+    const a = await t.create('LOCKED', 'hour');
+    await t.sql(`update public.pokejam_live_ad_plans set amount = 300000 where method = 'burn' and plan = 'hour'`);
+    expect((await t.pay(a, a.price)).state).toBe('paid');
+  });
+
+  it('a lower current price never undercuts the locked one', async () => {
+    const t = await testDb();
+    const a = await t.create('LOCKED', 'hour');
+    await t.sql(`update public.pokejam_live_ad_plans set amount = 10 where method = 'burn' and plan = 'hour'`);
+    await t.sql(`update public.pokejam_live_ads set created_at = now() - interval '2 days' where id = $1`, [a.id]);
+    expect((await t.pay(a, '10000000')).state).toBe('dust');
+  });
+
+  it('an extra-run burn on a USDC ad with no hourly plan on sale runs nothing', async () => {
+    const t = await testDb();
+    const r = await t.usdcPay(await t.intent('USDC AD', 'week'));
+    await t.sql(`update public.pokejam_live_ad_plans set enabled = false where method = 'burn' and plan = 'hour'`);
+    expect((await t.service<Ad>('pokejam_live_ad_pay', [r.ad!.id, 'crafted', '999000000000', WALLET])).state).toBe('dust');
+  });
+});
+
+describe('replays', () => {
+  it('two calls with one signature at the same moment book once', async () => {
+    const t = await testDb();
+    const a = await t.create('RACE', 'hour');
+    const b = await t.create('RACE TWO', 'hour', OTHER);
+    const results = await Promise.allSettled([t.pay(a, a.price, 'racesig'), t.pay(a, a.price, 'racesig'), t.pay(b, b.price, 'racesig')]);
+    expect(results.filter((r) => r.status === 'rejected')).toHaveLength(1);
+    expect(await t.sql(`select id from public.pokejam_live_ads where burn_sig = 'racesig'`)).toHaveLength(1);
+    expect((await t.sql(`select count(*)::int as n from public.pokejam_live_ads where state = 'paid'`))[0].n).toBe(1);
+  });
+
+  it('two calls with one payment at the same moment book once', async () => {
+    const t = await testDb();
+    const i = await t.intent();
+    const j = await t.intent('OTHER AD', 'week', OTHER);
+    const [a, b, c] = await Promise.all([t.usdcPay(i, 'racesig'), t.usdcPay(i, 'racesig'), t.usdcPay(j, 'racesig')]);
+    expect([a.status, b.status, c.status].sort()).toEqual(['duplicate', 'paid', 'signature_used']);
+    expect(await t.sql(`select id from public.pokejam_live_ads where usdc_sig = 'racesig'`)).toHaveLength(1);
+  });
+
+  it('the database itself refuses a reused signature, whatever calls it', async () => {
+    const t = await testDb();
+    const a = await t.pay(await t.create('ONE', 'hour'), undefined, 'sigone');
+    const b = await t.create('TWO', 'hour', OTHER);
+    await expect(t.sql(`update public.pokejam_live_ads set burn_sig = 'sigone' where id = $1`, [b.id])).rejects.toThrow(/unique|duplicate/);
+    const r = await t.usdcPay(await t.intent('THREE', 'week', OTHER), 'usdcone');
+    const c = await t.usdcPay(await t.intent('FOUR', 'week', THIRD), 'usdctwo');
+    await expect(t.sql(`update public.pokejam_live_ads set usdc_sig = 'usdcone' where id = $1`, [c.ad!.id])).rejects.toThrow(/unique|duplicate/);
+    expect(a.burn_sig).toBe('sigone');
+    expect(r.status).toBe('paid');
+  });
+});
+
+describe('a USDC intent left open', () => {
+  it('pays the current price after a day, if it went up', async () => {
+    const t = await testDb();
+    const i = await t.intent();
+    await t.sql(`update public.pokejam_live_ad_plans set amount = 300 where method = 'usdc' and plan = 'week'`);
+    await t.sql(`update public.pokejam_live_ad_usdc_intents set created_at = now() - interval '2 days', expires_at = now() - interval '2 days' where id = $1`, [i.id]);
+    expect(await t.usdcPay(i, 'lowball', i.amount)).toEqual({ status: 'short' });
+    expect((await t.usdcPay(i, 'fullprice', '300000000')).status).toBe('paid');
+  });
+
+  it('keeps its price for the first day', async () => {
+    const t = await testDb();
+    const i = await t.intent();
+    await t.sql(`update public.pokejam_live_ad_plans set amount = 300 where method = 'usdc' and plan = 'week'`);
+    expect((await t.usdcPay(i, 'sig', i.amount)).status).toBe('paid');
+  });
 });
 
 describe('devnet and mainnet never meet', () => {
@@ -140,7 +350,7 @@ describe('devnet and mainnet never meet', () => {
     await t.service('pokejam_ad_set_cfg', ['ad_price_hour', '5']);
     await t.service('pokejam_ad_set_cfg', ['ads_paused', 'true']);
     expect((await t.create()).price).toBe('100000000000');
-    await t.service('pokejam_live_ad_set_cfg', ['ad_price_hour', '42000000']);
+    await t.sql(`update public.pokejam_live_ad_plans set amount = 42 where method = 'burn' and plan = 'hour'`);
     expect((await t.create()).price).toBe('42000000');
     expect(String(await t.service('pokejam_ad_price', ['hour']))).toBe('5');
     await t.service('pokejam_live_ad_set_cfg', ['ads_paused', 'true']);
@@ -180,7 +390,7 @@ describe('paying by burning $PJAM on the live board', () => {
 
   it('refuses the month plan (USDC only) and bad text before anything is burned', async () => {
     const t = await testDb();
-    await expect(t.create('HI', 'month')).rejects.toThrow(/paid in USDC/);
+    await expect(t.create('HI', 'month')).rejects.toThrow(/not paid by burning/);
     await expect(t.create('FREE SOL AIRDROP')).rejects.toThrow(/not allowed \(scam\)/);
   });
 
@@ -205,8 +415,11 @@ describe('paying in USDC', () => {
     await expect(t.intent('POKE SHOP', 'year')).rejects.toThrow(/unknown plan/);
     const q = await t.service<{ price: string | null; usdc: string | null; hours: number }>('pokejam_live_ad_quote', ['month', null, WALLET]);
     expect(q).toMatchObject({ price: null, usdc: '500000000', hours: 720 });
-    const b = await t.service<{ usdc: Record<string, string> }>('pokejam_live_ad_board');
-    expect(b.usdc).toEqual({ week: '150000000', month: '500000000' });
+    const b = await t.service<{ plans: { method: string; plan: string; hours: number; amount: string }[] }>('pokejam_live_ad_board');
+    expect(b.plans.filter((p) => p.method === 'usdc')).toEqual([
+      { method: 'usdc', plan: 'week', hours: 168, amount: '150000000' },
+      { method: 'usdc', plan: 'month', hours: 720, amount: '500000000' },
+    ]);
   });
 
   it('runs the text filter, the ban list, paused sales and the shown price before the intent', async () => {
@@ -366,12 +579,47 @@ describe('who may call what', () => {
       await expect(call('pokejam_live_ad_usdc_find', ['pokejam-ad-usdc:0123456789abcdef', null])).rejects.toThrow(/permission denied/);
       await expect(call('pokejam_live_ad_usdc_open', [10])).rejects.toThrow(/permission denied/);
       await expect(call('pokejam_live_ad_set_cfg', ['ads_paused', 'false'])).rejects.toThrow(/permission denied/);
-      for (const table of ['pokejam_live_ads', 'pokejam_live_ad_reports', 'pokejam_live_ad_usdc_intents']) {
+      await expect(call('pokejam_live_ad_plan_amount', ['burn', 'hour'])).rejects.toThrow(/permission denied/);
+      await expect(t.db.transaction(async (tx) => {
+        await tx.exec(`set local role ${role}`);
+        return tx.query(`update public.pokejam_live_ad_plans set amount = 1`);
+      })).rejects.toThrow(/permission denied/);
+      await expect(t.db.transaction(async (tx) => {
+        await tx.exec(`set local role ${role}`);
+        return tx.query(`insert into public.pokejam_config(key, value) values ('live_ads_paused', 'true') on conflict (key) do update set value = 'true'`);
+      })).rejects.toThrow(/permission denied/);
+      for (const table of ['pokejam_live_ad_plans', 'pokejam_config', 'pokejam_live_ads', 'pokejam_live_ad_reports', 'pokejam_live_ad_usdc_intents']) {
         await expect(t.db.transaction(async (tx) => {
           await tx.exec(`set local role ${role}`);
           return tx.query(`select * from public.${table}`);
         })).rejects.toThrow(/permission denied/);
       }
+    }
+  });
+
+  it("holds on Supabase's defaults, which hand every new table and function to anon and authenticated", async () => {
+    // Supabase runs these for its projects. The migrations must take the access back themselves, so this builds a database
+    // that starts that way, and asks the catalog about every table and function the ad migrations made.
+    const t = await testDb(`
+      alter default privileges in schema public grant all on tables to anon, authenticated, service_role;
+      alter default privileges in schema public grant all on functions to anon, authenticated, service_role;
+      alter default privileges in schema public grant all on sequences to anon, authenticated, service_role;`);
+    const tables = await t.sql(`select c.relname as name, c.relrowsecurity as rls,
+        has_table_privilege('anon', c.oid, 'select, insert, update, delete') as anon, has_table_privilege('authenticated', c.oid, 'select, insert, update, delete') as auth
+      from pg_class c join pg_namespace n on n.oid = c.relnamespace
+      where n.nspname = 'public' and c.relkind = 'r' and (c.relname like 'pokejam_live_%' or c.relname like 'pokejam_ad%' or c.relname = 'pokejam_config')`);
+    expect(tables.map((r) => r.name)).toEqual(expect.arrayContaining(['pokejam_live_ad_plans', 'pokejam_live_ads', 'pokejam_live_ad_reports', 'pokejam_live_ad_usdc_intents', 'pokejam_config', 'pokejam_ads']));
+    const moderatorOnly = ['pokejam_admin_live_ads', 'pokejam_admin_live_ad_remove'];
+    for (const r of tables.filter((x) => x.name !== 'pokejam_admins')) expect(r, String(r.name)).toMatchObject({ rls: true, anon: false, auth: false });
+    const fns = await t.sql(`select p.proname as name, has_function_privilege('anon', p.oid, 'execute') as anon, has_function_privilege('authenticated', p.oid, 'execute') as auth,
+        has_function_privilege('service_role', p.oid, 'execute') as svc
+      from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+      where n.nspname = 'public' and (p.proname like 'pokejam_live_ad%' or p.proname like 'pokejam_admin_live_ad%')`);
+    expect(fns.length).toBeGreaterThan(25);
+    for (const f of fns) {
+      expect(f.anon, `anon on ${f.name}`).toBe(false);
+      expect(f.auth, `authenticated on ${f.name}`).toBe(moderatorOnly.includes(f.name as string));
+      if (!moderatorOnly.includes(f.name as string)) expect(f.svc, `service_role on ${f.name}`).toBe(true);
     }
   });
 

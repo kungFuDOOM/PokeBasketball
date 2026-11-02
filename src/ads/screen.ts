@@ -1,5 +1,6 @@
 // The Advertise page: write an ad, see it on the courtside LED board exactly as the game draws it, pick how long it
-// runs, and pay from your own wallet, either by burning $PJAM (an hour, a day or a week) or in USDC (a week or a month).
+// runs, and pay from your own wallet, either by burning $PJAM or in USDC. The plans and prices come from the server (the
+// board's `plans`, from pokejam_live_ad_plans); nothing here knows a price.
 // The live pokejam-ads-live Edge Function builds the burn or the transfer and checks it on-chain; see
 // supabase/migrations/20261202_pokejam_ads.sql and 20261203_pokejam_ads_live.sql for how a booking moves. No faucet here.
 import './ads.css';
@@ -12,9 +13,10 @@ import type { TeamDef } from '../game/types';
 import { AD_MAX, AD_THEMES, THEME_ORDER, adTextOk, boardAfterAd, cleanAdText, type AdTheme, type BoardAd } from '../data/ads';
 import { drawLedBoard } from '../game/ledBoard';
 import { esc } from '../util';
-import { ADS_CONFIGURED, AdsError, PLANS, PLAN_HOURS, adsApi, explorer, replaceMessage, shortTokens, tokens, type Board, type Booking, type Plan, type Quote } from './api';
+import { ADS_CONFIGURED, AdsError, adsApi, explorer, replaceMessage, shortTokens, tokens, type Board, type Booking, type Quote } from './api';
 import { applyBoard } from './board';
-import { USDC_PLANS, USDC_PLAN_HOURS, UsdcPayError, checkTransfer, isUsdcPlan, parseUsdcIntent, pollUsdcConfirm, usd, type UsdcPlan } from './usdcPay';
+import { DM_CONTACTS, DM_ONLY, isPlan, offers, pickPlan, savePercent, type PayMethod, type Plan } from './plans';
+import { UsdcPayError, checkTransfer, parseUsdcIntent, pollUsdcConfirm, usd } from './usdcPay';
 import { connect, mobileWalletLinks, shortAddress, stopWatching, wallets, type Connected } from './wallet';
 
 const PENDING_KEY = 'pokejam.adPending';
@@ -38,13 +40,9 @@ const ZOOM_W = 300;
 const PLAN_LABEL: Record<Plan, { name: string; per: string }> = {
   hour: { name: '1 Hour', per: 'Try it out' },
   day: { name: '1 Day', per: 'Prime time, all day' },
-  week: { name: '1 Week', per: 'Own the week' },
-};
-const USDC_LABEL: Record<UsdcPlan, { name: string; per: string }> = {
   week: { name: '1 Week', per: 'Seven days on every court' },
-  month: { name: '1 Month', per: '30 days, best value' },
+  month: { name: '1 Month', per: '30 days on every court' },
 };
-type PayMethod = 'burn' | 'usdc';
 
 interface State {
   board: Board | null;
@@ -53,7 +51,7 @@ interface State {
   plan: Plan;
   /** How the advertiser pays; 'usdc' only where the server offers it (board.usdcPay). */
   pay: PayMethod;
-  usdcPlan: UsdcPlan;
+  usdcPlan: Plan;
   /** ISO, or null for as soon as possible. */
   start: string | null;
   quote: Quote | null;
@@ -93,8 +91,8 @@ export function openAdvertise(root: HTMLElement, back: () => void) {
   try { draft = JSON.parse(store.get(DRAFT_KEY) || '{}'); } catch { /* none */ }
   const s: State = {
     board: null, text: typeof draft.text === 'string' ? cleanAdText(draft.text) : '', theme: draft.theme && draft.theme in AD_THEMES ? draft.theme : 'gold',
-    plan: draft.plan && PLANS.includes(draft.plan) ? draft.plan : 'day',
-    pay: draft.pay === 'usdc' ? 'usdc' : 'burn', usdcPlan: isUsdcPlan(draft.usdcPlan) ? draft.usdcPlan : 'week', start: null, quote: null, court: PREVIEW_COURTS[0],
+    plan: isPlan(draft.plan) ? draft.plan : 'day',
+    pay: draft.pay === 'usdc' ? 'usdc' : 'burn', usdcPlan: isPlan(draft.usdcPlan) ? draft.usdcPlan : 'week', start: null, quote: null, court: PREVIEW_COURTS[0],
     wallet: null, balance: null, lamports: null, busy: false, step: 0, error: '', done: null, verdict: null, mine: null,
   };
   let alive = true;
@@ -103,9 +101,11 @@ export function openAdvertise(root: HTMLElement, back: () => void) {
   let checkTimer = 0;
   let mineTimer = 0;
   /** USDC can be picked only when the server offers it. */
-  const usdcOffered = () => !!(s.board?.usdc && s.board.usdcPay);
+  const usdcOffered = () => !!s.board?.usdcPay && offers(s.board.plans, 'usdc').length > 0;
   const payWith = (): PayMethod => (s.pay === 'usdc' && usdcOffered() ? 'usdc' : 'burn');
-  const activePlan = (): Plan | UsdcPlan => (payWith() === 'usdc' ? s.usdcPlan : s.plan);
+  const activePlan = (): Plan => (payWith() === 'usdc' ? s.usdcPlan : s.plan);
+  /** The server's price for a plan paid this way; null before the board loads, or when it isn't on sale. */
+  const boardPrice = (m: PayMethod, p: Plan) => offers(s.board?.plans, m).find((o) => o.plan === p)?.amount ?? null;
   const onWallets = () => { if (alive) renderWallet(); };
 
   root.innerHTML = `
@@ -150,6 +150,11 @@ export function openAdvertise(root: HTMLElement, back: () => void) {
         <aside class="ad-checkout" data-checkout></aside>
       </section>
 
+      <section class="ad-section ad-dm" data-dm-only><h2>Ticker and combo ads <small>arranged by DM</small></h2>
+        <ul class="ad-dmlist">${DM_ONLY.map((d) => `<li><b>${esc(d.name)}</b><span>${esc(d.prices)}</span></li>`).join('')}</ul>
+        <p class="ad-hint">These aren't booked on this page. Message us at ${DM_CONTACTS.map((c) => `<a href="${esc(c.href)}" target="_blank" rel="noopener noreferrer">${esc(c.label)}</a>`).join(' or ')} to arrange one. They're paid in SOL.</p>
+      </section>
+
       <section class="ad-section"><h2>Board availability <small>next 7 days, in your time</small></h2>
         <div class="ad-cal" data-cal><p class="note">Loading…</p></div>
         <p class="ad-hint">Each hour shows how many of the board's spots are booked. Tap a free hour to start your ad then.</p>
@@ -166,8 +171,8 @@ export function openAdvertise(root: HTMLElement, back: () => void) {
           <li><b>Checked on-chain.</b> Our server reads the payment from Solana and puts your ad on the board, in every game, on every court.</li>
         </ol>
         <ul class="ad-fine">
-          <li>The board has a few spots, and live ads take turns. If it fills up while you're signing, your ad runs at the next opening for the full time you paid for. A burn is never lost.</li>
-          <li>Payments are final: burns can't be undone, and USDC payments aren't refunded unless the law requires it. Every burn becomes airtime: the page, your wallet's history and a scan of the token's own history all look for it, so it's found even if you close the page mid-burn.</li>
+          <li>The board has a few spots, and live ads take turns. If it fills up while you're signing, your ad runs at the next opening for the full time you paid for.</li>
+          <li>Payments are final: burns can't be undone, and USDC payments aren't refunded unless the law requires it. A burn or payment made through this page is found even if you close the page while it's going through: your wallet's history and a scan of the chain both look for it.</li>
           <li>Ads are checked before you burn: no explicit words, slurs, links, giveaway or wallet scams, or posing as staff. If moderators still take one down, you keep the time it had left and can run it with new text. Only wallets banned for abuse lose it.</li>
           <li>One spot per advertiser at a time, so nobody can buy the whole board.</li>
           <li>Every ad is marked AD on the board.</li>
@@ -295,7 +300,7 @@ export function openAdvertise(root: HTMLElement, back: () => void) {
   root.querySelector('[data-plans]')!.addEventListener('click', (e) => {
     const b = (e.target as HTMLElement).closest<HTMLButtonElement>('[data-plan]');
     if (!b) return;
-    if (payWith() === 'usdc') s.usdcPlan = b.dataset.plan as UsdcPlan;
+    if (payWith() === 'usdc') s.usdcPlan = b.dataset.plan as Plan;
     else s.plan = b.dataset.plan as Plan;
     saveDraft();
     renderPlans();
@@ -340,40 +345,24 @@ export function openAdvertise(root: HTMLElement, back: () => void) {
   });
 
   function renderPlans() {
-    const b = s.board;
     const payEl = $('[data-pay]');
     payEl.hidden = !usdcOffered();
     payEl.querySelectorAll<HTMLButtonElement>('button').forEach((x) => x.classList.toggle('on', x.dataset.v === payWith()));
-    $('[data-plans]').classList.toggle('usdc', payWith() === 'usdc');
-    if (payWith() === 'usdc') { renderUsdcPlans(); return; }
-    const hour = b ? BigInt(b.prices.hour) : null;
-    $('[data-plans]').innerHTML = PLANS.map((p) => {
-      const price = b ? BigInt(b.prices[p]) : null;
-      const full = hour !== null ? hour * BigInt(PLAN_HOURS[p]) : null;
-      const save = price !== null && full ? Number(((full - price) * 100n) / full) : 0;
-      const perHour = price !== null ? price / BigInt(PLAN_HOURS[p]) : null;
-      return `<button class="ad-plan ${p === s.plan ? 'on' : ''}" data-plan="${p}">
-        ${save >= 5 ? `<span class="ad-save">${p === 'week' ? 'Best value · ' : ''}Save ${save}%</span>` : ''}
-        <strong>${PLAN_LABEL[p].name}</strong>
-        <span class="ad-price">${price !== null ? tokens(price, b!.decimals) : '…'}<small>$PJAM</small></span>
-        <small>${perHour !== null && p !== 'hour' ? `${shortTokens(perHour, b!.decimals)} an hour · ` : ''}${PLAN_LABEL[p].per}</small>
-      </button>`;
-    }).join('');
-  }
-  // USDC: the server's prices (board.usdc), compared per hour with the week.
-  function renderUsdcPlans() {
-    const prices = s.board?.usdc;
-    const dec = s.board?.usdcPay?.decimals ?? 6;
-    const week = prices ? BigInt(prices.week) : null;
-    $('[data-plans]').innerHTML = USDC_PLANS.map((p) => {
-      const price = prices ? BigInt(prices[p]) : null;
-      const full = week !== null ? (week * BigInt(USDC_PLAN_HOURS[p])) / 168n : null;
-      const save = price !== null && full ? Number(((full - price) * 100n) / full) : 0;
-      return `<button class="ad-plan ${p === s.usdcPlan ? 'on' : ''}" data-plan="${p}">
-        ${save >= 5 ? `<span class="ad-save">Best value · Save ${save}%</span>` : ''}
-        <strong>${USDC_LABEL[p].name}</strong>
-        <span class="ad-price">${price !== null ? usd(price, dec) : '…'}<small>USDC</small></span>
-        <small>${USDC_LABEL[p].per}</small>
+    const method = payWith();
+    const dec = (method === 'usdc' ? s.board?.usdcPay?.decimals : s.board?.decimals) ?? 6;
+    const list = offers(s.board?.plans, method);
+    const picked = method === 'usdc' ? s.usdcPlan : s.plan;
+    const box = $('[data-plans]');
+    box.style.setProperty('--n', String(Math.max(1, list.length)));
+    box.innerHTML = !list.length ? '<p class="note">Nothing on sale this way right now.</p>' : list.map((o) => {
+      const save = savePercent(o, list);
+      const perHour = method === 'burn' && o.amount !== null && o.hours > 1 ? `${shortTokens(o.amount / BigInt(o.hours), dec)} an hour · ` : '';
+      const best = save >= 5 && o.hours === list[list.length - 1].hours;
+      return `<button class="ad-plan ${o.plan === picked ? 'on' : ''}" data-plan="${o.plan}">
+        ${save >= 5 ? `<span class="ad-save">${best ? 'Best value · ' : ''}Save ${save}%</span>` : ''}
+        <strong>${PLAN_LABEL[o.plan].name}</strong>
+        <span class="ad-price">${o.amount === null ? '…' : method === 'usdc' ? usd(o.amount, dec) : tokens(o.amount, dec)}<small>${method === 'usdc' ? 'USDC' : '$PJAM'}</small></span>
+        <small>${perHour}${PLAN_LABEL[o.plan].per}</small>
       </button>`;
     }).join('');
   }
@@ -384,6 +373,8 @@ export function openAdvertise(root: HTMLElement, back: () => void) {
     quoteTimer = window.setTimeout(async () => {
       const plan = activePlan();
       try {
+        // Nothing to quote until the plan is known to be on sale.
+        if (!s.board) return;
         const q = await adsApi.quote(plan, s.start);
         if (plan !== activePlan()) return;
         s.quote = q;
@@ -450,12 +441,12 @@ export function openAdvertise(root: HTMLElement, back: () => void) {
     if (s.done) { el.innerHTML = receiptHtml(s.done, b); bindCheckout(); return; }
     if (payWith() === 'usdc') { renderUsdcCheckout(el); return; }
     const qp = q && q.plan === s.plan ? q : null;
-    const price = qp?.price ? BigInt(qp.price) : b ? BigInt(b.prices[s.plan]) : null;
+    const price = qp?.price ? BigInt(qp.price) : boardPrice('burn', s.plan);
     const dec = b?.decimals ?? 6;
     const textOk = adTextOk(s.text);
     const short = s.wallet && s.balance !== null && price !== null && s.balance < price;
     const noSol = s.wallet && s.lamports !== null && s.lamports < 20_000;
-    const can = !!(b && !b.paused && qp && textOk && s.verdict?.ok && s.wallet && !short && !noSol && !s.busy);
+    const can = !!(b && !b.paused && qp?.price && textOk && s.verdict?.ok && s.wallet && !short && !noSol && !s.busy);
     const steps = ['Booking', `Approve in ${s.wallet?.name ?? 'your wallet'}`, 'Burning on Solana', 'On the board'];
     el.innerHTML = `
       <h2>Checkout</h2>
@@ -484,7 +475,7 @@ export function openAdvertise(root: HTMLElement, back: () => void) {
     const b = s.board;
     const q = s.quote && s.quote.plan === s.usdcPlan ? s.quote : null;
     const dec = b?.usdcPay?.decimals ?? 6;
-    const price = q?.usdc ? BigInt(q.usdc) : b?.usdc ? BigInt(b.usdc[s.usdcPlan]) : null;
+    const price = q?.usdc ? BigInt(q.usdc) : boardPrice('usdc', s.usdcPlan);
     const textOk = adTextOk(s.text);
     const noSol = s.wallet && s.lamports !== null && s.lamports < 20_000;
     const can = !!(b && !b.paused && q?.usdc && textOk && s.verdict?.ok && s.wallet && !noSol && !s.busy);
@@ -496,7 +487,7 @@ export function openAdvertise(root: HTMLElement, back: () => void) {
         <div class="ad-chip" style="${chipStyle(s.theme)}"><i>AD</i><span>${esc(s.text.trim() || 'YOUR AD HERE')}</span></div>
         <dl>
           <dt>Runs</dt><dd>${q ? `${esc(fmtTime(q.starts_at))} → ${esc(fmtTime(q.ends_at))}` : '…'}</dd>
-          <dt>Length</dt><dd>${USDC_LABEL[s.usdcPlan].name}</dd>
+          <dt>Length</dt><dd>${PLAN_LABEL[s.usdcPlan].name}</dd>
           <dt>Pay</dt><dd class="ad-burn ad-usdc">${price !== null ? `${usd(price, dec)} <small>USDC</small>` : '…'}</dd>
         </dl>
         ${q?.moved ? `<p class="ad-warn">The board is full at that time, so this would start at the next opening.</p>` : ''}
@@ -543,7 +534,8 @@ export function openAdvertise(root: HTMLElement, back: () => void) {
     let id = '';
     try {
       // The price the page shows: if the server's has changed since, nothing is signed and the page shows the new one.
-      const expect = (s.quote?.plan === s.plan ? s.quote.price : null) ?? s.board.prices[s.plan];
+      const expect = (s.quote?.plan === s.plan ? s.quote.price : null) ?? boardPrice('burn', s.plan)?.toString();
+      if (!expect) throw new AdsError("That plan isn't on sale right now.");
       let prep;
       try {
         prep = await adsApi.prepare({ wallet: s.wallet.address, text: s.text.trim(), theme: s.theme, plan: s.plan, start: s.start, expect });
@@ -594,7 +586,7 @@ export function openAdvertise(root: HTMLElement, back: () => void) {
   const dropUsdcPending = (id: string) => setUsdcPending(usdcPending().filter((p) => p.id !== id));
 
   async function payUsdc() {
-    if (!s.wallet || s.busy || !s.board?.usdc) return;
+    if (!s.wallet || s.busy || !s.board) return;
     const plan = s.usdcPlan;
     s.busy = true;
     s.error = '';
@@ -602,7 +594,8 @@ export function openAdvertise(root: HTMLElement, back: () => void) {
     renderCheckout();
     let id = '';
     try {
-      const expect = (s.quote?.plan === plan ? s.quote.usdc : null) ?? s.board.usdc[plan];
+      const expect = (s.quote?.plan === plan ? s.quote.usdc : null) ?? boardPrice('usdc', plan)?.toString();
+      if (!expect) throw new AdsError("That plan isn't on sale right now.");
       let raw;
       try {
         raw = await adsApi.usdcIntent({ wallet: s.wallet.address, text: s.text.trim(), theme: s.theme, plan, start: s.start, expect });
@@ -666,7 +659,7 @@ export function openAdvertise(root: HTMLElement, back: () => void) {
     const now = Date.now();
     switch (a.state) {
       case 'pending': return pending().some((p) => p.id === a.id) ? '<span class="ad-tag wait">Waiting for your burn to land…</span>' : '<span class="ad-tag">Not paid (nothing burned)</span>';
-      case 'dust': return '<span class="ad-tag bad">Burn too small to run</span>';
+      case 'dust': return '<span class="ad-tag bad">Burn below the price: not running</span>';
       case 'removed':
         if (a.banned) return `<span class="ad-tag bad">Taken down: wallet banned</span>`;
         if (a.replaced_by) return '<span class="ad-tag">Taken down, replaced with new text</span>';
@@ -749,6 +742,8 @@ export function openAdvertise(root: HTMLElement, back: () => void) {
       const b = await adsApi.board();
       if (!alive) return;
       s.board = b;
+      s.plan = pickPlan(offers(b.plans, 'burn'), s.plan);
+      s.usdcPlan = pickPlan(offers(b.plans, 'usdc'), s.usdcPlan);
       applyBoard(b);
       renderBoard();
     } catch (e) {
@@ -871,7 +866,7 @@ function receiptHtml(b: Booking, board: Board | null) {
   if (b.state !== 'paid') {
     return `<div class="ad-receipt"><p class="ad-kicker">Burn received</p>
       <h2>${b.state === 'dust' ? 'Too small to run' : 'Not on the board'}</h2>
-      <p class="ad-warn">${b.state === 'dust' ? 'That burn was worth less than a minute of airtime.' : 'This wallet is banned from advertising, so the ad stays down.'}</p>
+      <p class="ad-warn">${b.state === 'dust' ? "That burn was less than this plan's price, so the ad doesn't run."  : 'This wallet is banned from advertising, so the ad stays down.'}</p>
       <button class="btn" data-a="another">Back</button></div>`;
   }
   const live = b.starts_at && Date.parse(b.starts_at) <= Date.now() + 60_000;

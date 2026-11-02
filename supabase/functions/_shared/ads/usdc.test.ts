@@ -318,7 +318,8 @@ describe('usdc-intent and usdc-confirm through pokejam-ads-live', () => {
     expect(bad.body.reason).toBeTruthy();
     expect(bad.body.error).toMatch(/./);
     expect((await t.intent({ text: 'VISIT SCAM.COM' })).status).toBe(400);
-    expect((await t.intent({ plan: 'day' })).body.error).toMatch(/week or a month/);
+    expect((await t.intent({ plan: 'day' })).body.error).toMatch(/can't be paid in USDC/);
+    expect((await t.intent({ plan: 'year' })).body.error).toMatch(/Pick a plan/);
     expect((await t.intent({ expect: '1' })).status).toBe(409);
     t.ch.usdc.set(await deriveAta(t.wallet, USDC), WEEK - 1n);
     expect((await t.intent()).body).toMatchObject({ short: true });

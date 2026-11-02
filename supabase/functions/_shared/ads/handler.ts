@@ -36,7 +36,7 @@ import { base58Encode } from '../pack/bytes.ts';
 import { decodeTransaction } from '../pack/tx-inspect.ts';
 import type { AdsConfig } from './config.ts';
 import { adMemo, buildBurnTransaction, buildFaucetTransaction, MEMO_PROGRAM, SPL_2022_PROGRAM, SPL_PROGRAM } from './tx.ts';
-import { usdcConfirm, usdcIntent, usdcSweep, USDC_PLANS, type Reply, type SweepResult } from './usdc-handlers.ts';
+import { usdcConfirm, usdcIntent, usdcSweep, type Reply, type SweepResult } from './usdc-handlers.ts';
 import { checkBurn, type ParsedTransaction } from './verify.ts';
 
 /** Calls one SQL function by name with named arguments; throws its error message. */
@@ -77,6 +77,8 @@ export interface Booking {
 interface Mint { tokenProgram: string; decimals: number; supply: string; at: number }
 
 const PLANS = new Set(['hour', 'day', 'week']);
+/** The live board's plan names; which of them can be paid which way is up to pokejam_live_ad_plans. */
+const LIVE_PLANS = new Set(['hour', 'day', 'week', 'month']);
 const THEMES = new Set(['gold', 'fire', 'water', 'grass', 'electric', 'psychic', 'ghost', 'ice']);
 const REPORTS = new Set(['offensive', 'scam', 'other']);
 /** Lamports a wallet needs for the burn's fee (with room for a priority fee). */
@@ -117,6 +119,8 @@ async function mintInfo(cfg: AdsConfig, rpc: AdsDeps['rpc']): Promise<Mint> {
   if (!r.value) throw new Error(`mint ${cfg.mint} not found on ${cfg.cluster}`);
   if (r.value.owner !== SPL_PROGRAM && r.value.owner !== SPL_2022_PROGRAM) throw new Error(`mint ${cfg.mint} is not a token mint`);
   const info = r.value.data.parsed.info;
+  // Prices are stored with an assumed number of decimals: never sell against a mint that would make them wrong.
+  if (cfg.strictBurn && info.decimals !== cfg.strictBurn.decimals) throw new Error(`mint ${cfg.mint} has ${info.decimals} decimals, not ${cfg.strictBurn.decimals}`);
   mintCache = { tokenProgram: r.value.owner, decimals: info.decimals, supply: info.supply, at: Date.now() };
   return mintCache;
 }
@@ -140,13 +144,16 @@ async function tokenAccounts(cfg: AdsConfig, rpc: AdsDeps['rpc'], wallet: string
 const solBalance = async (rpc: AdsDeps['rpc'], wallet: string) =>
   (await rpc.call<{ value: number }>('getBalance', [wallet, { commitment: 'confirmed' }])).value;
 
-const getTx = (rpc: AdsDeps['rpc'], sig: string) => rpc.call<ParsedTransaction | null>('getTransaction',
-  [sig, { encoding: 'jsonParsed', commitment: 'confirmed', maxSupportedTransactionVersion: 0 }]);
+/** How settled a burn must be before it counts: finalized on the live mainnet board, confirmed on devnet. */
+const commitmentOf = (cfg: AdsConfig) => cfg.strictBurn?.commitment ?? 'confirmed';
+
+const getTx = (cfg: AdsConfig, rpc: AdsDeps['rpc'], sig: string) => rpc.call<ParsedTransaction | null>('getTransaction',
+  [sig, { encoding: 'jsonParsed', commitment: commitmentOf(cfg), maxSupportedTransactionVersion: 0 }]);
 
 /** Signatures in an address's recent history whose memo names this booking. */
-async function findByMemo(rpc: AdsDeps['rpc'], b: Booking, limit = 100): Promise<string[]> {
+async function findByMemo(cfg: AdsConfig, rpc: AdsDeps['rpc'], b: Booking, limit = 100): Promise<string[]> {
   const r = await rpc.call<{ signature: string; memo: string | null; err: unknown }[]>('getSignaturesForAddress',
-    [b.wallet, { limit, commitment: 'confirmed' }]);
+    [b.wallet, { limit, commitment: commitmentOf(cfg) }]);
   return r.filter((s) => !s.err && s.memo?.includes(adMemo(b.code))).map((s) => s.signature);
 }
 
@@ -157,9 +164,10 @@ async function settle(cfg: AdsConfig, deps: AdsDeps, b: Booking, sigs: string[])
   let seen = false;
   let out = b;
   for (const sig of sigs) {
-    const tx = await getTx(deps.rpc, sig);
+    const tx = await getTx(cfg, deps.rpc, sig);
     if (tx) seen = true;
-    const check = checkBurn(tx, { code: b.code, mint: cfg.mint, tokenProgram: mint.tokenProgram });
+    const check = checkBurn(tx, { code: b.code, mint: cfg.mint, tokenProgram: mint.tokenProgram,
+      ...(cfg.strictBurn ? { wallet: b.wallet, decimals: cfg.strictBurn.decimals, notBefore: Math.floor(Date.parse(b.created_at) / 1000) } : {}) });
     if (!check.ok) { why = check.why; continue; }
     const paid = await deps.db<Booking>('pokejam_ad_pay', { p_id: b.id, p_sig: check.signature, p_burned: check.burned.toString(), p_burner: check.burner });
     changed();
@@ -179,7 +187,7 @@ async function sweepChain(cfg: AdsConfig, deps: AdsDeps): Promise<{ scanned: num
   let scanned = 0;
   const hits: { signature: string; memo: string }[] = [];
   for (let page = 0; page < 50; page++) {
-    const opts: Record<string, unknown> = { limit: 1000, commitment: 'confirmed' };
+    const opts: Record<string, unknown> = { limit: 1000, commitment: commitmentOf(cfg) };
     if (cursor) opts.until = cursor;
     if (before) opts.before = before;
     const sigs = await deps.rpc.call<{ signature: string; memo: string | null; err: unknown; blockTime: number | null }[]>('getSignaturesForAddress', [cfg.mint, opts]);
@@ -280,7 +288,7 @@ export async function adsHandler(req: Request, cfg: AdsConfig, rawDeps: AdsDeps)
         if (!boardCache || Date.now() - boardCache.at > 10_000) {
           const [board, mint] = await Promise.all([deps.db<Record<string, unknown>>('pokejam_ad_board'), mintInfo(cfg, deps.rpc)]);
           boardCache = { at: Date.now(), body: { ...board, cluster: cfg.cluster, mint: cfg.mint, decimals: mint.decimals, supply: mint.supply, faucet: !!cfg.faucetSecret,
-            // Where USDC payments go (live only). The prices are the board's own `usdc` (from the database).
+            // Where USDC payments go (live only). The prices are the board's own `plans` (from the database).
             ...(cfg.usdc ? { usdcPay: { mint: cfg.usdc.mint, receiver: cfg.usdc.receiver, decimals: 6 } } : {}) } };
         }
         return json(boardCache.body, 200, { 'cache-control': 'public, max-age=10' });
@@ -291,8 +299,8 @@ export async function adsHandler(req: Request, cfg: AdsConfig, rawDeps: AdsDeps)
       }
       case 'quote': {
         const plan = str('plan');
-        // A month is a USDC plan: quoted only where USDC is offered.
-        if (!PLANS.has(plan) && !(cfg.usdc && USDC_PLANS.has(plan))) throw new Refusal(cfg.usdc ? 'Pick an hour, a day, a week or a month.' : 'Pick an hour, a day or a week.');
+        // A month is a live-board plan: quoted only there.
+        if (!PLANS.has(plan) && !(cfg.usdc && LIVE_PLANS.has(plan))) throw new Refusal(cfg.usdc ? 'Pick an hour, a day, a week or a month.' : 'Pick an hour, a day or a week.');
         const w = str('wallet');
         return json(await deps.db('pokejam_ad_quote', { p_plan: plan, p_start: start(), p_wallet: isAddress(w) ? w : null }));
       }
@@ -306,11 +314,12 @@ export async function adsHandler(req: Request, cfg: AdsConfig, rawDeps: AdsDeps)
         const w = wallet();
         const plan = str('plan');
         const theme = str('theme');
-        if (!PLANS.has(plan)) throw new Refusal('Pick an hour, a day or a week.');
+        if (!PLANS.has(plan) && !(cfg.usdc && LIVE_PLANS.has(plan))) throw new Refusal('Pick an hour, a day or a week.');
         if (!THEMES.has(theme)) throw new Refusal('Pick a colour.');
         const why = await deps.db<string | null>('pokejam_ad_verdict', { p: str('text', 200) });
         if (why) throw new Refusal(VERDICTS[why], 400, { reason: why });
-        const quote = await deps.db<{ price: string }>('pokejam_ad_quote', { p_plan: plan, p_start: start(), p_wallet: w });
+        const quote = await deps.db<{ price: string | null }>('pokejam_ad_quote', { p_plan: plan, p_start: start(), p_wallet: w });
+        if (!quote.price) throw new Refusal("That plan can't be paid by burning $PJAM.");
         const price = BigInt(quote.price);
         const expect = str('expect');
         if (expect && /^\d+$/.test(expect) && BigInt(expect) !== price) {
@@ -369,7 +378,7 @@ export async function adsHandler(req: Request, cfg: AdsConfig, rawDeps: AdsDeps)
         }
         if (!sig) {
           // No signature (the page closed mid-burn, or the wallet didn't say): look for the memo in the wallet's history.
-          const found = await findByMemo(deps.rpc, b);
+          const found = await findByMemo(cfg, deps.rpc, b);
           if (found.length) b = (await settle(cfg, deps, b, found)).booking;
           return json({ booking: b, landing: b.state === 'pending' });
         }
@@ -398,7 +407,7 @@ export async function adsHandler(req: Request, cfg: AdsConfig, rawDeps: AdsDeps)
         const pending = mine.filter((b) => b.state === 'pending').slice(0, 3);
         let any = false;
         for (const b of pending) {
-          const sigs = await findByMemo(deps.rpc, b).catch(() => []);
+          const sigs = await findByMemo(cfg, deps.rpc, b).catch(() => []);
           if (sigs.length && (await settle(cfg, deps, b, sigs)).booking.state !== 'pending') any = true;
         }
         return json({ ads: any ? await deps.db<Booking[]>('pokejam_ad_mine', { p_wallet: w }) : mine });
@@ -458,7 +467,7 @@ export async function adsHandler(req: Request, cfg: AdsConfig, rawDeps: AdsDeps)
         const pending = await deps.db<Booking[]>('pokejam_ad_unsettled', { p_limit: 20 });
         let wallets = 0;
         for (const b of pending) {
-          const sigs = await findByMemo(deps.rpc, b).catch(() => []);
+          const sigs = await findByMemo(cfg, deps.rpc, b).catch(() => []);
           if (sigs.length && (await settle(cfg, deps, b, sigs).catch(() => null))?.booking.state === 'paid') wallets++;
         }
         // Live only: USDC payments that landed with no page left to confirm them. Its failure doesn't hide the burns'.
@@ -491,7 +500,7 @@ export async function adsHandler(req: Request, cfg: AdsConfig, rawDeps: AdsDeps)
     // The SQL functions' own refusals are written for players.
     const verdict = /ad text not allowed \((\w+)\)/.exec(msg);
     if (verdict) return json({ error: VERDICTS[verdict[1]] ?? "That text can't run.", reason: verdict[1] }, 400);
-    if (/paused|not a Solana wallet|unknown plan|60 days|too many unpaid|already used|banned|already replaced|only an ad that was taken down|no time left|no such ad|pick a colour|this plan is paid/.test(msg)) {
+    if (/paused|not a Solana wallet|unknown plan|60 days|too many unpaid|already used|banned|already replaced|only an ad that was taken down|no time left|no such ad|pick a colour|this plan is (not )?paid/.test(msg)) {
       return json({ error: msg.charAt(0).toUpperCase() + msg.slice(1) + '.' }, 400);
     }
     console.error('pokejam-ads:', msg);

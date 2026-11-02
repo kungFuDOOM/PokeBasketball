@@ -2,11 +2,7 @@
 // _shared/ads/handler.ts with the devnet test site's function). The page never moves tokens itself: the server builds the
 // burn or the USDC transfer, the advertiser's wallet signs it, the server checks it on-chain.
 import type { AdTheme } from '../data/ads';
-import type { UsdcPlan } from './usdcPay';
-
-export type Plan = 'hour' | 'day' | 'week';
-export const PLANS: Plan[] = ['hour', 'day', 'week'];
-export const PLAN_HOURS: Record<Plan, number> = { hour: 1, day: 24, week: 168 };
+import type { BoardPlan, Plan } from './plans';
 
 export interface LiveAd { id: string; text: string; theme: AdTheme; wallet: string; starts_at: string; ends_at: string; burn_sig: string | null; usdc_sig?: string | null }
 
@@ -14,11 +10,10 @@ export interface Board {
   now: string;
   paused: boolean;
   spots: number;
-  prices: Record<Plan, string>;
+  /** What's on sale, and for how much: the only prices the page shows. */
+  plans: BoardPlan[];
   live: LiveAd[];
   booked: { starts_at: string; ends_at: string }[];
-  /** USDC base units per plan (live only). */
-  usdc?: Record<UsdcPlan, string>;
   /** Where USDC payments go (live only; absent means USDC isn't offered). */
   usdcPay?: { mint: string; receiver: string; decimals: number };
   totals: { burned: string; usdc?: string; ads: number; advertisers: number; hours: number };
@@ -31,7 +26,7 @@ export interface Board {
 }
 
 /** `price`: PJAM to burn (null for a USDC-only plan); `usdc`: USDC base units (null when it can't be paid in USDC). */
-export interface Quote { plan: Plan | UsdcPlan; hours: number; price: string | null; usdc?: string | null; starts_at: string; ends_at: string; moved: boolean }
+export interface Quote { plan: Plan; hours: number; price: string | null; usdc?: string | null; starts_at: string; ends_at: string; moved: boolean }
 
 export interface Booking {
   id: string;
@@ -39,7 +34,7 @@ export interface Booking {
   wallet: string;
   text: string;
   theme: AdTheme;
-  plan: Plan | UsdcPlan;
+  plan: Plan;
   hours: number;
   pay_method?: 'burn' | 'usdc';
   price: string;
@@ -106,7 +101,7 @@ export const replaceMessage = (id: string, text: string, theme: string) => `Poke
 
 export const adsApi = {
   board: () => call<Board>(null),
-  quote: (plan: Plan | UsdcPlan, start: string | null) => call<Quote>({ action: 'quote', plan, start }),
+  quote: (plan: Plan, start: string | null) => call<Quote>({ action: 'quote', plan, start }),
   wallet: (wallet: string) => call<{ balance: string; lamports: number; decimals: number }>({ action: 'wallet', wallet }),
   check: (text: string) => call<{ ok: boolean; reason: string | null; message: string | null }>({ action: 'check', text }),
   prepare: (a: { wallet: string; text: string; theme: AdTheme; plan: Plan; start: string | null; expect: string }) =>
@@ -117,7 +112,7 @@ export const adsApi = {
   replace: (id: string, text: string, theme: AdTheme, signature: string) => call<{ booking: Booking }>({ action: 'replace', id, text, theme, signature }),
   report: (id: string, reason: 'offensive' | 'scam' | 'other') => call<{ ok: true }>({ action: 'report', id, reason }),
   /** Pay in USDC: checks the ad (text, ban, price), then a one-time intent and the unsigned transfer to sign. */
-  usdcIntent: (a: { wallet: string; text: string; theme: AdTheme; plan: UsdcPlan; start: string | null; expect: string }) =>
+  usdcIntent: (a: { wallet: string; text: string; theme: AdTheme; plan: Plan; start: string | null; expect: string }) =>
     call<Record<string, unknown>>({ action: 'usdc-intent', ...a }),
   /** 200 {status:'paid', ad}, 202 {status:'pending'|'open'}; a refusal throws AdsError (info.code, info.expired, info.notPaid). */
   usdcConfirm: (id: string, proof: { signature?: string; tx?: string } = {}) =>

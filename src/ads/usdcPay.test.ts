@@ -3,7 +3,7 @@ import { base58Decode, base58Encode, base64Encode } from '../../supabase/functio
 import { USDC_MINT, USDC_RECEIVER, buildUsdcTransfer, deriveAta } from '../../supabase/functions/_shared/ads/usdc-chain.ts';
 import { adsUrl } from './api';
 import {
-  USDC_PLANS, USDC_PLAN_HOURS, USDC_PLAN_USD, UsdcPayError, checkTransfer, isUsdcPlan, parseUsdcIntent, planBaseUnits, pollUsdcConfirm, usd,
+  UsdcPayError, checkTransfer, parseUsdcIntent, pollUsdcConfirm, usd,
 } from './usdcPay';
 
 /** Where `needle` first appears in `hay`, or -1. */
@@ -32,22 +32,6 @@ async function serverReply(over: { amount?: bigint; mint?: string; receiver?: st
 }
 
 describe('USDC plans', () => {
-  it('maps the courtside half to $150 a week and $500 a month', () => {
-    expect(USDC_PLANS).toEqual(['week', 'month']);
-    expect(USDC_PLAN_USD).toEqual({ week: 150, month: 500 });
-    expect(USDC_PLAN_HOURS).toEqual({ week: 168, month: 720 });
-    expect(planBaseUnits('week')).toBe(150_000_000n);
-    expect(planBaseUnits('month')).toBe(500_000_000n);
-  });
-
-  it('knows which plans USDC pays for', () => {
-    expect(isUsdcPlan('week')).toBe(true);
-    expect(isUsdcPlan('month')).toBe(true);
-    expect(isUsdcPlan('hour')).toBe(false);
-    expect(isUsdcPlan('day')).toBe(false);
-    expect(isUsdcPlan(undefined)).toBe(false);
-  });
-
   it('formats base units as dollars', () => {
     expect(usd('150000000')).toBe('$150');
     expect(usd(500_000_000n)).toBe('$500');
@@ -72,7 +56,7 @@ describe('parseUsdcIntent', () => {
     expect(() => parseUsdcIntent(null)).toThrow(UsdcPayError);
     expect(() => parseUsdcIntent({ ...r, cluster: 'testnet' })).toThrow(UsdcPayError);
     expect(() => parseUsdcIntent({ ...r, decimals: 9 })).toThrow(UsdcPayError);
-    expect(() => parseUsdcIntent({ ...r, intent: { ...r.intent, plan: 'hour' } })).toThrow(UsdcPayError);
+    expect(() => parseUsdcIntent({ ...r, intent: { ...r.intent, plan: 'year' } })).toThrow(UsdcPayError);
     expect(() => parseUsdcIntent({ ...r, intent: { ...r.intent, amount: '-5' } })).toThrow(UsdcPayError);
     expect(() => parseUsdcIntent({ ...r, tx: '' })).toThrow(UsdcPayError);
   });

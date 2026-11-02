@@ -8,7 +8,7 @@ import { base58Encode, base64Decode, base64Encode, randomBytes } from '../pack/b
 import { generateKeypair, type Keypair } from '../pack/ed25519.ts';
 import { parseTransaction, signTransactionBase64 } from '../pack/solana-tx.ts';
 import { decodeTransaction } from '../pack/tx-inspect.ts';
-import type { AdsConfig } from './config.ts';
+import { liveDbName, type AdsConfig } from './config.ts';
 import { adsHandler, replaceMessage, type AdsDeps, type Booking } from './handler.ts';
 import { buildMessage, burnCheckedIx, memoIx, MEMO_PROGRAM, SPL_2022_PROGRAM, SPL_PROGRAM, unsignedTransaction } from './tx.ts';
 import type { ParsedTransaction } from './verify.ts';
@@ -58,7 +58,8 @@ function chain(me: string, tokenProgram = SPL_2022_PROGRAM) {
   const owners = new Map<string, string>([[MY_ACCOUNT, me]]);
   const txs = new Map<string, ParsedTransaction>();
   const history = new Map<string, { signature: string; memo: string | null; err: unknown; blockTime: number }[]>();
-  const sw = { refuse: '', lose: false, hold: false, expired: new Set<string>(), held: [] as string[] };
+  // notFinal: signatures landed but not finalized yet. decimals: what the mint says it has. commitments: what was asked for.
+  const sw = { refuse: '', lose: false, hold: false, expired: new Set<string>(), held: [] as string[], notFinal: new Set<string>(), decimals: 6, commitments: [] as string[] };
   let slot = 0;
   /** Land a transaction: burns come out of balances, a failed one lands with an error. Returns its signature. */
   const land = (b64: string, fail = false) => {
@@ -72,12 +73,13 @@ function chain(me: string, tokenProgram = SPL_2022_PROGRAM) {
       if ((ix.program === SPL_2022_PROGRAM || ix.program === SPL_PROGRAM) && ix.data[0] === 15) {
         const amount = new DataView(ix.data.buffer, ix.data.byteOffset + 1, 8).getBigUint64(0, true);
         if (!fail) balances.set(ix.accounts[0], (balances.get(ix.accounts[0]) ?? 0n) - amount);
-        return { program: 'spl-token', programId: ix.program, parsed: { type: 'burnChecked', info: { account: ix.accounts[0], mint: ix.accounts[1], authority: ix.accounts[2], tokenAmount: { amount: amount.toString() } } } };
+        return { program: 'spl-token', programId: ix.program, parsed: { type: 'burnChecked', info: { account: ix.accounts[0], mint: ix.accounts[1], authority: ix.accounts[2], tokenAmount: { amount: amount.toString(), decimals: ix.data[9] } } } };
       }
       return { programId: ix.program };
     });
     const blockTime = Math.floor(Date.now() / 1000);
-    txs.set(signature, { slot: ++slot, blockTime, meta: { err: fail ? { InstructionError: [0, 'Custom'] } : null, innerInstructions: [] },
+    const held = d.keys.flatMap((k, accountIndex) => (owners.has(k) ? [{ accountIndex, mint: MINT, owner: owners.get(k) }] : []));
+    txs.set(signature, { slot: ++slot, blockTime, meta: { err: fail ? { InstructionError: [0, 'Custom'] } : null, innerInstructions: [], preTokenBalances: held, postTokenBalances: held },
       transaction: { signatures: [signature], message: { accountKeys: d.keys.map((k) => ({ pubkey: k, signer: d.signers.includes(k) })), instructions } } });
     const memo = instructions.filter((i) => i.programId === MEMO_PROGRAM).map((i) => `[${String((i as { parsed: string }).parsed.length)}] ${(i as { parsed: string }).parsed}`).join('; ') || null;
     for (const k of new Set(d.keys)) history.set(k, [{ signature, memo, err: fail ? {} : null, blockTime }, ...(history.get(k) ?? [])]);
@@ -97,13 +99,15 @@ function chain(me: string, tokenProgram = SPL_2022_PROGRAM) {
     async call<T>(method: string, params: unknown[]): Promise<T> {
       const p = params as [string, Record<string, unknown>];
       switch (method) {
-        case 'getAccountInfo': return { value: { owner: tokenProgram, data: { parsed: { info: { decimals: 6, supply: '952243314036358' } } } } } as T;
+        case 'getAccountInfo': return { value: { owner: tokenProgram, data: { parsed: { info: { decimals: sw.decimals, supply: '952243314036358' } } } } } as T;
         case 'getTokenAccountsByOwner': {
           const accts = [...owners].filter(([, o]) => o === p[0]).map(([a]) => a);
           return { value: p[1].mint === MINT ? accts.map((a) => ({ pubkey: a, account: { data: { parsed: { info: { tokenAmount: { amount: String(balances.get(a)) } } } } } })) : [] } as T;
         }
         case 'getBalance': return { value: lamports.get(p[0]) ?? 0 } as T;
-        case 'getTransaction': return (txs.get(p[0]) ?? null) as T;
+        case 'getTransaction':
+          sw.commitments.push(String(p[1].commitment));
+          return (p[1].commitment === 'finalized' && sw.notFinal.has(p[0]) ? null : txs.get(p[0]) ?? null) as T;
         case 'getSignaturesForAddress': {
           const opts = (p[1] ?? {}) as { limit?: number; before?: string; until?: string };
           let list = history.get(p[0]) ?? [];
@@ -257,6 +261,113 @@ describe('a burn always becomes airtime', () => {
     expect(first.body).toMatchObject({ landing: true, booking: { state: 'pending' } });
     t.land(t.sw.held[0]);
     expect((await t.sweep()).body.paid).toBe(1);
+  });
+});
+
+describe('the live board (pokejam-ads-live) reads a burn strictly', () => {
+  const LIVE: Partial<AdsConfig> = { cluster: 'mainnet-beta', dbName: liveDbName, strictBurn: { decimals: 6, commitment: 'finalized' },
+    usdc: { mint: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v', receiver: 'FPwoDYkHTFef4Fg45o1wzReXiVoYGP6KXEgRyfqqBpyk', commitment: 'finalized' } };
+
+  it('books and pays the normal way, at finalized, on the live tables', async () => {
+    const t = await setup(LIVE);
+    const p = await t.prepare({ plan: 'hour' });
+    expect(p.body.booking).toMatchObject({ state: 'pending', plan: 'hour', price: String(HOUR), pay_method: 'burn' });
+    const r = await t.call({ action: 'confirm', id: p.body.booking.id, tx: await t.sign(p.body.tx) });
+    expect(r.body.booking.state).toBe('paid');
+    expect(run(r.body.booking)).toBe(H);
+    expect(t.sw.commitments.every((c) => c === 'finalized')).toBe(true);
+    expect(await t.db.sql('select id from public.pokejam_live_ads where id = $1', [p.body.booking.id])).toHaveLength(1);
+    expect(await t.db.sql('select id from public.pokejam_ads')).toHaveLength(0);
+  });
+
+  it('waits for a burn that has landed but is not final', async () => {
+    const t = await setup(LIVE);
+    const p = await t.prepare({ plan: 'hour' });
+    const sig = t.land(await t.sign(p.body.tx));
+    t.sw.notFinal.add(sig);
+    const early = await t.call({ action: 'confirm', id: p.body.booking.id, signature: sig });
+    expect(early.body).toMatchObject({ landing: true, booking: { state: 'pending' } });
+    t.sw.notFinal.delete(sig);
+    expect((await t.call({ action: 'confirm', id: p.body.booking.id, signature: sig })).body.booking.state).toBe('paid');
+  });
+
+  it("refuses someone else's burn for the booking: wrong signer, and it doesn't touch the booking", async () => {
+    const t = await setup(LIVE);
+    const p = await t.prepare({ plan: 'hour' });
+    const { keypair: friend } = await generateKeypair();
+    t.owners.set(FRIEND_ACCOUNT, friend.address);
+    const sig = t.land(await crafted(friend, FRIEND_ACCOUNT, p.body.booking.code, HOUR));
+    const r = await t.call({ action: 'confirm', id: p.body.booking.id, signature: sig });
+    expect(r.status).toBe(400);
+    expect(r.body.error).toMatch(/did not sign/);
+    expect(r.body.booking.state).toBe('pending');
+    // The sweeper won't pay for it either.
+    await t.sweep();
+    expect((await t.call({ action: 'confirm', id: p.body.booking.id })).body.booking.state).toBe('pending');
+  });
+
+  it('a short burn books nothing, on a plan with a cheaper hourly rate or not', async () => {
+    const t = await setup(LIVE);
+    const p = await t.prepare({ plan: 'week' });
+    const price = BigInt(p.body.booking.price);
+    const sig = t.land(await crafted(t.me, MY_ACCOUNT, p.body.booking.code, price / 168n));
+    const r = await t.call({ action: 'confirm', id: p.body.booking.id, signature: sig });
+    expect(r.body.booking).toMatchObject({ state: 'dust', burn_sig: sig });
+    expect((await t.call({ action: 'board' })).body.live).toEqual([]);
+  });
+
+  it('a signature pays once, across bookings', async () => {
+    const t = await setup(LIVE);
+    const a = await t.prepare({ plan: 'hour' });
+    const b = await t.prepare({ plan: 'hour', text: 'second ad' });
+    const sig = t.land(await t.sign(a.body.tx));
+    expect((await t.call({ action: 'confirm', id: a.body.booking.id, signature: sig })).body.booking.state).toBe('paid');
+    // The memo names the first booking, so it can't pay the second.
+    const r = await t.call({ action: 'confirm', id: b.body.booking.id, signature: sig });
+    expect(r.status).toBe(400);
+    expect(r.body.booking.state).toBe('pending');
+    // A retry returns the same booking, and no second run exists.
+    expect((await t.call({ action: 'confirm', id: a.body.booking.id, signature: sig })).body.booking.id).toBe(a.body.booking.id);
+    expect(await t.db.sql('select id from public.pokejam_live_ads where burn_sig = $1', [sig])).toHaveLength(1);
+  });
+
+  it('takes prices from the database: a change reaches the next booking, and the old price is refused', async () => {
+    const t = await setup(LIVE);
+    await t.db.sql(`update public.pokejam_live_ad_plans set amount = 250000 where method = 'burn' and plan = 'hour'`);
+    const stale = await t.prepare({ plan: 'hour', expect: String(HOUR) });
+    expect(stale.status).toBe(409);
+    expect(stale.body.price).toBe('250000000000');
+    expect((await t.prepare({ plan: 'hour' })).body.booking.price).toBe('250000000000');
+    expect((await t.call({ action: 'quote', plan: 'hour' })).body.price).toBe('250000000000');
+  });
+
+  it('the client cannot choose the plan, the length or the price', async () => {
+    const t = await setup(LIVE);
+    const p = await t.prepare({ plan: 'hour', hours: 720, price: '1', amount: '1' });
+    expect(p.body.booking).toMatchObject({ plan: 'hour', hours: 1, price: String(HOUR) });
+    expect((await t.prepare({ plan: 'year' })).status).toBe(400);
+    const month = await t.prepare({ plan: 'month' });
+    expect(month.status).toBe(400);
+    expect(month.body.error).toMatch(/can't be paid by burning/);
+  });
+
+  it('the board lists what is on sale, and the page gets the mint and receiver from the server', async () => {
+    const t = await setup({ ...LIVE, origins: ['https://plans.test'] });
+    const b = await t.call({ action: 'board' }, { origin: 'https://plans.test' });
+    expect(b.body.plans).toContainEqual({ method: 'usdc', plan: 'month', hours: 720, amount: '500000000' });
+    expect(b.body.usdcPay).toMatchObject({ receiver: LIVE.usdc!.receiver, mint: LIVE.usdc!.mint });
+  });
+
+  it('refuses to sell against a mint without the decimals the prices assume', async () => {
+    const t = await setup(LIVE);
+    t.sw.decimals = 9;
+    // A paid booking drops the cached mint, so the next read sees the wrong decimals.
+    await t.db.sql(`update public.pokejam_live_ad_plans set amount = 1 where method = 'burn' and plan = 'hour'`);
+    const first = await t.prepare({ plan: 'hour' });
+    if (first.status === 200) await t.call({ action: 'confirm', id: first.body.booking.id, signature: t.land(await t.sign(first.body.tx)) });
+    const again = await t.prepare({ plan: 'hour', text: 'after the mint changed' });
+    expect(again.status).toBe(502);
+    expect((await t.db.sql(`select id from public.pokejam_live_ads where text = 'AFTER THE MINT CHANGED'`))).toHaveLength(0);
   });
 });
 

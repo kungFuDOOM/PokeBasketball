@@ -29,6 +29,22 @@ describe('ads config: live function (pokejam-ads-live)', () => {
     expect(live({ ADS_ALLOW_MAINNET: 'true' })).toMatchObject({ cluster: 'mainnet-beta', rpcUrl: 'https://api.mainnet-beta.solana.com', priorityMicroLamports: 20_000 });
   });
 
+  it('reads the burn strictly on the live board: its wallet, 6 decimals, finalized on mainnet', () => {
+    const live = adsConfigLive((k) => ({ ADS_ALLOW_MAINNET: 'true' } as Record<string, string>)[k]);
+    expect(live.strictBurn).toEqual({ decimals: 6, commitment: 'finalized' });
+    expect(live.mint).toBe('GQe9QiBBV4G6bRUCxx2JgKrzT7G7RD17FJquBWgVpump');
+    expect(live.usdc).toMatchObject({ mint: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v', receiver: 'FPwoDYkHTFef4Fg45o1wzReXiVoYGP6KXEgRyfqqBpyk', commitment: 'finalized' });
+    const staging = adsConfigLive((k) => ({ ADS_PJAM_MINT: 'So11111111111111111111111111111111111111112' } as Record<string, string>)[k], { cluster: 'devnet' });
+    expect(staging.strictBurn).toEqual({ decimals: 6, commitment: 'confirmed' });
+    expect(adsConfig((k) => ({ AD_MINT: 'So11111111111111111111111111111111111111112' } as Record<string, string>)[k]).strictBurn).toBeUndefined();
+  });
+
+  it('refuses a mint or receiver that is not an address', () => {
+    const live = (over: Record<string, string>) => adsConfigLive((k) => ({ ADS_ALLOW_MAINNET: 'true', ...over } as Record<string, string>)[k]);
+    expect(() => live({ ADS_PJAM_MINT: 'not an address' })).toThrow(/ADS_PJAM_MINT/);
+    expect(() => live({ ADS_USDC_RECEIVER: '0OIl' })).toThrow(/ADS_USDC_RECEIVER/);
+  });
+
   it('has no faucet on mainnet, whatever is set', () => {
     const c = live({ ADS_ALLOW_MAINNET: 'true', AD_FAUCET_SECRET: '[1,2,3]' });
     expect(c.faucetSecret).toBeUndefined();

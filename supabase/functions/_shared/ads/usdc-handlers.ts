@@ -22,7 +22,8 @@ import type { AdsDeps, DbCall } from './handler.ts';
 import { PROGRAM, USDC_DECIMALS, buildUsdcTransfer, deriveAta } from './usdc-chain.ts';
 import { fetchTransaction, verifyUsdcTx, type ChainTx, type VerifyCode } from './usdc-verify.ts';
 
-export const USDC_PLANS = new Set(['week', 'month']);
+/** The plan names; which of them can be paid in USDC is up to pokejam_live_ad_plans. */
+export const USDC_PLANS = new Set(['hour', 'day', 'week', 'month']);
 /** Lamports the wallet needs for the transfer's network fee. */
 const FEE_RESERVE = 10_000;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -73,13 +74,13 @@ export interface IntentInput { wallet: string; text: string; theme: string; plan
 
 export async function usdcIntent(ctx: UsdcCtx, i: IntentInput): Promise<Reply> {
   const { usdc } = ctx;
-  if (!USDC_PLANS.has(i.plan)) return refuse('Pick a week or a month.');
+  if (!USDC_PLANS.has(i.plan)) return refuse('Pick a plan.');
   if (!i.themes.has(i.theme)) return refuse('Pick a colour.');
   // The text filter runs before anything else is asked of the wallet (and before any intent exists).
   const why = await ctx.db<string | null>('pokejam_ad_verdict', { p: i.text });
   if (why) return { status: 400, body: { reason: why, verdict: true } };
   const quote = await ctx.db<{ usdc: string | null }>('pokejam_ad_quote', { p_plan: i.plan, p_start: i.start, p_wallet: i.wallet });
-  if (!quote.usdc) return refuse('That plan is paid by burning $PJAM.');
+  if (!quote.usdc) return refuse("That plan can't be paid in USDC.");
   const price = BigInt(quote.usdc);
   if (i.expect && /^\d+$/.test(i.expect) && BigInt(i.expect) !== price) {
     return refuse('The price just changed. Check the new price and try again.', 409, { price: price.toString() });

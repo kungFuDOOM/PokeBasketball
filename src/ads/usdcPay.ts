@@ -8,18 +8,7 @@
 // to Solana: the advertiser's wallet moves the USDC and the server books the ad only after reading the payment back.
 import { base64Decode } from '../../supabase/functions/_shared/pack/bytes.ts';
 import { USDC_DECIMALS, USDC_MINT, USDC_RECEIVER, buildUsdcTransfer, type UsdcCluster } from '../../supabase/functions/_shared/ads/usdc-chain.ts';
-
-/** What USDC buys: the bookable courtside half, for a week or a month (ticker and combo stay contact-sales). */
-export type UsdcPlan = 'week' | 'month';
-export const USDC_PLANS: UsdcPlan[] = ['week', 'month'];
-export const USDC_PLAN_HOURS: Record<UsdcPlan, number> = { week: 168, month: 720 };
-/** The list prices in dollars (src/data/ads.ts's courtside half). The server's price is what's charged. */
-export const USDC_PLAN_USD: Record<UsdcPlan, number> = { week: 150, month: 500 };
-
-export const isUsdcPlan = (p: unknown): p is UsdcPlan => p === 'week' || p === 'month';
-
-/** USDC base units for a plan's list price. */
-export const planBaseUnits = (p: UsdcPlan): bigint => BigInt(USDC_PLAN_USD[p]) * 10n ** BigInt(USDC_DECIMALS);
+import { isPlan, type Plan } from './plans';
 
 /** Base units → "$150" or "$150.50" (USDC is a dollar). */
 export function usd(base: string | bigint, decimals = USDC_DECIMALS): string {
@@ -37,7 +26,7 @@ export class UsdcPayError extends Error {
 /** usdc-intent's answer, read strictly: a server that answers differently is not guessed at. */
 export interface UsdcIntentReply {
   id: string;
-  plan: UsdcPlan;
+  plan: Plan;
   wallet: string;
   amount: string;
   mint: string;
@@ -63,7 +52,7 @@ export function parseUsdcIntent(raw: unknown): UsdcIntentReply {
   const cluster = str(r, 'cluster');
   const plan = str(i, 'plan');
   const amount = str(i, 'amount');
-  if ((cluster !== 'devnet' && cluster !== 'mainnet-beta') || !isUsdcPlan(plan) || !/^[0-9]{1,18}$/.test(amount) || Number(r?.decimals) !== USDC_DECIMALS) {
+  if ((cluster !== 'devnet' && cluster !== 'mainnet-beta') || !isPlan(plan) || !/^[0-9]{1,18}$/.test(amount) || Number(r?.decimals) !== USDC_DECIMALS) {
     throw new UsdcPayError(START_FAILED);
   }
   return {

@@ -1,6 +1,8 @@
 -- PokeJam billboard ads on the LIVE site (pokejam.xyz, Solana mainnet), paid by burning real $PJAM or in USDC.
 --
--- Additive only. 20261104_pokejam_ads.sql (the devnet test site's pokejam-ads) is untouched: nothing here drops,
+-- Additive only, and safe to apply again: every table and index is "if not exists", every seed row "on conflict do nothing"
+-- (re-applying never resets a price), every function "create or replace". It needs 20261202_pokejam_ads.sql (the devnet
+-- test site's pokejam-ads), which is untouched: nothing here drops,
 -- alters or redefines any of its tables or functions, and none of its functions can see the rows below. Mainnet
 -- bookings live in their own tables (pokejam_live_*), so devnet test burns never share a board, a schedule, a total
 -- or a scan cursor with real ones. What is shared on purpose:
@@ -10,11 +12,15 @@
 --
 -- The pokejam-ads-live Edge Function calls these with the same names as the devnet function, prefixed: every
 -- pokejam_ad_<x> it would call is pokejam_live_ad_<x> here, with the same argument names. Settings live in
--- pokejam_config under "live_" + the devnet key (live_ad_price_hour, live_ad_spots, live_ad_scan_cursor, ...).
+-- pokejam_config under "live_" + the devnet key (live_ad_spots, live_ad_scan_cursor, ...); prices live in
+-- pokejam_live_ad_plans (below). Changing a price is one SQL update, with no deploy and no client rebuild:
+--   update public.pokejam_live_ad_plans set amount = 200000 where method = 'burn' and plan = 'hour';
+-- A price is checked again on every booking, and the page reads the plans from the board. Clients can't read or write it.
 --
 -- Two ways to pay for the same board (one schedule, one set of spots, one spot per wallet at a time):
---   Burn $PJAM: the booking flow of 20261104 unchanged (create → wallet burns with memo "pokejam-ad:<code>" → pay).
---     Plans hour/day/week, priced in PJAM base units (6 decimals).
+--   Burn $PJAM: the booking flow of 20261202 (create → wallet burns with memo "pokejam-ad:<code>" → pay), except that a
+--     burn of less than the price runs nothing (see pokejam_live_ad_pay), so a week's cheaper hourly rate can't be
+--     bought an hour at a time. Plans hour/day/week.
 --   USDC: pokejam_live_ad_usdc_intent checks everything that could refuse the ad (text, ban, paused sales, the price
 --     the page showed, too many open intents) and records a one-time intent: random reference key, memo, the exact
 --     USDC amount for the plan, the wallet, text, theme and wanted start, the receiver and mint, expiring in 15 min.
@@ -22,26 +28,40 @@
 --     the chain and checks it (mint, destination account and its owner, amount >= the intent's, confirmed, signer,
 --     memo/reference), then calls pokejam_live_ad_usdc_pay, which puts the ad on the board for the plan's full run
 --     from the first opening. One ad per intent, one intent per signature (unique), so a replayed or re-submitted
---     signature never books twice. Plans week/month, priced in USDC base units (6 decimals): $150 and $500 for the
---     bookable courtside half. An open intent holds no board space, like an unpaid burn booking.
---   Like a burn, a USDC payment that really landed is never lost: a late one (after the intent expired) still books,
---   from the first opening; a banned wallet's is recorded and stays down.
+--     signature never books twice. Plans week/month, for the bookable courtside half. An open intent holds no board
+--     space, like an unpaid burn booking.
+--   A USDC payment that really landed is never lost: a late one (after the intent expired) still books, from the first
+--   opening; a banned wallet's is recorded and stays down.
+--   A price is locked for a day (the price the advertiser saw): after that, and for any extra run, the current price
+--   applies if it is higher, so a stockpile of old bookings can't buy airtime at old prices.
 
 insert into public.pokejam_config(key, value) values
   ('live_ads_paused', 'false'),
-  ('live_ad_spots', '3'),
-  -- PJAM burn prices on mainnet. Same as the devnet defaults until the owner sets real ones (tunable, no deploy).
-  ('live_ad_price_hour', '100000000000'),
-  ('live_ad_price_day', '1500000000000'),
-  ('live_ad_price_week', '7500000000000'),
-  -- USDC prices (6 decimals) for the bookable courtside half.
-  ('live_ad_usdc_week', '150000000'),    -- $150
-  ('live_ad_usdc_month', '500000000')    -- $500
+  ('live_ad_spots', '3')
 on conflict (key) do nothing;
 
 -- ---------- tables ----------
 
--- The live board's bookings: 20261104's pokejam_ads, plus how it was paid and a month plan (USDC only).
+-- What each plan costs, one row per way to pay. `amount` is in whole tokens (100000 is 100,000 PJAM; 150 is 150 USDC; both
+-- have 6 decimals, which the Edge Function checks against the mint). A plan with no row, or enabled = false, isn't offered.
+create table if not exists public.pokejam_live_ad_plans (
+  method text not null check (method in ('burn', 'usdc')),
+  plan text not null check (plan in ('hour', 'day', 'week', 'month')),
+  amount numeric(30, 6) not null check (amount > 0),
+  enabled boolean not null default true,
+  primary key (method, plan)
+);
+alter table public.pokejam_live_ad_plans enable row level security;
+revoke all on public.pokejam_live_ad_plans from anon, authenticated, public;
+insert into public.pokejam_live_ad_plans(method, plan, amount) values
+  ('burn', 'hour', 100000),
+  ('burn', 'day', 1500000),
+  ('burn', 'week', 7500000),
+  ('usdc', 'week', 150),
+  ('usdc', 'month', 500)
+on conflict (method, plan) do nothing;
+
+-- The live board's bookings: 20261202's pokejam_ads, plus how it was paid and a month plan.
 create table if not exists public.pokejam_live_ads (
   id uuid primary key default gen_random_uuid(),
   code text not null unique,
@@ -98,7 +118,7 @@ create table if not exists public.pokejam_live_ad_usdc_intents (
   wallet text not null check (wallet ~ '^[1-9A-HJ-NP-Za-km-z]{32,44}$'),
   text text not null check (char_length(text) between 1 and 24),
   theme text not null check (theme in ('gold', 'fire', 'water', 'grass', 'electric', 'psychic', 'ghost', 'ice')),
-  plan text not null check (plan in ('week', 'month')),
+  plan text not null check (plan in ('hour', 'day', 'week', 'month')),
   hours int not null check (hours > 0),
   -- USDC base units (6 decimals), locked when the intent is made.
   amount numeric(39, 0) not null check (amount > 0),
@@ -139,23 +159,20 @@ returns int language sql immutable set search_path = public as $$
   select case p_plan when 'month' then 720 else public.pokejam_ad_hours(p_plan) end;
 $$;
 
--- What a plan costs in PJAM base units by burning, or null when it can't be paid that way (month).
-create or replace function public.pokejam_live_ad_price(p_plan text)
+-- What a plan costs in base units (6 decimals) paid this way, or null when it isn't offered that way.
+create or replace function public.pokejam_live_ad_plan_amount(p_method text, p_plan text)
 returns numeric language sql stable security definer set search_path = public as $$
-  select case p_plan
-    when 'hour' then public.pokejam_live_ad_cfg('ad_price_hour', '100000000000')::numeric
-    when 'day' then public.pokejam_live_ad_cfg('ad_price_day', '1500000000000')::numeric
-    when 'week' then public.pokejam_live_ad_cfg('ad_price_week', '7500000000000')::numeric
-  end;
+  select (amount * 1000000)::numeric(39, 0) from public.pokejam_live_ad_plans where method = p_method and plan = p_plan and enabled;
 $$;
 
--- What a plan costs in USDC base units, or null when it can't be paid that way (hour, day).
+create or replace function public.pokejam_live_ad_price(p_plan text)
+returns numeric language sql stable security definer set search_path = public as $$
+  select public.pokejam_live_ad_plan_amount('burn', p_plan);
+$$;
+
 create or replace function public.pokejam_live_ad_usdc_price(p_plan text)
 returns numeric language sql stable security definer set search_path = public as $$
-  select case p_plan
-    when 'week' then public.pokejam_live_ad_cfg('ad_usdc_week', '150000000')::numeric
-    when 'month' then public.pokejam_live_ad_cfg('ad_usdc_month', '500000000')::numeric
-  end;
+  select public.pokejam_live_ad_plan_amount('usdc', p_plan);
 $$;
 
 create or replace function public.pokejam_live_ad_allow(p_key text, p_max int, p_seconds int)
@@ -233,7 +250,7 @@ begin
   if p_theme is null or p_theme not in ('gold', 'fire', 'water', 'grass', 'electric', 'psychic', 'ghost', 'ice') then raise exception 'pick a colour'; end if;
 end $$;
 
--- ---------- paying by burning $PJAM (20261104's flow, on the live tables) ----------
+-- ---------- paying by burning $PJAM (20261202's flow, on the live tables) ----------
 
 create or replace function public.pokejam_live_ad_create(p_wallet text, p_text text, p_theme text, p_plan text, p_start timestamptz,
   p_expect numeric default null, p_blockhash text default null)
@@ -245,7 +262,7 @@ declare
 begin
   perform public.pokejam_live_ad_check(p_wallet, p_text, p_theme);
   if h is null then raise exception 'unknown plan'; end if;
-  if price is null then raise exception 'this plan is paid in USDC'; end if;
+  if price is null then raise exception 'this plan is not paid by burning $PJAM'; end if;
   if p_expect is not null and p_expect <> price then raise exception 'price changed: % now', price; end if;
   if (select count(*) from public.pokejam_live_ads where wallet = p_wallet and state = 'pending' and created_at > now() - interval '1 hour') >= 10 then
     raise exception 'too many unpaid bookings: try again in a few minutes';
@@ -257,8 +274,10 @@ begin
   return public.pokejam_live_ad_view(a);
 end $$;
 
--- A checked burn naming booking p_id pays for airtime: pokejam_ad_pay's rules. A burn naming an ad that was paid in
--- USDC (only a hand-crafted burn can) buys an extra run at the current hourly PJAM rate.
+-- A checked burn naming booking p_id pays for airtime: pokejam_ad_pay's rules, with one difference. The burn must be at
+-- least the price, or it runs nothing and is recorded as dust: a pro-rated short burn would buy hours at the week's rate.
+-- More than the price runs longer, at the plan's rate. The server builds the exact amount, so only a hand-crafted burn is
+-- ever short. A burn naming an ad that was paid in USDC (also hand-crafted) buys an extra run at the current hourly rate.
 create or replace function public.pokejam_live_ad_pay(p_id uuid, p_sig text, p_burned numeric, p_burner text)
 returns jsonb language plpgsql security definer set search_path = public as $$
 declare
@@ -287,13 +306,18 @@ begin
   else
     rate_price := a.price;
     rate_hours := a.hours;
+    -- The locked price covers the booking's own first day. After that, and for extra runs, a higher current price applies.
+    if a.state <> 'pending' or a.created_at < now() - interval '1 day' then
+      rate_price := greatest(a.price, public.pokejam_live_ad_price(a.plan));
+    end if;
   end if;
-  secs := least(floor(p_burned * rate_hours * 3600 / rate_price), 366 * 86400)::int;
+  secs := case when rate_price is null or p_burned < rate_price then 0
+    else least(floor(p_burned * rate_hours * 3600 / rate_price), 366 * 86400)::int end;
   banned := exists (select 1 from public.pokejam_ad_bans where wallet = a.wallet);
   if a.state <> 'pending' then
     insert into public.pokejam_live_ads(code, wallet, text, theme, plan, hours, price, wants_start, extra_of)
     values (encode(extensions.gen_random_bytes(6), 'hex'), a.wallet, a.text, a.theme,
-      case when a.pay_method = 'usdc' then 'hour' else a.plan end, rate_hours, rate_price, now(), a.id)
+      case when a.pay_method = 'usdc' then 'hour' else a.plan end, rate_hours, coalesce(rate_price, a.price), now(), a.id)
     returning * into a;
   end if;
   if secs < 60 then
@@ -413,6 +437,10 @@ begin
     return jsonb_build_object('status', 'signature_used');
   end if;
   if p_amount is null or p_amount < i.amount then return jsonb_build_object('status', 'short'); end if;
+  -- The intent's price is locked for a day; after that a higher current price applies.
+  if i.created_at < now() - interval '1 day' and p_amount < coalesce(public.pokejam_live_ad_usdc_price(i.plan), 0) then
+    return jsonb_build_object('status', 'short');
+  end if;
   banned := exists (select 1 from public.pokejam_ad_bans where wallet = i.wallet);
   secs := i.hours * 3600;
   want := greatest(i.wants_start, now());
@@ -522,9 +550,10 @@ returns jsonb language sql stable security definer set search_path = public as $
     'now', now(),
     'paused', public.pokejam_live_ad_cfg('ads_paused', 'false') = 'true',
     'spots', greatest(1, public.pokejam_live_ad_cfg('ad_spots', '3')::int),
-    'prices', jsonb_build_object('hour', public.pokejam_live_ad_price('hour')::text, 'day', public.pokejam_live_ad_price('day')::text,
-      'week', public.pokejam_live_ad_price('week')::text),
-    'usdc', jsonb_build_object('week', public.pokejam_live_ad_usdc_price('week')::text, 'month', public.pokejam_live_ad_usdc_price('month')::text),
+    -- What's on sale, in base units: the page draws its plans from this list.
+    'plans', coalesce((select jsonb_agg(jsonb_build_object('method', method, 'plan', plan, 'hours', public.pokejam_live_ad_hours(plan),
+        'amount', ((amount * 1000000)::numeric(39, 0))::text) order by method, public.pokejam_live_ad_hours(plan))
+      from public.pokejam_live_ad_plans where enabled), '[]'),
     'live', coalesce((select jsonb_agg(jsonb_build_object('id', id, 'text', text, 'theme', theme, 'wallet', wallet,
         'starts_at', starts_at, 'ends_at', ends_at, 'burn_sig', burn_sig, 'usdc_sig', usdc_sig) order by starts_at, id)
       from public.pokejam_live_ads where state = 'paid' and starts_at <= now() and ends_at > now()), '[]'),
@@ -570,7 +599,8 @@ do $$
 declare f text;
 begin
   foreach f in array array[
-    'pokejam_live_ad_cfg(text, text)', 'pokejam_live_ad_set_cfg(text, text)', 'pokejam_live_ad_hours(text)', 'pokejam_live_ad_price(text)',
+    'pokejam_live_ad_cfg(text, text)', 'pokejam_live_ad_set_cfg(text, text)', 'pokejam_live_ad_hours(text)',
+    'pokejam_live_ad_plan_amount(text, text)', 'pokejam_live_ad_price(text)',
     'pokejam_live_ad_usdc_price(text)', 'pokejam_live_ad_allow(text, int, int)', 'pokejam_live_ad_verdict(text)',
     'pokejam_live_ad_peak(timestamptz, timestamptz)', 'pokejam_live_ad_next_open(timestamptz, int, text)',
     'pokejam_live_ad_quote(text, timestamptz, text)', 'pokejam_live_ad_view(public.pokejam_live_ads)',

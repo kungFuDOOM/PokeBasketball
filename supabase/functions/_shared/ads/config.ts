@@ -9,8 +9,11 @@ export type Cluster = 'devnet' | 'mainnet-beta';
 
 export const MAINNET_APPROVAL = 'approved-by-kungfudoom';
 
-/** $PJAM, the official token (Token-2022, 6 decimals). */
+/** $PJAM, the official token (confirmed by kungFuDOOM). */
 export const PJAM_MAINNET = 'GQe9QiBBV4G6bRUCxx2JgKrzT7G7RD17FJquBWgVpump';
+
+/** Live prices (pokejam_live_ad_plans) are in whole tokens, turned into base units with this many decimals. */
+export const LIVE_PRICE_DECIMALS = 6;
 
 export interface AdsConfig {
   cluster: Cluster;
@@ -30,6 +33,11 @@ export interface AdsConfig {
   usdc?: UsdcSettings;
   /** The SQL function a handler call really goes to (the live function's tables are pokejam_live_*). Default: as named. */
   dbName?: (fn: string) => string;
+  /**
+   * Live board only: how a burn is checked. The booking's wallet must sign and burn from its own account, the mint must
+   * have these decimals (the prices assume them, so anything else refuses to sell), and the chain is read at this commitment.
+   */
+  strictBurn?: { decimals: number; commitment: 'confirmed' | 'finalized' };
 }
 
 export interface UsdcSettings {
@@ -97,8 +105,7 @@ export function adsConfigLive(get: (k: string) => string | undefined, opts: Live
   if (cluster === 'mainnet-beta' && get('ADS_ALLOW_MAINNET') !== LIVE_MAINNET_FLAG) {
     throw new Error('pokejam-ads-live refuses mainnet: ADS_ALLOW_MAINNET is not "true"');
   }
-  // NEEDS USER CONFIRMATION: the $PJAM mint was hard-coded in #45 (PJAM_MAINNET). kungFuDOOM must confirm it is the
-  // official token before mainnet goes on; ADS_PJAM_MINT overrides it. On devnet there is no default: a devnet
+  // The official $PJAM (PJAM_MAINNET) unless ADS_PJAM_MINT names another. On devnet there is no default: a devnet
   // deployment must name its test mint, so it can never point at the real token by accident.
   const mintVal = val('ADS_PJAM_MINT') ?? (cluster === 'mainnet-beta' ? PJAM_MAINNET : undefined);
   if (!mintVal) throw new Error('ADS_PJAM_MINT is not set');
@@ -120,5 +127,6 @@ export function adsConfigLive(get: (k: string) => string | undefined, opts: Live
     serviceKey: val('SUPABASE_SERVICE_ROLE_KEY') ?? '',
     usdc: { mint: USDC_MINT[cluster], receiver, commitment: cluster === 'mainnet-beta' ? 'finalized' : 'confirmed' },
     dbName: liveDbName,
+    strictBurn: { decimals: LIVE_PRICE_DECIMALS, commitment: cluster === 'mainnet-beta' ? 'finalized' : 'confirmed' },
   };
 }

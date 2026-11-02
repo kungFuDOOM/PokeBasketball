@@ -58,7 +58,7 @@
 .ad-theme small { font-size: 0.75rem; font-weight: 700; color: var(--muted); }
 .ad-theme.on { border-color: var(--accent); }
 .ad-theme.on small { color: var(--fg); }
-.ad-plans { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.ad-plans { display: grid; grid-template-columns: repeat(var(--n, 3), minmax(0, 1fr)); gap: 10px; }
 .ad-plan { position: relative; text-align: left; display: grid; gap: 4px; padding: 16px 12px 12px; border-radius: 12px; border: 2px solid var(--line); background: var(--bg); }
 .ad-plan strong { font: 800 1.25rem/1 var(--sport); text-transform: uppercase; }
 .ad-price { font: 800 1.35rem/1.1 var(--sport); color: var(--ember); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
@@ -70,7 +70,6 @@
 /* pay with: burn $PJAM or USDC (live only; hidden where the server doesn't offer USDC) */
 .ad-pay { margin-bottom: 10px; }
 .ad-pay[hidden] { display: none; }
-.ad-plans.usdc { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .ad-date { font: 600 1rem var(--sport); padding: 9px 10px; border-radius: 6px; border: 2px solid var(--line); background: var(--bg); color: var(--fg); color-scheme: dark; }
 
 /* checkout */
@@ -153,11 +152,17 @@
   .ad-hero { padding: 20px 16px 16px; }
   .ad-stats { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
   .ad-stat:first-child { grid-column: 1 / -1; }
-  .ad-plans, .ad-plans.usdc { grid-template-columns: minmax(0, 1fr); }
+  .ad-plans { grid-template-columns: minmax(0, 1fr); }
   .ad-plan { grid-template-columns: 1fr auto; align-items: baseline; }
   .ad-plan > small { grid-column: 1 / -1; }
   .ad-form, .ad-section, .ad-checkout { padding: 14px; }
 }
+
+/* ticker and combo: arranged by DM, no checkout */
+.ad-dmlist { list-style: none; margin: 0 0 8px; padding: 0; display: grid; gap: 6px; }
+.ad-dmlist li { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.ad-dmlist span { color: var(--muted); font-weight: 600; }
+.ad-dm a { color: var(--accent); }
 
 /* live text check, your ads, reports */
 .ad-hint.good { color: var(--good); font-weight: 700; }
