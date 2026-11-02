@@ -4,6 +4,8 @@ interface ImportMetaEnv {
   readonly VITE_MODE_SOCIAL?: string;
   readonly VITE_MODE_RANKED?: string;
   readonly VITE_MODE_PACK_BATTLES?: string;
+  /** "true" offers Google sign-in for Ranked next to Phantom; anything else is Phantom-only. */
+  readonly VITE_SIGNIN_GOOGLE?: string;
   /** Supabase project URL and publishable (anon) key for online play. Public by design; never the service-role key. */
   readonly VITE_SUPABASE_URL?: string;
   readonly VITE_SUPABASE_ANON_KEY?: string;
