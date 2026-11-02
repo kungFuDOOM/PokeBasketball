@@ -100,7 +100,7 @@ Each run claims one ready job from `pokejam_judge_jobs` and judges that match wi
 3. Add two vault secrets, `pokejam_service_key` (the service role key) and `pokejam_functions_url` (`https://<project ref>.supabase.co/functions/v1`), then apply `20261130_pokejam_judge_cron.sql`. It schedules the every-minute job only if `pg_cron`, `pg_net` and both secrets are there; otherwise it raises a notice and changes nothing, so add what's missing and run it again. No key is stored in SQL, and a minute with nothing ready makes no Edge Function call.
 4. Deploy the moderation page for the "Judge, shadow mode" table. It reads `pokejam_admin_judge_shadow`, and says "unavailable" if the migration isn't applied yet.
 
-5. Apply `20261201_pokejam_judge_decides.sql` before redeploying the worker or deploying the client that reports resyncs. Disputes stay on the old rules until `update public.pokejam_config set value = 'true' where key = 'judge_authoritative';`. Setting it back to `'false'` is the kill switch. Before an engine bump, turn it off until the matches in play have ended.
+5. Apply `20261201_pokejam_judge_decides.sql` before redeploying the worker or deploying the client that reports resyncs. Disputes stay on the old rules until `update public.pokejam_config set value = 'true' where key = 'judge_authoritative';`. Then deploy a build with `VITE_JUDGE_AUTHORITATIVE=true`, which lowers the Ranked resync limit from 12 to 3. Setting the config back to `'false'` is the kill switch; redeploy without the build flag as well. Before an engine bump, turn it off until the matches in play have ended.
 
 To stop it: `select cron.unschedule('pokejam-judge-worker');`. Jobs keep queueing and are judged when it's back, unless the uploads have passed their 30-day retention.
 

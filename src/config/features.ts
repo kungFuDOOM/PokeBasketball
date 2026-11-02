@@ -23,6 +23,11 @@ export const MODE_SHIELD_USDC = MODE_RANKED && (import.meta.env.VITE_SHIELD_USDC
 /** The Shop button and sheet show when either payment is on. */
 export const MODE_SHIELD_SHOP = MODE_SHIELD_STRIPE || MODE_SHIELD_USDC;
 export const SHIELD_USDC_CLUSTER: 'devnet' | 'mainnet-beta' = import.meta.env.VITE_SHIELD_USDC_CLUSTER === 'mainnet-beta' ? 'mainnet-beta' : 'devnet';
+/**
+ * The client's half of `judge_authoritative`, which lives in pokejam_config where clients can't read it. On, Ranked stops a
+ * game after 3 resyncs instead of 12. Default OFF. Set the server flag first: see "Kill switch" in docs/multiplayer.md.
+ */
+export const JUDGE_AUTHORITATIVE = import.meta.env.VITE_JUDGE_AUTHORITATIVE === 'true';
 export const MODE_PACK_BATTLES = import.meta.env.VITE_MODE_PACK_BATTLES === 'true';
 export const ANY_MULTIPLAYER = MODE_SOCIAL || MODE_RANKED || MODE_PACK_BATTLES;
 // Ranked sign-in: Google is offered only when VITE_SIGNIN_GOOGLE is exactly "true"; default OFF = Phantom-only sign-in.

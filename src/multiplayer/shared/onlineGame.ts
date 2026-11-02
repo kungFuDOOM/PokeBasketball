@@ -1,5 +1,6 @@
 // Plays one online match: connect → lockstep game → both players report the result.
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { JUDGE_AUTHORITATIVE } from '../../config/features';
 import type { Game } from '../../game/game';
 import { playGame, type PlayHandle } from '../../screens/play';
 import { resultsScreen } from '../../screens/results';
@@ -221,7 +222,7 @@ export async function playOnline(ctx: ModeContext, o: OnlineGameOptions) {
       online: {
         viewTeam: match.side,
         start: (g) => {
-          const l = (ls = new Lockstep(g, link, { side: match.side, delay: startDelay, resyncLimit: resyncLimitFor(match.queue) }));
+          const l = (ls = new Lockstep(g, link, { side: match.side, delay: startDelay, resyncLimit: resyncLimitFor(match.queue, JUDGE_AUTHORITATIVE) }));
           startedAt = performance.now();
           link.attach(l);
           // Read-only counters for the lag tests (no ids or secrets).
