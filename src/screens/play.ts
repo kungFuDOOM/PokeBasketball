@@ -6,7 +6,7 @@ import { ReplayRecorder } from '../game/replay';
 import { Input } from '../game/input';
 import { Renderer } from '../game/render';
 import { preload } from '../game/sprites';
-import { emptyIntent, type GameConfig, type Intent, type Player, type TeamId } from '../game/types';
+import { emptyIntent, type GameConfig, type GameEvent, type Intent, type Player, type TeamId } from '../game/types';
 import { spriteUrl } from '../data/pokemon';
 import { esc } from '../util';
 import { Voice, sharedVoice } from '../game/voice';
@@ -50,8 +50,19 @@ export function playGame(
   audio: Audio,
   onFinal: (g: Game) => void,
   onQuit: () => void,
-  /** startingFive: play the starting-five intro on the court before tip-off (see startingFiveEnabled). */
-  opts: { onAutoSubs?: (on: boolean) => void; online?: OnlineDriver; spectator?: boolean; startingFive?: boolean } = {},
+  /**
+   * startingFive: play the starting-five intro on the court before tip-off (see startingFiveEnabled).
+   * record: false skips the replay recorder (no Play of the Game), e.g. for the tutorial.
+   * onFrame: read-only per-frame hook after the sim steps (the tutorial's prompt strip); dt is 0 while paused.
+   */
+  opts: {
+    onAutoSubs?: (on: boolean) => void;
+    online?: OnlineDriver;
+    spectator?: boolean;
+    startingFive?: boolean;
+    record?: boolean;
+    onFrame?: (g: Game, events: readonly GameEvent[], intent: Intent, dt: number) => void;
+  } = {},
 ): PlayHandle {
   root.innerHTML = `
     <div class="game">
@@ -96,7 +107,7 @@ export function playGame(
   // Play of the Game: offline games are recorded so the best moment can be replayed after the final buzzer.
   const spectator = !!opts.spectator && !online;
   gameEl.classList.toggle('spectator', spectator);
-  const rec = online || spectator ? null : new ReplayRecorder(cfg, g.seed);
+  const rec = online || spectator || opts.record === false ? null : new ReplayRecorder(cfg, g.seed);
   let potg: PlayOfTheGame | null = null;
   let intro: StartingFive | null = null;
   const input = new Input();
@@ -322,6 +333,7 @@ export function playGame(
         voice.load(CLIPS); // in case the first tap came after the game started
         voice.say(line.clip, hold);
       }
+      opts.onFrame?.(g, events, intent, g.paused ? 0 : dt);
       const u = g.user;
       input.setContext(!!u && g.ball.owner === u, !!u && u.special >= 1);
       if (g.phase === 'final') {

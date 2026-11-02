@@ -71,6 +71,8 @@ describe("winner check on kfd's lockstep", () => {
     expect(v.status).toBe('final');
     expect(v.score).toEqual([m.games[0].score[0], m.games[0].score[1]]);
     expect(v.ticks).toBe(m.ls[0].tick);
+    // Both sides played to the buzzer, so each one's unbroken run reaches the last tick.
+    for (const last of v.lastFrame) expect(last).toBeGreaterThanOrEqual(v.ticks);
   }, 120_000);
 
   it('a player who re-signs a different input for a tick they already sent forfeits', async () => {

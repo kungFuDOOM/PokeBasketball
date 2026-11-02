@@ -1,9 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
-import { pack } from '../../../../src/multiplayer/shared/evidence.ts';
-import { matchKey, signTicks, type Evidence, type MatchSetup, type Verdict } from '../../../../src/multiplayer/shared/winnerCheck.ts';
+import { mergeEvidence, pack } from '../../../../src/multiplayer/shared/evidence.ts';
+import { MIN_DELAY } from '../../../../src/multiplayer/shared/lockstep.ts';
+import { judgeSetupFromRow, type ServerMatchRow } from '../../../../src/multiplayer/shared/matchSetup.ts';
+import { judge as realJudge, matchKey, signTicks, type Evidence, type MatchSetup, type Verdict } from '../../../../src/multiplayer/shared/winnerCheck.ts';
 import { ENGINE_VERSION } from '../../../../src/game/types.ts';
 import { type Db, testDb } from '../../../tests/testDb.ts';
-import { MAX_MATCHES, judgeConfig, judgeHandler, type JudgeDeps } from './handler.ts';
+import { MAX_MATCHES, MAX_UPLOAD_BATCHES, judgeConfig, judgeHandler, type JudgeDeps } from './handler.ts';
 
 vi.setConfig({ testTimeout: 30_000 });
 
@@ -22,21 +24,21 @@ function dbDeps(t: Db, sessions: Record<string, string>, judge?: JudgeDeps['judg
       if (!uid) throw new Error('bad jwt');
       return (await t.as('authenticated', uid)('select public.pokejam_is_admin() as r'))[0].r === true;
     },
-    async keysOf(id) {
-      const [m] = await t.sql('select host_key, guest_key from public.pokejam_matches where id = $1', [id]);
-      return (m as { host_key: string | null; guest_key: string | null } | undefined) ?? null;
+    async setupOf(id) {
+      const [{ r }] = await t.service('select public.pokejam_match_setup($1) as r', [id]);
+      return r ? judgeSetupFromRow(r as ServerMatchRow) : null;
     },
     async hasVerdict(id) {
       // (Supabase's service role can read every table; the test database's stand-in has no table grants.)
       return (await t.sql('select 1 from public.pokejam_match_verdicts where match_id = $1', [id])).length > 0;
     },
     async uploadsOf(id) {
-      return (await t.sql('select evidence from public.pokejam_match_evidence where match_id = $1 order by created_at, user_id', [id]))
-        .map((r) => r.evidence as string);
+      return (await t.sql('select evidence, user_id from public.pokejam_match_evidence where match_id = $1 order by created_at, user_id', [id]))
+        .map((r) => ({ evidence: r.evidence as string, user: r.user_id as string }));
     },
     async record(v) {
-      await t.service('select public.pokejam_record_verdict($1, $2, $3, $4, $5, $6, $7, $8)',
-        [v.match, v.status, v.winnerSide, v.cheaterSide, v.scoreHost, v.scoreGuest, v.ticks, v.notes]);
+      await t.service('select public.pokejam_record_verdict($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)',
+        [v.match, v.status, v.winnerSide, v.cheaterSide, v.scoreHost, v.scoreGuest, v.ticks, v.notes, v.lastFrameHost, v.lastFrameGuest, v.faultUser]);
     },
     judge: judge && (async (ev) => { judged.push(ev.setup.matchId); return judge(ev); }),
   };
@@ -50,12 +52,15 @@ async function world() {
   await t.sql("insert into public.pokejam_admins(user_id, note) values ($1, 'kungFuDOOM')", [mod.id]);
   const sessions = { 'mod-jwt': mod.id, 'player-jwt': player.id };
   /** A finished match won by the host, with keys registered and these uploads (made by `make`). */
-  const match = async (queue: 'social' | 'ranked', make?: (id: string, keys: { host: CryptoKey; guest: CryptoKey; pub: [string, string] }) => Promise<Evidence[]>) => {
+  const match = async (queue: 'social' | 'ranked', make?: (id: string, keys: { host: CryptoKey; guest: CryptoKey; pub: [string, string] }) => Promise<Evidence[]>, picks: [string, string] | null = ['A', 'B']) => {
     const [host, guest] = [await t.user('Host'), await t.user('Guest')];
     const [hk, gk] = [await matchKey(), await matchKey()];
     const [{ id }] = await t.sql(
-      `insert into public.pokejam_matches(queue, host, guest, host_mmr, guest_mmr, status, winner, finished_at, host_key, guest_key)
-       values ($1, $2, $3, 1000, 1000, 'done', $2, now(), $4, $5) returning id`, [queue, host.id, guest.id, hk.publicKey, gk.publicKey]);
+      `insert into public.pokejam_matches(queue, host, guest, host_mmr, guest_mmr, status, winner, finished_at, host_key, guest_key, seed, quarter_len)
+       values ($1, $2, $3, 1000, 1000, 'done', $2, now(), $4, $5, 777, 60) returning id`, [queue, host.id, guest.id, hk.publicKey, gk.publicKey]);
+    if (queue === 'ranked' && picks) {
+      await t.sql(`insert into public.pokejam_ranked_picks(match_id, user_id, preset_id) values ($1, $2, $4), ($1, $3, $5)`, [id, host.id, guest.id, picks[0], picks[1]]);
+    }
     const evs = make ? await make(id as string, { host: hk.privateKey, guest: gk.privateKey, pub: [hk.publicKey, gk.publicKey] }) : [];
     for (const [i, ev] of evs.entries()) {
       await t.sql('insert into public.pokejam_match_evidence(match_id, user_id, evidence) values ($1, $2, $3)', [id, [host.id, guest.id][i], await pack(ev)]);
@@ -74,7 +79,7 @@ const verdicts = (t: Db) => t.sql('select match_id, status, winner_side, cheater
 /** Stands in for a full replay: the host wins 3-1 at the buzzer. Checks it's judged under the match row's keys. */
 const finalJudge = (pub: () => [string, string]) => async (ev: Evidence): Promise<Verdict> => {
   expect(ev.keys).toEqual(pub());
-  return { status: 'final', winner: 0, score: [3, 1], ticks: 7200, hash: 1, notes: [] };
+  return { status: 'final', winner: 0, score: [3, 1], ticks: 7200, hash: 1, lastFrame: [7204, 7204], notes: [] };
 };
 
 describe('pokejam-judge', () => {
@@ -144,11 +149,191 @@ describe('pokejam-judge', () => {
     const res = await (await call(deps, { match_ids: [first.id, broken.id, second.id, first.id] })).json();
     expect(res.results).toMatchObject([
       { match_id: first.id, result: 'skipped', reason: 'already judged' },
-      { match_id: broken.id, result: 'error' },
+      { match_id: broken.id, result: 'recorded', status: 'invalid' },
       { match_id: second.id, result: 'recorded', status: 'final' },
     ]);
     expect(judged).toEqual([first.id, second.id]);
-    expect((await verdicts(w.t)).map((v) => v.match_id).sort()).toEqual([first.id, second.id].sort());
+    expect((await verdicts(w.t)).map((v) => v.match_id).sort()).toEqual([first.id, broken.id, second.id].sort());
+  });
+
+  describe('the game comes from the server row', () => {
+    const z = { mx: 0.5, my: 0, b: 0 };
+    /** Signed inputs for ticks MIN_DELAY.. of both sides. */
+    const signed = async (id: string, k: { host: CryptoKey; guest: CryptoKey }, ticks = 120) => [
+      await signTicks(k.host, id, 0, MIN_DELAY, Array(ticks).fill(z)),
+      await signTicks(k.guest, id, 1, MIN_DELAY, Array(ticks).fill(z)),
+    ];
+    const lastFrames = (t: Db) => t.sql('select last_frame_host, last_frame_guest from public.pokejam_match_verdicts');
+
+    it('an upload lying about seed, rosters, names and warm-up is judged on the server setup', async () => {
+      const w = await world();
+      let pub: [string, string] = ['', ''];
+      let inputs: Evidence['inputs'] = [];
+      const lie = (id: string): MatchSetup => ({ ...setupFor(id), seed: 1, home: { ...setupFor(id).home, name: 'Liar', roster: [150, 151, 249, 250, 384] } });
+      const m = await w.match('ranked', async (id, k) => {
+        pub = k.pub;
+        inputs = await signed(id, k);
+        return [{ setup: lie(id), keys: k.pub, inputs, applied: [], lockstep: { emptyTicks: 0 } }];
+      });
+      let seen: Evidence | null = null;
+      let got: Verdict | null = null;
+      const { deps } = dbDeps(w.t, w.sessions, async (ev) => { seen = ev; got = await realJudge(ev); return got; });
+      expect(await (await call(deps, { match_ids: [m.id] })).json()).toEqual({ ok: true, results: [{ match_id: m.id, result: 'recorded', status: 'incomplete' }] });
+
+      const { setup: server } = (await deps.setupOf(m.id))!;
+      expect(server).toMatchObject({ matchId: m.id, seed: 777, quarterLen: 60, home: { roster: [78, 229, 94, 9, 208] }, away: { roster: [254, 392, 475, 115, 130] } });
+      expect(seen!.setup).toEqual(server);
+      expect(seen!.lockstep).toEqual({ emptyTicks: MIN_DELAY });
+      const honest = await realJudge(mergeEvidence({ setup: server!, keys: pub, inputs, applied: [] }, null, pub, server!));
+      const asUploaded = await realJudge({ setup: lie(m.id), keys: pub, inputs, applied: [], lockstep: { emptyTicks: MIN_DELAY } });
+      expect(got!.hash).toBe(honest.hash);
+      expect(got!.hash).not.toBe(asUploaded.hash);
+      expect(got!.ticks).toBe(MIN_DELAY + 120);
+      expect(await lastFrames(w.t)).toEqual([{ last_frame_host: MIN_DELAY + 120, last_frame_guest: MIN_DELAY + 120 }]);
+    });
+
+    it('a mirror pick is judged, not refused', async () => {
+      const w = await world();
+      const m = await w.match('ranked', async (id, k) => [{ setup: setupFor(id), keys: k.pub, inputs: await signed(id, k), applied: [] }], ['C', 'C']);
+      const { deps } = dbDeps(w.t, w.sessions);
+      await call(deps, { match_ids: [m.id] });
+      expect((await verdicts(w.t))[0]).toMatchObject({ status: 'incomplete', ticks: MIN_DELAY + 120 });
+    });
+
+    const faultOf = async (t: Db) => (await t.sql('select at_fault from public.pokejam_match_verdicts'))[0].at_fault;
+    const version = (id: string, engineVersion: unknown, pub: [string, string]) =>
+      ({ setup: { ...setupFor(id), engineVersion }, keys: pub, inputs: [], applied: [] }) as unknown as Evidence;
+
+    for (const [name, fake] of [['an old', ENGINE_VERSION - 1], ['a made-up', 999], ['a missing', undefined]] as const) {
+      it(`${name} engine version next to a current upload: thrown out, the match is judged on the other, and the sender is at fault`, async () => {
+        const w = await world();
+        const seen: Evidence[] = [];
+        const m = await w.match('ranked', async (id, k) => [version(id, ENGINE_VERSION, k.pub), version(id, fake, k.pub)]);
+        const { deps } = dbDeps(w.t, w.sessions, async (ev) => {
+          seen.push(ev);
+          return { status: 'final', winner: 0, score: [3, 1], ticks: 7200, hash: 1, lastFrame: [7204, 7204], notes: [] };
+        });
+        expect((await (await call(deps, { match_ids: [m.id] })).json()).results).toEqual([{ match_id: m.id, result: 'recorded', status: 'final' }]);
+        expect(seen).toHaveLength(1);
+        expect((await verdicts(w.t))[0].notes).toContain(`ignored an upload: recorded on engine v${fake}`);
+        expect(await faultOf(w.t)).toBe(m.guest.id);
+      });
+    }
+
+    it('the only upload, on a wrong engine: invalid, and its sender is at fault', async () => {
+      const w = await world();
+      const judged = vi.fn();
+      const m = await w.match('ranked', async (id, k) => [version(id, 999, k.pub)]);
+      const { deps } = dbDeps(w.t, w.sessions, judged);
+      expect((await (await call(deps, { match_ids: [m.id] })).json()).results[0]).toMatchObject({ status: 'invalid' });
+      expect(judged).not.toHaveBeenCalled();
+      expect(await faultOf(w.t)).toBe(m.host.id);
+    });
+
+    it('both uploads on the same old engine: the judge moved on mid-match, invalid, nobody at fault', async () => {
+      const w = await world();
+      const judged = vi.fn();
+      const m = await w.match('ranked', async (id, k) => [version(id, ENGINE_VERSION - 1, k.pub), version(id, ENGINE_VERSION - 1, k.pub)]);
+      const { deps } = dbDeps(w.t, w.sessions, judged);
+      expect((await (await call(deps, { match_ids: [m.id] })).json()).results[0]).toMatchObject({ status: 'invalid' });
+      expect(judged).not.toHaveBeenCalled();
+      expect((await verdicts(w.t))[0]).toMatchObject({ winner_side: null, agrees: null, notes: expect.stringContaining(`recorded on engine v${ENGINE_VERSION - 1}`) });
+      expect(await faultOf(w.t)).toBeNull();
+    });
+
+    it('both uploads on wrong engines that differ: invalid, and neither can be named', async () => {
+      const w = await world();
+      const m = await w.match('ranked', async (id, k) => [version(id, 998, k.pub), version(id, 999, k.pub)]);
+      const { deps } = dbDeps(w.t, w.sessions, vi.fn());
+      expect((await (await call(deps, { match_ids: [m.id] })).json()).results[0]).toMatchObject({ status: 'invalid', match_id: m.id });
+      expect(await faultOf(w.t)).toBeNull();
+    });
+
+    it('an unreadable upload as the only one: invalid, and its sender is at fault', async () => {
+      const w = await world();
+      const m = await w.match('ranked');
+      await w.t.sql('insert into public.pokejam_match_evidence(match_id, user_id, evidence) values ($1, $2, $3)', [m.id, m.guest.id, 'gz1:AAAA']);
+      const { deps } = dbDeps(w.t, w.sessions, vi.fn());
+      expect((await (await call(deps, { match_ids: [m.id] })).json()).results[0]).toMatchObject({ status: 'invalid' });
+      expect(await faultOf(w.t)).toBe(m.guest.id);
+    });
+
+    it('an upload with no setup at all is invalid, not an error', async () => {
+      const w = await world();
+      const m = await w.match('ranked', async (_id, k) => [{ keys: k.pub, inputs: [], applied: [] } as unknown as Evidence]);
+      const { deps } = dbDeps(w.t, w.sessions);
+      expect((await (await call(deps, { match_ids: [m.id] })).json()).results).toEqual([{ match_id: m.id, result: 'recorded', status: 'invalid' }]);
+    });
+
+    it('missing rosters are invalid, the judge never falls back to the uploaded teams', async () => {
+      const w = await world();
+      const judged = vi.fn();
+      const m = await w.match('ranked', async (id, k) => [{ setup: setupFor(id), keys: k.pub, inputs: [], applied: [] }], null);
+      const { deps } = dbDeps(w.t, w.sessions, judged);
+      expect((await (await call(deps, { match_ids: [m.id] })).json()).results).toEqual([{ match_id: m.id, result: 'recorded', status: 'invalid' }]);
+      expect(judged).not.toHaveBeenCalled();
+      expect((await verdicts(w.t))[0].notes).toMatch(/no seed or rosters/);
+    });
+
+    it('an unknown match is skipped', async () => {
+      const w = await world();
+      const id = crypto.randomUUID();
+      const { deps } = dbDeps(w.t, w.sessions);
+      deps.uploadsOf = async () => [{ evidence: 'gz1:x', user: 'u' }];
+      expect((await (await call(deps, { match_ids: [id] })).json()).results).toEqual([{ match_id: id, result: 'skipped', reason: 'no such match' }]);
+    });
+  });
+
+  describe('a hostile upload', () => {
+    const z = { mx: 0, my: 0, b: 0 };
+    /** `n` copies of one signed batch: cheap to make, and each still counts against the cap. */
+    const flood = async (id: string, key: CryptoKey, n: number) => Array(n).fill(await signTicks(key, id, 0, 0, [z]));
+
+    it('over the cap is dropped before any signature check, and the other upload still judges the match', async () => {
+      const w = await world();
+      let honest: Evidence['inputs'] = [];
+      const m = await w.match('ranked', async (id, k) => {
+        honest = [await signTicks(k.host, id, 0, MIN_DELAY, [z, z]), await signTicks(k.guest, id, 1, MIN_DELAY, [z, z])];
+        return [{ setup: setupFor(id), keys: k.pub, inputs: await flood(id, k.host, MAX_UPLOAD_BATCHES + 1), applied: [] },
+          { setup: setupFor(id), keys: k.pub, inputs: honest, applied: [] }];
+      });
+      const seen: Evidence[] = [];
+      const { deps } = dbDeps(w.t, w.sessions, async (ev) => { seen.push(ev); return realJudge(ev); });
+      expect((await (await call(deps, { match_ids: [m.id] })).json()).results).toEqual([{ match_id: m.id, result: 'recorded', status: 'incomplete' }]);
+      expect(seen[0].inputs).toEqual(honest);
+      expect((await verdicts(w.t))[0].notes).toMatch(new RegExp(`ignored upload 1 of 2: ${MAX_UPLOAD_BATCHES + 1} batches, over the cap`));
+    });
+
+    it('exactly at the cap is still read', async () => {
+      const w = await world();
+      const m = await w.match('ranked', async (id, k) => [{ setup: setupFor(id), keys: k.pub, inputs: await flood(id, k.host, MAX_UPLOAD_BATCHES), applied: [] }]);
+      const seen: Evidence[] = [];
+      const { deps } = dbDeps(w.t, w.sessions, async (ev) => { seen.push(ev); return realJudge(ev); });
+      await call(deps, { match_ids: [m.id] });
+      expect(seen[0].inputs).toHaveLength(MAX_UPLOAD_BATCHES);
+    });
+
+    it('both over the cap is invalid, with no judging at all', async () => {
+      const w = await world();
+      const judged = vi.fn();
+      const m = await w.match('ranked', async (id, k) => {
+        const inputs = await flood(id, k.host, MAX_UPLOAD_BATCHES + 1);
+        return [{ setup: setupFor(id), keys: k.pub, inputs, applied: [] }, { setup: setupFor(id), keys: k.pub, inputs, applied: [] }];
+      });
+      const { deps } = dbDeps(w.t, w.sessions, judged);
+      expect((await (await call(deps, { match_ids: [m.id] })).json()).results).toEqual([{ match_id: m.id, result: 'recorded', status: 'invalid' }]);
+      expect(judged).not.toHaveBeenCalled();
+      expect((await verdicts(w.t))[0].notes).toMatch(/no usable upload/);
+    });
+
+    it('junk next to an honest upload does not stop the match being judged', async () => {
+      const w = await world();
+      const m = await w.match('ranked', async (id, k) => [{ setup: setupFor(id), keys: k.pub, inputs: [await signTicks(k.host, id, 0, MIN_DELAY, [z]), await signTicks(k.guest, id, 1, MIN_DELAY, [z])], applied: [] }]);
+      await w.t.sql("insert into public.pokejam_match_evidence(match_id, user_id, evidence) values ($1, $2, 'gz1:not gzip')", [m.id, m.guest.id]);
+      const { deps } = dbDeps(w.t, w.sessions);
+      expect((await (await call(deps, { match_ids: [m.id] })).json()).results).toEqual([{ match_id: m.id, result: 'recorded', status: 'incomplete' }]);
+      expect((await verdicts(w.t))[0].notes).toMatch(/ignored upload 2 of 2: unreadable/);
+    });
   });
 
   it('caps the batch', async () => {

@@ -10,7 +10,7 @@ import './admin.css';
 import { CAPTCHA_ON, captchaToken } from '../multiplayer/shared/captcha';
 import { esc } from '../util';
 import { AD_RPC, adAction, adConfirm, adsHtml, boardSwitch, isAdBoard, type AdBan, type AdBoard, type AdRow } from './adsView';
-import { bansHtml, personLabel, reportsHtml, when, type Ban, type Reported } from './reportsView';
+import { bansHtml, judgeFlagsHtml, judgeShadowHtml, personLabel, reportsHtml, when, type Ban, type JudgeFlag, type JudgeShadow, type Reported } from './reportsView';
 
 const URL = import.meta.env.VITE_SUPABASE_URL;
 const KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -24,6 +24,11 @@ interface Stats {
   today_starts: string; generated_at: string;
 }
 
+interface NetCostDay {
+  day: string; matches: number; stat_rows: number; coverage: number | null; fallback_rate: number | null;
+  rt_msgs_per_match: number | null; rt_msgs_billed: number | null; turn_bytes_est: number; turn_msg_bytes: number;
+  resync_matches: number; engines: Record<'blink' | 'gecko' | 'webkit' | 'other' | 'unknown', number>;
+}
 type ModeCounts = Partial<Record<'quick' | 'franchise' | 'season_draft', { started: number; finished: number }>>;
 type SeasonCounts = Partial<Record<'franchise' | 'season_draft', { seasons: number; playoffs: number; titles: number }>>;
 interface OfflineStats {
@@ -84,7 +89,13 @@ function dashboard(sb: SupabaseClient, email: string) {
       <h3>Online</h3><div data-stats-body><p class="note">Loading…</p></div>
       <h3>Offline (Quick Play / CPU / Franchise)</h3>
       <p class="note">Offline counting started with this update (Oct 2026); earlier offline games aren't counted.</p>
-      <div data-offline-body><p class="note">Loading…</p></div></section>
+      <div data-offline-body><p class="note">Loading…</p></div>
+      <h3>Net cost (online, last 7 days)</h3>
+      <div data-netcost-body><p class="note">Loading…</p></div>
+      <h3>Judge, shadow mode (Ranked, last 7 days)</h3>
+      <div data-shadow-body><p class="note">Loading…</p></div>
+      <h3>Judge flags (Ranked, last 7 days)</h3>
+      <div data-flags-body><p class="note">Loading…</p></div></section>
     <nav class="tabs">
       <button class="on" data-tab="reports">Reported</button><button data-tab="bans">Suspended</button><button data-tab="ads">Ads</button><button data-tab="log">History</button>
       <label>Last <select data-days><option>1</option><option selected>7</option><option>30</option></select> days</label>
@@ -193,6 +204,9 @@ function dashboard(sb: SupabaseClient, email: string) {
   const statsBody = root.querySelector<HTMLElement>('[data-stats-body]')!;
   const refresh = root.querySelector<HTMLButtonElement>('[data-refresh]')!;
   const offlineBody = root.querySelector<HTMLElement>('[data-offline-body]')!;
+  const netCostBody = root.querySelector<HTMLElement>('[data-netcost-body]')!;
+  const shadowBody = root.querySelector<HTMLElement>('[data-shadow-body]')!;
+  const flagsBody = root.querySelector<HTMLElement>('[data-flags-body]')!;
   const loadStats = async () => {
     refresh.disabled = true;
     await Promise.all([
@@ -208,6 +222,27 @@ function dashboard(sb: SupabaseClient, email: string) {
           offlineBody.innerHTML = offlineHtml(await call<OfflineStats>('pokejam_admin_offline_stats'));
         } catch {
           offlineBody.innerHTML = '<p class="note">Offline stats unavailable.</p>';
+        }
+      })(),
+      (async () => {
+        try {
+          netCostBody.innerHTML = netCostHtml(await call<NetCostDay[]>('pokejam_admin_net_cost', { p_days: 7 }));
+        } catch {
+          netCostBody.innerHTML = '<p class="note">Net cost stats unavailable.</p>';
+        }
+      })(),
+      (async () => {
+        try {
+          shadowBody.innerHTML = judgeShadowHtml(await call<JudgeShadow>('pokejam_admin_judge_shadow', { p_days: 7 }));
+        } catch {
+          shadowBody.innerHTML = '<p class="note">Judge stats unavailable.</p>';
+        }
+      })(),
+      (async () => {
+        try {
+          flagsBody.innerHTML = judgeFlagsHtml(await call<JudgeFlag[]>('pokejam_admin_judge_flags', { p_days: 7 }));
+        } catch {
+          flagsBody.innerHTML = '<p class="note">Judge flags unavailable.</p>';
         }
       })(),
     ]);
@@ -249,6 +284,21 @@ function offlineHtml(s: OfflineStats): string {
     ${seasons('Season Drafts, all time', 'season_draft', s.seasons_all)}
   </div><p class="note">Players = distinct browsers (random id per device). Games: started/finished by mode. ${
     s.first_event_at ? `First offline event ${esc(pt(s.first_event_at))} PT.` : 'No offline events yet.'} Updated ${esc(pt(s.generated_at))} PT.</p>`;
+}
+
+function netCostHtml(days: NetCostDay[]): string {
+  if (!days.length) return '<p class="note">No days.</p>';
+  const pct = (x: number | null) => (x === null ? '–' : `${Math.round(x * 100)}%`);
+  const num = (x: number | null) => (x === null ? '–' : String(Math.round(x)));
+  const engines = (e: NetCostDay['engines']) => (['blink', 'gecko', 'webkit', 'other', 'unknown'] as const)
+    .filter((k) => e[k]).map((k) => `${k} ${e[k]}`).join(' · ');
+  return `<div class="scroll"><table><thead><tr><th>Day (PT)</th><th>Matches</th><th>Stats coverage</th><th>Realtime fallback</th>
+      <th>Realtime msgs / match (billed)</th><th>TURN MB est.</th><th>Resyncs</th><th>Engines</th></tr></thead><tbody>
+    ${days.map((d) => `<tr><td>${esc(d.day)}</td><td>${d.matches}</td><td>${pct(d.coverage)}</td><td>${pct(d.fallback_rate)}</td>
+      <td>${num(d.rt_msgs_per_match)} (${num(d.rt_msgs_billed)})</td><td>${(d.turn_bytes_est / 1e6).toFixed(1)}</td>
+      <td>${d.resync_matches} matches</td><td>${esc(engines(d.engines))}</td></tr>`).join('')}
+  </tbody></table></div><p class="note">Self-reported by each player's client; coverage = stats rows ÷ (2 × matches). Realtime counts
+    leave out setup and signalling. TURN = relayed messages × ${days[0].turn_msg_bytes} B × 2. “unknown” engine = older client.</p>`;
 }
 
 function logHtml(rows: LogRow[]): string {

@@ -107,6 +107,12 @@ export interface Verdict {
   hash: number;
   /** The side caught equivocating, for 'forfeit'. */
   cheater?: 0 | 1;
+  /**
+   * Per side, the last frame of its unbroken run of signed frames (0: none), to see who went silent first. A batch
+   * signed past a gap doesn't count, so nobody can look present by signing one far-future frame. [0, 0] when judging
+   * stopped before both sides' frames were read ('invalid', 'forfeit').
+   */
+  lastFrame: [number, number];
   /** Why, in plain words; also lists signed items that were ignored. */
   notes: string[];
 }
@@ -220,8 +226,9 @@ function validSetup(s: MatchSetup): string | null {
   for (const t of [s.home, s.away]) {
     if (!t || !Array.isArray(t.roster) || t.roster.length !== 5) return 'each team needs five Pokémon';
     try { t.roster.forEach(monByDex); } catch { return `unknown Pokémon in ${t.name}`; }
+    // The same Pokémon on both teams is fine: Ranked allows mirror preset picks.
+    if (new Set(t.roster).size !== 5) return `a Pokémon is on ${t.name} twice`;
   }
-  if (new Set([...s.home.roster, ...s.away.roster]).size !== 10) return 'a Pokémon is on both teams (or twice on one)';
   return null;
 }
 
@@ -252,11 +259,19 @@ async function collect<T, V>(
   return { slots, clash: null };
 }
 
+/** The seq of the last frame in the unbroken run starting at index `start` (seq start + 1); 0 when that first frame is missing. */
+function lastInRun(slots: readonly unknown[], start: number): number {
+  let n = start;
+  while (slots[n] !== undefined) n++;
+  return n === start ? 0 : n;
+}
+
 /** Judge a match from all the evidence the players submitted. */
 export async function judge(ev: Evidence): Promise<Verdict> {
   const notes: string[] = [];
+  let lastFrame: [number, number] = [0, 0];
   const out = (status: VerdictStatus, extra: Partial<Verdict> = {}): Verdict =>
-    ({ status, winner: null, score: [0, 0], ticks: 0, hash: 0, notes, ...extra });
+    ({ status, winner: null, score: [0, 0], ticks: 0, hash: 0, lastFrame, notes, ...extra });
 
   const bad = validSetup(ev?.setup);
   if (bad) return out('invalid', { notes: [bad] });
@@ -283,6 +298,7 @@ export async function judge(ev: Evidence): Promise<Verdict> {
     const empty = ev.lockstep.emptyTicks;
     if (!isInt(empty) || empty < 0 || empty > 60) return out('invalid', { notes: [...notes, 'lockstep warm-up must be 0 to 60 ticks'] });
     if ((ev.applied ?? []).length) notes.push('ignored the applied log: lockstep has none');
+    lastFrame = [lastInRun(frames[0], empty), lastInRun(frames[1], empty)];
     const ticks: [WireInput | null, WireInput | null][] = [];
     for (let t = 0; t < MAX_TICKS; t++) {
       if (t < empty) { ticks.push([null, null]); continue; }
@@ -293,6 +309,8 @@ export async function judge(ev: Evidence): Promise<Verdict> {
     }
     return settle(replay(setup, ticks), notes, out);
   }
+
+  lastFrame = [lastInRun(frames[0], 0), lastInRun(frames[1], 0)];
 
   // The host's applied log.
   const { slots: applied, clash } = await collect(

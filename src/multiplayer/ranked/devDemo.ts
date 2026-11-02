@@ -1,0 +1,125 @@
+// Dev only (main.ts imports this under import.meta.env.DEV): ?ranked=1&rankeddemo=<screen> shows a Ranked screen with made-up
+// data, for screenshots and layout checks. It never talks to a server and is not in a production bundle.
+import { panel } from '../shared/matchFlow';
+import type { ReportOutcome } from '../shared/matchService';
+import type { PhantomAction } from '../../wallet/phantom';
+import type { RankedMe, RankedResult } from './serverRank';
+import { renderRankBadge } from '../../ranked/badge';
+import { postMatchHtml, rankChipHtml, shieldItemHtml, shieldTagHtml, signInPanelHtml, usernamePickerHtml, weeklyCardHtml } from './view';
+import { parseShieldStatus, parseShopInfo } from './serverRank';
+import { MODE_SHIELD_SHOP, MODE_SHIELD_STRIPE } from '../../config/features';
+import { SHOP_NOTICES, USDC_NOTICES, gotShields, shopHtml, type ShopModel } from './shopView';
+import { profileHtml, type ProfileModel } from '../../screens/profile';
+import { checkUsername, nameErrorText } from './username';
+import { initialPickModel, presetPickHtml } from './presetPick';
+
+const me = (o: Partial<RankedMe> = {}): RankedMe => ({
+  season: 1, daysLeft: 31, placing: false, placementsPlayed: 5, divIdx: 7, points: 40, zenith: false, shieldCharge: 1, shieldLossesLeft: null,
+  shieldActive: true, wins: 12, losses: 9, cooldownUntil: null, ...o,
+});
+const result = (o: Partial<RankedResult> = {}): RankedResult => ({
+  placing: false, event: null, placementsPlayed: 5, before: 740, after: 762, delta: 22, divIdx: 7, points: 62, ...o,
+});
+const out = (r: RankedResult, m: RankedMe | null, oppRank: ReportOutcome['oppRank'] = { divIdx: 10 }): ReportOutcome => ({ queue: 'ranked', status: 'done', result: r, me: m ?? undefined, names: { me: 'Ash_Ketchum', opp: 'Misty_Waterflower' }, oppRank });
+
+const HOME_BTNS = '<button class="btn primary big" data-a="find">Find ranked match</button><button class="btn" data-a="cpu">Practice vs CPU (unranked)</button><button class="btn ghost" data-a="back">Back</button>';
+const home = (chip: string) => panel('RANKED', 'Play 5 placement matches to earn a rank.', `<div class="rk-home"><div class="rk-left">${chip}</div><div class="rk-right">${HOME_BTNS}</div></div>`);
+// Rank Shield: made-up server answers (pokejam_shield_me), times relative to now so the labels read the same on every run.
+const shield = (o: Record<string, unknown> = {}, w: Record<string, unknown> = {}) => parseShieldStatus({
+  count: 3, armed: false, locked: false, next_use_at: null, arm_block: null,
+  weekly: { kind: 'games', goal: 10, progress: 6, done: false, resets_at: new Date(Date.now() + 3.4 * 86_400_000).toISOString(), ...w }, ...o })!;
+const shieldHome = (st = shield()) => panel('RANKED', 'Play 5 placement matches to earn a rank.',
+  `<div class="rk-home"><div class="rk-left">${rankChipHtml(me())}${weeklyCardHtml(st.weekly)}</div><div class="rk-right"><button class="btn primary big" data-a="find">Find ranked match</button>${shieldItemHtml(st, Date.now(), MODE_SHIELD_SHOP)}<button class="btn" data-a="cpu">Practice vs CPU (unranked)</button><button class="btn ghost" data-a="back">Back</button></div></div>`);
+const signIn = (a: PhantomAction) => panel('RANKED', 'Play 5 placement matches to earn a rank.',
+  `<div class="rk-home"><div class="rk-left">${signInPanelHtml(a)}</div><div class="rk-right"><button class="btn" data-a="cpu">Practice vs CPU (unranked)</button><button class="btn ghost" data-a="back">Back</button></div></div>`);
+const post = (html: string) => `<div class="menu"><section class="card setup"><div class="mp-outcome" data-outcome>${html}</div></section></div>`;
+
+const model = (o: Partial<ProfileModel> = {}): ProfileModel => ({
+  rankedOn: true, onlineAvailable: true, signedIn: true, username: 'Ash_Ketchum', nextChangeAt: null, me: me({ peakIdx: 9, wins: 31, losses: 24 }),
+  social: { played: 18, won: 11 }, local: { franchise: 'Pallet Town · Season 2 · 6-3', drafted: 'Pallet Town · 7-3 · #12' }, ...o,
+});
+const profile = (m: ProfileModel) => panel('PROFILE', m.signedIn ? 'Your record' : 'Your record on this device', profileHtml(m, { kind: 'install', href: 'https://phantom.app/download' }));
+const BAD_NAME = 'Admin_Joe';
+
+const SCREENS: Record<string, () => string> = {
+  chip: () => home(rankChipHtml(me())),
+  'chip-zenith': () => home(rankChipHtml(me({ divIdx: 24, points: 340, zenith: true, shieldActive: false }))),
+  'chip-shield-spent': () => home(rankChipHtml(me({ shieldCharge: 0, shieldLossesLeft: 2 }))),
+  'shield-hub': () => shieldHome(),
+  'shield-hub-armed': () => shieldHome(shield({ armed: true })),
+  'shield-hub-locked': () => shieldHome(shield({ armed: true, locked: true })),
+  'shield-hub-used': () => shieldHome(shield({ arm_block: 'used_today', next_use_at: new Date(Date.now() + (5 * 60 + 12) * 60_000 + 30_000).toISOString() })),
+  'shield-hub-placing': () => shieldHome(shield({ arm_block: 'placing' })),
+  'shield-hub-done': () => shieldHome(shield({ count: 1 }, { progress: 10, done: true })),
+  // The shop sheet (shopView.ts) over the hub; devRanked() appends the sheet itself. Needs the shop flag for the Shop button.
+  shop: () => shieldHome(),
+  'shop-checked': () => shieldHome(),
+  'shop-waiting': () => shieldHome(),
+  'shop-cap': () => shieldHome(),
+  'shop-guest': () => shieldHome(),
+  // The same sheet for a player signed in with Phantom (USDC buttons, devnet badge).
+  'usdc-shop': () => shieldHome(),
+  'usdc-shop-checked': () => shieldHome(),
+  'usdc-approve': () => shieldHome(),
+  'usdc-confirming': () => shieldHome(),
+  'usdc-success': () => shieldHome(),
+  'usdc-error': () => shieldHome(),
+  'shield-queue': () => panel('SEARCHING', 'Looking for a ranked opponent near your skill…', `${shieldTagHtml(shield({ armed: true }))}<div class="actions center"><button class="btn ghost" data-a="cancel">Cancel</button></div>`),
+  // Ranked team pick (presetPick.ts): nothing chosen, a card tapped, and locked in waiting on the opponent.
+  pick: () => presetPickHtml(initialPickModel(17)),
+  'pick-selected': () => presetPickHtml({ ...initialPickModel(12), selected: 'C' }),
+  'pick-locked': () => presetPickHtml({ ...initialPickModel(4), selected: 'C', locked: 'C' }),
+  placing: () => home(rankChipHtml(me({ placing: true, placementsPlayed: 2, divIdx: null, points: null }))),
+  signin: () => signIn({ kind: 'install', href: 'https://phantom.app/download' }),
+  'signin-phantom': () => signIn({ kind: 'sign-in' }),
+  'signin-mobile': () => signIn({ kind: 'open-in-phantom', href: 'https://phantom.app/ul/browse/x?ref=y' }),
+  'profile-signedin': () => profile(model()),
+  'profile-placing': () => profile(model({ me: me({ placing: true, placementsPlayed: 2, divIdx: null, points: null }) })),
+  'profile-guest': () => profile(model({ signedIn: false, username: null, me: null, social: { played: 3, won: 1 } })),
+  'username-error': () => panel('RANKED', 'Play 5 placement matches to earn a rank.',
+    `<div class="rk-home"><div class="rk-left">${usernamePickerHtml({ value: BAD_NAME, error: nameErrorText(checkUsername(BAD_NAME) ?? 'profanity') })}</div><div class="rk-right"><button class="btn ghost" data-a="back">Back</button></div></div>`),
+  'profile-zenith': () => profile(model({ me: me({ divIdx: 24, points: 340, zenith: true, peakIdx: 24, shieldActive: false }) })),
+  'post-opp-unranked': () => post(postMatchHtml(out(result(), me({ points: 62 }), null), true)),
+  'post-opp-placing': () => post(postMatchHtml(out(result(), me({ points: 62 }), { placing: 3 }), true)),
+  badges: () => panel('BADGES', 'Every tier, then Zenith, placement and unranked', `<div class="rk-gallery">${[0, 3, 6, 9, 12, 15, 18, 21, 24].map((d) => renderRankBadge({ divIdx: d })).join('')}${renderRankBadge({ placing: 2 })}${renderRankBadge(null)}</div>`),
+  'post-win': () => post(postMatchHtml(out(result(), me({ points: 62 })), true)),
+  'post-loss': () => post(postMatchHtml(out(result({ before: 762, after: 745, delta: -17, points: 45 }), me({ points: 45 })), false)),
+  'post-up': () => post(postMatchHtml(out(result({ event: 'promoted', before: 790, after: 812, delta: 22, divIdx: 8, points: 12 }), me({ divIdx: 8, points: 12 })), true)),
+  'post-down': () => post(postMatchHtml(out(result({ event: 'demoted', before: 805, after: 778, delta: -27, divIdx: 7, points: 78 }), me({ divIdx: 7, points: 78, shieldCharge: 0, shieldLossesLeft: 3 })), false)),
+  'post-saved': () => post(postMatchHtml(out(result({ before: 762, after: 762, delta: 0, points: 62, shield: { armed: true, used: true, saved: 17 } }), me({ points: 62 })), false)),
+  'post-kept': () => post(postMatchHtml(out(result({ shield: { armed: true, used: false, saved: 0 } }), me({ points: 62 })), true)),
+  'post-shield': () => post(postMatchHtml(out(result({ event: 'shielded', before: 700, after: 700, delta: -19, divIdx: 7, points: 0 }), me({ divIdx: 7, points: 0, shieldCharge: 0, shieldLossesLeft: 3 })), false)),
+  'post-placing': () => post(postMatchHtml(out(result({ placing: true, placementsPlayed: 3, before: null, after: null, delta: null, divIdx: null, points: null }), null), true)),
+  'post-placed': () => post(postMatchHtml(out(result({ placing: true, event: 'placed', placementsPlayed: 5, before: 400, after: 440, delta: 40, divIdx: 4, points: 40 }), me({ divIdx: 4, points: 40 })), true)),
+};
+
+export const devRankedScreen = (): string | null => {
+  const k = new URLSearchParams(location.search).get('rankeddemo');
+  return k && k in SCREENS ? k : null;
+};
+
+const shopInfo = (held = 3, left = 39) => parseShopInfo({ held, cap: 14, purchases_left: left, blocked: false,
+  products: [{ sku: 'shield_3', units: 3, price_cents: 199, usdc_amount: 1990000 }, { sku: 'shield_7', units: 7, price_cents: 399, usdc_amount: 3990000 }, { sku: 'shield_14', units: 14, price_cents: 699, usdc_amount: 6990000 }] });
+const phantom = { cluster: 'devnet' } as const;
+const shopModel = (o: Partial<ShopModel> = {}): ShopModel => ({ info: shopInfo(), signedIn: true, agreed: false, busy: null, notice: null, card: MODE_SHIELD_STRIPE, ...o });
+const SHOP_SHEETS: Record<string, () => ShopModel> = {
+  shop: () => shopModel(),
+  'shop-checked': () => shopModel({ agreed: true }),
+  'shop-waiting': () => shopModel({ agreed: true, notice: SHOP_NOTICES.waiting }),
+  'shop-cap': () => shopModel({ info: shopInfo(12), agreed: true }),
+  'shop-guest': () => shopModel({ info: null, signedIn: false }),
+  'usdc-shop': () => shopModel({ usdc: phantom }),
+  'usdc-shop-checked': () => shopModel({ usdc: phantom, agreed: true }),
+  'usdc-approve': () => shopModel({ usdc: phantom, agreed: true, busy: 'shield_7', rail: 'usdc', usdcStep: 'approve', notice: USDC_NOTICES.approve }),
+  'usdc-confirming': () => shopModel({ usdc: phantom, agreed: true, busy: 'shield_7', rail: 'usdc', usdcStep: 'confirm', notice: USDC_NOTICES.confirming }),
+  'usdc-success': () => shopModel({ usdc: phantom, agreed: true, info: shopInfo(10), notice: gotShields(7) }),
+  'usdc-error': () => shopModel({ usdc: phantom, agreed: true, notice: { tone: 'bad', text: 'The payment amount does not match the price' } }),
+};
+
+export function devRanked(root: HTMLElement, kind: string) {
+  root.className = kind.startsWith('post') ? 'screen-results' : 'screen-menu';
+  root.innerHTML = SCREENS[kind]();
+  if (kind in SHOP_SHEETS) document.body.insertAdjacentHTML('beforeend', shopHtml(SHOP_SHEETS[kind]()));
+  // The reveal's Skip button (index.ts binds it for real play).
+  root.addEventListener('click', (e) => (e.target as Element).closest('[data-rk-skip]')?.closest('.rk-anim')?.classList.add('skipped'));
+}

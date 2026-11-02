@@ -12,17 +12,19 @@
 //   delays need not match: inputs are tagged with their tick, so the sim is the same whatever they are.
 // - Every HASH_EVERY ticks both sides exchange a state hash. On a mismatch (floating point can differ in the last
 //   bit between browser engines) the host sends a full snapshot; the guest restores it and replays its stored
-//   inputs to catch up. The host is the authority for that.
+//   inputs to catch up. The host is the authority for that, but only when the guest has seen the mismatch itself and
+//   the snapshot's score, quarter and clock are close to the guest's own.
 //
 // This class is transport-agnostic: hand it anything with send(), feed it received messages with receive().
 //
 // The peer is not trusted: receive() takes anything. Malformed messages, inputs far outside the window the game
-// can be in, oversized runs and floods are dropped; a snapshot that doesn't fit this game, or resync spam, sets
-// `problem` and the match screen ends the game without a result.
+// can be in, oversized runs and floods are dropped. A snapshot the guest did not ask for is ignored, and one whose
+// values jump too far is dropped and counted. After a detected desync, a snapshot that doesn't fit this game, or too
+// many resyncs, sets `problem` and the match screen ends the game without a result.
 
-import type { Game } from '../../game/game';
+import type { Game, Phase } from '../../game/game';
 import { TICK, packInput, restore, snapshot, stateHash, stepGame, type Snapshot, type WireInput } from '../../game/sync';
-import type { Intent } from '../../game/types';
+import { quarterClock, type Intent } from '../../game/types';
 import { LEAD_WINDOW_MS, MAX_DELAY, MIN_DELAY, adapt } from './netDelay';
 
 export { MAX_DELAY, MIN_DELAY };
@@ -63,6 +65,8 @@ export interface LockstepOptions {
   now?: () => number;
   /** Replace the delay tuning (the latency simulator in the tests compares it with the old tuning). */
   tune?: { adapt?: typeof adapt; windowMs?: number; stallLead?: boolean };
+  /** Resyncs the guest takes per game before the game stops (default 12). */
+  resyncLimit?: number;
 }
 
 export const SEND_MS = 66;
@@ -78,8 +82,21 @@ const MAX_AHEAD = 4 * MAX_DELAY + 60;
 /** At most this many messages a second are read from the peer (about 65 in normal play, more in a burst after a hiccup); the rest are dropped. */
 const MAX_MSGS_PER_SEC = 200;
 /** Resyncs the guest accepts per game, and how often: a host sending more is broken or cheating. */
-const MAX_RESYNCS = 12;
+const DEFAULT_RESYNC_LIMIT = 12;
+/** Ranked's limit once the judge decides disputes: each resync could be a forged state, and the judge settles a stopped game. */
+const JUDGED_RANKED_RESYNC_LIMIT = 3;
+/**
+ * Resyncs allowed before the game stops. Only Ranked with the judge deciding gets the low limit: without the judge, a
+ * guest stopped by a desync just claims a forfeit, so honest games must get the same room as Social.
+ * The caller passes the flag (JUDGE_AUTHORITATIVE in config/features.ts): this module also loads under Deno, without Vite.
+ */
+export const resyncLimitFor = (queue: 'social' | 'ranked', judgeAuthoritative: boolean) =>
+  (queue === 'ranked' && judgeAuthoritative ? JUDGED_RANKED_RESYNC_LIMIT : DEFAULT_RESYNC_LIMIT);
 const MIN_RESYNC_MS = 1500;
+/** How long after its last mismatching hash the guest will take a snapshot. */
+const DESYNC_WINDOW_MS = 5000;
+/** How long a snapshot that beat the guest's own hash check is held (the two transports can reorder messages). */
+const PENDING_MS = 2000;
 /** Ticks of input history kept for replays after a resync. */
 const HISTORY = 900;
 const EMPTY: WireInput = { mx: 0, my: 0, b: 0 };
@@ -87,6 +104,53 @@ const EMPTY: WireInput = { mx: 0, my: 0, b: 0 };
 const MAX_ACC = 0.25;
 
 const same = (a: WireInput, b: WireInput) => a.mx === b.mx && a.my === b.my && a.b === b.b;
+
+/** The values a snapshot may not move far: what decides the result. */
+export interface Vitals {
+  score: [number, number];
+  quarter: number;
+  clock: number;
+  phase: Phase;
+}
+
+const PHASES: readonly unknown[] = ['tip', 'live', 'dead', 'break', 'final'] satisfies Phase[];
+
+function snapshotVitals(s: Snapshot): Vitals | null {
+  const { score, quarter, clock, phase } = s.game;
+  if (!Array.isArray(score) || score.length !== 2 || !score.every(Number.isFinite)) return null;
+  if (!Number.isFinite(quarter) || !Number.isFinite(clock) || !PHASES.includes(phase)) return null;
+  return { score: score as [number, number], quarter: quarter as number, clock: clock as number, phase: phase as Phase };
+}
+
+/**
+ * Could an honest host be at `b`, given that this copy was at `a` about `dt` seconds away? A desync is a tiny drift,
+ * but the two ticks can differ by a round trip and a hash interval, so a basket or a buzzer can fall between them.
+ */
+export function plausibleVitals(a: Vitals, b: Vitals, dt: number, quarterLen: number): boolean {
+  const scoreRoom = 3 + Math.ceil(dt) * 3;
+  if (Math.abs(a.score[0] - b.score[0]) > scoreRoom || Math.abs(a.score[1] - b.score[1]) > scoreRoom) return false;
+  const dq = b.quarter - a.quarter;
+  if (Math.abs(dq) > 1) return false;
+  const clockRoom = 1 + dt;
+  // The game ended on one side only: the other must be at the same buzzer, or just past it into overtime after a tie.
+  if ((a.phase === 'final') !== (b.phase === 'final')) {
+    const [done, other] = a.phase === 'final' ? [a, b] : [b, a];
+    if (done.quarter < 4 || done.clock > clockRoom) return false;
+    return other.quarter === done.quarter ? other.clock <= clockRoom : other.quarter > done.quarter;
+  }
+  // A new quarter: the earlier side must be at the buzzer, and the later side's clock can't be over a full quarter.
+  if (dq !== 0) {
+    const [early, late] = dq > 0 ? [a, b] : [b, a];
+    return early.clock <= clockRoom && late.clock <= quarterClock(late.quarter, quarterLen) + clockRoom;
+  }
+  // The quarter number moves at the buzzer, but the clock stays at 0 until the break ends, then jumps to a full quarter.
+  if ((a.phase === 'break') !== (b.phase === 'break')) {
+    const [inBreak, other] = a.phase === 'break' ? [a, b] : [b, a];
+    const full = quarterClock(other.quarter, quarterLen);
+    return inBreak.clock <= clockRoom && other.clock >= full - clockRoom && other.clock <= full + clockRoom;
+  }
+  return Math.abs(a.clock - b.clock) <= clockRoom;
+}
 
 export class Lockstep {
   /** Next tick to simulate. */
@@ -97,7 +161,15 @@ export class Lockstep {
   waiting = 0;
   lastHeard: number;
   peerLeft = false;
-  readonly stats = { stalls: 0, stallMs: 0, desyncs: 0, resyncs: 0, sent: 0, received: 0, dropped: 0, startDelay: 0, maxDelay: 0 };
+  readonly stats = {
+    stalls: 0, stallMs: 0, desyncs: 0, resyncs: 0, sent: 0, received: 0, dropped: 0, startDelay: 0, maxDelay: 0,
+    /** Snapshots dropped because their values jumped too far. */
+    rejected: 0,
+    /** Snapshots dropped because this guest never saw a mismatch that called for them. */
+    unrequested: 0,
+    /** Snapshots taken with no stored values to compare them with. */
+    unchecked: 0,
+  };
   /** Why this game can't go on safely (a broken or malicious peer), or null. */
   problem: string | null = null;
 
@@ -131,6 +203,17 @@ export class Lockstep {
   private rateWindow = 0;
   private rateCount = 0;
   private lastResync = -Infinity;
+  private resyncLimit: number;
+  /** Guest: the earliest mismatching hash tick not yet settled by a snapshot or a matching hash (-1: none). */
+  private desyncAt = -1;
+  /** When the latest mismatching hash tick was first seen. */
+  private desyncSeenAt = 0;
+  /** The latest mismatching hash tick already handled (a hash repeats on every batch until the next one). */
+  private lastMismatch = -1;
+  /** A snapshot that arrived before the guest's own check called for it. */
+  private pending: { t: number; s: Snapshot; at: number } | null = null;
+  /** This copy's own values at each hash tick, to compare snapshots with. */
+  private mine = new Map<number, Vitals>();
 
   constructor(private g: Game, private net: Transport, o: LockstepOptions) {
     this.side = o.side;
@@ -138,6 +221,7 @@ export class Lockstep {
     this.stats.startDelay = this.stats.maxDelay = this.delay;
     this.now = o.now ?? (() => performance.now());
     this.tune = { adapt, windowMs: LEAD_WINDOW_MS, stallLead: true, ...o.tune };
+    this.resyncLimit = o.resyncLimit ?? DEFAULT_RESYNC_LIMIT;
     this.lastHeard = this.now();
     this.leadWindowStart = this.peerAckAt = this.lastHeard;
     // The first ticks have no input from anyone; both sides agree they are empty.
@@ -156,6 +240,7 @@ export class Lockstep {
    */
   advance(intent: Intent, dt: number): number {
     let sampled = 0;
+    this.expireSnapshotState(this.now());
     this.acc = Math.min(MAX_ACC, this.acc + dt);
     // Fell behind the peer (e.g. a slow frame): run a little faster until we catch up.
     if (this.remoteTop - this.tick > this.delay + 3) this.acc = Math.min(MAX_ACC, this.acc + TICK);
@@ -194,6 +279,7 @@ export class Lockstep {
     if ((t + 1) % HASH_EVERY === 0) {
       const h = stateHash(this.g);
       this.myHashes.set(t, h);
+      this.remember(t);
       this.hashOut = [t, h];
       this.check(t);
     }
@@ -202,6 +288,7 @@ export class Lockstep {
     this.remote.delete(old);
     this.myHashes.delete(old);
     this.peerHashes.delete(old);
+    this.mine.delete(old);
   }
 
   private check(t: number) {
@@ -210,14 +297,79 @@ export class Lockstep {
     if (a === undefined || b === undefined) return;
     if (a === b) {
       this.resyncPending = false;
+      if (t >= this.desyncAt) this.desyncAt = -1;
       return;
     }
     this.stats.desyncs++;
+    if (this.side === 1 && t > this.lastMismatch) {
+      this.lastMismatch = t;
+      // Keep the earliest tick: the host's answer to it may still be on its way when the next hash also mismatches.
+      if (this.desyncAt < 0) this.desyncAt = t;
+      this.desyncSeenAt = this.now();
+      this.takePending();
+    }
     // The host is the authority: it sends its state and the guest adopts it.
     if (this.side === 0 && !this.resyncPending) {
       this.resyncPending = true;
       this.net.send({ k: 'snap', t: this.tick - 1, s: snapshot(this.g) });
     }
+  }
+
+  private remember(t: number) {
+    const g = this.g;
+    this.mine.set(t, { score: [g.score[0], g.score[1]], quarter: g.quarter, clock: g.clock, phase: g.phase });
+  }
+
+  private canTakeSnapshot(t: number): boolean {
+    return this.desyncAt >= 0 && t >= this.desyncAt && this.now() - this.desyncSeenAt <= DESYNC_WINDOW_MS;
+  }
+
+  /** Guest: take a snapshot if our own check called for it, otherwise hold it in case that check is about to. */
+  private offerSnapshot(t: number, s: Snapshot) {
+    this.expireSnapshotState(this.now());
+    if (this.canTakeSnapshot(t)) {
+      this.adopt(t, s);
+      return;
+    }
+    if (this.pending) this.stats.unrequested++;
+    this.pending = { t, s, at: this.now() };
+  }
+
+  private takePending() {
+    const p = this.pending;
+    if (!p || !this.canTakeSnapshot(p.t)) return;
+    this.pending = null;
+    this.adopt(p.t, p.s);
+  }
+
+  private adopt(t: number, s: Snapshot) {
+    if (this.resync(t, s)) {
+      this.desyncAt = -1;
+      this.lastMismatch = -1;
+    }
+  }
+
+  private expireSnapshotState(now: number) {
+    if (this.pending && now - this.pending.at > PENDING_MS) {
+      this.pending = null;
+      this.stats.unrequested++;
+    }
+    if (this.desyncAt >= 0 && now - this.desyncSeenAt > DESYNC_WINDOW_MS) this.desyncAt = -1;
+  }
+
+  /** Are a snapshot's values close to what this copy had near tick t? Nothing stored to compare with counts as yes. */
+  private plausibleValues(t: number, s: Snapshot): boolean {
+    const theirs = snapshotVitals(s);
+    if (!theirs) return false;
+    // The gate means this normally finds the hash tick that opened it, or a later one.
+    let at = -1;
+    for (const k of this.mine.keys()) if (k <= t && k > at) at = k;
+    const ours = this.mine.get(at);
+    if (!ours) {
+      this.stats.unchecked++;
+      return true;
+    }
+    return plausibleVitals(ours, theirs, (t - at) / 60, this.g.cfg.quarterLen);
   }
 
   /** A tick the peer could honestly be talking about right now. */
@@ -228,6 +380,7 @@ export class Lockstep {
   /** Feed a message from the peer: anything at all (it's checked here). */
   receive(raw: unknown) {
     const now = this.now();
+    this.expireSnapshotState(now);
     if (now - this.rateWindow >= 1000) { this.rateWindow = now; this.rateCount = 0; }
     // Snapshots and goodbyes are rare and each is guarded elsewhere (resync limits); a burst of inputs must not shut them out.
     const rare = !!raw && typeof raw === 'object' && ((raw as { k?: unknown }).k === 'snap' || (raw as { k?: unknown }).k === 'bye');
@@ -242,7 +395,7 @@ export class Lockstep {
     } else if (m.k === 'h') {
       this.receiveHash(m.t, m.h);
     } else if (m.k === 'snap' && this.side === 1) {
-      if (this.plausible(m.t) && m.s && typeof m.s === 'object') this.resync(m.t, m.s as Snapshot);
+      if (this.plausible(m.t) && m.s && typeof m.s === 'object') this.offerSnapshot(m.t, m.s as Snapshot);
       else this.stats.dropped++;
     } else {
       this.stats.dropped++;
@@ -301,22 +454,31 @@ export class Lockstep {
     this.stats.maxDelay = Math.max(this.stats.maxDelay, this.delay);
   }
 
-  /** Guest: adopt the host's state after tick t, then replay our stored inputs to where we were. */
-  private resync(t: number, s: Snapshot) {
+  /** Guest: adopt the host's state after tick t, then replay our stored inputs to where we were. Returns whether it did. */
+  private resync(t: number, s: Snapshot): boolean {
     const now = this.now();
-    if (this.stats.resyncs >= MAX_RESYNCS) { this.problem = 'The games kept going out of sync.'; return; }
-    if (now - this.lastResync < MIN_RESYNC_MS) { this.stats.dropped++; return; }
-    if (!fitsGame(this.g, s)) { this.problem = 'The other player sent a game state that does not fit this game.'; return; }
+    if (this.stats.resyncs >= this.resyncLimit) { this.problem = 'The games kept going out of sync.'; return false; }
+    if (now - this.lastResync < MIN_RESYNC_MS) { this.stats.dropped++; return false; }
+    if (!fitsGame(this.g, s)) { this.problem = 'The other player sent a game state that does not fit this game.'; return false; }
+    // Dropped, not fatal: a problem ends the game as this player's forfeit, which would hand a cheating host the win.
+    if (!this.plausibleValues(t, s)) {
+      this.stats.rejected++;
+      this.pending = null;
+      return false;
+    }
     this.lastResync = now;
     const target = Math.max(this.tick, t + 1);
     try {
       restore(this.g, s);
     } catch {
       this.problem = 'The other player sent a game state that does not fit this game.';
-      return;
+      return false;
     }
     this.tick = t + 1;
-    for (const k of [...this.myHashes.keys()]) if (k > t) this.myHashes.delete(k);
+    // Every hash so far describes the state we just left. The host repeats its latest hash on each batch, so keeping
+    // ours would raise the same mismatch again straight after this resync.
+    this.myHashes.clear();
+    this.mine.clear();
     while (this.tick < target && this.remote.has(this.tick) && this.local.has(this.tick)) {
       stepGame(this.g, this.inputsFor(this.tick));
       this.tick++;
@@ -325,6 +487,7 @@ export class Lockstep {
     this.g.events.length = 0;
     this.g.sfx.length = 0;
     this.stats.resyncs++;
+    return true;
   }
 
   /** Send unacknowledged inputs (paced to SEND_MS unless forced). */

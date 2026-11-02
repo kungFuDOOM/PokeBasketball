@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { Game } from '../../game/game';
 import { emptyIntent, seededRng, ENGINE_VERSION, type Intent } from '../../game/types';
 import { EvidenceLog, cover, mergeEvidence, pack, unpack } from './evidence';
-import { Lockstep, type NetMsg } from './lockstep';
+import { Lockstep, MIN_DELAY, type NetMsg } from './lockstep';
 import { gameConfigFor, judge, matchKey, signTicks, type Evidence, type MatchSetup, type SignedInputs } from './winnerCheck';
 
 const setup: MatchSetup = {
@@ -135,16 +135,24 @@ describe('evidence bookkeeping', () => {
     const b: Evidence = { setup: { ...setup, seed: 1 }, keys: [forger.publicKey, guest.publicKey], inputs: [forged, guestBatch], applied: [], lockstep: { emptyTicks: 9 } };
     expect((await judge(b)).notes.join()).not.toMatch(/bad shape or signature/); // judged on its own keys, the forgery passes
 
-    const m = mergeEvidence(b, a, [host.publicKey, guest.publicKey]);
+    const m = mergeEvidence(b, a, [host.publicKey, guest.publicKey], setup);
     expect(m.keys).toEqual([host.publicKey, guest.publicKey]);
-    expect(m.setup).toBe(b.setup);
-    expect(m.lockstep).toEqual({ emptyTicks: 9 });
     expect(m.inputs).toEqual([forged, guestBatch, hostBatch, guestBatch]);
     const v = await judge({ ...m, setup, lockstep: { emptyTicks: 0 } });
     expect(v.status).toBe('incomplete');
     expect(v.ticks).toBe(3);
     expect(v.notes).toContain('ignored a host input batch with a bad shape or signature');
-    expect(mergeEvidence(a, null, a.keys).inputs).toEqual(a.inputs);
+    expect(mergeEvidence(a, null, a.keys, setup).inputs).toEqual(a.inputs);
+  });
+
+  it('mergeEvidence takes the setup from the server and the warm-up from lockstep, whatever the uploads say', () => {
+    const lied: MatchSetup = { ...setup, seed: 1, quarterLen: 600, home: { ...setup.home, name: 'Cheater', roster: [150, 151, 249, 250, 384] } };
+    const up = (lockstep?: Evidence['lockstep']): Evidence => ({ setup: lied, keys: ['a', 'b'], inputs: [], applied: [], ...(lockstep ? { lockstep } : {}) });
+    for (const [a, b] of [[up({ emptyTicks: 60 }), up({ emptyTicks: 0 })], [up(), null]] as const) {
+      const m = mergeEvidence(a, b, ['c', 'd'], setup);
+      expect(m.setup).toBe(setup);
+      expect(m.lockstep).toEqual({ emptyTicks: MIN_DELAY });
+    }
   });
 
   it('unpack refuses evidence that unzips past the limit', async () => {
@@ -152,6 +160,25 @@ describe('evidence bookkeeping', () => {
     const packed = await pack(ev);
     expect(await unpack(packed, 10_000)).toEqual(ev);
     await expect(unpack(packed, 50)).rejects.toThrow(/too large/);
+  });
+
+  it('settled() waits for signatures in flight, so the last batch makes the upload', async () => {
+    const key = await matchKey();
+    const log = new EvidenceLog(key.privateKey, setup.matchId, 0);
+    await log.settled(); // nothing in flight: resolves at once
+    const batch = (s: number): Extract<NetMsg, { k: 'in' }> => ({ k: 'in', s, r: [[3, 0, 0, 0]], a: 0 });
+    void log.sign(batch(10));
+    void log.sign(batch(13));
+    expect(log.mine).toHaveLength(0); // signing is async: packing now would lose both
+    await log.settled();
+    expect(log.mine.map((b) => b.from)).toEqual([11, 14]);
+  });
+
+  it('settled() still resolves when a signature fails', async () => {
+    const log = new EvidenceLog({} as CryptoKey, setup.matchId, 0); // not a usable key
+    await expect(log.sign({ k: 'in', s: 1, r: [[1, 0, 0, 0]], a: 0 })).rejects.toThrow();
+    await log.settled();
+    expect(log.mine).toHaveLength(0);
   });
 
   it('received() ignores anything that is not a well-formed signed batch', () => {

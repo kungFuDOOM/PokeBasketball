@@ -124,6 +124,55 @@ async function liveMatch(s: MatchSetup, opts: { lag?: number; stopAt?: number } 
 }
 
 describe('winner check', () => {
+  describe('lastFrame: who went silent first', () => {
+    const z = { mx: 0, my: 0, b: 0 };
+    const frames = (n: number) => Array<WireInput>(n).fill(z);
+    const mirror = (id: string): MatchSetup => ({
+      matchId: id, engineVersion: ENGINE_VERSION, seed: 5, quarterLen: 60,
+      home: { name: 'A', abbr: 'AAA', color: '#3b6fd8', color2: '#16224a', roster: [78, 229, 94, 9, 208] },
+      away: { name: 'B', abbr: 'BBB', color: '#e3350d', color2: '#24124a', roster: [78, 229, 94, 9, 208] },
+    });
+    const run = async (make: (host: CryptoKey, guest: CryptoKey, id: string) => Promise<SignedInputs[]>) => {
+      const [h, g] = [await matchKey(), await matchKey()];
+      return judge({ setup: mirror('silent'), keys: [h.publicKey, g.publicKey], applied: [], lockstep: { emptyTicks: EMPTY_TICKS }, inputs: await make(h.privateKey, g.privateKey, 'silent') });
+    };
+
+    it('reports each side\'s last signed frame; the replay stops where the shorter one does', async () => {
+      const v = await run(async (h, g, id) => [await signTicks(h, id, 0, EMPTY_TICKS, frames(100)), await signTicks(g, id, 1, EMPTY_TICKS, frames(40))]);
+      expect(v.status).toBe('incomplete');
+      expect(v.lastFrame).toEqual([EMPTY_TICKS + 100, EMPTY_TICKS + 40]);
+      expect(v.ticks).toBe(EMPTY_TICKS + 40);
+    });
+
+    it('a batch signed past a gap does not count, so a far-future frame cannot hide who stopped', async () => {
+      const v = await run(async (h, g, id) => [
+        await signTicks(h, id, 0, EMPTY_TICKS, frames(100)), await signTicks(g, id, 1, EMPTY_TICKS, frames(40)), await signTicks(g, id, 1, 5000, frames(1)),
+      ]);
+      expect(v.lastFrame).toEqual([EMPTY_TICKS + 100, EMPTY_TICKS + 40]);
+    });
+
+    it('a side that signed nothing, or only frames in the warm-up, has 0', async () => {
+      const v = await run(async (h, g, id) => [await signTicks(h, id, 0, EMPTY_TICKS, frames(10)), await signTicks(g, id, 1, 0, frames(EMPTY_TICKS))]);
+      expect(v.lastFrame).toEqual([EMPTY_TICKS + 10, 0]);
+    });
+
+    it('is [0, 0] when judging stops early', async () => {
+      const bad = { ...mirror('x'), engineVersion: ENGINE_VERSION + 1 };
+      expect((await judge({ setup: bad, keys: ['a', 'b'], inputs: [], applied: [] })).lastFrame).toEqual([0, 0]);
+    });
+  });
+
+  it('a Pokémon twice on one team is invalid; the same five on both teams is a legal mirror', async () => {
+    const team = (roster: number[]) => ({ name: 'T', abbr: 'TTT', color: '#3b6fd8', color2: '#16224a', roster });
+    const setup = (a: number[], b: number[]): MatchSetup => ({ matchId: 'm', engineVersion: ENGINE_VERSION, seed: 1, quarterLen: 60, home: team(a), away: team(b) });
+    const ev = (s: MatchSetup): Evidence => ({ setup: s, keys: ['ab'.repeat(32), 'cd'.repeat(32)], inputs: [], applied: [], lockstep: { emptyTicks: EMPTY_TICKS } });
+    const five = [78, 229, 94, 9, 208];
+    expect((await judge(ev(setup(five, five)))).status).toBe('incomplete');
+    const twice = await judge(ev(setup(five, [78, 78, 94, 9, 208])));
+    expect(twice.status).toBe('invalid');
+    expect(twice.notes.join()).toMatch(/twice/);
+  });
+
   it('replays an honest match to the same score and winner the host saw live', async () => {
     const m = await liveMatch(setup());
     expect(m.live.final).toBe(true);
@@ -210,7 +259,7 @@ describe('winner check', () => {
     expect((await judge({ ...m.evidence, applied: m.evidence.applied.map((x) => (x === c ? back : x)) })).status).toBe('invalid');
     expect((await judge({ ...m.evidence, setup: { ...m.evidence.setup, engineVersion: ENGINE_VERSION + 1 } })).status).toBe('invalid');
     expect((await judge({ ...m.evidence, keys: [m.evidence.keys[0], m.evidence.keys[0]] })).status).toBe('invalid');
-    expect((await judge({ ...m.evidence, setup: { ...m.evidence.setup, away: { ...m.evidence.setup.away, roster: [25, 130, 149, 248, 150] } } })).status).toBe('invalid');
+    expect((await judge({ ...m.evidence, setup: { ...m.evidence.setup, away: { ...m.evidence.setup.away, roster: [130, 130, 149, 248, 150] } } })).status).toBe('invalid');
   }, 60_000);
 
   it('a frame that stays applied keeps its stick and holds, but its button presses count once', () => {

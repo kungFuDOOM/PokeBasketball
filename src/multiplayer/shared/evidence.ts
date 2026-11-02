@@ -23,15 +23,27 @@ export const expandRuns = (r: InputRun[]): WireInput[] => r.flatMap(([n, mx, my,
 export class EvidenceLog {
   readonly mine: SignedInputs[] = [];
   readonly theirs: SignedInputs[] = [];
+  private signing = 0;
+  private idle: (() => void)[] = [];
 
   constructor(private key: CryptoKey, private matchId: string, readonly side: 0 | 1) {}
 
   /** Sign an outgoing input batch: the same message, plus its signature (`g`). Our copy is kept. */
   async sign(m: InMsg): Promise<InMsg> {
     if (!m.r.length) return m;
-    const signed = await signTicks(this.key, this.matchId, this.side, m.s, expandRuns(m.r));
-    if (this.mine.length < MAX_BATCHES) this.mine.push(signed);
-    return { ...m, g: signed.sig };
+    this.signing++;
+    try {
+      const signed = await signTicks(this.key, this.matchId, this.side, m.s, expandRuns(m.r));
+      if (this.mine.length < MAX_BATCHES) this.mine.push(signed);
+      return { ...m, g: signed.sig };
+    } finally {
+      if (--this.signing === 0) this.idle.splice(0).forEach((done) => done());
+    }
+  }
+
+  /** Resolves once no signature is in flight, so `mine` holds every batch sent so far. Wait for this before packing. */
+  settled(): Promise<void> {
+    return this.signing ? new Promise((done) => this.idle.push(done)) : Promise.resolve();
   }
 
   /** Keep the other player's signed batch from an incoming message. Its signature is checked by the judge. */
@@ -119,16 +131,16 @@ export async function unpack(s: string, maxBytes = Infinity): Promise<Evidence> 
 }
 
 /**
- * Both players' uploads as one: their signed inputs (and applied logs) together, the setup and lockstep settings
- * from the first, and the keys registered on the match row, so an uploader can't pick the keys they're judged by.
+ * Both players' uploads as one: their signed inputs (and applied logs) together, under the server's keys and setup
+ * and lockstep's fixed warm-up. An uploader can't pick the keys, the teams, the seed or the warm-up they're judged by.
  */
-export function mergeEvidence(a: Evidence, b: Evidence | null | undefined, keys: MatchKeys): Evidence {
+export function mergeEvidence(a: Evidence, b: Evidence | null | undefined, keys: MatchKeys, setup: MatchSetup): Evidence {
   const list = <T>(x: T[] | undefined): T[] => (Array.isArray(x) ? x : []);
   return {
-    setup: a.setup,
+    setup,
     keys,
     inputs: [...list(a.inputs), ...list(b?.inputs)],
     applied: [...list(a.applied), ...list(b?.applied)],
-    ...(a.lockstep ? { lockstep: a.lockstep } : {}),
+    lockstep: { emptyTicks: MIN_DELAY },
   };
 }

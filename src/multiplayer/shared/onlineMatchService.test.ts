@@ -17,6 +17,17 @@ function fakeDb(answers: Record<string, unknown> = {}) {
 const opp = (mySide: 0 | 1): OnlineOpponent => ({ id: 'them', name: 'Rival', mmr: 1000, simulated: false, matchId: 'm1', mySide });
 const result = (won: boolean) => ({ won, score: (won ? [50, 40] : [40, 50]) as [number, number], engineVersion: ENGINE_VERSION });
 
+describe('SupabaseMatchService (Ranked presets, flag off)', () => {
+  it('never calls the preset RPCs when Ranked is off', async () => {
+    const { db, calls } = fakeDb();
+    const svc = new SupabaseMatchService(db, 'me');
+    await expect(svc.rankedPresets()).rejects.toThrow(/Ranked/);
+    await expect(svc.rankedPick('m1', 'A')).rejects.toThrow(/Ranked/);
+    await expect(svc.rankedPickState('m1')).rejects.toThrow(/Ranked/);
+    expect(calls).toEqual([]);
+  });
+});
+
 describe('SupabaseMatchService (Social)', () => {
   it('social results never carry a rank, even if the server sent one', async () => {
     const { db, calls } = fakeDb({ pokejam_report_result: { status: 'done', rank: { mmrDelta: 30 } } });

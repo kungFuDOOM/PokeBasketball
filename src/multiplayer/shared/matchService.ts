@@ -1,6 +1,9 @@
 // Matchmaking / network seam. Phase 1 ships LocalMockMatchService (CPU opponent, local storage).
 // Phase 2 swaps in a server-backed implementation (see docs/multiplayer.md) without touching the UI.
 
+import type { RankedMe, RankedResult } from '../ranked/serverRank';
+import type { BadgeRank } from '../../ranked/badge';
+
 export type Queue = 'social' | 'ranked';
 
 export interface Opponent {
@@ -18,6 +21,8 @@ export interface MatchResult {
   engineVersion: number;
   /** The game's seed (absent for a simulated result, where no game was played). */
   seed?: number;
+  /** Online Ranked: how many times this client adopted the host's state. Any at all sends the match to the judge. */
+  resyncs?: number;
 }
 
 /** Where a mode keeps ratings. Ranked supplies one; Social has none, so it can never change rank. */
@@ -30,10 +35,22 @@ export interface ReportOutcome<O = unknown> {
   queue: Queue;
   /** Ranked only: the rating store's outcome. */
   rank?: O;
-  /** Online Ranked: where the match stands on the server. `pending` = waiting for the other player's report. */
-  status?: 'done' | 'pending' | 'void';
-  /** Online Ranked, when `pending`: resolves with the final outcome once the server has rated the match (or gives up). */
+  /** Online Ranked (Season 1): what the server said the match did to my rank. Absent for a pending match or an older server. */
+  result?: RankedResult;
+  /** Online Ranked, with `result`: my rank, season and shield right after the match (absent if the server didn't answer). */
+  me?: RankedMe;
+  /** Online Ranked: the two usernames to show on the points screen (a missing one reads as "Player"). */
+  names?: { me: string | null; opp: string | null };
+  /** Online Ranked: the opponent's rank for their name card, when known (undefined = not shown; null = unranked). */
+  oppRank?: BadgeRank;
+  /** Online Ranked: where the match stands on the server. `pending` = waiting for the other player's report; `judging` = the server is replaying the match. */
+  status?: 'done' | 'pending' | 'judging' | 'void';
+  /** Online Ranked, when `pending` or `judging`: resolves with the final outcome once the server has rated the match (or gives up). */
   later?: Promise<ReportOutcome<O>>;
+  /** Online Ranked: the server's replay decided this match. */
+  judged?: boolean;
+  /** Online Ranked, with `judged`: the replay's winner isn't the one this player saw. */
+  corrected?: boolean;
 }
 
 export interface MatchService {

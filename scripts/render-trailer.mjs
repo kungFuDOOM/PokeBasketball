@@ -1,6 +1,6 @@
 // Renders a trailer cut to trailer-out/<cut>/poke-jam-<cut>.mp4 (the launch trailer: trailer-out/poke-jam-trailer.mp4).
 // Needs Playwright (with a Chromium) and ffmpeg (libx264 + aac) on the machine, plus python3 with numpy
-// for the soundtrack. Usage: node scripts/render-trailer.mjs [--cut main|vertical|franchise|top5|online|watch] [--frames N] [--silent]
+// for the soundtrack. Usage: node scripts/render-trailer.mjs [--cut main|vertical|franchise|top5|online|watch|training] [--frames N] [--silent]
 import { spawn, spawnSync } from 'node:child_process';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';

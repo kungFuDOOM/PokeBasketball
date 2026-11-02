@@ -14,7 +14,8 @@ import { Announcer, CLIPS } from '../game/announcer';
 import { DUNK_MOVES } from '../game/hud';
 import { Renderer, VH, VW } from '../game/render';
 import { getSprite, preload } from '../game/sprites';
-import type { GameEvent, TeamDef } from '../game/types';
+import { oopSpot, type PracticeDrill } from '../game/practice';
+import type { GameConfig, GameEvent, Marker, TeamDef } from '../game/types';
 import { badgeSvg } from '../ui/badges';
 import { tier } from '../util';
 
@@ -23,10 +24,12 @@ export const FPS = 30;
  * Which cut to render (?cut=…): 'main' (the launch trailer), 'vertical' (9:16 for TikTok / Reels / Shorts),
  * 'franchise' (the season story), 'top5' (a countdown of the best plays), 'online' (a sub-30-second
  * multiplayer announcement: Social is live, Ranked is coming, Pack Battles teased) or 'watch' (an 18-second
- * spot for Play / Watch / Sim: spectate at 1x, 2x or 4x, skip, or sim straight to the final).
+ * spot for Play / Watch / Sim: spectate at 1x, 2x or 4x, skip, or sim straight to the final) or 'training'
+ * (an 18-second spot for the Training drills and the new Alley-Oop drill, filmed on real practice games with
+ * their floor markers).
  */
-type Cut = 'main' | 'vertical' | 'franchise' | 'top5' | 'online' | 'watch';
-const CUT: Cut = (['vertical', 'franchise', 'top5', 'online', 'watch'] as const).find((c) => c === new URLSearchParams(location.search).get('cut')) ?? 'main';
+type Cut = 'main' | 'vertical' | 'franchise' | 'top5' | 'online' | 'watch' | 'training';
+const CUT: Cut = (['vertical', 'franchise', 'top5', 'online', 'watch', 'training'] as const).find((c) => c === new URLSearchParams(location.search).get('cut')) ?? 'main';
 const VERTICAL = CUT === 'vertical';
 /** The top 5 cut is dressed as a 90s sports highlight show ("POKé CENTER"). */
 const RETRO = CUT === 'top5';
@@ -55,9 +58,9 @@ class SeededGame {
   private rng: () => number;
   step = 0;
 
-  constructor(seed: number) {
+  constructor(seed: number, cfg?: GameConfig) {
     this.rng = mulberry32(seed);
-    this.g = this.seeded(() => new Game({ home: HOME, away: AWAY, quarterLen: 120, difficulty: 'pro', court: COURT }));
+    this.g = this.seeded(() => new Game(cfg ?? { home: HOME, away: AWAY, quarterLen: 120, difficulty: 'pro', court: COURT }));
   }
 
   private seeded<T>(fn: () => T): T {
@@ -101,6 +104,8 @@ const MATCHUPS: Record<Cut, { home: TeamDef; away: TeamDef; court: CourtStyle }>
     court: COURTS['Pallet Town'],
   },
   watch: { home: pallet([25, 6, 9, 3, 143]), away: gym('Viridian Quakes', [34, 31, 112, 51, 76]), court: COURTS['Viridian Quakes'] },
+  // Training: your five (PG to C) against Brock's gym, like the real drills.
+  training: { home: gym('Pewter Boulders', [74, 95, 111, 76, 142]), away: pallet([25, 448, 6, 445, 143]), court: COURTS['Pewter Boulders'] },
 };
 const { home: HOME, away: AWAY, court: COURT } = MATCHUPS[CUT];
 
@@ -177,9 +182,11 @@ type Scene = 'tipoff' | 'logo' | 'wall' | 'clock' | 'legends' | 'badges' | 'evol
   | 'f-intro' | 'f-draft' | 'f-subs' | 'f-evolve' | 'f-champs'
   | 't-title' | 't-num'
   | 'o-live' | 'o-match' | 'o-draft' | 'o-ranked' | 'o-packs'
-  | 'w-hook' | 'w-choice' | 'w-speed' | 'w-sim';
+  | 'w-hook' | 'w-choice' | 'w-speed' | 'w-sim'
+  | 'tr-hook' | 'tr-menu' | 'tr-stars';
 type Segment =
   | { kind: Scene; t0: number; t1: number }
+  | { kind: 'tr-drill'; t0: number; t1: number; drill: TrainingDrill; seed: number; start: number; events: number[] }
   | { kind: 'clip'; t0: number; t1: number; plan: ClipPlan; style: 'hero' | 'montage'; rank?: number; lower?: string };
 
 /** Builds the per-frame step schedule so the highlight lands on `eventAt` seconds into the slot. */
@@ -885,11 +892,11 @@ function renderOutro(seg: Segment, t: number, a: number) {
   renderBackground(t, 0.66);
   const k = clamp01(a / 0.25);
   once('outro-hit', t, seg.t0 + 0.25, () => { flash = 0.3; cue(t, 'slam'); cue(t, 'crowd_big'); });
-  const pjAt = CUT === 'online' || CUT === 'watch' ? 1.6 : 2.2;
+  const pjAt = CUT === 'online' || CUT === 'watch' || CUT === 'training' ? 1.6 : 2.2;
   const pj = a - pjAt;
   if (pj < 0) {
     logo(W / 2, H / 2 - 150, 170, a < 0.25 ? 3 - 2 * k * k : 1);
-    if (a > 0.6) jamText(CUT === 'online' ? 'PLAY ONLINE NOW. FREE.' : CUT === 'watch' ? 'PLAY IT. WATCH IT. SIM IT.' : 'PLAY FREE IN YOUR BROWSER', W / 2, H / 2 + 40, 64, { fill: '#f8f8f0' });
+    if (a > 0.6) jamText(CUT === 'online' ? 'PLAY ONLINE NOW. FREE.' : CUT === 'watch' ? 'PLAY IT. WATCH IT. SIM IT.' : CUT === 'training' ? 'TRAIN UP. THEN JAM.' : 'PLAY FREE IN YOUR BROWSER', W / 2, H / 2 + 40, 64, { fill: '#f8f8f0' });
     if (a > 1.0) plainText('pokejam.xyz', W / 2, H / 2 + 170, 80, '#ffcb05');
   } else {
     // $PJAM: gold, glinting, center stage.
@@ -1941,6 +1948,273 @@ function renderWSim(seg: Segment, t: number, a: number) {
   if (a > 1.5) plainText('SKIP ANY GAME STRAIGHT TO THE RESULT', W / 2, 840, 60, '#ffcb05');
 }
 
+// ---------- cut: training ----------
+
+type TrainingDrill = Extract<PracticeDrill, 'layups' | 'jumpshots' | 'passing' | 'alleyoop'>;
+/** What each filmed drill shows: its slot in the six, title, coach lines and points per rep (as the real drills score). */
+const TR_DRILLS: Record<TrainingDrill, { n: number; title: string; intro: string; rep: string; pts: number }> = {
+  layups: { n: 2, title: 'LAYUPS', intro: 'Attack the rim. Make as many as you can!', rep: 'Bucket!', pts: 2 },
+  jumpshots: { n: 3, title: 'JUMP SHOTS', intro: 'Shoot from the rings. Timing is everything.', rep: 'Splash!', pts: 150 },
+  passing: { n: 4, title: 'PASSING', intro: 'Move the ball. Follow the arrows!', rep: 'Dime!', pts: 100 },
+  alleyoop: { n: 5, title: 'ALLEY-OOP', intro: 'Throw it up! Lob it to your big on the spot.', rep: 'Alley-oop!', pts: 100 },
+};
+const TR_ALL = ['MOVEMENT', 'LAYUPS', 'JUMP SHOTS', 'PASSING', 'ALLEY-OOP', 'DEFENSE', 'STEALS'];
+/** The drill the spot shows off as new. */
+const TR_NEW = 'ALLEY-OOP';
+/** The drills' user team is the away side (team 1): the side a practice game treats as yours when neither is human. */
+const TR_USER = 1;
+
+/** A practice game staging `drill`: both teams CPU, so the engine plays your side through the drill. */
+function drillConfig(drill: TrainingDrill, seed: number): GameConfig {
+  return { home: HOME, away: AWAY, court: COURT, quarterLen: 600, difficulty: 'rookie', stamina: false, practice: true, drill, seed };
+}
+
+/**
+ * True when this step shows the drill's rep: a user layup or jumper, a user pass leaving the hands, or a dunk
+ * off a lob the user threw in the last second and a half.
+ */
+function drillRep(drill: TrainingDrill, sg: SeededGame, events: GameEvent[], passing: boolean, sinceOop: number): boolean {
+  if (drill === 'passing') return !passing && sg.g.ball.mode === 'pass' && sg.g.ball.pass?.from.team === TR_USER;
+  const how = drill === 'jumpshots' ? 'jump' : drill === 'layups' ? 'layup' : 'dunk';
+  if (drill === 'alleyoop' && sinceOop > 90) return false;
+  return events.some((e) => e.kind === 'score' && e.player.team === TR_USER && e.how === how);
+}
+
+/** Finds a seed and start step so the drill's first rep lands `at` seconds into a `sec`-second shot. */
+function drillPlan(drill: TrainingDrill, at: number, sec: number): { seed: number; start: number; events: number[] } {
+  const lead = Math.round(at * 60);
+  for (let seed = 1; seed <= 40; seed++) {
+    const sg = new SeededGame(seed, drillConfig(drill, seed));
+    const reps: number[] = [];
+    let passing = false;
+    let lastOop = -999;
+    while (sg.step < 60 * 30) {
+      sg.advance(1);
+      const ev = sg.g.events.splice(0);
+      sg.g.sfx.length = 0;
+      if (ev.some((e) => e.kind === 'oop' && e.player.team === TR_USER)) lastOop = sg.step;
+      if (drillRep(drill, sg, ev, passing, sg.step - lastOop)) reps.push(sg.step);
+      passing = sg.g.ball.mode === 'pass';
+    }
+    const first = reps.find((k) => k >= lead + 30);
+    if (first !== undefined) {
+      const start = first - lead;
+      return { seed, start, events: reps.filter((k) => k >= first && k < start + sec * 60) };
+    }
+  }
+  throw new Error(`No ${drill} rep found`);
+}
+
+/** The markers the real drill paints: shot-zone rings, or a lane from the ball handler to the most open teammate. */
+function drillMarkers(drill: TrainingDrill, sg: SeededGame): Marker[] {
+  const g = sg.g;
+  if (drill === 'layups') return [{ kind: 'zone', zone: 'layup', team: TR_USER }];
+  if (drill === 'jumpshots') return [{ kind: 'zone', zone: 'mid', team: TR_USER }];
+  const me = g.ball.owner?.team === TR_USER ? g.ball.owner : null;
+  if (drill === 'alleyoop') {
+    // The glowing spot by the rim, and an arrow from the ball handler to the teammate nearest it.
+    const spot = oopSpot(TR_USER);
+    const out: Marker[] = [{ kind: 'spot', x: spot.x, y: spot.y }];
+    if (!me) return out;
+    const near = (p: { x: number; y: number }) => Math.hypot(p.x - spot.x, p.y - spot.y);
+    const to = g.teamPlayers(TR_USER).filter((p) => p !== me).reduce<typeof me | null>((a, b) => (!a || near(b) < near(a) ? b : a), null);
+    return to ? [{ kind: 'lane', from: me.id, to: to.id }, ...out] : out;
+  }
+  if (!me) return [];
+  const to = g.teamPlayers(TR_USER).filter((p) => p !== me).reduce<typeof me | null>((a, b) => (!a || g.openness(b) > g.openness(a) ? b : a), null);
+  return to ? [{ kind: 'lane', from: me.id, to: to.id }] : [];
+}
+
+/** "NEW TO POKé JAM?" then "TRAINING IS HERE." */
+function renderTrHook(seg: Segment, t: number, a: number) {
+  renderBackground(t, 0.72);
+  const pop = (at: number) => 0.3 + 0.7 * easeOutBack(clamp01((a - at) / 0.22));
+  once('trh1', t, seg.t0 + 0.05, () => { flash = 0.12; cue(t, 'slam'); cue(t, 'crowd_low'); });
+  jamText('NEW TO POKé JAM?', W / 2, 300, 130, { scale: pop(0.05), fill: '#f8f8f0' });
+  if (a > 0.8) {
+    once('trh2', t, seg.t0 + 0.8, () => { flash = 0.25; cue(t, 'slam'); cue(t, 'crowd_big'); });
+    const shake = a < 1.2 ? (Math.random() - 0.5) * 20 : 0;
+    jamText('TRAINING', W / 2 + shake, 560 + shake, 200, { scale: pop(0.8) });
+    if (a > 1.1) jamText('IS HERE.', W / 2, 760, 120, { fill: '#f8f8f0', scale: pop(1.1) });
+  }
+}
+
+/** The Training menu: six drills, stars filling in. */
+function renderTrMenu(seg: Segment, t: number, a: number) {
+  renderBackground(t, 0.88);
+  jamText('7 DRILLS. 3 STARS EACH.', W / 2, 120, 96, { scale: a < 0.2 ? easeOutBack(a / 0.2) : 1 });
+  const rowW = 900;
+  const x0 = W / 2 - rowW / 2;
+  TR_ALL.forEach((name, i) => {
+    const at = 0.15 + i * 0.09;
+    if (a < at) return;
+    const y = 214 + i * 104;
+    const k = clamp01((a - at) / 0.15);
+    ctx.save();
+    ctx.globalAlpha = k;
+    ctx.translate((1 - k) * 120, 0);
+    const isNew = name === TR_NEW;
+    roundRect(x0, y, rowW, 88, 16, isNew ? 'rgba(60,40,0,0.92)' : 'rgba(10,13,31,0.92)', isNew ? '#ffcb05' : 'rgba(255,255,255,0.3)', isNew ? 6 : 4);
+    ctx.font = `800 52px ${SPORT}`;
+    ctx.fillStyle = isNew ? '#ffcb05' : '#f2f0e6';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(name, x0 + 36, y + 47);
+    ctx.font = `800 30px ${SPORT}`;
+    ctx.fillStyle = '#8f95c0';
+    ctx.fillText(`DRILL ${i + 1}`, x0 + 340, y + 47);
+    if (isNew) {
+      const pulse = 1 + 0.08 * Math.sin(a * 12);
+      ctx.save();
+      ctx.translate(x0 - 70, y + 44);
+      ctx.scale(pulse, pulse);
+      roundRect(-56, -26, 112, 52, 26, '#e3350d', '#fff', 4);
+      ctx.font = `800 34px ${SPORT}`;
+      ctx.fillStyle = '#fff';
+      ctx.textAlign = 'center';
+      ctx.fillText('NEW', 0, 2);
+      ctx.restore();
+    }
+    // Stars fill left to right, row by row.
+    for (let st = 0; st < 3; st++) {
+      const sa = 0.6 + i * 0.12 + st * 0.06;
+      const lit = a > sa;
+      if (lit) once(`trm${i}-${st}`, t, seg.t0 + sa, () => { if (st === 2) cue(t, 'badge'); });
+      starShape(x0 + rowW - 230 + st * 76, y + 44, 30, lit ? '#ffcb05' : 'rgba(255,255,255,0.18)', lit ? easeOutBack(clamp01((a - sa) / 0.15)) : 1);
+    }
+    ctx.restore();
+  });
+}
+
+function starShape(x: number, y: number, r: number, fill: string, k = 1) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(k, k);
+  ctx.beginPath();
+  for (let i = 0; i < 10; i++) {
+    const rr = i % 2 ? r * 0.45 : r;
+    const ang = -Math.PI / 2 + (i * Math.PI) / 5;
+    ctx[i ? 'lineTo' : 'moveTo'](Math.cos(ang) * rr, Math.sin(ang) * rr);
+  }
+  ctx.closePath();
+  ctx.fillStyle = fill;
+  ctx.fill();
+  ctx.lineWidth = 4;
+  ctx.strokeStyle = '#000';
+  ctx.stroke();
+  ctx.restore();
+}
+
+/** The coach strip, as in the game: your top player at the left, saying the drill's lines. */
+function coachStrip(title: string, line: string, pop: number) {
+  const coach = AWAY.roster.reduce((a, b) => (b.ovr > a.ovr ? b : a));
+  const w = 1240;
+  const x = W / 2 - w / 2;
+  const y = H - 190;
+  ctx.save();
+  roundRect(x, y, w, 150, 22, 'rgba(5,6,15,0.92)', '#ffcb05', 5);
+  ctx.restore();
+  sprite(coach.dex, x + 95, y + 140, 150);
+  ctx.save();
+  ctx.font = `800 32px ${SPORT}`;
+  ctx.fillStyle = '#ffcb05';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(`COACH ${coach.name.toUpperCase()} · ${title}`, x + 200, y + 42);
+  ctx.translate(x + 200, y + 100);
+  ctx.scale(pop, pop);
+  ctx.font = `800 54px ${SPORT}`;
+  ctx.fillStyle = '#f8f8f0';
+  ctx.fillText(line, 0, 0);
+  ctx.restore();
+}
+
+let trClip: { sg: SeededGame; r: Renderer; seg: Segment; f: number } | null = null;
+const trCanvas = document.createElement('canvas');
+/** One drill, filmed on a real practice game with its floor markers, the drill banner, score and coach. */
+function renderTrDrill(seg: Segment & { kind: 'tr-drill' }, t: number, first: boolean) {
+  if (first || !trClip || trClip.seg !== seg) {
+    const sg = new SeededGame(seg.seed, drillConfig(seg.drill, seg.seed));
+    sg.advance(seg.start);
+    sg.g.events.length = 0;
+    sg.g.sfx.length = 0;
+    const r = new Renderer(trCanvas);
+    r.snap(sg.g);
+    for (let i = 0; i < 4; i++) r.draw(sg.g, STEP);
+    const b = sg.g.ball;
+    const at = r.screenOf(b.x, b.y, Math.min(b.z, 6));
+    crop.x = at.x;
+    crop.y = at.y - 10;
+    trClip = { sg, r, seg, f: 0 };
+  }
+  const c = trClip;
+  c.sg.g.markers = drillMarkers(seg.drill, c.sg);
+  const info = TR_DRILLS[seg.drill];
+  drawGame(c.r, c.sg, trCanvas, 2, t, undefined, true, 5);
+  const step = c.sg.step;
+  const done = seg.events.filter((k) => k <= step);
+  const last = done.length ? done[done.length - 1] : -1;
+  if (done.length) once(`trd-${seg.drill}-${done.length}`, t, t, () => { cue(t, 'crowd'); if (seg.drill === 'passing') cue(t, 'card'); });
+  // Drill banner, top left.
+  ctx.save();
+  roundRect(40, 36, 640, 128, 18, 'rgba(5,6,15,0.9)', '#ffcb05', 5);
+  ctx.font = `800 34px ${SPORT}`;
+  ctx.fillStyle = '#ffcb05';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(`TRAINING · DRILL ${info.n} OF ${TR_ALL.length}`, 70, 74);
+  ctx.font = `56px ${PIXEL}`;
+  ctx.fillStyle = '#f8f8f0';
+  ctx.fillText(info.title, 70, 128);
+  // Score, top right.
+  const score = done.length * info.pts;
+  roundRect(W - 400, 36, 360, 128, 18, 'rgba(5,6,15,0.9)', 'rgba(255,255,255,0.4)', 5);
+  ctx.font = `800 34px ${SPORT}`;
+  ctx.fillStyle = '#aab0d8';
+  ctx.textAlign = 'right';
+  ctx.fillText('SCORE', W - 70, 74);
+  const bump = last >= 0 && step - last < 20 ? 1 + 0.25 * (1 - (step - last) / 20) : 1;
+  ctx.translate(W - 70, 128);
+  ctx.scale(bump, bump);
+  ctx.font = `56px ${PIXEL}`;
+  ctx.fillStyle = bump > 1 ? '#ffcb05' : '#f8f8f0';
+  ctx.fillText(String(score), 0, 0);
+  ctx.restore();
+  const praising = last >= 0 && step - last < 75;
+  const pop = praising ? easeOutBack(clamp01((step - last) / 12)) : 1;
+  coachStrip(info.title, praising ? info.rep : info.intro, 0.6 + 0.4 * pop);
+  if (praising && step - last < 40) jamText(`${info.rep.toUpperCase()}`, W / 2, 330, 130, { scale: 0.3 + 0.7 * easeOutBack(clamp01((step - last) / 10)) });
+  c.f++;
+}
+
+/** The results card: score, three stars, and a new best. */
+function renderTrStars(seg: Segment, t: number, a: number) {
+  renderBackground(t, 0.88);
+  const k = easeOutBack(clamp01(a / 0.22));
+  ctx.save();
+  ctx.translate(W / 2, 470);
+  ctx.scale(k, k);
+  roundRect(-480, -300, 960, 600, 30, 'rgba(10,13,31,0.96)', '#ffcb05', 8);
+  ctx.font = `64px ${PIXEL}`;
+  ctx.fillStyle = '#f8f8f0';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('ALLEY-OOP', 0, -210);
+  ctx.font = `800 60px ${SPORT}`;
+  ctx.fillStyle = '#aab0d8';
+  ctx.fillText('SCORE', -90, -110);
+  ctx.fillStyle = '#ffcb05';
+  ctx.fillText(String(Math.round(750 * clamp01((a - 0.15) / 0.5))), 110, -110);
+  ctx.restore();
+  for (let i = 0; i < 3; i++) {
+    const at = 0.45 + i * 0.18;
+    if (a < at) continue;
+    once(`trs${i}`, t, seg.t0 + at, () => { cue(t, i === 2 ? 'slam' : 'badge'); if (i === 2) { flash = 0.2; cue(t, 'crowd_big'); } });
+    starShape(W / 2 + (i - 1) * 190, 520, 80, '#ffcb05', easeOutBack(clamp01((a - at) / 0.18)));
+  }
+  if (a > 1.0) {
+    plainText('Showtime! Perfect lobs every time.', W / 2, 660, 56, '#f8f8f0');
+    jamText('NEW BEST!', W / 2, 900, 100, { scale: 0.3 + 0.7 * easeOutBack(clamp01((a - 1.0) / 0.2)) });
+  }
+}
+
 // ---------- shared ----------
 
 function pjam(x: number, y: number, size: number, pj: number) {
@@ -2000,6 +2274,10 @@ function renderSegment(seg: Segment, t: number, first: boolean) {
     case 'w-choice': renderWChoice(seg, t, a); break;
     case 'w-speed': renderWSpeed(seg, t, a); break;
     case 'w-sim': renderWSim(seg, t, a); break;
+    case 'tr-hook': renderTrHook(seg, t, a); break;
+    case 'tr-menu': renderTrMenu(seg, t, a); break;
+    case 'tr-drill': renderTrDrill(seg, t, first); break;
+    case 'tr-stars': renderTrStars(seg, t, a); break;
     case 'clip': renderClip(seg, t, first); break;
   }
 }
@@ -2134,6 +2412,17 @@ export async function prepare(): Promise<{ frames: number; fps: number }> {
     add({ kind: 'o-packs', t0: t, t1: t + 3.4 });
     for (let i = 0; i < 2; i++) clip([['dunk']], 0.9, 0.6, false, 'montage');
     add({ kind: 'outro', t0: t, t1: t + 4.2 });
+    musicEnd = s[s.length - 1].t0 + 1.6;
+  } else if (CUT === 'training') {
+    add({ kind: 'tr-hook', t0: t, t1: t + 2.2 });
+    musicStart = 0.1;
+    add({ kind: 'tr-menu', t0: t, t1: t + 2.4 });
+    for (const [d, sec, at] of [['layups', 2.5, 1.7], ['jumpshots', 2.5, 1.8], ['alleyoop', 3.2, 2.3]] as const) {
+      const p = drillPlan(d, at, sec);
+      add({ kind: 'tr-drill', t0: t, t1: t + sec, drill: d, ...p });
+    }
+    add({ kind: 'tr-stars', t0: t, t1: t + 1.8 });
+    add({ kind: 'outro', t0: t, t1: t + 3.4 });
     musicEnd = s[s.length - 1].t0 + 1.6;
   } else if (CUT === 'watch') {
     add({ kind: 'w-hook', t0: t, t1: t + 2.4 });

@@ -1474,6 +1474,14 @@ body:has(.pause-btn) .music-btn:not(.docked) {
   body:has(.pause-btn) .music-btn:not(.docked) { width: 34px; height: 34px; right: calc(max(10px, env(safe-area-inset-right, 0px)) + 34px + 6px); }
 }
 .hub-head .music-btn.docked { order: 3; }
+/* X (Twitter) link: top-right of the title screen only, just left of the floating music button. */
+.x-link { position: fixed; z-index: 25; top: max(10px, env(safe-area-inset-top, 0px)); right: calc(max(10px, env(safe-area-inset-right, 0px)) + 40px + 10px); width: 40px; height: 40px; display: grid; place-items: center; border-radius: 8px; border: 2px solid var(--line); background: rgba(10, 13, 31, 0.78); color: var(--accent); }
+.x-link.tg-link { right: calc(max(10px, env(safe-area-inset-right, 0px)) + 40px + 10px + 40px + 10px); }
+.x-link.pf-link { right: calc(max(10px, env(safe-area-inset-right, 0px)) + 40px + 10px + 40px + 10px + 40px + 10px); }
+.x-link:hover { color: #fff; }
+.x-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* Narrow portrait: push the logo below the X + music buttons. */
+@media (max-width: 480px) and (orientation: portrait) { .menu:not(:has(.mp-teams)) .menu-in .title { padding-top: 44px; } }
 
 /* Browsers without color-mix() (Safari < 16.2, Chrome < 111) drop those whole declarations; give the main cards and
    rows a plain fallback so they still have a background and border. */
@@ -1586,7 +1594,184 @@ body:has(.pause-btn) .music-btn:not(.docked) {
 
 .rank-badge { display: inline-flex; flex-direction: column; align-items: center; padding: 8px 18px; margin: 6px 0; border: 3px solid var(--rc); border-radius: 10px; color: var(--rc); background: rgba(0,0,0,.25); }
 .rank-badge strong { font-size: 1.3em; letter-spacing: .04em; }
+/* Tier badge art (public/ranks): pixel art, never smoothed. Sizes are small so a menu/results screen never needs to scroll for it. */
+.rk-badge-img { display: block; image-rendering: pixelated; object-fit: contain; flex: none; }
+.rank-badge-img, .rk-chip-img { width: 96px; height: 96px; }
+.rk-reveal-img { width: 88px; height: 88px; margin: 0 auto 4px; }
+.rk-post-img { width: 72px; height: 72px; }
 .mp-outcome { text-align: center; margin: 12px 0; }
+
+/* ---- Ranked Season 1: rank chip, placement pips, sign-in panel, post-match points. Menu and results screens only. ---- */
+:root {
+  --tier-0: #c9824a; --tier-1: #b8c2cf; --tier-2: #f2c53d; --tier-3: #5fd4c4; --tier-4: #6fb6ff;
+  --tier-5: #c58bff; --tier-6: #ff7a59; --tier-7: #ff5db1; --tier-z: #ffe27a;
+}
+.tier-0 { --rc: var(--tier-0); } .tier-1 { --rc: var(--tier-1); } .tier-2 { --rc: var(--tier-2); } .tier-3 { --rc: var(--tier-3); }
+.tier-4 { --rc: var(--tier-4); } .tier-5 { --rc: var(--tier-5); } .tier-6 { --rc: var(--tier-6); } .tier-7 { --rc: var(--tier-7); } .tier-z { --rc: var(--tier-z); }
+.rk-home { display: grid; gap: 14px; justify-items: center; }
+.rk-left, .rk-right { width: 100%; max-width: 440px; display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.rk-right .btn { width: 100%; }
+.rk-chip, .rk-post { width: 100%; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 10px 14px; border: 3px solid var(--rc, var(--muted)); border-radius: 12px; background: rgba(0, 0, 0, 0.25); color: var(--fg); }
+.rk-post { border-color: var(--line); }
+.rk-post[class*="tier-"] { border-color: var(--rc); }
+.rk-top { display: flex; align-items: center; justify-content: center; gap: 10px; flex-wrap: wrap; }
+.rk-top strong, .rk-chip > strong, .rk-big { font: 700 1.5rem var(--sport); letter-spacing: 0.05em; text-transform: uppercase; color: var(--rc, var(--fg)); }
+.rk-placing .rk-top strong, .rk-big { color: var(--accent); }
+.rk-pts { font: 700 1.05rem var(--sport); color: var(--muted); }
+.rk-season { font: 0.55rem var(--pixel); padding: 4px 6px; border-radius: 5px; background: var(--panel-2); border: 2px solid var(--line); color: var(--accent); }
+.rk-sub { font-size: 0.92rem; color: var(--muted); text-align: center; }
+.rk-bar { width: 100%; max-width: 360px; height: 10px; border-radius: 6px; background: rgba(255, 255, 255, 0.12); overflow: hidden; }
+.rk-bar i { display: block; height: 100%; background: var(--rc, var(--accent)); border-radius: 6px; transition: width 0.8s ease-out; }
+.rk-pips { display: inline-flex; gap: 8px; }
+.rk-pips i { width: 16px; height: 16px; border-radius: 50%; border: 2px solid var(--line); background: transparent; }
+.rk-pips i.on { background: var(--accent); border-color: var(--accent); }
+.rk-shield { font-size: 0.9rem; color: var(--muted); }
+.rk-shield.on, .rk-shield.used { color: var(--accent); }
+/* Rank Shield item (menus only): chip with count + ARM toggle, weekly challenge card, queue tag. */
+.rk-item { width: 100%; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 2px 10px; padding: 6px 10px; border: 2px solid var(--line); border-radius: 10px; background: rgba(0, 0, 0, 0.25); }
+.rk-item.armed { border-color: var(--accent); }
+.rk-item-ico { font-size: 1.5rem; line-height: 1; }
+.rk-item-name { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.rk-item-name strong { font: 700 1.05rem var(--sport); letter-spacing: 0.04em; text-transform: uppercase; }
+.rk-item-count { font: 0.7rem var(--pixel); color: var(--accent); }
+.rk-right .btn.rk-arm { width: auto; min-width: 84px; min-height: 40px; padding: 4px 14px; font: 0.65rem var(--pixel); }
+.rk-arm.on { background: var(--accent); color: #1a1100; }
+.rk-item-note { grid-column: 1 / -1; font-size: 0.85rem; color: var(--muted); text-align: center; overflow-wrap: anywhere; }
+.rk-item.armed .rk-item-note { color: var(--accent); }
+.rk-weekly { width: 100%; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 6px 12px; border: 2px dashed var(--line); border-radius: 10px; background: rgba(0, 0, 0, 0.18); text-align: center; }
+.rk-weekly-line { font-size: 0.9rem; overflow-wrap: anywhere; }
+.rk-weekly-line strong { font-family: var(--sport); letter-spacing: 0.03em; }
+.rk-weekly .rk-bar { height: 8px; }
+.rk-reward { font: 0.55rem var(--pixel); padding: 4px 8px; border-radius: 5px; background: var(--panel-2); border: 2px solid var(--line); color: var(--accent); }
+.rk-weekly.done .rk-reward { color: var(--good); }
+.rk-queue-tag { margin: 0 auto 8px; width: fit-content; font: 0.6rem var(--pixel); padding: 5px 10px; border-radius: 6px; border: 2px solid var(--accent); color: var(--accent); background: rgba(0, 0, 0, 0.25); }
+/* Rank Shield shop (menus only): a sheet over the Ranked home. It scrolls inside itself; two columns on a wide screen, one on a phone held upright. */
+.rk-item.has-shop .rk-item-note { grid-column: 1 / 3; grid-row: 2; text-align: left; }
+.rk-right .btn.rk-shop-btn { grid-column: 3; grid-row: 2; width: auto; min-width: 84px; min-height: 34px; padding: 2px 12px; font: 0.6rem var(--pixel); }
+.shop-sheet { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; background: rgba(5, 7, 20, 0.86);
+  padding: max(8px, env(safe-area-inset-top)) max(8px, env(safe-area-inset-right)) max(8px, env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left)); }
+.shop-panel { width: min(100%, 780px); max-height: 100%; overflow-y: auto; overscroll-behavior: contain; padding: 0 14px 12px;
+  background: var(--panel); border: 3px solid var(--line); border-radius: 12px; box-shadow: 0 0 0 3px #000, 6px 6px 0 rgba(0, 0, 0, 0.5); }
+.shop-head { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 0 6px; background: var(--panel); }
+.shop-head h2 { margin: 0; font: 0.8rem var(--pixel); color: var(--accent); letter-spacing: 0.04em; }
+.shop-x { min-width: 40px; min-height: 40px; padding: 0 10px; }
+.shop-body { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 10px 14px; align-items: start; }
+.shop-packs, .shop-side { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.shop-card { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 8px 10px; border: 2px solid var(--line); border-radius: 10px; background: rgba(0, 0, 0, 0.25); }
+.shop-card.best { border-color: var(--accent); }
+.shop-units { display: inline-flex; align-items: center; gap: 4px; font-size: 1.3rem; line-height: 1; }
+.shop-units b { font: 0.85rem var(--pixel); color: var(--accent); }
+.shop-name { display: flex; flex-direction: column; min-width: 0; }
+.shop-name strong { font: 700 1.05rem var(--sport); letter-spacing: 0.03em; text-transform: uppercase; }
+.shop-name em { font-style: normal; font-size: 0.85rem; color: var(--muted); }
+.shop-name small { font-size: 0.78rem; color: #ff8a7a; }
+.shop-buy { min-width: 84px; min-height: 44px; padding: 4px 12px; font: 0.7rem var(--pixel); }
+.shop-pay { display: flex; flex-direction: column; align-items: stretch; gap: 4px; }
+.shop-card.has-usdc .shop-pay { min-width: 9.5rem; }
+.shop-card.has-usdc .shop-buy { min-height: 38px; padding: 2px 8px; font-size: 0.6rem; white-space: nowrap; }
+.shop-usdc { border-color: #9a7cf5; color: #cdbcff; }
+.shop-usdc:not(:disabled):hover { background: rgba(154, 124, 245, 0.2); }
+.shop-net { display: inline-block; padding: 1px 6px; margin-right: 4px; border: 2px solid #ffb74d; border-radius: 6px; font: 0.55rem var(--pixel); color: #ffb74d; text-transform: uppercase; }
+.shop-net[data-net="mainnet-beta"] { border-color: #9a7cf5; color: #cdbcff; }
+.shop-held { margin: 0; font: 0.65rem var(--pixel); color: var(--muted); }
+.shop-held strong { color: var(--accent); }
+.shop-age { display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 4px 8px; border: 2px dashed var(--line); border-radius: 8px; font-size: 0.92rem; cursor: pointer; }
+.shop-age input { width: 22px; height: 22px; flex: none; accent-color: var(--accent); }
+.shop-fine { margin: 0; font-size: 0.8rem; color: var(--muted); }
+.shop-links { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 0.85rem; }
+.shop-links a { color: var(--accent); }
+.shop-notice { margin: 0; padding: 6px 10px; border-radius: 8px; border: 2px solid var(--line); font-size: 0.9rem; overflow-wrap: anywhere; }
+.shop-notice.ok { border-color: var(--good); color: var(--good); }
+.shop-notice.warn { border-color: var(--accent); color: var(--accent); }
+.shop-notice.bad { border-color: #ff8a7a; color: #ff8a7a; }
+.shop-solo { grid-column: 1 / -1; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 14px 0; text-align: center; }
+.shop-msg { margin: 0; font: 0.8rem var(--pixel); color: var(--accent); }
+@media (orientation: portrait), (max-width: 520px) {
+  .shop-body { grid-template-columns: minmax(0, 1fr); }
+}
+@media (orientation: landscape) and (max-height: 520px) {
+  .shop-head { padding: 4px 0; }
+  .shop-x { min-height: 36px; }
+  .shop-card { padding: 5px 8px; }
+  .shop-buy { min-height: 40px; }
+  .shop-card.has-usdc .shop-buy { min-height: 32px; }
+  .shop-age { min-height: 40px; padding: 2px 8px; font-size: 0.85rem; }
+  .shop-fine { font-size: 0.74rem; }
+  .shop-panel { padding-bottom: 8px; }
+}
+@media (prefers-reduced-motion: reduce) { .shop-sheet, .shop-panel { animation: none !important; transition: none !important; } }
+.rk-signin { width: 100%; display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.rk-why { margin: 0; text-align: center; }
+.rk-signin-btns { flex-wrap: wrap; }
+.rk-signin-btns .btn { text-decoration: none; display: inline-flex; align-items: center; justify-content: center; min-height: 44px; }
+.rk-error { color: #ff8a7a; }
+.rk-wl { font: 0.6rem var(--pixel); padding: 4px 8px; border-radius: 5px; }
+.rk-wl.w { background: var(--good); color: #04210f; }
+.rk-wl.l { background: var(--red); color: #fff; }
+.rk-delta { font: 700 2.2rem var(--sport); letter-spacing: 0.04em; animation: rk-count 0.9s ease-out; }
+.rk-delta.up { color: var(--good); }
+.rk-delta.down { color: #ff8a7a; }
+/* Rank-up / rank-down / placed reveal: a badge flip, 2 s, with a Skip button. Skip (or reduced motion) shows the end state at once. */
+.rk-anim { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.rk-flip { perspective: 600px; }
+.rk-face { padding: 8px 24px; border: 3px solid var(--rc); border-radius: 10px; color: var(--rc); background: rgba(0, 0, 0, 0.35); animation: rk-flip 2s ease-out both; box-shadow: 0 0 0 0 var(--rc); }
+.rk-face strong { font: 700 1.6rem var(--sport); letter-spacing: 0.06em; text-transform: uppercase; }
+.rk-up .rk-face { animation: rk-flip 2s ease-out both, rk-glow 2s ease-out both; }
+.rk-down .rk-face { animation: rk-flip 2s ease-out both, rk-shake 0.6s 1.4s ease-out both; }
+.rk-title { margin: 0; font: 700 1.2rem var(--sport); letter-spacing: 0.04em; text-transform: uppercase; }
+.rk-skip { padding: 2px 12px; min-height: 32px; font-size: 0.85rem; }
+.rk-anim.skipped .rk-face, .rk-anim.skipped .rk-delta { animation: none; }
+.rk-anim.skipped .rk-skip { visibility: hidden; }
+@keyframes rk-flip { 0% { transform: rotateY(90deg); opacity: 0; } 55% { transform: rotateY(-12deg); opacity: 1; } 100% { transform: rotateY(0); opacity: 1; } }
+@keyframes rk-glow { 60% { box-shadow: 0 0 0 0 var(--rc); } 80% { box-shadow: 0 0 18px 6px var(--rc); } 100% { box-shadow: 0 0 6px 1px var(--rc); } }
+@keyframes rk-shake { 25% { transform: translateX(-5px); } 50% { transform: translateX(5px); } 75% { transform: translateX(-3px); } }
+@keyframes rk-count { from { opacity: 0; transform: translateY(8px) scale(0.9); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .rk-face, .rk-delta, .rk-bar i { animation: none !important; transition: none !important; }
+  .rk-skip { display: none; }
+}
+/* A phone on its side: badge and bar on the left, the buttons on the right, so no scrolling is needed. */
+@media (orientation: landscape) and (max-height: 520px) {
+  .rk-home { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: center; gap: 12px; }
+  .rk-left, .rk-right { max-width: none; }
+  .rk-chip, .rk-post { padding: 6px 10px; gap: 4px; }
+  .rk-left, .rk-right { gap: 6px; }
+  .rk-item { padding: 4px 8px; }
+  .rk-item-ico { font-size: 1.2rem; }
+  .rk-item-note { font-size: 0.78rem; }
+  .rk-right .btn.rk-arm { min-height: 34px; }
+  .rk-weekly { padding: 4px 8px; gap: 2px; }
+  .rk-weekly-line { font-size: 0.8rem; }
+  .rank-badge-img, .rk-chip-img { width: 64px; height: 64px; }
+  .rk-reveal-img { width: 56px; height: 56px; margin-bottom: 2px; }
+  .rk-post-img { width: 48px; height: 48px; }
+  .rk-top strong, .rk-chip > strong, .rk-big { font-size: 1.25rem; }
+  .rk-delta { font-size: 1.7rem; }
+  .rk-signin { gap: 6px; }
+  .rk-signin .note { margin: 2px 0; font-size: 0.8rem; }
+  .rk-signin-btns .btn.big { padding: 8px 14px; font-size: 1rem; }
+  .rk-right .btn.big { padding: 9px 22px; font-size: 1.05rem; }
+  .menu:has(.rk-home) .title { margin-bottom: 6px; }
+  .menu:has(.rk-home) .logo { font-size: 1.5rem; }
+  .menu:has(.rk-home) .tag { margin-top: 2px; font-size: 0.9rem; }
+  .menu:has(.rk-home) .card.setup { padding: 8px 12px; }
+}
+/* Short landscape (844x390, 932x430): the rank-up / demoted / placed reveal on the post-match panel must fit with no scrolling.
+   Badge and tier name share one row inside the card; the title and Skip sit beside it instead of under it. */
+@media (orientation: landscape) and (max-height: 450px) {
+  .mp-outcome:has(.rk-anim) { margin: 4px 0; }
+  .mp-outcome .rk-vs { margin: 0 0 2px; }
+  .rk-post:has(.rk-anim) { gap: 2px; padding: 4px 10px; }
+  .rk-post .rk-delta { font-size: 1.3rem; }
+  .rk-anim { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 0 10px; }
+  .rk-face { display: flex; align-items: center; gap: 8px; padding: 3px 14px; }
+  .rk-face .rk-reveal-img { width: 40px; height: 40px; margin: 0; }
+  .rk-face strong { font-size: 1.15rem; }
+  .rk-title { font-size: 1rem; text-align: left; }
+  .rk-skip { min-height: 28px; padding: 0 10px; }
+  .rk-post:has(.rk-anim) .rk-sub { font-size: 0.8rem; }
+  .rk-post:has(.rk-anim) .rk-bar { height: 8px; }
+}
 
 /* Online games: "Waiting for opponent…" banner */
 .net-status { position: absolute; top: 18%; left: 50%; transform: translateX(-50%); padding: 6px 12px; border-radius: 8px;
@@ -1913,6 +2098,107 @@ body:has(.pause-btn) .music-btn:not(.docked) {
 .share-toast { position: absolute; top: calc(100% + 6px); left: 50%; transform: translateX(-50%); z-index: 21; margin: 0; padding: 10px 14px; white-space: nowrap; background: var(--accent); color: #1a1400; border-radius: 6px; font: 0.62rem var(--pixel); }
 @media (max-height: 500px) { .share { margin: -10px auto 12px; } .share-menu { flex-direction: row; min-width: 0; } }
 
+/* Profile button on the title screen: last item of the play row, same width as the other buttons. */
+.profile-btn { min-height: 44px; }
+.play-row .profile-btn { width: min(100%, 400px); min-width: 0; box-sizing: border-box; }
+@media (min-width: 761px) { .play-row .profile-btn { width: auto; min-width: 120px; } }
+@media (max-height: 480px) { .profile-btn { min-height: 36px; padding-top: 4px; padding-bottom: 4px; } }
+
+/* Profile screen */
+.pf { display: grid; gap: 14px; justify-items: center; }
+.pf-left, .pf-right { width: 100%; max-width: 460px; display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.pf-id { display: flex; flex-direction: column; align-items: center; gap: 4px; max-width: 100%; }
+.pf-label { font: 0.55rem var(--pixel); color: var(--muted); text-transform: uppercase; }
+.pf-name { font: 700 1.9rem var(--sport); letter-spacing: 0.04em; overflow-wrap: anywhere; text-align: center; }
+.pf-edit { min-height: 36px; padding: 4px 14px; }
+.pf-signin { width: 100%; }
+.pf-stats { width: 100%; margin: 0; display: grid; gap: 6px; }
+.pf-stats > div { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 6px 12px; border: 2px solid var(--line); border-radius: 8px; background: rgba(0, 0, 0, 0.2); }
+.pf-stats dt { color: var(--muted); font-size: 0.9rem; }
+.pf-stats dd { margin: 0; font: 700 1.05rem var(--sport); text-align: right; overflow-wrap: anywhere; min-width: 0; }
+.pf .actions { margin-top: 4px; }
+@media (orientation: landscape) and (max-height: 520px) {
+  .pf { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; gap: 12px; }
+  .pf-left, .pf-right { max-width: none; gap: 6px; }
+  .pf-name { font-size: 1.4rem; }
+  .pf-stats { gap: 3px; }
+  .pf-stats > div { padding: 2px 10px; }
+  .pf-stats dd { font-size: 0.95rem; }
+  .menu:has(.pf) .title { margin-bottom: 6px; }
+  .menu:has(.pf) .logo { font-size: 1.5rem; }
+  .menu:has(.pf) .tag { margin-top: 2px; font-size: 0.9rem; }
+  .menu:has(.pf) .card.setup { padding: 8px 12px; }
+}
+
+/* Username picker and the "you vs them" line on the points screen */
+.un-pick { width: 100%; display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.un-pick .field { width: min(100%, 360px); }
+.un-pick input { text-align: center; font-size: 1.1rem; }
+.un-pick input[aria-invalid="true"] { border-color: #ff8a7a; }
+.un-pick .note { margin: 0; }
+.rk-vs { margin: 0 0 6px; text-align: center; font: 700 1.05rem var(--sport); letter-spacing: 0.03em; overflow-wrap: anywhere; }
+.rk-vs i { font: 0.55rem var(--pixel); color: var(--muted); font-style: normal; margin: 0 6px; }
+.rk-vs .rk-you { color: var(--accent); }
+@media (orientation: landscape) and (max-height: 520px) {
+  .un-pick { gap: 4px; }
+  .un-pick .btn.big { padding: 8px 20px; font-size: 1rem; }
+}
+
+/* ---- Shared rank badge (renderRankBadge in src/ranked/badge.ts): tier art plus the division as text, or a grey Unranked / Placement placeholder. ---- */
+.rk-rb { display: inline-flex; flex-direction: column; align-items: center; gap: 2px; color: var(--rc, var(--muted)); vertical-align: middle; }
+.rk-rb-text { font: 700 0.95rem var(--sport); letter-spacing: 0.05em; text-transform: uppercase; white-space: nowrap; }
+.rk-rb-img, .rk-rb-ph { width: 72px; height: 72px; }
+.rk-rb-lg .rk-rb-img, .rk-rb-lg .rk-rb-ph { width: 96px; height: 96px; }
+.rk-rb-sm { flex-direction: row; gap: 4px; }
+.rk-rb-sm .rk-rb-img, .rk-rb-sm .rk-rb-ph { width: 28px; height: 28px; }
+.rk-rb-sm .rk-rb-text { font-size: 0.75rem; }
+.rk-rb-ph { display: grid; place-items: center; box-sizing: border-box; border: 3px dashed var(--line); border-radius: 50%; background: rgba(255, 255, 255, 0.06); font: normal 700 1.6rem var(--pixel); color: var(--muted); filter: grayscale(1); }
+.rk-rb-sm .rk-rb-ph { border-width: 2px; font-size: 0.9rem; }
+.rk-rb-none { color: var(--muted); }
+.pf-who { display: flex; align-items: center; justify-content: center; gap: 12px; max-width: 100%; }
+.pf-badge .rk-rb-img, .pf-badge .rk-rb-ph { width: 80px; height: 80px; }
+.rk-card { display: inline-flex; align-items: center; gap: 6px; vertical-align: middle; }
+.rk-card-name { overflow-wrap: anywhere; }
+.rk-gallery { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; }
+@media (orientation: landscape) and (max-height: 520px) {
+  .rk-rb-img, .rk-rb-ph, .rk-rb-lg .rk-rb-img, .rk-rb-lg .rk-rb-ph { width: 56px; height: 56px; }
+  .rk-rb-sm .rk-rb-img, .rk-rb-sm .rk-rb-ph { width: 24px; height: 24px; }
+  .pf-badge .rk-rb-img, .pf-badge .rk-rb-ph { width: 52px; height: 52px; }
+  .pf-who { gap: 8px; }
+  .rk-rb-text { font-size: 0.8rem; }
+}
+/* Ranked team pick (presetPick.ts): six preset cards, 3x2 in landscape, 2x3 in portrait; Lock in pinned at the bottom. */
+.menu.pp { display: flex; flex-direction: column; box-sizing: border-box; height: 100dvh; min-height: 0; padding: max(8px, env(safe-area-inset-top, 0px)) 10px 0; overflow: hidden; }
+/* The header reserves the fixed music button's corner: right padding keeps the clock clear of it (40px + its 10px inset),
+   and min-height ends the header below the button's bottom edge (max(10px, inset) + 40px) so the cards start under it. */
+.pp-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 44px; margin-bottom: 6px; padding-right: 48px; }
+.pp-title { margin: 0; font: normal 700 1.1rem var(--pixel); }
+.pp-clock { font: normal 700 1.1rem var(--pixel); padding: 2px 10px; border: 2px solid var(--line); border-radius: 8px; }
+.pp-clock.low { color: #ff6b6b; border-color: #ff6b6b; }
+.pp-grid { flex: 1; min-height: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); grid-template-rows: repeat(2, minmax(0, 1fr)); gap: 6px; }
+.pp-card { display: flex; flex-direction: column; min-width: 0; min-height: 0; padding: 4px 6px; border: 2px solid var(--line); border-radius: 10px; background: rgba(255, 255, 255, 0.05); color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.pp-card.on { border-color: var(--accent, #ffcb05); background: rgba(255, 203, 5, 0.14); box-shadow: 0 0 0 2px rgba(255, 203, 5, 0.35); }
+.pp-grid.locked .pp-card:not(.on) { opacity: 0.55; }
+.pp-head { display: flex; align-items: baseline; gap: 6px; font-size: 0.8rem; }
+.pp-id { font: normal 700 0.95rem var(--pixel); }
+.pp-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pp-ovr { font-weight: 700; }
+.pp-mons { flex: 1; min-height: 0; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 2px; margin: 2px 0 0; padding: 0; list-style: none; }
+.pp-mons li { display: flex; flex-direction: column; align-items: center; justify-content: center; min-width: 0; min-height: 0; }
+.pp-mons img { width: 100%; max-width: 48px; min-height: 0; flex: 0 1 auto; aspect-ratio: 1; object-fit: contain; image-rendering: pixelated; }
+.pp-pos { font-size: 0.6rem; color: var(--muted); line-height: 1.1; }
+.pp-mon { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.62rem; line-height: 1.15; }
+.pp-bar { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 6px 0 max(8px, env(safe-area-inset-bottom, 0px)); }
+.pp-bar .btn { min-width: 220px; }
+.pp-status { margin: 0; padding: 10px 0; font-weight: 700; }
+.pp-err { margin: 0; color: #ff6b6b; font-size: 0.85rem; }
+/* Portrait cards are narrow but tall: three sprites per row (3 + 2) gives each name room, and long names may wrap. */
+@media (orientation: portrait) {
+  .pp-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(3, minmax(0, 1fr)); }
+  .pp-mons { grid-template-columns: repeat(3, minmax(0, 1fr)); align-content: center; row-gap: 6px; }
+  .pp-mon { white-space: normal; overflow-wrap: anywhere; text-align: center; font-size: 0.6rem; }
+}
+@media (orientation: landscape) and (max-height: 450px) { .pp-mons img { max-width: 34px; } .pp-top { margin-bottom: 4px; } .pp-bar .btn.big { padding-top: 6px; padding-bottom: 6px; } }
 /* Pre-game intro: both lineups, VS between, Skip pinned at thumb reach. Fits 844x390 / 932x430 / 390x844 without scrolling. */
 .screen-intro { overflow: hidden; }
 .intro { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; box-sizing: border-box; padding: max(8px, env(safe-area-inset-top, 0px)) max(10px, env(safe-area-inset-right, 0px)) calc(64px + env(safe-area-inset-bottom, 0px)) max(10px, env(safe-area-inset-left, 0px)); overflow: hidden; }
@@ -1935,4 +2221,214 @@ body:has(.pause-btn) .music-btn:not(.docked) {
   .intro-team li img { width: clamp(22px, 4.5vh, 40px); height: clamp(22px, 4.5vh, 40px); }
   .intro-team h2 { font-size: clamp(0.6rem, 1.8vh, 0.9rem); }
   .intro-vs { font-size: clamp(0.9rem, 2.6vh, 1.4rem); }
+}
+
+/* ---------- tutorial prompt strip ---------- */
+/* The strip is a real flex row above the stage (never position:absolute over it): the court shrinks to fit below it.
+   It stops ~110px short of the right edge (plus the safe area) so the pause button, music button and X link keep their
+   corner, and the HUD and touch controls start below it, so nothing overlaps. Only its buttons take pointer events. */
+.game.tut-on {
+  --tut-h: calc(44px + env(safe-area-inset-top, 0px));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+.game.tut-on .stage {
+  flex: none;
+  width: min(100vw, calc((100vh - var(--tut-h)) * 16 / 9));
+  width: min(100vw, calc((100dvh - var(--tut-h)) * 16 / 9));
+  margin-bottom: auto;
+}
+.game.tut-on .hud, .game.tut-on .touch { top: var(--tut-h); }
+.tut-strip {
+  position: relative;
+  z-index: 6;
+  flex: none;
+  align-self: stretch;
+  box-sizing: border-box;
+  height: var(--tut-h);
+  margin: 0 calc(110px + env(safe-area-inset-right, 0px)) auto 0;
+  padding: env(safe-area-inset-top, 0px) 8px 0 max(10px, env(safe-area-inset-left, 0px));
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  overflow: hidden;
+  background: rgba(10, 13, 31, 0.92);
+  border-bottom: 2px solid var(--line);
+  border-right: 2px solid var(--line);
+  border-bottom-right-radius: 8px;
+  pointer-events: none;
+}
+.tut-text { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 8px; }
+/* The coach: the user's top player (existing sprite art), sized from the strip's own height so it can never poke out
+   over the court. The strip's overflow: hidden is the backstop. */
+.tut-coach {
+  flex: none;
+  width: var(--coach); height: var(--coach);
+  --coach: calc(var(--tut-h) - env(safe-area-inset-top, 0px) - 6px);
+  object-fit: contain;
+  image-rendering: pixelated;
+  pointer-events: none;
+}
+.tut-lines { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 10px; }
+.tut-step { flex: none; font: 0.62rem var(--pixel); color: var(--accent); text-transform: uppercase; letter-spacing: 0.06em; }
+.tut-hint {
+  min-width: 0; font-weight: 700; font-size: 0.92rem; line-height: 1.2; color: var(--fg);
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.tut-acts { flex: none; display: flex; gap: 6px; }
+.tut-btn {
+  pointer-events: auto;
+  font: 0.52rem var(--pixel);
+  padding: 7px 9px;
+  border-radius: 6px;
+  border: 2px solid var(--accent);
+  background: var(--panel-2);
+  color: var(--fg);
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+.tut-btn.ghost { border-color: var(--line); background: transparent; color: var(--muted); }
+.tut-btn[hidden] { display: none; }
+.tut-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.tut-prog { position: absolute; left: 0; bottom: 0; height: 3px; width: var(--p, 0%); background: var(--accent); transition: width 0.15s; }
+/* Short landscape phones (844x390, 932x430): a slimmer strip so the court keeps as much height as possible. */
+@media (orientation: landscape) and (max-height: 500px) {
+  .game.tut-on { --tut-h: calc(38px + env(safe-area-inset-top, 0px)); }
+  .tut-hint { font-size: 0.8rem; }
+  .tut-btn { padding: 5px 7px; font-size: 0.46rem; }
+}
+/* Portrait phones: plenty of letterbox above the court, so two rows (prompt, then buttons) at the top.
+   The bottom stays free for the stick and face buttons. */
+@media (orientation: portrait) and (max-width: 700px) {
+  .game.tut-on { --tut-h: calc(88px + env(safe-area-inset-top, 0px)); }
+  .tut-strip { flex-wrap: wrap; align-content: center; row-gap: 6px; padding-bottom: 4px; }
+  .tut-text { flex: 1 1 100%; }
+  .tut-coach { --coach: 44px; }
+  .tut-lines { flex-direction: column; align-items: flex-start; gap: 3px; }
+  .tut-hint { font-size: 0.8rem; }
+}
+/* Announcer text in Training on phones. The intro lines ("Go! X and crew!") use the bottom-center .battle box, which sat
+   on top of the A/PASS button and the near sideline; the .banner sat full-width across mid-court. Both move to a compact
+   top-center slot (landscape: the crowd band under the score bug; portrait: the free band above the court), capped to
+   the width between the player card/stick side and the button side. Presentation only; they never take pointer events. */
+@media (orientation: landscape) and (max-height: 500px), (orientation: portrait) and (max-width: 700px) {
+  .game.tut-on .banner, .game.tut-on .battle { pointer-events: none; }
+  .game.tut-on .banner { left: 50%; right: auto; width: max-content; max-width: min(440px, calc(100vw - 2 * (200px + env(safe-area-inset-right, 0px)))); transform: translateX(-50%) scale(0.9); }
+  .game.tut-on .banner.show { transform: translateX(-50%); }
+  .game.tut-on .banner-main { font-size: clamp(0.85rem, 2.6vw, 1.3rem); text-shadow: 2px 2px 0 var(--red), 4px 4px 0 #000; padding: 0 6px; overflow-wrap: anywhere; }
+  .game.tut-on .banner-sub { font-size: 0.5rem; margin-top: 5px; }
+  .game.tut-on.has-touch .battle {
+    top: 38px; bottom: auto; left: 50%;
+    width: max-content;
+    max-width: min(420px, calc(100vw - 2 * (190px + env(safe-area-inset-right, 0px))));
+    padding: 4px 10px; border-width: 3px; box-shadow: 0 0 0 2px #f8f8f0, 0 3px 0 rgba(0, 0, 0, 0.4);
+    transform: translate(-50%, -6px); opacity: 0;
+    transition: transform 0.18s, opacity 0.18s;
+  }
+  .game.tut-on.has-touch .battle.show { transform: translateX(-50%); opacity: 1; }
+  .game.tut-on.has-touch .battle p { font-size: 0.55rem; line-height: 1.5; min-height: 0; }
+}
+@media (orientation: landscape) and (max-height: 500px) {
+  .game.tut-on .banner { top: 86px; }
+}
+@media (orientation: portrait) and (max-width: 700px) {
+  /* Portrait: the court is pinned right under the HUD rows (see below), so the banner sits on the court's crowd band
+     (the top strip of the canvas, no players) and the intro box sits in the free band under the court, above the
+     stick and face buttons. Offsets are relative to .hud, which starts at --tut-h. */
+  .game.tut-on .banner, .game.tut-on.has-touch .battle { max-width: calc(100vw - 24px); }
+  .game.tut-on .banner { top: calc(var(--tut-hud) + 4px); }
+  /* Clamped to stay above the stick (its base top is at ~72% of the .hud height minus 52px) on short phones. */
+  .game.tut-on.has-touch .battle { top: min(calc(var(--tut-hud) + 100vw * 9 / 16 + 10px), calc(72% - 100px)); }
+}
+
+/* Portrait phones: the 16:9 court used to float mid-screen with a dead dark band above it. Pin it directly under the
+   HUD rows (player card + score bug, --tut-hud tall) and give all spare height to the bottom, where the stick and face
+   buttons live. Training only; the normal game layout is unchanged. */
+@media (orientation: portrait) and (max-width: 700px) {
+  .game.tut-on { --tut-hud: 50px; justify-content: flex-start; }
+  .game.tut-on .tut-strip { margin-bottom: 0; }
+  .game.tut-on .stage { margin: var(--tut-hud) 0 0; }
+}
+/* Touch portrait: the bug drops below the player card (+62px), so the HUD block is taller. */
+@media (orientation: portrait) and (max-width: 480px) {
+  .game.tut-on.has-touch { --tut-hud: 104px; }
+}
+
+/* ---------- tutorial completion ---------- */
+.tut-done {
+  position: absolute; inset: 0; z-index: 12;
+  background: rgba(5, 6, 15, 0.82);
+  display: grid; place-items: center;
+  padding: max(16px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) max(16px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px));
+  overflow-y: auto;
+}
+.tut-done .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 20px; max-width: 460px; width: 100%; text-align: center; }
+.tut-done h2 { font: 1.2rem var(--pixel); color: var(--accent); margin: 0 0 12px; }
+.tut-done p { margin: 0 0 16px; color: var(--fg); }
+.tut-done-acts { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+/* The game is stopped behind the completion screen: hide its pause button and the strip's buttons. */
+.game:has(.tut-done) .pause-btn, .game:has(.tut-done) .tut-acts { display: none; }
+
+/* ---------- tutorial drill results ---------- */
+/* Below the prompt strip (never over it), so its Skip / Exit buttons keep working while the card is up. */
+.tut-result {
+  position: absolute; top: var(--tut-h); right: 0; bottom: 0; left: 0; z-index: 12;
+  background: rgba(5, 6, 15, 0.72);
+  display: grid; place-items: center;
+  padding: 12px max(12px, env(safe-area-inset-right, 0px)) max(12px, env(safe-area-inset-bottom, 0px)) max(12px, env(safe-area-inset-left, 0px));
+  overflow-y: auto;
+}
+.tut-result .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px 20px; max-width: 420px; width: 100%; text-align: center; }
+.tut-result h2 { font: 1rem var(--pixel); color: var(--accent); margin: 0 0 8px; }
+.tut-result p { margin: 0 0 8px; color: var(--fg); }
+.tut-score b { font: 1.1rem var(--pixel); }
+.tut-stars { font-size: 2rem; line-height: 1; color: var(--accent); letter-spacing: 0.1em; }
+.tut-best { color: var(--muted); }
+.tut-new { color: var(--accent); font-weight: 700; }
+.tut-res-line { font-size: 0.9rem; }
+.tut-result .tut-done-acts { margin-top: 12px; }
+.game:has(.tut-result) .pause-btn { display: none; }
+.tut-sum { list-style: none; margin: 0 0 12px; padding: 0; text-align: left; }
+.tut-sum li { display: flex; justify-content: space-between; gap: 12px; padding: 2px 0; color: var(--fg); }
+@media (orientation: landscape) and (max-height: 500px) {
+  .tut-result .panel { padding: 10px 14px; }
+  .tut-stars { font-size: 1.4rem; }
+  .tut-result p { margin-bottom: 4px; }
+}
+
+/* ---------- menu: tutorial entry ---------- */
+.mode-card.quick .actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.tut-hint-menu { margin: 0; font-size: 0.85rem; color: var(--accent); }
+.tut-hint-menu[hidden] { display: none; }
+
+/* ---------- training menu ---------- */
+.training {
+  max-width: 560px;
+  margin: 0 auto;
+  padding-block: max(14px, env(safe-area-inset-top, 0px)) max(32px, env(safe-area-inset-bottom, 0px));
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.trn-h { font: 1.2rem var(--pixel); color: var(--accent); margin: 4px 0 8px; }
+.trn-all { width: 100%; margin: 4px 0 14px; }
+.trn-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.trn-drill { width: 100%; min-height: 48px; display: flex; justify-content: space-between; align-items: center; gap: 12px; text-align: left; }
+.trn-stars { color: var(--accent); font-size: 1.2rem; letter-spacing: 0.08em; }
+@media (orientation: landscape) and (max-height: 500px) {
+  .trn-list { grid-template-columns: 1fr 1fr; }
+}
+
+/* Portrait touch, normal game: the announcer box sat bottom-centre over the A/PASS button. The court is centred, so put
+   the box in the empty band just above it (below the score bug), fading in place instead of sliding up from the bottom. */
+@media (orientation: portrait) and (max-width: 480px) {
+  .game.has-touch:not(.tut-on) .battle {
+    top: auto; bottom: calc(50% + 100vw * 9 / 32 + 10px);
+    max-width: calc(100vw - 24px);
+    transform: translate(-50%, 6px); opacity: 0;
+    transition: transform 0.18s, opacity 0.18s;
+  }
+  .game.has-touch:not(.tut-on) .battle.show { transform: translateX(-50%); opacity: 1; }
 }

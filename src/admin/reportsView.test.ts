@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { bansHtml, personLabel, reportsHtml, type Check, type Reported } from './reportsView';
+import { bansHtml, judgeFlagsHtml, judgeShadowHtml, personLabel, reportsHtml, type Check, type Reported } from './reportsView';
 
 const check = (over: Partial<Check> = {}): Check => ({
   match_id: 'm1', queue: 'ranked', has_evidence: true, status: null, agrees: null, cheater_is_reported: null, ...over,
@@ -89,5 +89,45 @@ describe('admin Reported tab', () => {
   it('confirm text names which person it is about', () => {
     expect(personLabel('Kissass', 'reporter')).toBe('Kissass (the reporter)');
     expect(personLabel('Fvcker', 'reported')).toBe('Fvcker (the reported player)');
+  });
+});
+
+describe('admin judge flags panel', () => {
+  const f = { id: 1, match_id: 'abcdef12-0000', user_id: 'u1234567-x', username: '<b>Ash</b>', reason: 'bad_upload', detail: 'engine <v9>', created_at: '2026-11-02T00:00:00Z', reviewed: false };
+
+  it('says why in words and escapes what players control', () => {
+    const html = judgeFlagsHtml([f, { ...f, id: 2, user_id: null, username: null, reason: 'something_new', detail: null }]);
+    expect(html).toContain('Fake or unreadable upload');
+    expect(html).toContain('&lt;b&gt;Ash&lt;/b&gt;');
+    expect(html).toContain('engine &lt;v9&gt;');
+    expect(html).toContain('something_new');
+    expect(html).toContain('abcdef12');
+  });
+
+  it('says so when there are none', () => {
+    expect(judgeFlagsHtml([])).toContain('No flags');
+  });
+});
+
+describe('admin judge shadow panel', () => {
+  const backlog = { pending: 2, running: 1, failed: 3, oldest_ready_s: 45, unjudged: 4 };
+  const r = { day: '2026-11-02', browser_engine: 'gecko', n: 10, final_n: 8, incomplete_n: 1, forfeit_n: 0, invalid_n: 1, agree_n: 6, disagree_n: 2, agree_rate: 0.75, resync_matches: 3, resync_disagree_n: 2 };
+
+  it('shows the agreement per day and engine, and the queue', () => {
+    const html = judgeShadowHtml({ rows: [r], backlog });
+    expect(html).toContain('<td>gecko</td>');
+    expect(html).toContain('<td>75%</td>');
+    expect(html).toContain('2 pending (oldest ready 45 s ago), 1 running, 3 failed. 4 finished with no verdict');
+  });
+
+  it('copes with no verdicts, no comparable matches and an empty queue', () => {
+    const empty = { ...backlog, pending: 0, oldest_ready_s: null };
+    expect(judgeShadowHtml({ rows: [], backlog: empty })).toContain('No verdicts yet');
+    expect(judgeShadowHtml({ rows: [], backlog: empty })).toContain('Queue: 0 pending, 1 running');
+    expect(judgeShadowHtml({ rows: [{ ...r, agree_rate: null }], backlog })).toContain('<td>–</td>');
+  });
+
+  it('escapes what the server sends', () => {
+    expect(judgeShadowHtml({ rows: [{ ...r, browser_engine: '<b>' }], backlog })).toContain('&lt;b&gt;');
   });
 });
