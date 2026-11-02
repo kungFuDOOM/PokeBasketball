@@ -4,7 +4,7 @@ import { base58Decode, base58Encode } from '../../../supabase/functions/_shared/
 import { deriveAta } from '../../../supabase/functions/_shared/shield/usdc-chain.ts';
 import { parseShopInfo } from './serverRank';
 import { USDC_NOTICES, shopBodyHtml, usdcOption, usdcText, type ShopModel } from './shopView';
-import { UsdcPayError, parseIntent, pollConfirm, prepareTransfer, rpcFor, signAndSend, type PayProvider, type RpcCall } from './usdcPay';
+import { UsdcPayError, clearPending, isFinalRefusal, loadPending, parseIntent, pollConfirm, prepareTransfer, savePending, sendAndRemember, signAndSend, type PayProvider, type PendingPayment } from './usdcPay';
 
 const PHANTOM_USER = { app_metadata: { provider: 'web3' }, identities: [{ provider: 'web3', identity_data: { custom_claims: { address: '5njibWvkiFg4LSyzq4ySFhyCsFEF4YhTqRLJo8Z9q16p', chain: 'solana' } } }] };
 const GOOGLE_USER = { app_metadata: { provider: 'google' }, identities: [{ provider: 'google', identity_data: { email: 'a@b.c' } }] };
@@ -111,7 +111,7 @@ describe('shop sheet with USDC', () => {
 describe('usdcPay', () => {
   const GOOD = {
     intentId: crypto.randomUUID(), reference: base58Encode(new Uint8Array(32).fill(7)), memo: 'pj-abc', receiver: '11111111111111111111111111111112',
-    mint: 'Gh9ZwEmdLJ8DscKNTkTqPbNwLNNBjuSzaG9Vp2KGtKJr', cluster: 'devnet', amount: '1990000', decimals: 6,
+    mint: 'Gh9ZwEmdLJ8DscKNTkTqPbNwLNNBjuSzaG9Vp2KGtKJr', cluster: 'devnet', amount: '1990000', decimals: 6, blockhash: base58Encode(new Uint8Array(32).fill(9)),
   };
   const WALLET = '5njibWvkiFg4LSyzq4ySFhyCsFEF4YhTqRLJo8Z9q16p';
 
@@ -122,33 +122,26 @@ describe('usdcPay', () => {
     expect(() => parseIntent({ ...GOOD, amount: '-5' })).toThrow(UsdcPayError);
     expect(() => parseIntent({ ...GOOD, decimals: 9 })).toThrow(UsdcPayError);
     expect(() => parseIntent(null)).toThrow(UsdcPayError);
+    const { blockhash: _gone, ...old } = GOOD; // a function not redeployed yet: refused before Phantom is asked
+    expect(() => parseIntent(old)).toThrow(UsdcPayError);
+    expect(() => parseIntent({ ...GOOD, blockhash: 'abc' })).toThrow(UsdcPayError);
   });
-  it('builds the transfer after reading a blockhash and checking the shop wallet\'s token account', async () => {
-    const calls: string[] = [];
-    const rpc = (async (method: string) => {
-      calls.push(method);
-      return method === 'getLatestBlockhash' ? { value: { blockhash: base58Encode(new Uint8Array(32).fill(9)) } } : { value: { owner: 'x' } };
-    }) as RpcCall;
-    const built = await prepareTransfer(parseIntent(GOOD), WALLET, rpc);
-    expect(calls).toEqual(['getLatestBlockhash', 'getAccountInfo']);
-    expect(built.destination).toBe(await deriveAta(GOOD.receiver, GOOD.mint));
-    expect(built.transaction.length).toBe(1 + 64 + built.message.length);
+  it('builds the transfer from the intent alone: no network call of any kind', async () => {
+    const f = vi.fn();
+    vi.stubGlobal('fetch', f);
+    try {
+      const built = await prepareTransfer(parseIntent(GOOD), WALLET);
+      expect(built.destination).toBe(await deriveAta(GOOD.receiver, GOOD.mint));
+      expect(built.transaction.length).toBe(1 + 64 + built.message.length);
+      expect(base58Encode(built.message.slice(3 + 1 + 7 * 32, 3 + 1 + 7 * 32 + 32))).toBe(GOOD.blockhash);
+      expect(f).not.toHaveBeenCalled();
+    } finally { vi.unstubAllGlobals(); }
   });
-  it('stops before asking for a signature if the shop wallet has no USDC account, or Solana is unreachable', async () => {
-    const noAta = (async (m: string) => (m === 'getLatestBlockhash' ? { value: { blockhash: base58Encode(new Uint8Array(32)) } } : { value: null })) as RpcCall;
-    await expect(prepareTransfer(parseIntent(GOOD), WALLET, noAta)).rejects.toMatchObject({ kind: 'shop-wallet' });
-    const down = (async () => { throw new Error('offline'); }) as RpcCall;
-    await expect(prepareTransfer(parseIntent(GOOD), WALLET, down)).rejects.toThrow('Could not reach Solana');
-  });
-  it('talks JSON-RPC to the cluster\'s public endpoint', async () => {
-    const f = vi.fn(async (_u: string, init?: RequestInit) => new Response(JSON.stringify({ jsonrpc: '2.0', id: 1, result: { ok: JSON.parse(String(init?.body)).method } })));
-    expect(await rpcFor('devnet', f as never)('getHealth', [])).toEqual({ ok: 'getHealth' });
-    expect(f.mock.calls[0][0]).toBe('https://api.devnet.solana.com');
-    expect(rpcFor('mainnet-beta', f as never)).toBeTypeOf('function');
-    await rpcFor('mainnet-beta', f as never)('x', []);
-    expect(f.mock.calls[1][0]).toBe('https://api.mainnet-beta.solana.com');
-    const bad = (async () => new Response('', { status: 429 })) as never;
-    await expect(rpcFor('devnet', bad)('x', [])).rejects.toThrow('HTTP 429');
+  it('no browser code calls a Solana RPC or names one (the CSP allows none, and mainnet refuses browser origins)', () => {
+    const files = import.meta.glob<string>(['/src/**/*.ts', '!/src/**/*.test.ts', '!/src/trailer/**'], { query: '?raw', import: 'default', eager: true });
+    expect(Object.keys(files).length).toBeGreaterThan(50);
+    const found = Object.entries(files).filter(([, text]) => /PUBLIC_RPC|\brpcFor\b|solana\.com|getLatestBlockhash|sendTransaction|sendRawTransaction/.test(text)).map(([f]) => f);
+    expect(found).toEqual([]);
   });
 
   describe('signAndSend', () => {
@@ -199,6 +192,76 @@ describe('usdcPay', () => {
       expect(await pollConfirm(async () => ({ status: 'pending' }), { ...clock(), stop: () => true })).toBe('timeout');
       await expect(pollConfirm(async () => { throw new Error('The payment amount does not match the price'); }, clock())).rejects.toThrow('does not match');
     });
+    it('rides out RPC, database and network failures, and stops at once on a final refusal', async () => {
+      const err = (code?: string) => Object.assign(new Error('x'), { code });
+      const seq: (() => { status: 'credited'; credited: number })[] = [() => { throw err('rpc'); }, () => { throw err('db'); }, () => { throw new TypeError('fetch failed'); }, () => ({ status: 'credited', credited: 3 })];
+      expect(await pollConfirm(async () => seq.shift()!(), { ...clock(), isFinal: isFinalRefusal })).toEqual({ status: 'credited', credited: 3 });
+      expect(await pollConfirm(async () => { throw err('rpc'); }, { ...clock(), intervalMs: 1000, timeoutMs: 3000, isFinal: isFinalRefusal })).toBe('timeout');
+      const refused = vi.fn(async () => { throw err('wrong_amount'); });
+      await expect(pollConfirm(refused, { ...clock(), isFinal: isFinalRefusal })).rejects.toThrow('x');
+      expect(refused).toHaveBeenCalledTimes(1);
+    });
+    it('treats only a settled answer as final: an expired session, a rate limit or an odd error keeps the payment', () => {
+      for (const c of ['tx_failed', 'expired', 'no_intent', 'intent_done', 'signature_used', 'wrong_amount', 'cluster_changed']) expect(isFinalRefusal({ code: c })).toBe(true);
+      for (const c of ['rpc', 'db', 'guest', 'no_wallet', 'rate_limited', undefined, 4001]) expect(isFinalRefusal({ code: c })).toBe(false);
+      expect(isFinalRefusal(null)).toBe(false);
+    });
+  });
+});
+
+describe('remembering a sent payment', () => {
+  const WALLET = '5njibWvkiFg4LSyzq4ySFhyCsFEF4YhTqRLJo8Z9q16p';
+  const SIG = base58Encode(new Uint8Array(64).fill(3));
+  const memoryStore = (seed: Record<string, string> = {}) => {
+    const m = new Map(Object.entries(seed));
+    return { get length() { return m.size; }, key: (i: number) => [...m.keys()][i] ?? null, getItem: (k: string) => m.get(k) ?? null, setItem: (k: string, v: string) => { m.set(k, v); }, removeItem: (k: string) => { m.delete(k); } };
+  };
+  const pay = (intentId: string, o: Partial<PendingPayment> = {}): PendingPayment => ({ intentId, signature: SIG, wallet: WALLET, at: 1, ...o });
+
+  it('keeps each payment under its intent, for its wallet, until it is cleared', () => {
+    const st = memoryStore();
+    expect(savePending(st, pay('b', { at: 2 }))).toBe(true);
+    expect(savePending(st, pay('a', { at: 1 }))).toBe(true);
+    savePending(st, pay('c', { wallet: 'SomeoneElse' }));
+    expect(st.getItem('pokejam.shop.usdc.a')).toContain(SIG);
+    expect(loadPending(st, WALLET).map((p) => p.intentId)).toEqual(['a', 'b']);
+    clearPending(st, 'a');
+    expect(loadPending(st, WALLET).map((p) => p.intentId)).toEqual(['b']);
+    expect(loadPending(st, 'SomeoneElse').map((p) => p.intentId)).toEqual(['c']);
+  });
+  it('skips what it did not write, and survives storage that throws or is missing', () => {
+    const st = memoryStore({ 'pokejam.shop.usdc.x': '{nope', 'pokejam.shop.usdc.y': JSON.stringify(pay('other')), 'pokejam.shop.before': '3' });
+    expect(loadPending(st, WALLET)).toEqual([]);
+    const broken = { ...memoryStore(), length: 1, key: () => { throw new Error('denied'); }, setItem: () => { throw new Error('full'); }, removeItem: () => { throw new Error('denied'); } };
+    expect(savePending(broken, pay('a'))).toBe(false);
+    expect(loadPending(broken, WALLET)).toEqual([]);
+    expect(() => clearPending(broken, 'a')).not.toThrow();
+    expect(savePending(null, pay('a'))).toBe(false);
+    expect(loadPending(null, WALLET)).toEqual([]);
+  });
+  it('saves the signature before anything can ask the server, and only once Phantom gave one', async () => {
+    const built = { source: 's', destination: 'd', message: new Uint8Array([1]), transaction: new Uint8Array([1, 0, 1]) };
+    const st = memoryStore();
+    const remember = (p: PendingPayment) => { savePending(st, p); };
+    const p = await sendAndRemember({ signAndSendTransaction: async () => { expect(loadPending(st, WALLET)).toEqual([]); return { signature: SIG }; } }, built, WALLET, 'i1', remember, () => 7);
+    expect(p).toEqual({ intentId: 'i1', signature: SIG, wallet: WALLET, at: 7 });
+    expect(loadPending(st, WALLET)).toEqual([p]);
+    // a confirm that dies (reload, network) changes nothing: the record is there for the retry
+    await expect(pollConfirm(async () => { throw new Error('offline'); })).rejects.toThrow('offline');
+    expect(loadPending(st, WALLET)).toEqual([p]);
+    const cancelled = memoryStore();
+    await expect(sendAndRemember({ signAndSendTransaction: async () => { throw Object.assign(new Error('rejected'), { code: 4001 }); } }, built, WALLET, 'i2', (x) => { savePending(cancelled, x); })).rejects.toMatchObject({ kind: 'rejected' });
+    expect(cancelled.length).toBe(0);
+  });
+  it('the sheet offers the retry and holds new USDC payments, but not the card path', () => {
+    const html = shopBodyHtml(model({ usdc: { cluster: 'mainnet-beta' }, card: true, usdcUnconfirmed: true, notice: USDC_NOTICES.timeout }));
+    expect(html).toContain('data-a="retry-usdc"');
+    expect(html).toContain('Do not pay again');
+    expect(usdcButtons(html).map((b) => b[0])).toEqual([false, false, false]);
+    expect(html).toMatch(/data-a="buy" data-sku="shield_3">/);
+    expect(shopBodyHtml(model({ usdc: { cluster: 'mainnet-beta' } }))).not.toContain('retry-usdc');
+    expect(shopBodyHtml(model({ usdc: { cluster: 'mainnet-beta' }, usdcUnconfirmed: true, busy: '-' }))).toMatch(/data-a="retry-usdc" disabled/);
+    expect(shopBodyHtml(model({ info: null, usdc: { cluster: 'mainnet-beta' }, usdcUnconfirmed: true }))).toContain('data-a="retry-usdc"');
   });
 });
 

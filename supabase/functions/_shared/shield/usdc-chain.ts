@@ -1,6 +1,7 @@
 // Solana pieces for the Rank Shield USDC payment, with no SDK: program ids, the associated-token-account (ATA) address,
 // and the unsigned legacy transaction the player's Phantom signs. Shared by the Edge Functions (which recompute the
-// receiver's ATA to check a payment) and the browser (which builds the transfer), so both sides agree byte for byte.
+// receiver's ATA to check a payment) and the browser (which builds the transfer from what the intent returned), so both
+// sides agree byte for byte.
 // Nothing here holds a key or talks to the network.
 import { base58Decode, base58Encode, sha256 } from '../pack/bytes.ts';
 
@@ -18,7 +19,7 @@ export const USDC_MINT: Record<UsdcCluster, string> = {
   'mainnet-beta': 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
 };
 export const USDC_DECIMALS = 6;
-/** Public RPC endpoints: the default for the server (override with SHIELD_USDC_RPC_URL) and what the browser uses. */
+/** Public RPC endpoints: the server's default (override with SHIELD_USDC_RPC_URL). The browser never calls an RPC: mainnet's answers 403 to a browser Origin. */
 export const PUBLIC_RPC: Record<UsdcCluster, string> = { devnet: 'https://api.devnet.solana.com', 'mainnet-beta': 'https://api.mainnet-beta.solana.com' };
 
 // ---------- ed25519 "is this 32-byte string a curve point" ----------
