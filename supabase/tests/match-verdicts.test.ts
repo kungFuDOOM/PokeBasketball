@@ -19,6 +19,20 @@ const record = (t: Db, args: unknown[]) =>
   t.service('select public.pokejam_record_verdict($1, $2, $3, $4, $5, $6, $7, $8) as r', args).then((rows) => rows[0].r as Record<string, unknown>);
 
 describe('pokejam_match_verdicts', () => {
+  it('stores the last frames, and a caller still on the 8-argument form leaves them null', async () => {
+    const t = await testDb();
+    const { mid, host } = await rankedMatch(t);
+    await record(t, [mid, 'final', 0, null, 3, 1, 5000, 'old form']);
+    expect(await t.sql('select last_frame_host, last_frame_guest from public.pokejam_match_verdicts')).toEqual([{ last_frame_host: null, last_frame_guest: null }]);
+    const call = 'select public.pokejam_record_verdict($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) as r';
+    const [{ r }] = await t.service(call, [mid, 'incomplete', 0, null, 3, 1, 900, 'guest stopped', 950, 610]);
+    expect(r).toMatchObject({ status: 'incomplete', last_frame_host: 950, last_frame_guest: 610 });
+    await expect(t.service(call, [mid, 'final', 0, null, 3, 1, 900, 'x', -1, 0])).rejects.toThrow(/check constraint/);
+    for (const run of [host.sql, t.as('anon', null)]) {
+      await expect(run(call, [mid, 'invalid', null, null, 0, 0, 0, 'x', 0, 0])).rejects.toThrow(/permission denied/);
+    }
+  });
+
   it('players and anon cannot read, write or record verdicts', async () => {
     const t = await testDb();
     const { mid, host } = await rankedMatch(t);

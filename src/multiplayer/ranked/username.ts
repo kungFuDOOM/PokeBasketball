@@ -6,8 +6,7 @@ import data from './nameFilterData.json';
 
 export const NAME_MIN = 3;
 export const NAME_MAX = 16;
-/** What a player without a username is called on screens that name players. */
-export const FALLBACK_NAME = 'Player';
+export { FALLBACK_NAME, displayName } from '../../nameFilter';
 
 export type NameError = 'length' | 'charset' | 'reserved' | 'impersonation' | 'profanity';
 export type ServerNameError = NameError | 'taken' | 'cooldown' | 'signin' | 'required';
@@ -98,5 +97,3 @@ export function serverNameError(message: string): string | null {
   return MESSAGES[code];
 }
 
-/** The name to show for a player: their username, or "Player". */
-export const displayName = (name: string | null | undefined): string => (name && name.trim() !== '' ? name : FALLBACK_NAME);

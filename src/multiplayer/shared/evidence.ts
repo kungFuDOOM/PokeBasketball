@@ -119,16 +119,16 @@ export async function unpack(s: string, maxBytes = Infinity): Promise<Evidence> 
 }
 
 /**
- * Both players' uploads as one: their signed inputs (and applied logs) together, the setup and lockstep settings
- * from the first, and the keys registered on the match row, so an uploader can't pick the keys they're judged by.
+ * Both players' uploads as one: their signed inputs (and applied logs) together, under the server's keys and setup
+ * and lockstep's fixed warm-up. An uploader can't pick the keys, the teams, the seed or the warm-up they're judged by.
  */
-export function mergeEvidence(a: Evidence, b: Evidence | null | undefined, keys: MatchKeys): Evidence {
+export function mergeEvidence(a: Evidence, b: Evidence | null | undefined, keys: MatchKeys, setup: MatchSetup): Evidence {
   const list = <T>(x: T[] | undefined): T[] => (Array.isArray(x) ? x : []);
   return {
-    setup: a.setup,
+    setup,
     keys,
     inputs: [...list(a.inputs), ...list(b?.inputs)],
     applied: [...list(a.applied), ...list(b?.applied)],
-    ...(a.lockstep ? { lockstep: a.lockstep } : {}),
+    lockstep: { emptyTicks: MIN_DELAY },
   };
 }
