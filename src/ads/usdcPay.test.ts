@@ -3,7 +3,7 @@ import { base58Decode, base58Encode, base64Encode } from '../../supabase/functio
 import { USDC_MINT, USDC_RECEIVER, buildUsdcTransfer, deriveAta } from '../../supabase/functions/_shared/ads/usdc-chain.ts';
 import { adsUrl } from './api';
 import {
-  UsdcPayError, checkTransfer, parseUsdcIntent, pollUsdcConfirm, usd,
+  UsdcPayError, checkTransfer, parseUsdcIntent, usd,
 } from './usdcPay';
 
 /** Where `needle` first appears in `hay`, or -1. */
@@ -117,26 +117,6 @@ describe('checkTransfer (the page checks the transaction before the wallet signs
   it('refuses the devnet mint on a mainnet intent', async () => {
     const intent = parseUsdcIntent(await serverReply({ mint: USDC_MINT.devnet }));
     await expect(checkTransfer(intent, { payer: PAYER })).rejects.toThrow(/not USDC/);
-  });
-});
-
-describe('pollUsdcConfirm', () => {
-  it('waits until paid', async () => {
-    const answers = [{ status: 'pending' as const }, { status: 'open' as const }, { status: 'paid' as const }];
-    let n = 0;
-    const r = await pollUsdcConfirm(async () => answers[n++], { sleep: async () => {}, intervalMs: 1 });
-    expect(r).toEqual({ status: 'paid' });
-    expect(n).toBe(3);
-  });
-
-  it('gives up after the timeout', async () => {
-    let t = 0;
-    const r = await pollUsdcConfirm(async () => ({ status: 'pending' as const }), { sleep: async (ms) => { t += ms; }, now: () => t, intervalMs: 1000, timeoutMs: 3000 });
-    expect(r).toBe('timeout');
-  });
-
-  it('stops on a refusal', async () => {
-    await expect(pollUsdcConfirm(async () => { throw new Error('That transaction already paid for another ad.'); })).rejects.toThrow(/already paid/);
   });
 });
 

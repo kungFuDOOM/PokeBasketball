@@ -382,6 +382,42 @@ describe('telling the advertiser the truth when nothing was burned', () => {
     expect(t.balances.get(MY_ACCOUNT)).toBe(10n * DAY);
   });
 
+  it('a retry refused because the first copy landed is not "nothing burned"', async () => {
+    const t = await setup({ strictBurn: { commitment: 'finalized', decimals: 6 } });
+    const p = await t.prepare();
+    const signed = await t.sign(p.body.tx);
+    const sig = base58Encode(parseTransaction(base64Decode(signed)).signatures[0]);
+    t.sw.notFinal.add(sig);
+    expect((await t.call({ action: 'confirm', id: p.body.booking.id, tx: signed })).body).toMatchObject({ landing: true, booking: { state: 'pending' } });
+    // The answer was lost, so the page sends the same bytes again, and the node won't take a copy of a landed transaction.
+    for (const refusal of ['This transaction has already been processed', 'Transaction simulation failed: Error processing Instruction 0: insufficient funds']) {
+      t.sw.refuse = refusal;
+      const again = await t.call({ action: 'confirm', id: p.body.booking.id, tx: signed });
+      expect(again.status).toBe(200);
+      expect(again.body).toMatchObject({ landing: true, booking: { state: 'pending' } });
+      expect(again.body.notBurned).toBeUndefined();
+    }
+    t.sw.notFinal.delete(sig);
+    expect((await t.call({ action: 'confirm', id: p.body.booking.id, tx: signed })).body.booking).toMatchObject({ state: 'paid', burn_sig: sig });
+    // And once it's paid, the same bytes again are answered without another send, and don't buy a second run.
+    expect((await t.call({ action: 'confirm', id: p.body.booking.id, tx: signed })).body.booking).toMatchObject({ state: 'paid', burn_sig: sig });
+    expect(await t.db.sql('select count(*)::int as n from public.pokejam_ads where burn_sig is not null')).toEqual([{ n: 1 }]);
+  });
+
+  it('a transient RPC failure answers without a booking, so the page keeps the burn and asks again', async () => {
+    const t = await setup();
+    const p = await t.prepare();
+    const signed = await t.sign(p.body.tx);
+    const sig = base58Encode(parseTransaction(base64Decode(signed)).signatures[0]);
+    const call = t.rpc.call.bind(t.rpc);
+    t.rpc.call = (async () => { throw new Error('RPC getTransaction: HTTP 503'); }) as typeof t.rpc.call;
+    const down = await t.call({ action: 'confirm', id: p.body.booking.id, signature: sig });
+    expect(down.status).toBe(502);
+    expect(down.body.booking).toBeUndefined();
+    t.rpc.call = call;
+    expect((await t.call({ action: 'confirm', id: p.body.booking.id, tx: signed })).body.booking.state).toBe('paid');
+  });
+
   it('it never lands before its blockhash expires: nothing burned, and it says so', async () => {
     const t = await setup();
     const p = await t.prepare();

@@ -4,6 +4,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { adsApiOrigin, csp } from '../vite.config';
+import { adsUrl } from './ads/api';
 
 const SUPA = 'https://ksvfgxodbwfntqnahukn.supabase.co';
 const directive = (policy: string, name: string) => policy.split('; ').find((d) => d.startsWith(`${name} `)) ?? '';
@@ -36,6 +37,46 @@ describe('site CSP with live ads', () => {
   it('fails the build on a non-https or malformed VITE_ADS_API', () => {
     expect(() => adsApiOrigin('http://localhost:54321/functions/v1/pokejam-ads-live', SUPA)).toThrow(/https/);
     expect(() => adsApiOrigin('not a url', SUPA)).toThrow(/valid URL/);
+  });
+
+  it('allows every origin the ad flow fetches, however the endpoint is set up', () => {
+    const allowed = (policy: string, url: string) => directive(policy, 'connect-src').split(' ').slice(1).includes(new URL(url).origin);
+    const onProject = adsUrl({ VITE_SUPABASE_URL: SUPA });
+    expect(allowed(csp(SUPA, false, true), onProject)).toBe(true);
+    expect(allowed(csp(SUPA, false, false), onProject)).toBe(true); // admin.html's policy, without analytics
+    const elsewhere = 'https://ads.example.com/functions/v1/pokejam-ads-live';
+    expect(allowed(csp(SUPA, false, true, elsewhere), adsUrl({ VITE_ADS_API: elsewhere, VITE_SUPABASE_URL: SUPA }))).toBe(true);
+    expect(allowed(csp(SUPA, false, true), elsewhere)).toBe(false); // the check itself can fail
+  });
+
+  it('allows the wallet icons the page draws (the Wallet Standard makes them data: URIs)', () => {
+    expect(directive(csp(SUPA, false, true), 'img-src').split(' ')).toContain('data:');
+  });
+
+  describe('the ad client never calls Solana from the browser', () => {
+    // The ad page's own code, as text, plus the shared file it imports to rebuild a USDC transfer.
+    const sources = import.meta.glob(['./ads/*.ts', '!./ads/*.test.ts', '../supabase/functions/_shared/ads/usdc-chain.ts'], { query: '?raw', import: 'default', eager: true }) as Record<string, string>;
+    const code = (f: string) => sources[f].replace(/^\s*(\/\/|\*|\/\*).*$/gm, '');
+
+    it('finds the files it means to check', () => {
+      for (const f of ['api', 'screen', 'settle', 'usdcPay', 'wallet']) expect(Object.keys(sources)).toContain(`./ads/${f}.ts`);
+    });
+
+    it('names no RPC method, RPC host or RPC client', () => {
+      const rpc = /getLatestBlockhash|getAccountInfo|getBalance|getTransaction|getSignature|getTokenAccount|sendRawTransaction|\bsendTransaction\b|simulateTransaction|isBlockhashValid|confirmTransaction|jsonrpc|PUBLIC_RPC|new Connection|@solana\/web3|pack\/rpc|\.solana\.com|helius|quicknode|alchemy/i;
+      expect(Object.keys(sources).filter((f) => rpc.test(code(f)))).toEqual([]);
+    });
+
+    it('fetches only the ad endpoint', () => {
+      const fetches = Object.keys(sources).flatMap((f) => [...code(f).matchAll(/\bfetch\(\s*([^,)]+)/g)].map((m) => m[1].trim()));
+      expect(new Set(fetches)).toEqual(new Set(['URL_', '`${URL_}?action=board`']));
+      expect(Object.keys(sources).filter((f) => /XMLHttpRequest|WebSocket|EventSource|sendBeacon/.test(code(f)))).toEqual([]);
+    });
+
+    it('leaves the site only by links: every other host is a page you open, not one it calls', () => {
+      const hosts = new Set(Object.keys(sources).flatMap((f) => [...code(f).matchAll(/https?:\/\/([a-z0-9.-]+)/gi)].map((m) => m[1])));
+      expect([...hosts].sort()).toEqual(['phantom.app', 'solflare.com', 'solscan.io', 't.me', 'x.com']);
+    });
   });
 
   it('index.html and admin.html carry no inline scripts', () => {

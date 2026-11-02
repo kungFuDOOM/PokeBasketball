@@ -16,18 +16,23 @@ import { esc } from '../util';
 import { ADS_CONFIGURED, AdsError, adsApi, explorer, replaceMessage, shortTokens, tokens, type Board, type Booking, type Quote } from './api';
 import { applyBoard } from './board';
 import { DM_CONTACTS, DM_ONLY, isPlan, offers, pickPlan, savePercent, type PayMethod, type Plan } from './plans';
-import { UsdcPayError, checkTransfer, parseUsdcIntent, pollUsdcConfirm, usd } from './usdcPay';
+import { heldBy, readPending, relaying, settleBurn, settleUsdc, type PendingPay, type PollOptions, type Settled } from './settle';
+import { UsdcPayError, checkTransfer, parseUsdcIntent, usd } from './usdcPay';
 import { connect, mobileWalletLinks, shortAddress, stopWatching, wallets, type Connected } from './wallet';
 
 const PENDING_KEY = 'pokejam.adPending';
-/** USDC intents signed but not yet confirmed (the server finds the payment by the intent's reference key). */
+/** USDC intents signed but not yet confirmed (by signature, or the server finds the payment by the intent's reference key). */
 const USDC_PENDING_KEY = 'pokejam.adUsdcPending';
 const WALLET_KEY = 'pokejam.adWallet';
 const DRAFT_KEY = 'pokejam.adDraft';
+/** What localStorage wouldn't take (private mode, or full): kept for as long as this page is open. */
+const unsaved = new Map<string, string>();
 const store = {
-  get: (k: string) => { try { return localStorage.getItem(k) ?? ''; } catch { return ''; } },
-  set: (k: string, v: string) => { try { localStorage.setItem(k, v); } catch { /* private mode */ } },
+  get: (k: string) => { if (unsaved.has(k)) return unsaved.get(k)!; try { return localStorage.getItem(k) ?? ''; } catch { return ''; } },
+  set: (k: string, v: string) => { try { localStorage.setItem(k, v); unsaved.delete(k); } catch { unsaved.set(k, v); } },
 };
+/** How often the page looks again at a payment it's holding, with nothing else going on. */
+const RECHECK_MS = 15_000;
 
 /** Courts to preview the ad on (each has its own board colour and text). */
 const PREVIEW_COURTS = ['Pallet Town', 'Cerulean Cascades', 'Vermilion Thunder', 'Indigo Elite'];
@@ -100,6 +105,7 @@ export function openAdvertise(root: HTMLElement, back: () => void) {
   let quoteTimer = 0;
   let checkTimer = 0;
   let mineTimer = 0;
+  let recheckTimer = 0;
   /** USDC can be picked only when the server offers it. */
   const usdcOffered = () => !!s.board?.usdcPay && offers(s.board.plans, 'usdc').length > 0;
   const payWith = (): PayMethod => (s.pay === 'usdc' && usdcOffered() ? 'usdc' : 'burn');
@@ -185,6 +191,7 @@ export function openAdvertise(root: HTMLElement, back: () => void) {
 
   function leave() {
     alive = false;
+    clearTimeout(recheckTimer);
     cancelAnimationFrame(raf);
     stopWatching(onWallets);
   }
@@ -446,7 +453,7 @@ export function openAdvertise(root: HTMLElement, back: () => void) {
     const textOk = adTextOk(s.text);
     const short = s.wallet && s.balance !== null && price !== null && s.balance < price;
     const noSol = s.wallet && s.lamports !== null && s.lamports < 20_000;
-    const can = !!(b && !b.paused && qp?.price && textOk && s.verdict?.ok && s.wallet && !short && !noSol && !s.busy);
+    const can = !!(b && !b.paused && qp?.price && textOk && s.verdict?.ok && s.wallet && !short && !noSol && !s.busy && !held().length);
     const steps = ['Booking', `Approve in ${s.wallet?.name ?? 'your wallet'}`, 'Burning on Solana', 'On the board'];
     el.innerHTML = `
       <h2>Checkout</h2>
@@ -467,8 +474,16 @@ export function openAdvertise(root: HTMLElement, back: () => void) {
       <button class="btn primary big ad-go" data-a="burn"${can ? '' : ' disabled'}>${s.busy ? 'Working…' : price !== null ? `Burn ${tokens(price, dec)} $PJAM` : 'Burn $PJAM'}</button>
       ${s.step ? `<ol class="ad-steps">${steps.map((x, i) => `<li class="${i + 1 < s.step ? 'done' : i + 1 === s.step ? 'on' : ''}">${esc(x)}</li>`).join('')}</ol>` : ''}
       ${s.error ? `<p class="ad-err">${esc(s.error)}</p>` : ''}
+      ${heldHtml()}
       <p class="ad-fineprint">Burning is permanent. Your wallet shows exactly what you sign: one burn of ${price !== null ? tokens(price, dec) : 'the price'} $PJAM from your own account, and a memo naming this booking.</p>`;
     bindCheckout();
+  }
+
+  /** Why the pay button is off while a signed payment is unsettled, and the way to ask again. */
+  function heldHtml(): string {
+    if (!held().length) return '';
+    return `<div class="ad-held"><p class="ad-warn">Your last payment isn't confirmed yet, so paying again is off until it is. Paying twice would charge you twice.</p>
+      <button class="btn" data-a="recheck"${s.busy ? ' disabled' : ''}>${s.busy ? 'Checking…' : 'Check my payment again'}</button></div>`;
   }
 
   function renderUsdcCheckout(el: HTMLElement) {
@@ -478,7 +493,7 @@ export function openAdvertise(root: HTMLElement, back: () => void) {
     const price = q?.usdc ? BigInt(q.usdc) : boardPrice('usdc', s.usdcPlan);
     const textOk = adTextOk(s.text);
     const noSol = s.wallet && s.lamports !== null && s.lamports < 20_000;
-    const can = !!(b && !b.paused && q?.usdc && textOk && s.verdict?.ok && s.wallet && !noSol && !s.busy);
+    const can = !!(b && !b.paused && q?.usdc && textOk && s.verdict?.ok && s.wallet && !noSol && !s.busy && !held().length);
     const steps = ['Booking', `Approve in ${s.wallet?.name ?? 'your wallet'}`, 'Confirming on Solana', 'On the board'];
     const to = b?.usdcPay ? shortAddress(b.usdcPay.receiver) : 'us';
     el.innerHTML = `
@@ -499,6 +514,7 @@ export function openAdvertise(root: HTMLElement, back: () => void) {
       <button class="btn primary big ad-go" data-a="usdc"${can ? '' : ' disabled'}>${s.busy ? 'Working…' : price !== null ? `Pay ${usd(price, dec)} USDC` : 'Pay in USDC'}</button>
       ${s.step ? `<ol class="ad-steps">${steps.map((x, i) => `<li class="${i + 1 < s.step ? 'done' : i + 1 === s.step ? 'on' : ''}">${esc(x)}</li>`).join('')}</ol>` : ''}
       ${s.error ? `<p class="ad-err">${esc(s.error)}</p>` : ''}
+      ${heldHtml()}
       <p class="ad-fineprint">Payments are final (no refunds unless the law requires it). Your wallet shows exactly what you sign: one transfer of ${price !== null ? usd(price, dec) : 'the price'} USDC from your own account to ${esc(to)}'s USDC account, and a memo naming this booking. The page checks the transfer before your wallet sees it.</p>`;
     bindCheckout();
   }
@@ -517,16 +533,95 @@ export function openAdvertise(root: HTMLElement, back: () => void) {
     });
     el.querySelector('[data-a="burn"]')?.addEventListener('click', () => void burn());
     el.querySelector('[data-a="usdc"]')?.addEventListener('click', () => void payUsdc());
+    el.querySelector('[data-a="recheck"]')?.addEventListener('click', () => void recheck());
     el.querySelector('[data-a="another"]')?.addEventListener('click', () => { s.done = null; s.step = 0; renderCheckout(); requote(); });
   }
 
-  const pending = (): { id: string; at: number }[] => {
-    try { return (JSON.parse(store.get(PENDING_KEY) || '[]') as { id: string; at: number }[]).filter((p) => Date.now() - p.at < 86_400_000); } catch { return []; }
-  };
-  const setPending = (list: { id: string; at: number }[]) => store.set(PENDING_KEY, JSON.stringify(list.slice(-10)));
+  const pending = (): PendingPay[] => readPending(store.get(PENDING_KEY));
+  const setPending = (list: PendingPay[]) => store.set(PENDING_KEY, JSON.stringify(list.slice(-10)));
+  const dropPending = (id: string) => setPending(pending().filter((p) => p.id !== id));
+  /** Signed payments this wallet is still waiting on. */
+  const held = () => [...pending(), ...usdcPending()].filter((p) => heldBy(p, s.wallet?.address));
+
+  /** What the page says about a payment that isn't settled. */
+  const NOT_YET = (what: string) => `Your ${what} isn't confirmed yet. It's saved, so don't pay again: your ad goes up as soon as it lands, even if you close this page.`;
+  /** Says who to ask, when a refusal doesn't rule out that the money moved. */
+  const refusal = (r: Extract<Settled, { kind: 'refused' }>, what: string) =>
+    r.sent ? `${r.message.replace(/\.$/, '')}. If ${what} left your wallet, message ${DM_CONTACTS[0].label} with your wallet address.` : r.message;
+
+  /**
+   * Applies an answer: the record goes unless it's still waiting. Returns whether it went. `quiet`: a look in the background,
+   * which doesn't take over the page if something else is going on.
+   */
+  function apply(r: Settled, drop: () => void, what: { name: string; asset: string }, quiet = false): boolean {
+    const free = !quiet || !s.busy;
+    if (r.kind === 'waiting') {
+      if (!quiet) s.error = NOT_YET(what.name);
+      return false;
+    }
+    drop();
+    if (r.kind === 'refused') {
+      if (free) { s.error = refusal(r, what.asset); s.step = 0; }
+    } else if (free && (!quiet || !s.done)) {
+      s.step = 4;
+      if (r.booking) s.done = r.booking;
+    }
+    return true;
+  }
+  const BURN = { name: 'burn', asset: '$PJAM' };
+  const USDC = { name: 'payment', asset: 'USDC' };
+
+  /** Everything that changes once a payment settles. */
+  function afterPaid() {
+    void refreshBalance();
+    void loadBoard();
+    void loadMine();
+  }
+
+  /**
+   * Asks about every unsettled payment. `quiet`: one look each, on opening the page and every RECHECK_MS after that, which
+   * touches the page only if an answer came; otherwise the page shows it's checking, for up to two minutes each.
+   */
+  async function settleAll(quiet: boolean) {
+    const look: PollOptions = quiet ? { timeoutMs: 0, stop: () => !alive } : { stop: () => !alive };
+    let changed = false;
+    for (const p of usdcPending()) {
+      if (apply(await settleUsdc(relaying({ signature: p.signature }, (proof) => adsApi.usdcConfirm(p.id, proof)), look), () => dropUsdcPending(p.id), USDC, quiet)) changed = true;
+      else if (!quiet) break;
+    }
+    for (const p of pending()) {
+      if (apply(await settleBurn(relaying({ signature: p.signature }, (proof) => adsApi.confirm(p.id, proof)), look), () => dropPending(p.id), BURN, quiet)) changed = true;
+      else if (!quiet) break;
+    }
+    if (changed) afterPaid();
+    return changed;
+  }
+
+  /** The button: ask now, and show it. */
+  async function recheck() {
+    if (s.busy) return;
+    s.busy = true;
+    s.error = '';
+    s.step = 3;
+    renderCheckout();
+    await settleAll(false).catch(() => false);
+    s.busy = false;
+    if (alive) renderCheckout();
+  }
+
+  /** While anything is unsettled, keep looking in the background. */
+  function scheduleRecheck() {
+    clearTimeout(recheckTimer);
+    if (!alive || (!pending().length && !usdcPending().length)) return;
+    recheckTimer = window.setTimeout(() => void (async () => {
+      if (!s.busy && (await settleAll(true).catch(() => false)) && alive && !s.busy) renderCheckout();
+      scheduleRecheck();
+    })(), RECHECK_MS);
+  }
 
   async function burn() {
     if (!s.wallet || s.busy || !s.board) return;
+    if (held().length) return recheck(); // sent from another tab since this page drew: never pay twice
     s.busy = true;
     s.error = '';
     s.step = 1;
@@ -547,46 +642,32 @@ export function openAdvertise(root: HTMLElement, back: () => void) {
       s.step = 2;
       renderCheckout();
       // Nothing is burned unless the wallet signs: a refusal here costs nothing.
+      const wallet = s.wallet.address;
       const proof = await s.wallet.sign(prep.tx, prep.cluster);
-      setPending([...pending(), { id, at: Date.now() }]);
+      // From here the burn may be on its way: this record stays until the server gives an answer that asking again can't change.
+      const rec: PendingPay = { id, at: Date.now(), wallet, ...(proof.signature ? { signature: proof.signature } : {}) };
+      setPending([...pending(), rec]);
       s.step = 3;
       renderCheckout();
-      let r = await adsApi.confirm(id, proof);
-      for (let i = 0; r.booking.state === 'pending' && r.landing && i < 8; i++) {
-        await new Promise((res) => setTimeout(res, 3000));
-        r = await adsApi.confirm(id, proof.signature ? { signature: proof.signature } : {});
-      }
-      if (r.booking.state === 'pending') {
-        if (r.expired || r.notBurned) {
-          setPending(pending().filter((p) => p.id !== id));
-          throw new AdsError(r.error ?? "Your burn didn't go through, so nothing was burned. Try again.");
-        }
-        if (r.error) throw new AdsError(r.error);
-        throw new AdsError("Your burn is still confirming on Solana. It's saved: your ad goes up as soon as it lands, even if you close this page.");
-      }
-      setPending(pending().filter((p) => p.id !== id));
-      s.step = 4;
-      s.done = r.booking;
-      await refreshBalance();
-      void loadBoard();
-      void loadMine();
+      const r = await settleBurn(relaying(proof, (p) => adsApi.confirm(id, p)), { stop: () => !alive });
+      if (apply(r, () => dropPending(id), BURN) && r.kind === 'paid') afterPaid();
     } catch (e) {
       s.error = friendly(e);
       if (s.step < 3) s.step = 0;
     }
     s.busy = false;
     if (alive) renderCheckout();
+    scheduleRecheck();
   }
 
   // ---------- paying in USDC ----------
-  const usdcPending = (): { id: string; at: number }[] => {
-    try { return (JSON.parse(store.get(USDC_PENDING_KEY) || '[]') as { id: string; at: number }[]).filter((p) => Date.now() - p.at < 86_400_000); } catch { return []; }
-  };
-  const setUsdcPending = (list: { id: string; at: number }[]) => store.set(USDC_PENDING_KEY, JSON.stringify(list.slice(-10)));
+  const usdcPending = (): PendingPay[] => readPending(store.get(USDC_PENDING_KEY));
+  const setUsdcPending = (list: PendingPay[]) => store.set(USDC_PENDING_KEY, JSON.stringify(list.slice(-10)));
   const dropUsdcPending = (id: string) => setUsdcPending(usdcPending().filter((p) => p.id !== id));
 
   async function payUsdc() {
     if (!s.wallet || s.busy || !s.board) return;
+    if (held().length) return recheck(); // sent from another tab since this page drew: never pay twice
     const plan = s.usdcPlan;
     s.busy = true;
     s.error = '';
@@ -610,34 +691,22 @@ export function openAdvertise(root: HTMLElement, back: () => void) {
       s.step = 2;
       renderCheckout();
       // Nothing moves unless the wallet signs: a refusal here costs nothing.
+      const wallet = s.wallet.address;
       const proof = await s.wallet.sign(intent.tx, intent.cluster);
-      setUsdcPending([...usdcPending(), { id, at: Date.now() }]);
+      // From here the USDC may be on its way: this record stays until the server gives an answer that asking again can't change.
+      const rec: PendingPay = { id, at: Date.now(), wallet, ...(proof.signature ? { signature: proof.signature } : {}) };
+      setUsdcPending([...usdcPending(), rec]);
       s.step = 3;
       renderCheckout();
-      let first = true;
-      const r = await pollUsdcConfirm(async () => {
-        // Send the signed transaction (or its signature) once; after that, the signature or the reference key finds it.
-        const p = first ? proof : proof.signature ? { signature: proof.signature } : {};
-        first = false;
-        return adsApi.usdcConfirm(id, p);
-      }, { stop: () => !alive });
-      if (r === 'timeout') {
-        throw new AdsError("Your payment is still confirming on Solana. It's saved: your ad goes up as soon as it lands, even if you close this page.");
-      }
-      dropUsdcPending(id);
-      s.step = 4;
-      if (r.ad) s.done = r.ad;
-      void refreshBalance();
-      void loadBoard();
-      void loadMine();
+      const r = await settleUsdc(relaying(proof, (p) => adsApi.usdcConfirm(id, p)), { stop: () => !alive });
+      if (apply(r, () => dropUsdcPending(id), USDC) && r.kind === 'paid') afterPaid();
     } catch (e) {
-      // Definitely not paid (refused, expired unseen, or failed on-chain): no need to keep looking for it.
-      if (id && e instanceof AdsError && (e.info.expired || e.info.notPaid || e.info.code === 'signature_used' || e.info.code === 'intent_done')) dropUsdcPending(id);
       s.error = e instanceof UsdcPayError ? e.message : friendly(e);
       if (s.step < 3) s.step = 0;
     }
     s.busy = false;
     if (alive) renderCheckout();
+    scheduleRecheck();
   }
 
   // ---------- your ads ----------
@@ -713,27 +782,8 @@ export function openAdvertise(root: HTMLElement, back: () => void) {
 
   // A burn or a USDC payment whose page closed before it was confirmed is picked up here.
   async function resume() {
-    for (const p of usdcPending()) {
-      try {
-        // No signature: the server looks the payment up by the intent's reference key.
-        const r = await adsApi.usdcConfirm(p.id);
-        if (r.status === 'paid') {
-          dropUsdcPending(p.id);
-          if (r.ad && alive && !s.done) { s.done = r.ad; renderCheckout(); }
-        }
-      } catch (e) {
-        if (e instanceof AdsError && (e.info.code === 'no_intent' || e.info.code === 'settings_changed')) dropUsdcPending(p.id);
-      }
-    }
-    for (const p of pending()) {
-      try {
-        const r = await adsApi.confirm(p.id);
-        if (r.booking.state !== 'pending' || Date.now() - p.at > 86_400_000) {
-          setPending(pending().filter((x) => x.id !== p.id));
-          if (r.booking.state === 'paid' && alive) { s.done = r.booking; renderCheckout(); }
-        }
-      } catch { /* try again next visit */ }
-    }
+    if ((await settleAll(true).catch(() => false)) && alive && !s.busy) renderCheckout();
+    scheduleRecheck();
   }
 
   // ---------- board, calendar, live ads ----------

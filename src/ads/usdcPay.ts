@@ -85,25 +85,3 @@ export async function checkTransfer(intent: UsdcIntentReply, o: { payer: string;
   if (!same(theirs, built.transaction)) throw bad('the transaction differs');
   return { destination: built.destination };
 }
-
-/** usdc-confirm's answer. */
-export interface UsdcConfirmReply { status: 'paid' | 'pending' | 'open'; duplicate?: boolean }
-
-/**
- * Asks the server to confirm until it says 'paid' (resolves with that answer) or the time runs out ('timeout'). A refusal
- * (confirm throws) ends the wait. The same intent can be confirmed again at any time: the database books it once.
- */
-export async function pollUsdcConfirm<R extends UsdcConfirmReply>(confirm: () => Promise<R>, o: {
-  intervalMs?: number; timeoutMs?: number; sleep?: (ms: number) => Promise<void>; now?: () => number; stop?: () => boolean;
-} = {}): Promise<R | 'timeout'> {
-  const interval = o.intervalMs ?? 3000;
-  const sleep = o.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
-  const now = o.now ?? Date.now;
-  const end = now() + (o.timeoutMs ?? 120_000);
-  for (;;) {
-    const a = await confirm();
-    if (a.status === 'paid') return a;
-    if (o.stop?.() || now() + interval > end) return 'timeout';
-    await sleep(interval);
-  }
-}

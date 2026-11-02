@@ -189,7 +189,8 @@ async function chain(payer: string) {
   const finalized = new Set<string>();
   const byAddress = new Map<string, string[]>();
   // noMemos: a node that leaves the memo out of signature listings (the sweep's second pass must still find payments).
-  const sw = { lamports: 1_000_000_000, hold: false, noMemos: false };
+  // refuse: what a node says to sendTransaction. drop: sent, and never lands.
+  const sw = { lamports: 1_000_000_000, hold: false, noMemos: false, refuse: '', drop: false };
   const index = (sig: string, tx: ChainTx) => {
     for (const k of tx.transaction?.message?.accountKeys ?? []) {
       const a = typeof k === 'string' ? k : k.pubkey;
@@ -254,7 +255,10 @@ async function chain(payer: string) {
       }
     },
     latestBlockhash: async () => base58Encode(randomBytes(32)),
-    send: async (b64: string) => land(b64),
+    send: async (b64: string) => {
+      if (sw.refuse) throw new Error(`RPC sendTransaction: ${sw.refuse}`);
+      return sw.drop ? base58Encode(parseTransaction(base64Decode(b64)).signatures[0]) : land(b64);
+    },
     signatureStatus: async (sig: string) => (txs.has(sig) ? 'confirmed' : null),
     blockhashValid: async () => true,
   };
@@ -365,6 +369,111 @@ describe('usdc-intent and usdc-confirm through pokejam-ads-live', () => {
     expect((await t.post({ action: 'usdc-confirm', id: i.body.intent.id })).status).toBe(202);
     await t.ch.rpc.send(await t.sign(i.body.tx));
     expect((await t.post({ action: 'usdc-confirm', id: i.body.intent.id })).body).toMatchObject({ status: 'paid' });
+  });
+
+  describe('a confirm can always be retried', () => {
+    const adCount = async (t: Awaited<ReturnType<typeof setup>>) => t.db.sql('select count(*)::int as n from public.pokejam_live_ads');
+    const sigOf = (signed: string) => base58Encode(parseTransaction(base64Decode(signed)).signatures[0]);
+
+    it('a retry refused because the first copy landed is not "no USDC was sent", and books once', async () => {
+      const t = await setup();
+      const i = await t.intent();
+      const signed = await t.sign(i.body.tx);
+      t.ch.sw.hold = true;
+      expect((await t.post({ action: 'usdc-confirm', id: i.body.intent.id, tx: signed })).status).toBe(202);
+      // The answer was lost, so the page sends the same bytes again, and the node won't take a copy of a landed transaction.
+      for (const refusal of ['This transaction has already been processed', 'Transaction simulation failed: Error processing Instruction 0: insufficient funds']) {
+        t.ch.sw.refuse = refusal;
+        const again = await t.post({ action: 'usdc-confirm', id: i.body.intent.id, tx: signed });
+        expect(again.status).toBe(202);
+        expect(again.body.notPaid).toBeUndefined();
+      }
+      t.ch.finalized.add(sigOf(signed));
+      expect((await t.post({ action: 'usdc-confirm', id: i.body.intent.id, tx: signed })).body).toMatchObject({ status: 'paid', duplicate: false });
+      expect((await t.post({ action: 'usdc-confirm', id: i.body.intent.id, tx: signed })).body).toMatchObject({ status: 'paid', duplicate: true });
+      expect(await adCount(t)).toEqual([{ n: 1 }]);
+    });
+
+    it('still says no USDC was sent when a node refuses a transaction the chain has never seen', async () => {
+      const t = await setup();
+      const i = await t.intent();
+      t.ch.sw.refuse = 'Transaction simulation failed: Error processing Instruction 0: insufficient funds';
+      const r = await t.post({ action: 'usdc-confirm', id: i.body.intent.id, tx: await t.sign(i.body.tx) });
+      expect(r).toMatchObject({ status: 400, body: { notPaid: true } });
+      expect(await adCount(t)).toEqual([{ n: 0 }]);
+    });
+
+    it('an unknown answer to the status lookup never becomes "no USDC was sent"', async () => {
+      const t = await setup();
+      const i = await t.intent();
+      t.ch.sw.hold = true;
+      t.ch.sw.refuse = 'Node is behind';
+      t.ch.rpc.signatureStatus = async () => { throw new Error('RPC getSignatureStatuses: HTTP 503'); };
+      const r = await t.post({ action: 'usdc-confirm', id: i.body.intent.id, tx: await t.sign(i.body.tx) });
+      expect(r.status).toBe(202);
+      expect(r.body.notPaid).toBeUndefined();
+    });
+
+    it('an RPC outage is a retryable 502, then the same signature books', async () => {
+      const t = await setup();
+      const i = await t.intent();
+      const signed = await t.sign(i.body.tx);
+      await t.ch.rpc.send(signed);
+      const call = t.ch.rpc.call.bind(t.ch.rpc);
+      t.ch.rpc.call = (async () => { throw new Error('RPC getTransaction: HTTP 503'); }) as typeof t.ch.rpc.call;
+      expect(await t.post({ action: 'usdc-confirm', id: i.body.intent.id, signature: sigOf(signed) })).toMatchObject({ status: 502, body: { code: 'rpc' } });
+      t.ch.rpc.call = call;
+      expect((await t.post({ action: 'usdc-confirm', id: i.body.intent.id, signature: sigOf(signed) })).body).toMatchObject({ status: 'paid' });
+      expect(await adCount(t)).toEqual([{ n: 1 }]);
+    });
+
+    it('a database failure reading the intent is a retryable 502, never "no such booking"', async () => {
+      const t = await setup();
+      const i = await t.intent();
+      const res = await adsHandler(new Request('https://x/', { method: 'POST', body: JSON.stringify({ action: 'usdc-confirm', id: i.body.intent.id }) }),
+        adsConfigLive((k) => ({ ADS_ALLOW_MAINNET: 'true', SUPABASE_SERVICE_ROLE_KEY: 'svc' } as Record<string, string>)[k]),
+        { db: async (fn) => { if (/allow/.test(fn)) return true as never; throw new Error('database is down'); }, rpc: t.ch.rpc, sleep: async () => {} });
+      expect(res.status).toBe(502);
+      expect(((await res.json()) as { code?: string }).code).toBeUndefined();
+    });
+
+    it('a wallet-sent payment that never lands is called expired once the intent is, so the page stops holding it', async () => {
+      const t = await setup();
+      const i = await t.intent();
+      const id = i.body.intent.id;
+      const sig = base58Encode(randomBytes(64)); // the wallet says it sent this; only the signature reaches the server
+      expect((await t.post({ action: 'usdc-confirm', id, signature: sig })).status).toBe(202);
+      await t.db.sql(`update public.pokejam_live_ad_usdc_intents set expires_at = now() - interval '1 second' where id = $1`, [id]);
+      expect(await t.post({ action: 'usdc-confirm', id, signature: sig })).toMatchObject({ status: 410, body: { code: 'expired', expired: true } });
+      // With no signature, the reference key has no history either.
+      expect(await t.post({ action: 'usdc-confirm', id })).toMatchObject({ status: 410, body: { code: 'expired', expired: true } });
+    });
+
+    it('a payment seen on the chain is never called expired, and still books late', async () => {
+      const t = await setup();
+      const i = await t.intent();
+      const id = i.body.intent.id;
+      const signed = await t.sign(i.body.tx);
+      t.ch.sw.hold = true;
+      await t.ch.rpc.send(signed);
+      await t.db.sql(`update public.pokejam_live_ad_usdc_intents set expires_at = now() - interval '1 second' where id = $1`, [id]);
+      expect((await t.post({ action: 'usdc-confirm', id, signature: sigOf(signed) })).status).toBe(202);
+      expect((await t.post({ action: 'usdc-confirm', id })).status).toBe(202);
+      t.ch.finalized.add(sigOf(signed));
+      expect((await t.post({ action: 'usdc-confirm', id, signature: sigOf(signed) })).body).toMatchObject({ status: 'paid' });
+    });
+
+    it('two confirms at once book one ad', async () => {
+      const t = await setup();
+      const i = await t.intent();
+      const signed = await t.sign(i.body.tx);
+      const [a, b] = await Promise.all([
+        t.post({ action: 'usdc-confirm', id: i.body.intent.id, tx: signed }),
+        t.post({ action: 'usdc-confirm', id: i.body.intent.id, tx: signed }),
+      ]);
+      expect([a.body.status, b.body.status]).toEqual(['paid', 'paid']);
+      expect(await adCount(t)).toEqual([{ n: 1 }]);
+    });
   });
 
   it('never lets one signature pay for two ads', async () => {

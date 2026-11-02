@@ -50,6 +50,19 @@ The ad sections of `public/privacy.html` and `public/terms.html` now say:
 - Bookings are final, with no refunds unless the law requires one.
 - What a booking stores, and that booked ads and their wallets are public.
 
+## No browser RPC, and retrying a confirm
+
+The same class of bug as the Rank Shield fix in #94 doesn't apply here. The ad page never calls a Solana RPC: the server builds the burn or the transfer, the wallet sends it (or the server relays it, for a wallet that only signs), and `pokejam-ads-live` does every chain read. The site's CSP allows no Solana host, on purpose. `src/csp.test.ts` fails if the ad client names an RPC method or host, fetches anything but its endpoint, or if the endpoint's origin isn't in `connect-src`.
+
+From the moment the wallet signs, money may have moved, so the page saves a record (`src/ads/settle.ts`: booking or intent id, wallet, signature) and keeps it until the server gives an answer that asking again can't change:
+
+- **Not final:** no connection, a 5xx, a 429, or a Supabase gateway answer with no `error` in its body. The page keeps asking, including on its next visit and every 15 seconds in the background.
+- **Final:** a 400, 404, 409 or 410 from the function, or a burn answer that carries an error. If the answer doesn't rule out that money moved, the page names who to contact.
+- **While a record is open,** that wallet's pay buttons are off (both burn and USDC) and the page offers **Check my payment again**, so nobody pays twice by retrying. The hold ends when the server says so: a burn when its blockhash expires, a USDC payment at the intent's 15-minute expiry.
+- **Repeats are safe.** The database books once per booking and once per signature. A wallet that only signs has its signed bytes resent until the server has answered once, and the server won't say "nothing was sent" about a refused copy unless the chain has no record of the signature.
+
+If the wallet sends a payment but the page never gets the signature (the tab dies during the prompt, or the wallet reports an error after sending), the page has nothing to hold. The `sweep` still books it from the chain, once it's scheduled.
+
 ## Before mainnet
 
 Nothing here has been deployed. No migration has been applied and no secret set. See the README's "On kungFuDOOM's OK (mainnet, the live site)" steps.

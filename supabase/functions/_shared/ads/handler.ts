@@ -36,7 +36,7 @@ import { base58Encode } from '../pack/bytes.ts';
 import { decodeTransaction } from '../pack/tx-inspect.ts';
 import type { AdsConfig } from './config.ts';
 import { adMemo, buildBurnTransaction, buildFaucetTransaction, MEMO_PROGRAM, SPL_2022_PROGRAM, SPL_PROGRAM } from './tx.ts';
-import { usdcConfirm, usdcIntent, usdcSweep, type Reply, type SweepResult } from './usdc-handlers.ts';
+import { neverSent, usdcConfirm, usdcIntent, usdcSweep, type Reply, type SweepResult } from './usdc-handlers.ts';
 import { checkBurn, type ParsedTransaction } from './verify.ts';
 
 /** Calls one SQL function by name with named arguments; throws its error message. */
@@ -217,12 +217,6 @@ async function sweepChain(cfg: AdsConfig, deps: AdsDeps): Promise<{ scanned: num
   return { scanned, burns: hits.length, paid };
 }
 
-/** A JSON-RPC refusal (the node checked the transaction and won't forward it), as opposed to not hearing back. */
-const refused = (e: unknown) => {
-  const m = (e as Error)?.message ?? '';
-  return /^RPC sendTransaction: (?!HTTP)/.test(m);
-};
-
 export async function adsHandler(req: Request, cfg: AdsConfig, rawDeps: AdsDeps): Promise<Response> {
   // The live function's tables are pokejam_live_*: every SQL call goes through cfg.dbName (none on devnet).
   const dbName = cfg.dbName;
@@ -362,6 +356,8 @@ export async function adsHandler(req: Request, cfg: AdsConfig, rawDeps: AdsDeps)
           } catch {
             throw new Refusal('That is not a transaction.');
           }
+          // A retry of the burn that already paid for this booking: nothing to send.
+          if (b.state !== 'pending' && sig === b.burn_sig) return json({ booking: b });
           const memo = new TextEncoder().encode(adMemo(b.code));
           const ours = decoded.instructions.some((ix) => ix.program === MEMO_PROGRAM && ix.data.length === memo.length && ix.data.every((x, i) => x === memo[i]))
             && decoded.instructions.some((ix) => (ix.program === SPL_PROGRAM || ix.program === SPL_2022_PROGRAM) && ix.accounts.includes(cfg.mint));
@@ -369,9 +365,9 @@ export async function adsHandler(req: Request, cfg: AdsConfig, rawDeps: AdsDeps)
           try {
             await deps.rpc.send(signed);
           } catch (e) {
-            // A node that checked it and said no: it was never sent, so nothing was burned. Anything else (a timeout,
-            // a dropped connection) may still have gone through, so keep looking for it below.
-            if (refused(e)) {
+            // Only a refused burn the chain has never seen burned nothing. Anything else (a timeout, a dropped connection,
+            // a retry of one that already landed) may have gone through, so keep looking for it below.
+            if (await neverSent(deps.rpc, e, sig)) {
               throw new Refusal(`Solana didn't accept the burn, so nothing was burned: ${(e as Error).message.replace(/^RPC \w+: /, '').slice(0, 200)}`, 400, { notBurned: true, booking: b });
             }
           }

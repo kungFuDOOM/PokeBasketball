@@ -112,8 +112,17 @@ export async function usdcIntent(ctx: UsdcCtx, i: IntentInput): Promise<Reply> {
   });
 }
 
-/** A JSON-RPC refusal (the node checked the transaction and won't forward it), as opposed to not hearing back. */
-const refused = (e: unknown) => /^RPC sendTransaction: (?!HTTP)/.test((e as Error)?.message ?? '');
+/**
+ * Whether a failed sendTransaction means the transaction never went out. A JSON-RPC refusal alone doesn't: the page retries
+ * with the same signed bytes after a lost answer, and a node refuses a copy of one that has already landed ("already
+ * processed", or a failed simulation now the funds have moved). So it also has to be a refusal, not a lost reply, and the
+ * chain has to have no record of the signature. An RPC failure on that lookup counts as "may have gone out".
+ */
+export async function neverSent(rpc: Pick<AdsDeps['rpc'], 'signatureStatus'>, e: unknown, sig: string): Promise<boolean> {
+  const message = (e as Error)?.message ?? '';
+  if (!/^RPC sendTransaction: (?!HTTP)/.test(message) || /already (been )?processed/i.test(message)) return false;
+  return (await rpc.signatureStatus(sig).catch(() => 'unknown')) === null;
+}
 
 const VERIFY_STATUS: Partial<Record<VerifyCode, number>> = { tx_failed: 409 };
 
@@ -127,6 +136,11 @@ export async function usdcConfirm(ctx: UsdcCtx, c: ConfirmInput): Promise<Reply>
     return refuse('The ads payment settings changed. Start a new booking.', 409, { code: 'settings_changed' });
   }
   const paidAd = async () => (intent.ad_id ? await ctx.db<Record<string, unknown> | null>('pokejam_ad_get', { p_id: intent.ad_id }) : null);
+
+  // The transfer's blockhash is read when the intent is made and lasts about two minutes, so nothing built for this intent
+  // can still land after its 15 minutes. If one somehow does, the sweep still books it: this answer only frees the page.
+  const pastExpiry = () => Date.now() / 1000 > intent.expires_at;
+  const gaveUp = () => refuse("Your payment didn't go through in time, so no USDC was sent. Try again.", 410, { code: 'expired', expired: true });
 
   let sig = c.signature;
   let blockhash: string | null = null;
@@ -150,8 +164,8 @@ export async function usdcConfirm(ctx: UsdcCtx, c: ConfirmInput): Promise<Reply>
       try {
         await ctx.rpc.send(c.tx);
       } catch (e) {
-        // A node that checked it and said no never sent it, so no USDC moved. Anything else may still land: keep looking.
-        if (refused(e)) {
+        // Only a refused transaction the chain has never seen moved no USDC. Anything else may still land: keep looking.
+        if (await neverSent(ctx.rpc, e, sig)) {
           return refuse(`Solana didn't accept the payment, so no USDC was sent: ${(e as Error).message.replace(/^RPC \w+: /, '').slice(0, 200)}`, 400, { notPaid: true });
         }
       }
@@ -171,7 +185,7 @@ export async function usdcConfirm(ctx: UsdcCtx, c: ConfirmInput): Promise<Reply>
     // No signature (the page closed mid-payment): the reference key is in the payment's accounts, so its history finds it.
     const found = await ctx.rpc.call<{ signature: string; err: unknown }[]>('getSignaturesForAddress', [intent.reference, { limit: 20, commitment: 'confirmed' }]);
     candidates = found.filter((s) => !s.err).map((s) => s.signature);
-    if (!candidates.length) return ok({ status: 'open', intent }, 202);
+    if (!candidates.length) return pastExpiry() ? gaveUp() : ok({ status: 'open', intent }, 202);
   }
 
   const facts = { amount: intent.amount, mint: intent.mint, receiver: intent.receiver, wallet: intent.wallet, reference: intent.reference, memo: intent.memo, createdAt: intent.created_at };
@@ -212,12 +226,11 @@ export async function usdcConfirm(ctx: UsdcCtx, c: ConfirmInput): Promise<Reply>
     if (!pending) return last ?? refuse('That is not the payment for this booking.', 400, { code: 'bad_tx' });
     await ctx.sleep(2000);
   }
-  // Not at the commitment yet. If it can never land now (its blockhash expired unseen), no USDC moved.
-  if (sig && blockhash) {
+  // Not at the commitment yet. If it can never land now (its blockhash expired unseen), no USDC moved. A wallet that sent the
+  // payment itself gives only a signature, so with no blockhash to ask about, the intent's expiry decides.
+  if (sig) {
     const status = await ctx.rpc.signatureStatus(sig).catch(() => 'unknown');
-    if (status === null && !(await ctx.rpc.blockhashValid(blockhash).catch(() => true))) {
-      return refuse("Your payment didn't go through in time, so no USDC was sent. Try again.", 410, { code: 'expired', expired: true });
-    }
+    if (status === null && (pastExpiry() || (blockhash && !(await ctx.rpc.blockhashValid(blockhash).catch(() => true))))) return gaveUp();
   }
   return ok({ status: 'pending', intent }, 202);
 }

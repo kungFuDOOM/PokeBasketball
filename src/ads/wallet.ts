@@ -76,6 +76,13 @@ export function base58(bytes: Uint8Array): string {
 const fromB64 = (s: string) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
 const toB64 = (b: Uint8Array) => { let s = ''; for (const x of b) s += String.fromCharCode(x); return btoa(s); };
 
+/** The first signature of a signed transaction: a one-byte count, then 64 bytes each. The fee payer's, so the transaction's id. */
+export const signatureOf = (signed: Uint8Array): string | undefined => {
+  if (signed[0] < 1 || signed[0] > 127 || signed.length < 65) return undefined;
+  const first = signed.subarray(1, 65);
+  return first.some((x) => x !== 0) ? base58(first) : undefined;
+};
+
 export class Connected {
   constructor(private w: StdWallet, readonly account: WalletAccount) {}
   get name() { return this.w.name; }
@@ -86,7 +93,8 @@ export class Connected {
    * Sign the unsigned transaction (base64): a $PJAM burn or a USDC transfer, both built by the server (the page checks a
    * USDC transfer first, usdcPay.ts checkTransfer). On mainnet a wallet that can send does (it shows the user exactly
    * what it submits); on devnet the wallet only signs and the server sends it, so it works whichever network the
-   * wallet is set to.
+   * wallet is set to. No Solana RPC is called from the page either way: the wallet or the server sends it. A signed
+   * transaction comes with its signature, so a retry after a reload can still find it.
    */
   async sign(txBase64: string, cluster: 'devnet' | 'mainnet-beta'): Promise<{ signature?: string; tx?: string }> {
     const chain = cluster === 'devnet' ? 'solana:devnet' : 'solana:mainnet';
@@ -99,7 +107,7 @@ export class Connected {
     }
     if (!sign) throw new Error(`${this.w.name} can't sign Solana transactions.`);
     const [out] = await sign.signTransaction({ account: this.account, chain, transaction });
-    return { tx: toB64(out.signedTransaction) };
+    return { tx: toB64(out.signedTransaction), signature: signatureOf(out.signedTransaction) };
   }
 
   /** Sign a plain-text message (base58 signature), or null when the wallet can't. */

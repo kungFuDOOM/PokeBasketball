@@ -58,7 +58,8 @@ export interface Booking {
 export interface Confirmed { booking: Booking; landing?: boolean; expired?: boolean; notBurned?: boolean; error?: string }
 
 export class AdsError extends Error {
-  constructor(message: string, readonly info: Record<string, unknown> = {}) { super(message); }
+  /** `status`: the HTTP status, or 0 when no answer came back. */
+  constructor(message: string, readonly info: Record<string, unknown> = {}, readonly status = 0) { super(message); }
 }
 
 /** The live function's URL: VITE_ADS_API when set (local development), else the Supabase project's pokejam-ads-live. */
@@ -82,7 +83,7 @@ async function call<T>(body: Record<string, unknown> | null): Promise<T> {
     throw new AdsError('Could not reach the ad server. Check your connection.');
   }
   const data = (await res.json().catch(() => ({}))) as T & { error?: string };
-  if (!res.ok || data.error) throw new AdsError(data.error ?? `HTTP ${res.status}`, data as Record<string, unknown>);
+  if (!res.ok || data.error) throw new AdsError(data.error ?? `HTTP ${res.status}`, data as Record<string, unknown>, res.status);
   return data;
 }
 
@@ -114,7 +115,7 @@ export const adsApi = {
   /** Pay in USDC: checks the ad (text, ban, price), then a one-time intent and the unsigned transfer to sign. */
   usdcIntent: (a: { wallet: string; text: string; theme: AdTheme; plan: Plan; start: string | null; expect: string }) =>
     call<Record<string, unknown>>({ action: 'usdc-intent', ...a }),
-  /** 200 {status:'paid', ad}, 202 {status:'pending'|'open'}; a refusal throws AdsError (info.code, info.expired, info.notPaid). */
+  /** 200 {status:'paid', ad}, 202 {status:'pending'|'open'}; anything else throws AdsError (settle.ts isFinalRefusal says which are final). */
   usdcConfirm: (id: string, proof: { signature?: string; tx?: string } = {}) =>
     call<{ status: 'paid' | 'pending' | 'open'; duplicate?: boolean; ad?: Booking | null }>({ action: 'usdc-confirm', id, ...proof }),
 };
