@@ -2,9 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { COURTS } from '../../data/courts';
 import { monByDex } from '../../data/pokemon';
 import { Game } from '../../game/game';
-import { snapshot } from '../../game/sync';
+import { snapshot, stateHash, stepGame, type Snapshot } from '../../game/sync';
 import { emptyIntent, seededRng, type GameConfig, type Intent, type TeamDef } from '../../game/types';
-import { Lockstep, SEND_MS, type LockstepOptions, type NetMsg } from './lockstep';
+import { HASH_EVERY, Lockstep, SEND_MS, plausibleVitals, type LockstepOptions, type NetMsg, type Vitals } from './lockstep';
 import { rttStats, startDelay } from './netDelay';
 import { PACE_DIRECT_MS } from './netplay';
 
@@ -41,6 +41,7 @@ interface NetOpts {
   paceBy?: [number, number];
   /** Everything sent to `to` between `at` and `at + ms` (sim ms) is lost: a blackout on a link or a dead transport. */
   outages?: { at: number; ms: number; to: 0 | 1 }[];
+  resyncLimit?: number;
 }
 
 /** Two clients on one fake clock, connected by a lossy, jittery, reordering link. */
@@ -59,7 +60,7 @@ function match(net: NetOpts, onFrame?: (t: number, guest: Game, ls: Lockstep[]) 
       queue.push({ at: now + lo + rng() * (hi - lo), to: (1 - from) as 0 | 1, m: JSON.parse(JSON.stringify(m)) });
     },
   });
-  const ls = [0, 1].map((s) => new Lockstep(games[s], link(s as 0 | 1), { side: s as 0 | 1, now: () => now, delay: net.delay, tune: net.tune }));
+  const ls = [0, 1].map((s) => new Lockstep(games[s], link(s as 0 | 1), { side: s as 0 | 1, now: () => now, delay: net.delay, tune: net.tune, resyncLimit: net.resyncLimit }));
   const players = [player(1), player(2)];
   const held: Intent[] = [players[0](), players[1]()];
   let frames = 0;
@@ -76,6 +77,50 @@ function match(net: NetOpts, onFrame?: (t: number, guest: Game, ls: Lockstep[]) 
     onFrame?.(frames, games[1], ls);
   }
   return { games, ls, frames, seconds: now / 1000 };
+}
+
+/**
+ * A guest alone on a fake clock, with `host` a second copy stepped through the same (empty) inputs: what an honest host
+ * would hold. The tests play the host's side by hand: forged hashes and snapshots go straight into receive().
+ */
+function gated(o: Partial<LockstepOptions> = {}) {
+  let now = 0;
+  const g = new Game(config(42));
+  const host = new Game(config(42));
+  const ls = new Lockstep(g, { send() {} }, { side: 1, now: () => now, ...o });
+  const hashes = new Map<number, number>();
+  let hostTick = 0;
+  let nextInput = 4;
+  const take = (): Snapshot => JSON.parse(JSON.stringify(snapshot(host)));
+  const stepHost = () => {
+    while (hostTick < ls.tick) {
+      stepGame(host, [null, null]);
+      if ((hostTick + 1) % HASH_EVERY === 0) hashes.set(hostTick, stateHash(host));
+      hostTick++;
+    }
+    host.events.length = 0;
+    host.sfx.length = 0;
+  };
+  return {
+    g, host, ls, take,
+    tick: (ms: number) => { now += ms; },
+    /** Play on until the guest reaches this tick. */
+    playTo(t: number) {
+      while (ls.tick < t) {
+        ls.receive({ k: 'in', s: nextInput++, r: [[1, 0, 0, 0]], a: 0 });
+        now += 1000 / 60;
+        ls.advance(emptyIntent(), 1 / 60);
+        g.events.length = 0;
+        g.sfx.length = 0;
+      }
+      stepHost();
+    },
+    hashAt: (t: number) => hashes.get(t)!,
+    /** A host hash for tick t that can't match the guest's. */
+    mismatch(t: number) { ls.receive({ k: 'h', t, h: 0 }); },
+    /** The host's snapshot right now, unless given another. */
+    offer(s: Snapshot = take(), t = hostTick - 1) { ls.receive({ k: 'snap', t, s }); },
+  };
 }
 
 describe('lockstep', () => {
@@ -108,6 +153,21 @@ describe('lockstep', () => {
     expect(ls[0].stats.desyncs).toBeGreaterThan(0);
     expect(ls[1].stats.resyncs).toBeGreaterThan(0);
     expect(JSON.stringify(snapshot(games[1]))).toBe(JSON.stringify(snapshot(games[0])));
+  });
+
+  it('honest drift all game long is never rejected, across quarter breaks and on a slow link', () => {
+    for (const [seed, latency] of [[3, [20, 60]], [5, [20, 60]], [8, [105, 145]]] as [number, [number, number]][]) {
+      let nudges = 0;
+      const { games, ls } = match({ latency, drop: 0.02, seed, resyncLimit: 1000 }, (f, guest) => {
+        if (f % 300 === 0 && guest.phase === 'live' && (guest.quarter < 4 || guest.clock > 4)) { guest.players[3].x += 0.75; nudges++; }
+      });
+      expect(nudges).toBeGreaterThan(3);
+      expect(ls[1].stats.resyncs).toBeGreaterThan(3);
+      expect(ls[1].stats.rejected).toBe(0);
+      expect(ls[1].stats.unrequested).toBe(0);
+      expect(ls[1].problem).toBeNull();
+      expect(JSON.stringify(snapshot(games[1]))).toBe(JSON.stringify(snapshot(games[0])));
+    }
   });
 
   it('notices when the peer quits', () => {
@@ -170,16 +230,18 @@ describe('a malicious peer', () => {
     expect(last.s).toBeLessThanOrEqual(8); // still sending from the start of our schedule
   });
 
-  it('a snapshot that does not fit this game (extra keys, __proto__, other players) stops the game', () => {
+  it('after a detected desync, a snapshot that does not fit this game (extra keys, __proto__, other players) stops the game', () => {
     // As the bytes would arrive: a "__proto__" key in JSON becomes an own property when parsed.
-    const wire = (edit: (json: string) => string) => edit(JSON.stringify({ k: 'snap', t: 10, s: snapshot(new Game(config(42))) }));
+    const wire = (edit: (json: string) => string) => edit(JSON.stringify({ k: 'snap', t: 59, s: snapshot(new Game(config(42))) }));
     for (const json of [
       wire((j) => j.replace('"game":{', '"game":{"__proto__":{"phase":"final"},')),
       wire((j) => j.replace('"game":{', '"game":{"evil":1,')),
       wire((j) => j.replace(/"players":\[\{"id":\d+/, '"players":[{"id":999')),
       wire((j) => j.replace(/"rng":\d+/, '"rng":"x"')),
     ]) {
-      const { ls, g } = fresh(1);
+      const { ls, g, playTo, mismatch } = gated();
+      playTo(60);
+      mismatch(59);
       ls.receive(JSON.parse(json));
       expect(ls.problem).toMatch(/does not fit/);
       expect(Object.getPrototypeOf(g)).toBe(Game.prototype);
@@ -187,12 +249,25 @@ describe('a malicious peer', () => {
   });
 
   it('resync spam: at most one every 1.5 s, and a dozen per game before the game stops', () => {
-    const { ls, tick } = fresh(1);
-    const snap = snapshot(new Game(config(42)));
-    for (let i = 0; i < 5; i++) ls.receive({ k: 'snap', t: 10, s: snap });
+    const { ls, playTo, mismatch, offer } = gated();
+    playTo(60);
+    mismatch(59);
+    offer();
     expect(ls.stats.resyncs).toBe(1);
-    for (let i = 0; i < 20; i++) { tick(1600); ls.receive({ k: 'snap', t: 10, s: snap }); }
+    // A second desync one hash later, inside the 1.5 s.
+    playTo(120);
+    mismatch(119);
+    offer();
+    expect(ls.stats.resyncs).toBe(1);
+    expect(ls.stats.dropped).toBe(1);
+    // Two more hash intervals: past the 1.5 s, and through real quarter breaks, so each honest snapshot passes the value check.
+    for (let i = 2; i < 20 && !ls.problem; i++) {
+      playTo((i + 1) * 2 * HASH_EVERY);
+      mismatch(ls.tick - 1 - (ls.tick % HASH_EVERY));
+      offer();
+    }
     expect(ls.stats.resyncs).toBe(12);
+    expect(ls.stats.rejected).toBe(0);
     expect(ls.problem).toMatch(/out of sync/);
   });
 
@@ -201,6 +276,296 @@ describe('a malicious peer', () => {
     ls.receive({ k: 'snap', t: 10, s: snapshot(new Game(config(42))) });
     expect(ls.stats.resyncs).toBe(0);
     expect(ls.stats.dropped).toBe(1);
+  });
+});
+
+describe('the guest takes a snapshot only after its own detected desync', () => {
+  const unchanged = (g: Game) => { const before = JSON.stringify(snapshot(g)); return () => expect(JSON.stringify(snapshot(g))).toBe(before); };
+
+  it('an unrequested snapshot is ignored and counted once it expires', () => {
+    const { ls, g, playTo, hashAt, offer, tick } = gated();
+    playTo(60);
+    ls.receive({ k: 'h', t: 59, h: hashAt(59) });
+    g.players[3].x += 0.75;
+    const same = unchanged(g);
+    offer();
+    tick(2001);
+    ls.receive({ k: 'bye' });
+    same();
+    expect(ls.stats.resyncs).toBe(0);
+    expect(ls.stats.unrequested).toBe(1);
+    expect(ls.problem).toBeNull();
+  });
+
+  it('a malformed snapshot nobody asked for does not stop the game', () => {
+    const { ls, playTo, tick } = gated();
+    playTo(60);
+    ls.receive({ k: 'snap', t: 59, s: { junk: true } });
+    tick(2001);
+    ls.receive({ k: 'bye' });
+    expect(ls.problem).toBeNull();
+    expect(ls.stats.unrequested).toBe(1);
+  });
+
+  it('a snapshot that beats the guest\'s own check is held, and taken when the mismatch arrives', () => {
+    const { ls, g, host, playTo, mismatch, offer } = gated();
+    playTo(60);
+    g.players[3].x += 0.75;
+    offer();
+    expect(ls.stats.resyncs).toBe(0);
+    mismatch(59);
+    expect(ls.stats.resyncs).toBe(1);
+    expect(ls.stats.unrequested).toBe(0);
+    expect(JSON.stringify(snapshot(g))).toBe(JSON.stringify(snapshot(host)));
+  });
+
+  it('a held snapshot is gone after 2 s', () => {
+    const { ls, g, playTo, mismatch, offer, tick } = gated();
+    playTo(60);
+    g.players[3].x += 0.75;
+    offer();
+    tick(2001);
+    const same = unchanged(g);
+    mismatch(59);
+    same();
+    expect(ls.stats.resyncs).toBe(0);
+    expect(ls.stats.unrequested).toBe(1);
+  });
+
+  it('a snapshot from before the desync is not taken', () => {
+    const { ls, g, playTo, take, mismatch, offer } = gated();
+    playTo(30);
+    const old = take();
+    playTo(60);
+    mismatch(59);
+    const same = unchanged(g);
+    offer(old, 29);
+    same();
+    expect(ls.stats.resyncs).toBe(0);
+  });
+
+  it('the answer to the first mismatch still counts when the next hash mismatches too, and the guest replays forward', () => {
+    const { ls, g, host, playTo, take, mismatch, offer } = gated();
+    playTo(60);
+    g.players[3].x += 0.75;
+    mismatch(59);
+    playTo(70);
+    const answer = take();
+    playTo(120);
+    mismatch(119);
+    offer(answer, 69);
+    expect(ls.stats.resyncs).toBe(1);
+    expect(ls.tick).toBe(120);
+    expect(JSON.stringify(snapshot(g))).toBe(JSON.stringify(snapshot(host)));
+  });
+
+  it('the host repeating the mismatching hash after a resync does not open the gate again', () => {
+    const { ls, playTo, mismatch, offer, tick } = gated();
+    playTo(60);
+    mismatch(59);
+    offer();
+    expect(ls.stats.resyncs).toBe(1);
+    mismatch(59);
+    tick(1600);
+    offer();
+    expect(ls.stats.resyncs).toBe(1);
+  });
+
+  it('the host repeating one hash does not hold the 5 s window open', () => {
+    const { ls, playTo, mismatch, offer, tick } = gated();
+    playTo(60);
+    mismatch(59);
+    tick(3000);
+    mismatch(59);
+    tick(2001);
+    offer();
+    expect(ls.stats.resyncs).toBe(0);
+  });
+
+  it('the gate closes 5 s after the mismatch', () => {
+    for (const [wait, resyncs] of [[5000, 1], [5001, 0]]) {
+      const { ls, playTo, mismatch, offer, tick } = gated();
+      playTo(60);
+      mismatch(59);
+      tick(wait);
+      offer();
+      expect(ls.stats.resyncs).toBe(resyncs);
+    }
+  });
+
+  it('a later matching hash closes the gate', () => {
+    const { ls, playTo, hashAt, mismatch, offer } = gated();
+    playTo(60);
+    mismatch(59);
+    playTo(120);
+    ls.receive({ k: 'h', t: 119, h: hashAt(119) });
+    offer();
+    expect(ls.stats.resyncs).toBe(0);
+  });
+
+  it('a score jump is dropped and counted, the game goes on, and an honest snapshot in the window still works', () => {
+    const { ls, g, host, playTo, mismatch, offer, take } = gated();
+    playTo(60);
+    g.players[3].x += 0.75;
+    mismatch(59);
+    const same = unchanged(g);
+    const forged = take();
+    forged.game.score = [20, 0];
+    offer(forged);
+    same();
+    expect(ls.stats.rejected).toBe(1);
+    expect(ls.stats.resyncs).toBe(0);
+    expect(ls.problem).toBeNull();
+    offer();
+    expect(ls.stats.resyncs).toBe(1);
+    expect(JSON.stringify(snapshot(g))).toBe(JSON.stringify(snapshot(host)));
+  });
+
+  it('values that are not values at all are dropped too', () => {
+    for (const edit of [
+      (s: Snapshot) => { s.game.score = 'lots'; },
+      (s: Snapshot) => { s.game.score = [1]; },
+      (s: Snapshot) => { s.game.quarter = null; },
+      (s: Snapshot) => { s.game.clock = { $f: 'Infinity' }; },
+      (s: Snapshot) => { s.game.phase = 'over'; },
+    ]) {
+      const { ls, playTo, mismatch, offer, take } = gated();
+      playTo(60);
+      mismatch(59);
+      const bad = take();
+      edit(bad);
+      offer(bad);
+      expect(ls.stats.rejected).toBe(1);
+      expect(ls.problem).toBeNull();
+    }
+  });
+
+  it('a quarter jump, a forced final and a rewound clock are dropped', () => {
+    for (const edit of [
+      (s: Snapshot) => { s.game.quarter = 3; },
+      (s: Snapshot) => { s.game.quarter = 2; }, // one quarter on, but the clock is nowhere near the buzzer
+      (s: Snapshot) => { s.game.phase = 'final'; },
+      (s: Snapshot) => { s.game.clock = 1; },
+    ]) {
+      const { ls, playTo, mismatch, offer, take } = gated();
+      playTo(60);
+      mismatch(59);
+      const bad = take();
+      edit(bad);
+      offer(bad);
+      expect(ls.stats.rejected).toBe(1);
+      expect(ls.stats.resyncs).toBe(0);
+    }
+  });
+
+  it('a quarter rollover, the start of overtime and a final buzzer inside the gap are taken', () => {
+    for (const [quarter, edit] of [
+      [1, (s: Snapshot) => { s.game.quarter = 2; s.game.clock = 0; s.game.phase = 'break'; }],
+      [1, (s: Snapshot) => { s.game.quarter = 2; s.game.clock = 12; s.game.phase = 'tip'; }],
+      [4, (s: Snapshot) => { s.game.quarter = 5; s.game.clock = 0; s.game.phase = 'break'; }],
+      [4, (s: Snapshot) => { s.game.quarter = 5; s.game.clock = 30; s.game.phase = 'tip'; }],
+      [4, (s: Snapshot) => { s.game.quarter = 4; s.game.clock = 0; s.game.phase = 'final'; s.game.score = [2, 0]; }],
+    ] as [number, (s: Snapshot) => void][]) {
+      const { ls, g, playTo, mismatch, offer, take } = gated();
+      playTo(50);
+      g.quarter = quarter;
+      g.clock = 0.5;
+      playTo(60);
+      mismatch(59);
+      const late = take();
+      edit(late);
+      offer(late);
+      expect(ls.stats.rejected).toBe(0);
+      expect(ls.stats.resyncs).toBe(1);
+    }
+  });
+
+  it('later snapshots compare with the state the last one left behind', () => {
+    const { ls, playTo, mismatch, offer, take, tick } = gated();
+    playTo(60);
+    mismatch(59);
+    const first = take();
+    first.game.score = [3, 0];
+    offer(first);
+    expect(ls.stats.resyncs).toBe(1);
+    tick(1600);
+    playTo(120);
+    mismatch(119);
+    // +3 on what the first snapshot left is fine; measured from the 0-0 before it, this would be too far.
+    const second = take();
+    second.game.score = [6, 0];
+    offer(second);
+    expect(ls.stats.rejected).toBe(0);
+    expect(ls.stats.resyncs).toBe(2);
+  });
+
+  it('resyncLimit: the snapshot past the limit stops the game, and only after a detected desync', () => {
+    const { ls, playTo, mismatch, offer } = gated({ resyncLimit: 1 });
+    playTo(60);
+    mismatch(59);
+    offer();
+    expect(ls.stats.resyncs).toBe(1);
+    expect(ls.problem).toBeNull();
+    playTo(180);
+    offer(); // no mismatch yet: held, not fatal
+    expect(ls.problem).toBeNull();
+    mismatch(179);
+    expect(ls.stats.resyncs).toBe(1);
+    expect(ls.problem).toMatch(/out of sync/);
+  });
+});
+
+describe('plausibleVitals', () => {
+  const at = (o: Partial<Vitals> = {}): Vitals => ({ score: [10, 10], quarter: 2, clock: 60, phase: 'live', ...o });
+  const ok = (a: Vitals, b: Vitals, dt = 0) => plausibleVitals(a, b, dt, 120);
+
+  it('score: 3 points, plus 3 for each started second of gap', () => {
+    expect(ok(at(), at({ score: [13, 10] }))).toBe(true);
+    expect(ok(at(), at({ score: [14, 10] }))).toBe(false);
+    expect(ok(at(), at({ score: [10, 7] }))).toBe(true);
+    expect(ok(at(), at({ score: [10, 6] }))).toBe(false);
+    expect(ok(at(), at({ score: [19, 10], clock: 59 }), 1.5)).toBe(true);
+    expect(ok(at(), at({ score: [20, 10], clock: 59 }), 1.5)).toBe(false);
+  });
+
+  it('clock: 1 s, plus the gap', () => {
+    expect(ok(at(), at({ clock: 59 }))).toBe(true);
+    expect(ok(at(), at({ clock: 58.9 }))).toBe(false);
+    expect(ok(at(), at({ clock: 58 }), 1)).toBe(true);
+    expect(ok(at(), at({ clock: 57.9 }), 1)).toBe(false);
+  });
+
+  it('a new quarter only at the buzzer, and never two', () => {
+    const buzzer = at({ clock: 0.5 });
+    expect(ok(buzzer, at({ quarter: 3, clock: 0, phase: 'break' }))).toBe(true);
+    expect(ok(buzzer, at({ quarter: 3, clock: 120, phase: 'tip' }))).toBe(true);
+    expect(ok(buzzer, at({ quarter: 3, clock: 121.1, phase: 'tip' }))).toBe(false);
+    expect(ok(buzzer, at({ quarter: 4, clock: 0, phase: 'break' }))).toBe(false);
+    expect(ok(at(), at({ quarter: 3, clock: 120, phase: 'tip' }))).toBe(false);
+    expect(ok(at({ quarter: 3, clock: 120, phase: 'tip' }), buzzer)).toBe(true);
+  });
+
+  it('the clock jumping back up when a break ends is not a clock jump', () => {
+    const inBreak = at({ quarter: 3, clock: 0, phase: 'break' });
+    expect(ok(inBreak, at({ quarter: 3, clock: 120, phase: 'tip' }))).toBe(true);
+    expect(ok(inBreak, at({ quarter: 3, clock: 119.5, phase: 'live' }))).toBe(true);
+    expect(ok(at({ quarter: 3, clock: 120, phase: 'tip' }), inBreak)).toBe(true);
+    expect(ok(inBreak, at({ quarter: 3, clock: 50, phase: 'live' }))).toBe(false);
+    // Overtime clocks are shorter.
+    expect(ok(at({ quarter: 5, clock: 0, phase: 'break' }), at({ quarter: 5, clock: 60, phase: 'tip' }))).toBe(true);
+    expect(ok(at({ quarter: 5, clock: 0, phase: 'break' }), at({ quarter: 5, clock: 120, phase: 'tip' }))).toBe(false);
+  });
+
+  it('the game ending on one side only: at the buzzer of the 4th or later, or that side tied into overtime', () => {
+    const done = at({ quarter: 4, clock: 0, phase: 'final' });
+    expect(ok(at({ quarter: 4, clock: 0.5 }), done)).toBe(true);
+    expect(ok(done, at({ quarter: 4, clock: 0.5 }))).toBe(true);
+    expect(ok(at({ quarter: 4, clock: 30 }), done)).toBe(false);
+    expect(ok(at({ quarter: 3, clock: 0.5 }), at({ quarter: 3, clock: 0, phase: 'final' }))).toBe(false);
+    expect(ok(done, at({ quarter: 5, clock: 0, phase: 'break' }))).toBe(true);
+    expect(ok(done, at({ quarter: 5, clock: 60, phase: 'tip' }))).toBe(true);
+    expect(ok(at({ quarter: 4, clock: 0.5 }), at({ quarter: 4, clock: 30, phase: 'final' }))).toBe(false);
+    expect(ok(done, done)).toBe(true);
   });
 });
 

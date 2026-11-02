@@ -2,7 +2,7 @@ import { POSITIONS, bestEffectiveness, effectiveness, type Mon, type Pos } from 
 import { think } from './ai';
 import {
   BALL_R, COURT_L, COURT_W, DIFFICULTIES, ENGINE_VERSION, GRAVITY, HOOP_Y, RIM_R, RIM_Z,
-  backDir, clamp, dist, emptyIntent, hoopX, isThree, lerp, seededRng,
+  backDir, clamp, dist, emptyIntent, hoopX, isThree, lerp, quarterClock, seededRng,
   type Ball, type GameConfig, type GameEvent, type Grade, type Intent, type Marker, type Player, type Rng, type TeamDef, type TeamId,
 } from './types';
 import { PRACTICE_STAGES, stageX, type PracticeDrill, type PracticeStage } from './practice';
@@ -341,7 +341,7 @@ export class Game {
     const q = this.quarter;
     // Jump balls open each half; the team that lost the tip starts the next quarter.
     const start: TeamId = q > 4 ? (this.rng() < 0.5 ? 0 : 1) : ((1 - this.tipWinner) as TeamId);
-    this.clock = q > 4 ? Math.max(30, Math.round(this.cfg.quarterLen / 2)) : this.cfg.quarterLen;
+    this.clock = quarterClock(q, this.cfg.quarterLen);
     this.shotClock = 24;
     if (this.cfg.stamina && q > 1) {
       const rest = q === 3 ? 0.3 : 0.15;

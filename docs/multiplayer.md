@@ -56,7 +56,7 @@
 - Each side schedules its own input `delay` ticks ahead (start 8 ticks ≈ 133 ms) and sends it. Tick *t* runs only when both inputs for *t* are in, so both copies step through identical inputs. A late input makes the game wait, and a "Waiting for …" banner appears after 0.4 s.
 - Inputs go out in run-length-encoded batches about 15 times a second. Each batch repeats everything the peer hasn't acknowledged, so a lost or reordered message can't drop an input.
 - **Adaptive delay:** once a second each side tells the other how early its inputs arrive. The sender adds delay when they arrive late and trims it when there's slack (range 4–18 ticks). On the two-browser test against Supabase it settled at 8–13 ticks (≈130–220 ms).
-- **Desync guard:** every 60 ticks both sides swap a state hash. On a mismatch, for example when browsers' floating point differs in the last bit, the host sends a full snapshot. The guest restores it and replays its stored inputs, so the host is the authority.
+- **Desync guard:** every 60 ticks both sides swap a state hash. On a mismatch, for example when browsers' floating point differs in the last bit, the host sends a full snapshot. The guest restores it and replays its stored inputs, so the host is the authority. The guest only takes a snapshot after seeing the mismatch itself, and only if its score, quarter and clock are close to the guest's own.
 - **The game comes from the server.** The match row holds a server-picked seed and quarter length; both clients derive both rosters from the seed (`rostersFor` in `roster.ts`) and take names from the server, so neither player can stack the game.
 - **Handshake:** both sides send `hi` with `ENGINE_VERSION` until they hear each other; a version mismatch stops with "refresh to update".
 - Online games never pause. The menu opens over a running game, and hiding the tab doesn't pause it. Quitting sends `bye`. After 15 s of silence the game ends with "connection lost", the match is voided, and no result is recorded.
@@ -84,7 +84,7 @@
   - TURN credentials come from the `pokejam-ice` Edge Function: one hour, only for the two players in an active match, 6 per 10 minutes. A game is a few MB of relay traffic, and Cloudflare includes 1,000 GB a month. The client retries once after a 6 s timeout (a cold start), never asks more than the server's 6 per 10 minutes, and after a failure waits 60 s before asking again for a later match.
   - Peak connections (Free 200, Pro 500) cap concurrent matches at about 100 (Free) or 250 (Pro). Each player in a match holds one Realtime connection.
 - **Netcode version:** the handshake carries `NET_VERSION` along with `ENGINE_VERSION`. A tab on an older build can't play a newer one; it's told to refresh.
-- **Untrusted peer:** `Lockstep.receive` checks everything. Malformed messages, inputs outside the plausible tick window, oversized runs, sticks outside -1..1, bad buttons and floods over 80 messages a second are all dropped. A snapshot must match the game's own shape (no extra keys, no `__proto__`, the same players). The guest takes at most one resync every 1.5 s and 12 per game; past that, `problem` ends the game with no result.
+- **Untrusted peer:** `Lockstep.receive` checks everything. Malformed messages, inputs outside the plausible tick window, oversized runs, sticks outside -1..1, bad buttons and floods over 80 messages a second are all dropped. A snapshot must match the game's own shape (no extra keys, no `__proto__`, the same players). A snapshot with no mismatch behind it is held for 2 s, then dropped and counted (`stats.unrequested`). One whose values jump too far is dropped and counted (`stats.rejected`), and the game goes on. The guest takes at most one resync every 1.5 s and 12 per game; past that, `problem` ends the game with no result.
 - Channels are private: RLS on `realtime.messages` lets only the match's two players read or send on its topic, while the match is active (`pokejam_channel_ok`).
 
 ## Anti-griefing (migration `20261025_pokejam_social_guard.sql`)
@@ -93,7 +93,7 @@
 - **Rate limits.** Matchmaking 60 requests a minute, rooms 10 per 10 minutes, room codes 15 tries per 10 minutes (wrong codes count, so codes can't be guessed), reports 20 a day.
 - **Reports and blocks.** After a match (or when it ends early), "Report or block" reports the opponent (name, cheating, quitting, other; one per match) or blocks them. Blocked pairs are never matched, and a blocked player can't join the blocker's room.
 - **Bans.** `pokejam_ban(user, hours, reason)` / `pokejam_unban(user)` (service role). A player reported by 5 different opponents in 24 hours is suspended for 24 hours automatically, for a person to review (`pokejam_reports`, `pokejam_bans`).
-- **Still open:** a modified host client can still push a fake state to the guest through a resync snapshot. That's harmless for Social (no ratings), but Ranked and Pack Battles must judge from the signed inputs (`winnerCheck.ts`).
+- **Still open:** a modified host client can forge a wrong hash so the guest "detects" a desync, then push a fake state through the snapshot, as long as each jump stays within the value check and the resync limit. That's harmless for Social (no ratings), but Ranked and Pack Battles must judge from the signed inputs (`winnerCheck.ts`).
 
 ### Running the two-browser end-to-end test
 ```
