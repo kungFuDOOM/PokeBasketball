@@ -43,12 +43,16 @@ sign-in and the app only collects the result:
    keeps the trip (session, wallet, nonce, message) in **its own** localStorage (`pokejam.phantom.landing`, 10 minutes) and shows
    **Sign in Phantom** and the same check code. A tap is required.
 3. **Second trip.** The tap follows `signMessage`; its `redirect_link` repeats the handoff params, so Safari needs nothing from the app.
-   Safari verifies wallet, nonce and expiry and calls `signInWithWeb3`.
+   Safari verifies wallet, nonce and expiry and calls `signInWithWeb3` on a **throwaway client** (`ephemeralAuthClient()`:
+   memory storage, `persistSession: false`, `autoRefreshToken: false`, `detectSessionInUrl: false`), so Safari stores nothing, never
+   rotates the token, and leaves its own `pokejam.auth` guest session alone.
 4. **Hand-over.** Safari seals `{rt: <refresh token>}` (nothing else) to the handoff public key with a one-use key and a fresh nonce, and
-   puts `{k, n, d}` in the relay under the handoff id. It then signs itself out with `signOut({ scope: 'local' })`: that clears Safari
-   only and does **not** revoke the session the app is about to use. Safari says "Signed in — go back to the PokeJam app on your home screen."
+   puts `{k, n, d}` in the relay under the handoff id. It **never** signs out: Supabase's `/logout`, even with `scope: 'local'`,
+   revokes that session on the server, so the app's refresh failed with `refresh_token_not_found` (PJ-RF-400). The throwaway
+   client simply goes away with the page. Safari says "Signed in — go back to the PokeJam app on your home screen."
 5. **App restores.** It takes the row (deleted by the read), wipes its handoff, opens the box and calls
-   `supabase.auth.refreshSession({ refresh_token })`, then reloads into Ranked/Profile like the other paths. Rotation means Safari's copy
+   `supabase.auth.refreshSession({ refresh_token })` (only one restore runs at a time, so the poll and `visibilitychange` cannot
+   race to spend the single-use token), then reloads into Ranked/Profile like the other paths. Rotation means Safari's copy
    of the token is dead anyway.
 
 Cancel, failure and expiry wipe both sides. If Safari fails or the player cancels there, it leaves an error code in the relay so the app

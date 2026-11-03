@@ -60,8 +60,12 @@ function mockSafariAuth(fail = false) {
   const calls: string[] = [];
   const auth: SafariAuth = {
     signInWithWeb3: async () => { calls.push('signIn'); return fail ? { data: null, error: { message: 'bad' } } : { data: { session: { refresh_token: REFRESH } }, error: null }; },
-    signOut: async (o) => { calls.push(`signOut:${o.scope}`); },
   };
+  // A sign-out or /logout here would revoke the session handed to the app (PJ-RF-400): record it so tests can prove it never happens.
+  Object.assign(auth, {
+    signOut: async (o?: { scope?: string }) => { calls.push(`signOut:${o?.scope}`); return { error: null }; },
+    logout: async () => { calls.push('logout'); },
+  });
   return { auth, calls };
 }
 function mockAppAuth(ok = true) {
@@ -174,7 +178,7 @@ describe('Safari finishes the sign-in without the app\'s storage', () => {
 
     const sa = mockSafariAuth();
     await finishInSafari(sa.auth, relay.sb, { message: signed.message, signature: signed.signature, handoff: cb.handoff! });
-    expect(sa.calls).toEqual(['signIn', 'signOut:local']);
+    expect(sa.calls).toEqual(['signIn']); // never signs out: that would revoke the app's session
     expect(relay.rows.size).toBe(1);
     expect(relay.rows.has(handoffId)).toBe(true);
     const wire = JSON.stringify(relay.sent);
@@ -210,13 +214,37 @@ describe('Safari finishes the sign-in without the app\'s storage', () => {
     await expect(finishInSafari(sa.auth, relay.sb, { message: 'm', signature: new Uint8Array(64), handoff: cb.handoff! })).rejects.toMatchObject({ diag: expect.stringMatching(/^W3-/) });
     expect(relay.rows.size).toBe(0);
   });
-  it('signs out locally only, after the relay write, and says so when the relay refuses', async () => {
+  it('never signs out or logs out, and says so when the relay refuses', async () => {
     const ph = fakePhantom();
     const { cb } = safariConnect(memStore(), ph, beginHandoff(memStore(), { loc, returnTo: 'ranked', now: NOW }));
     const sa = mockSafariAuth();
     const bad: RelayClient = { rpc: async () => ({ data: null, error: { message: 'x' } }) };
     await expect(finishInSafari(sa.auth, bad, { message: 'm', signature: new Uint8Array(64), handoff: cb.handoff! })).rejects.toMatchObject({ diag: 'HO-PUT' });
-    expect(sa.calls).toEqual(['signIn', 'signOut:local']);
+    expect(sa.calls).toEqual(['signIn']);
+  });
+  it('finishInSafari never calls signOut or logout on a successful handoff (PJ-RF-400)', async () => {
+    const ph = fakePhantom();
+    const { cb } = safariConnect(memStore(), ph, beginHandoff(memStore(), { loc, returnTo: 'ranked', now: NOW }));
+    const relay = mockRelay();
+    const sa = mockSafariAuth();
+    await finishInSafari(sa.auth, relay.sb, { message: 'm', signature: new Uint8Array(64), handoff: cb.handoff! });
+    expect(relay.rows.size).toBe(1);
+    expect(sa.calls).not.toContain('logout');
+    expect(sa.calls.some((c) => c.startsWith('signOut'))).toBe(false);
+    expect(sa.calls).toEqual(['signIn']);
+  });
+  it('runs only one restore at a time: overlapping polls share it and spend the token once', async () => {
+    const app = memStore();
+    const relay = mockRelay();
+    const link = beginHandoff(app, { loc, returnTo: 'ranked', now: NOW });
+    const ph = fakePhantom();
+    const { cb } = safariConnect(memStore(), ph, link);
+    await finishInSafari(mockSafariAuth().auth, relay.sb, { message: 'm', signature: new Uint8Array(64), handoff: cb.handoff! });
+    const aa = mockAppAuth();
+    const [a, b] = await Promise.all([restoreInApp(app, relay.sb, aa.auth, NOW + 1000), restoreInApp(app, relay.sb, aa.auth, NOW + 1000)]);
+    expect(a).toEqual({ kind: 'done', returnTo: 'ranked' });
+    expect(b).toEqual(a);
+    expect(aa.used).toEqual([REFRESH]);
   });
   it('keeps the session when this very page is the app', async () => {
     const ph = fakePhantom();

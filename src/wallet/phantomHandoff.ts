@@ -96,7 +96,15 @@ export type Restore = { kind: 'none' } | { kind: 'waiting' } | { kind: 'done'; r
  * One poll of the home-screen app. Single use: the relay row is deleted by the read, and the local handoff is wiped before the
  * token is applied, so nothing can be replayed. Wipes on every outcome but "waiting". Throws PhantomLinkError.
  */
-export async function restoreInApp(store: Store, relay: RelayClient, auth: AppAuth, now: number): Promise<Restore> {
+export function restoreInApp(store: Store, relay: RelayClient, auth: AppAuth, now: number): Promise<Restore> {
+  // Only one restore at a time (the poll, visibilitychange, pageshow and focus can all fire together): a second caller shares the
+  // first one's result instead of reading the relay or spending the single-use refresh token again.
+  restoring ??= restoreOnce(store, relay, auth, now).finally(() => { restoring = null; });
+  return restoring;
+}
+let restoring: Promise<Restore> | null = null;
+
+async function restoreOnce(store: Store, relay: RelayClient, auth: AppAuth, now: number): Promise<Restore> {
   const { handoff, expired } = loadHandoff(store, now);
   if (expired) throw stepError('EXP');
   if (!handoff) return { kind: 'none' };
@@ -147,13 +155,13 @@ export function sealRefreshToken(refreshToken: string, handoffPub: string): Phan
 
 export interface SafariAuth {
   signInWithWeb3(c: { chain: 'solana'; message: string; signature: Uint8Array }): PromiseLike<{ data: { session: { refresh_token?: string } | null } | null; error: unknown }>;
-  /** scope 'local': clears this browser only. It must not revoke the session the app is about to use. */
-  signOut(o: { scope: 'local' }): PromiseLike<unknown>;
 }
 
 /**
- * Safari's last step: sign in, hand the refresh token to the app through the relay, and leave no session behind. The sign-out is
- * local only: the server session lives on, in the app. Throws PhantomLinkError.
+ * Safari's last step: sign in, hand the refresh token to the app through the relay, and leave no session behind. For a handoff the
+ * caller passes a throwaway client that stores nothing (ephemeralAuthClient), so there is nothing to sign out of. It must never sign
+ * out: Supabase's /logout (even scope 'local') revokes this very session on the server, which kills the token the app is about to
+ * use (PJ-RF-400 refresh_token_not_found). Throws PhantomLinkError.
  */
 export async function finishInSafari(auth: SafariAuth, relay: RelayClient, o: { message: string; signature: Uint8Array; handoff: HandoffRef; keepSession?: boolean }): Promise<void> {
   const { data, error } = await auth.signInWithWeb3({ chain: 'solana', message: o.message, signature: o.signature });
@@ -162,7 +170,6 @@ export async function finishInSafari(auth: SafariAuth, relay: RelayClient, o: { 
   // The app's own page finished this (a redirect that did open in the app): the session stays where it is.
   if (o.keepSession) return;
   const stored = await relayPut(relay, { id: o.handoff.id, app: true, response: sealRefreshToken(rt, o.handoff.pub) }).catch(() => false);
-  try { await auth.signOut({ scope: 'local' }); } catch { /* the browser's copy is only a convenience */ }
   if (!stored) throw stepError('HO-PUT');
 }
 
