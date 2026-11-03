@@ -9,10 +9,14 @@ export const tierClass = (divIdx: number) => (divIdx >= ZENITH_IDX ? 'tier-z' : 
 export const BADGE_FILES = ['bronze', 'silver', 'gold', 'platinum', 'diamond', 'prism', 'eclipse', 'master'] as const;
 export const ZENITH_BADGE = 'zenith';
 
-/** Badge file stem for a tier name as shown in the UI ('Pokémon Master' -> 'master', 'Zenith' -> 'zenith'); null when unknown. */
+/** Stored label from the old Elo ladder and pokejam_ranked_tier_name. Same crest as PokeJam Master; not a separate rank. */
+const LEGACY_MASTER = 'Pokémon Master';
+
+/** Badge file stem for a tier name as shown in the UI ('PokeJam Master' -> 'master', 'Zenith' -> 'zenith'); null when unknown. */
 export function stemForTier(tier: string): string | null {
   if (tier === 'Zenith') return ZENITH_BADGE;
-  const i = (TIERS as readonly string[]).indexOf(tier);
+  const name = tier === LEGACY_MASTER ? 'PokeJam Master' : tier;
+  const i = (TIERS as readonly string[]).indexOf(name);
   return i < 0 ? null : BADGE_FILES[i];
 }
 
@@ -29,7 +33,8 @@ export const badgeImgHtml = (divIdx: number, cls = ''): string =>
 /** The badge <img> for a tier name (the local mock's RankView); '' for an unranked player. */
 export function badgeImgForTier(tier: string | null, cls = ''): string {
   const stem = tier ? stemForTier(tier) : null;
-  return stem ? imgHtml(stem, tier!, cls) : '';
+  const alt = tier === LEGACY_MASTER ? 'PokeJam Master' : tier;
+  return stem && alt ? imgHtml(stem, alt, cls) : '';
 }
 
 /** What a badge shows: a placed rank (division index 0..24), a player still in placements, or no rank at all. */

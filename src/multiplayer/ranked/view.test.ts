@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { ReportOutcome } from '../shared/matchService';
 import { parseMe, parseRankResult, type RankedMe } from './serverRank';
-import { judgeNoteHtml, postMatchHtml, rankChipHtml, signInPanelHtml, tierClass } from './view';
+import { QUIT_WARNING, banEndText, banLeftText, judgeNoteHtml, postMatchHtml, quitNoticeText, rankChipHtml, rankedBanHtml, rankedWarnHtml, signInPanelHtml, tierClass } from './view';
 
 const me = (o: Partial<RankedMe> = {}): RankedMe => ({
   season: 1, daysLeft: 31, placing: false, placementsPlayed: 5, divIdx: 7, points: 40, zenith: false, shieldCharge: 1, shieldLossesLeft: null,
@@ -158,7 +158,52 @@ describe('sign-in panel', () => {
     expect(h.match(/ disabled/g)?.length).toBe(2);
     expect(signInPanelHtml({ kind: 'sign-in' }, { busy: true, google: false }).match(/ disabled/g)?.length).toBe(1);
   });
+  it('reads a quit ban from pokejam_ranked_me', () => {
+    expect(parseMe({ status: 'ranked', div_idx: 7, points: 40, placements_played: 5, quit_offences: 2, ban_until: '2026-11-03T02:00:00Z', quit_at: '2026-11-03T01:45:00Z', quit_recent: true, cooldown_until: '2026-11-03T02:00:00Z' }))
+      .toMatchObject({ quitOffences: 2, banUntil: '2026-11-03T02:00:00Z', quitRecent: true });
+  });
   it('contains no Marvel names', () => {
     for (const h of [rankChipHtml(me({ divIdx: 24, points: 5 })), signInPanelHtml({ kind: 'sign-in' })]) expect(h).not.toMatch(/celestial|eternity|one above all/i);
+  });
+});
+
+describe('ranked quit notice', () => {
+  const until = '2026-11-04T15:45:00Z';
+  const fresh = (o: Partial<RankedMe> = {}): RankedMe => me({ quitRecent: true, quitOffences: 1, banUntil: null, ...o });
+
+  it('warns on the first offence with the set sentence', () => {
+    expect(quitNoticeText(fresh(), Date.parse('2026-11-03T01:50:00Z'))).toBe(QUIT_WARNING);
+    expect(rankedWarnHtml()).toContain(QUIT_WARNING);
+    expect(rankedWarnHtml()).toContain('data-rk="quit-warn"');
+  });
+
+  it('names the ban length and when it ends', () => {
+    const now = Date.parse(until) - 14 * 60_000;
+    expect(quitNoticeText(fresh({ quitOffences: 2, banUntil: until }), now)).toBe(
+      `You left a Ranked game early. Ranked is banned for 15 minutes, until ${banEndText(until)}.`);
+    expect(quitNoticeText(fresh({ quitOffences: 3, banUntil: until }), now)).toContain('1 day');
+    expect(quitNoticeText(fresh({ quitOffences: 4, banUntil: until }), now)).toContain('7 days');
+    expect(quitNoticeText(fresh({ quitOffences: 6, banUntil: until }), now)).toContain('14 days');
+    expect(banEndText(until)).toBe('Nov 4, 2026, 3:45 PM UTC');
+  });
+
+  it('says nothing for a void, a stayer, or an old offence', () => {
+    expect(quitNoticeText(null)).toBeNull();
+    expect(quitNoticeText(fresh({ quitRecent: false }))).toBeNull();
+    expect(quitNoticeText(me())).toBeNull();
+  });
+
+  it('replaces the queue button with the time remaining, and stays in the menu', () => {
+    const now = Date.parse(until) - 15 * 60_000;
+    const h = rankedBanHtml(until, now);
+    expect(h).toContain('data-rk="ban"');
+    expect(h).toContain('15 minutes left');
+    expect(h).toContain('until Nov 4, 2026, 3:45 PM UTC');
+    expect(h).not.toMatch(/class="[^"]*hud|class="game|position:\s*fixed/);
+    expect(banLeftText(45_000)).toBe('45 seconds left');
+    expect(banLeftText(60 * 60_000)).toBe('1 hour left');
+    expect(banLeftText(26 * 3_600_000)).toBe('1 day 2 hours left');
+    expect(banLeftText(14 * 86_400_000)).toBe('14 days left');
+    expect(banLeftText(0)).toBe('Ban ended');
   });
 });

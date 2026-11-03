@@ -9,7 +9,9 @@ body:has(.admin) { background: var(--bg); color: var(--fg); }
 .admin .tabs button { font: 600 0.95rem var(--sport); padding: 6px 14px; border-radius: 999px; border: 1px solid var(--line); background: transparent; color: var(--muted); cursor: pointer; }
 .admin .tabs button.on { background: var(--panel-2); color: var(--fg); border-color: var(--accent); }
 .admin .tabs label { margin-left: auto; color: var(--muted); }
-.admin .scroll { overflow-x: auto; }
+.admin .scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; max-width: 100%; }
+/* Wide tables keep their columns and scroll inside .scroll. The Reported table is a card list on a phone, so it stays width 100%. */
+.admin .scroll table:not(.reports) { width: max-content; min-width: 100%; }
 .admin table { border-collapse: collapse; width: 100%; font-size: 0.95rem; }
 .admin th, .admin td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
 .admin th { color: var(--muted); font-weight: 600; white-space: nowrap; }
@@ -38,10 +40,12 @@ body:has(.admin) { background: var(--bg); color: var(--fg); }
   .admin table.reports .acts { white-space: normal; }
 }
 .admin .link { background: none; border: 0; color: var(--accent); cursor: pointer; font: inherit; padding: 0; text-decoration: underline; }
+.admin .stats, .admin section[data-body] { display: grid; grid-template-columns: minmax(0, 1fr); }
 .admin .stats { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; margin-bottom: 18px; }
 .admin .stats-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .admin .stats h2 { font: 0.85rem var(--pixel); color: var(--accent); margin: 0; }
 .admin .stats h3 { font: 600 0.95rem var(--sport); color: var(--muted); margin: 12px 0 0; }
+.admin .stats h4 { font: 600 0.85rem var(--sport); color: var(--muted); margin: 14px 0 0; }
 .admin .stat-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; margin: 10px 0; }
 .admin .stat { display: grid; gap: 2px; background: var(--panel-2); border-radius: 8px; padding: 10px 12px; }
 .admin .stat b { font-size: 1.6rem; line-height: 1.1; }

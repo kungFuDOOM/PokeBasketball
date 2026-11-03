@@ -148,9 +148,19 @@ function open(r: PhantomResponse, phantomPub: string, secret: string, onFail: st
   throw stepError(onFail);
 }
 
+/** Encrypts JSON for Phantom with this dapp key and Phantom's key. The same box signMessage uses. */
+export function sealFor(phantomPub: string, secret: string, payload: unknown): { nonce: string; payload: string } {
+  return seal(payload, boxBefore(base58Decode(phantomPub), base58Decode(secret)));
+}
+
+/** Decrypts Phantom's answer. `onFail` is the step key thrown when it can't be read. */
+export function openFrom(phantomPub: string, secret: string, r: PhantomResponse, onFail: string): Record<string, unknown> {
+  return open(r, phantomPub, secret, onFail);
+}
+
 // ---------- Links ----------
 
-export function redirectLink(loc: { origin: string; pathname: string }, id: string, app: boolean, h?: HandoffRef, flow?: 'link', userId?: string): string {
+export function redirectLink(loc: { origin: string; pathname: string }, id: string, app: boolean, h?: HandoffRef, flow?: 'link', userId?: string, hash?: string): string {
   // Sign-in (flow unset) keeps the original parameter names. Linking uses its own, so a link callback is not a sign-in.
   const link = flow === 'link';
   const param = link ? 'pj_wlink' : RETURN_PARAM;
@@ -161,7 +171,8 @@ export function redirectLink(loc: { origin: string; pathname: string }, id: stri
       : `&${HANDOFF_ID_PARAM}=${h.id}&${HANDOFF_PUB_PARAM}=${h.pub}&${HANDOFF_SECRET_PARAM}=${h.secret}`
     : '';
   const uid = link && userId ? `&pj_uid=${encodeURIComponent(userId)}` : '';
-  return `${loc.origin}${loc.pathname}?${param}=${id}${app ? `&${appParam}=1` : ''}${hand}${uid}`;
+  const frag = hash && /^#[A-Za-z0-9_-]*$/.test(hash) ? hash : '';
+  return `${loc.origin}${loc.pathname}?${param}=${id}${app ? `&${appParam}=1` : ''}${hand}${uid}${frag}`;
 }
 export const newId = () => base58Encode(randomBytes(32));
 

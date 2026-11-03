@@ -11,6 +11,7 @@ import { panel } from './matchFlow';
 import type { ReportOutcome } from './matchService';
 import { pack } from './evidence';
 import { evidenceQueue, uploadOnExit } from './evidenceQueue';
+import { quitNoticeText } from '../ranked/view';
 import { showIntro } from '../../screens/intro';
 import { INTRO_CAP_MS, INTRO_LEN_MS, IntroVotes, startingFiveEnabled } from '../../screens/intro.logic';
 import { PreGate } from './pre';
@@ -68,6 +69,18 @@ export async function playOnline(ctx: ModeContext, o: OnlineGameOptions) {
   let link: MatchLink;
   let cfg: Connected['cfg'];
   let conn: Connected;
+  // The leave has already been sent. A quit that counted shows the warning or the ban; a void goes back quietly.
+  const rankedQuitMessage = (note: string, who?: { service: SupabaseMatchService; match: OnlineMatch }) => {
+    message(ctx, 'LEFT RANKED', note, who);
+    ctx.root.querySelector('.menu')?.classList.add('rk-note');
+  };
+  const quitOrBack = async () => {
+    if (match.queue === 'ranked') {
+      const q = quitNoticeText(await service.rankedMe().catch(() => null));
+      if (q) return rankedQuitMessage(q);
+    }
+    ctx.back();
+  };
   try {
     conn = await connect(o.sb, match, quarterLenOverride(), abort.signal, service);
     ({ cfg, link } = conn);
@@ -81,7 +94,7 @@ export async function playOnline(ctx: ModeContext, o: OnlineGameOptions) {
       || ((e as Error).name !== 'AbortError' && (await service.matchStatus(match.id).catch(() => 'active')) !== 'active');
     offExit();
     await service.leave(match.id);
-    if ((e as Error).name === 'AbortError') return ctx.back();
+    if ((e as Error).name === 'AbortError') return quitOrBack();
     if (gone) return message(ctx, 'OPPONENT LEFT', `${match.opponent.name} left before the game started. No result was recorded.`);
     const p = classify(e);
     return message(ctx, p.kind === 'busy' ? 'ONLINE IS BUSY' : 'NO CONNECTION', p.message);
@@ -107,7 +120,7 @@ export async function playOnline(ctx: ModeContext, o: OnlineGameOptions) {
     offExit();
     link.close();
     await service.leave(match.id);
-    return ctx.back();
+    return quitOrBack();
   }
   link.startMeter();
 
@@ -161,6 +174,10 @@ export async function playOnline(ctx: ModeContext, o: OnlineGameOptions) {
     link.close();
     if (!peerLost || match.queue !== 'ranked') {
       await service.leave(match.id);
+      if (match.queue === 'ranked' && !peerLost) {
+        const q = quitNoticeText(await service.rankedMe().catch(() => null));
+        if (q) return rankedQuitMessage(q, { service, match });
+      }
       message(ctx, title, note, { service, match });
       return;
     }

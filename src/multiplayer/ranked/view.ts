@@ -1,10 +1,11 @@
 // Season 1 Ranked screens as HTML strings: the rank chip, placement progress, the sign-in panel and the post-match points
 // block. Pure (no DOM, no network) so they unit-test in node. Menu and results screens only: nothing here is ever drawn
-// over the court or the in-game HUD. Text and CSS only (index.ts wires the buttons; style.css has the look).
+// over the court or the in-game HUD. Text, the Rank Shield emblem and CSS (index.ts wires the buttons; style.css has the look).
 import { SIGNIN_GOOGLE } from '../../config/features';
 import { esc } from '../../util';
 import { PHANTOM_DOWNLOAD_URL, type PhantomAction } from '../../wallet/phantom';
 import { badgeImgHtml, badgeRankOf, renderRankBadge, type BadgeRank } from '../../ranked/badge';
+import { shieldEmblemHtml } from '../../ranked/shieldEmblem';
 import { DIV_POINTS, ZENITH_IDX, fromLadderScore, rankName, tierIndex, tierRanges } from '../../ranked/rank';
 import type { ReportOutcome } from '../shared/matchService';
 import type { RankedMe, RankedResult, ShieldItem, ShieldStatus, WeeklyChallenge } from './serverRank';
@@ -12,7 +13,7 @@ import { displayName } from './username';
 
 const PLACEMENT_GAMES = 5;
 
-/** CSS class that carries the tier colour (style.css: .tier-0 Bronze ... .tier-7 Pokémon Master, .tier-z Zenith). */
+/** CSS class that carries the tier colour (style.css: .tier-0 Bronze ... .tier-7 PokeJam Master, .tier-z Zenith). */
 export const tierClass = (divIdx: number) => (divIdx >= ZENITH_IDX ? 'tier-z' : `tier-${tierIndex(divIdx)}`);
 const seasonBadge = (n: number | null) => (n === null ? '' : `<span class="rk-season" title="Season ${n}">S${n}</span>`);
 const plural = (n: number, word: string) => `${n} ${n === 1 ? word : /(s|ch)$/.test(word) ? `${word}es` : `${word}s`}`;
@@ -23,6 +24,64 @@ export const rankText = (divIdx: number, points: number) => (divIdx >= ZENITH_ID
 /** Five pips, `played` of them filled. */
 function pips(played: number): string {
   return `<span class="rk-pips" aria-hidden="true">${Array.from({ length: PLACEMENT_GAMES }, (_, i) => `<i${i < played ? ' class="on"' : ''}></i>`).join('')}</span>`;
+}
+
+/** Shown after the first Ranked quit. The next offence is a 15-minute matchmaking ban. */
+export const QUIT_WARNING = 'Leaving Ranked games early gets you banned from Ranked. Next time: 15 minutes.';
+
+const banLengthText = (offences: number) => (offences <= 2 ? '15 minutes' : offences === 3 ? '1 day' : offences === 4 ? '7 days' : '14 days');
+
+/** When a ban ends, in UTC so the sentence does not depend on the device clock's zone. */
+export function banEndText(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return `${d.toLocaleString('en-US', { timeZone: 'UTC', dateStyle: 'medium', timeStyle: 'short' })} UTC`;
+}
+
+/** Time left on a Ranked ban: "14 minutes left", "1 day left". */
+export function banLeftText(ms: number): string {
+  if (!Number.isFinite(ms) || ms <= 0) return 'Ban ended';
+  const s = Math.ceil(ms / 1000);
+  if (s < 90) return `${s} ${s === 1 ? 'second' : 'seconds'} left`;
+  const m = Math.ceil(ms / 60_000);
+  if (m < 60) return `${m} ${m === 1 ? 'minute' : 'minutes'} left`;
+  if (m < 24 * 60) {
+    const h = Math.ceil(m / 60);
+    return `${h} ${h === 1 ? 'hour' : 'hours'} left`;
+  }
+  const d = Math.floor(m / (60 * 24));
+  const h = Math.round((m % (60 * 24)) / 60);
+  const days = `${d} ${d === 1 ? 'day' : 'days'}`;
+  return h > 0 ? `${days} ${h} ${h === 1 ? 'hour' : 'hours'} left` : `${days} left`;
+}
+
+/** The instant Ranked matchmaking opens again, or null. */
+export function activeBanUntil(me: RankedMe | null | undefined, now = Date.now()): string | null {
+  const until = me?.banUntil ?? me?.cooldownUntil ?? null;
+  if (!until) return null;
+  const t = Date.parse(until);
+  return Number.isFinite(t) && t > now ? until : null;
+}
+
+/**
+ * The sentence after a quit that just counted. Null when this visit is not that quit
+ * (a void, the player who stayed, or an older offence).
+ */
+export function quitNoticeText(me: RankedMe | null | undefined, now = Date.now()): string | null {
+  if (!me?.quitRecent) return null;
+  const until = activeBanUntil(me, now);
+  if (!until) return QUIT_WARNING;
+  return `You left a Ranked game early. Ranked is banned for ${banLengthText(me.quitOffences ?? 2)}, until ${banEndText(until)}.`;
+}
+
+/** Replaces the Find button while a ban is running. Menu only: never drawn over the court. */
+export function rankedBanHtml(until: string, now = Date.now()): string {
+  return `<p class="rk-ban" data-rk="ban" role="status"><strong>Ranked banned</strong><span data-rk-ban-left>${esc(banLeftText(Date.parse(until) - now))}</span><small>until ${esc(banEndText(until))}</small></p>`;
+}
+
+/** The first-offence warning on the Ranked screen. */
+export function rankedWarnHtml(): string {
+  return `<p class="rk-warn" data-rk="quit-warn" role="status">${esc(QUIT_WARNING)}</p>`;
 }
 
 const HOUR = 3_600_000;
@@ -53,7 +112,7 @@ export function shieldItemHtml(it: ShieldItem | null | undefined, now = Date.now
   const note = it.armed ? (it.locked ? 'Armed for this match' : 'Armed: saves the points of your next loss') : blockText(it, now);
   const can = !it.locked && (it.armed || it.block === null);
   return `<div class="rk-item${it.armed ? ' armed' : ''}${shop ? ' has-shop' : ''}" data-rk="shield">
-    <span class="rk-item-ico" aria-hidden="true">🛡</span>
+    <span class="rk-item-ico" aria-hidden="true">${shieldEmblemHtml()}</span>
     <span class="rk-item-name"><strong>Rank Shield</strong><b class="rk-item-count" title="Rank Shields you hold">x${it.count}</b></span>
     <button class="btn rk-arm${it.armed ? ' on' : ''}" type="button" data-a="arm" aria-pressed="${it.armed}"${can ? '' : ' disabled'}>${it.armed ? 'ARMED' : 'ARM'}</button>
     ${note ? `<span class="rk-item-note" role="status">${esc(note)}</span>` : ''}
@@ -74,13 +133,13 @@ export function weeklyCardHtml(w: WeeklyChallenge | null | undefined, now = Date
 
 /** The small tag on the searching screen. */
 export const shieldTagHtml = (st: ShieldItem | ShieldStatus | null | undefined) =>
-  st?.armed ? '<p class="rk-queue-tag" data-rk="shield-tag">🛡 Shield armed</p>' : '';
+  st?.armed ? `<p class="rk-queue-tag" data-rk="shield-tag">${shieldEmblemHtml()} Shield armed</p>` : '';
 
 function shieldNote(me: RankedMe | null): string {
   if (!me || !me.shieldActive || me.shieldCharge === null) return '';
-  if (me.shieldCharge === 1) return '<span class="rk-shield on" title="Blocks your next demotion">🛡 Demotion Guard ready</span>';
+  if (me.shieldCharge === 1) return `<span class="rk-shield on" title="Blocks your next demotion">${shieldEmblemHtml()} Demotion Guard ready</span>`;
   const n = me.shieldLossesLeft;
-  return `<span class="rk-shield" title="Used. Recharges after 3 losses">🛡 Guard recharges${n !== null ? ` in ${plural(n, 'loss')}` : ''}</span>`;
+  return `<span class="rk-shield" title="Used. Recharges after 3 losses">${shieldEmblemHtml()} Guard recharges${n !== null ? ` in ${plural(n, 'loss')}` : ''}</span>`;
 }
 
 /** The rank chip for the Ranked home: tier + division + Zenith/points bar + shield + season badge; during placements only the progress. */
@@ -201,10 +260,10 @@ function rankedBlock(r: RankedResult, me: RankedMe | null, verdict: string, seas
   const move = before && after ? `<span class="rk-sub">${esc(rankText(before.divIdx, before.points))} → ${esc(rankText(after.divIdx, after.points))}</span>` : after ? `<span class="rk-sub">${esc(rankText(after.divIdx, after.points))}</span>` : '';
   const bar = after && after.divIdx < ZENITH_IDX ? `<div class="rk-bar" role="img" aria-label="${after.points} of ${DIV_POINTS} points"><i style="width:${Math.max(0, Math.min(100, after.points))}%"></i></div>` : '';
   let shield = '';
-  if (r.event === 'shielded') shield = '<span class="rk-shield used">🛡 Demotion Guard used: your demotion was blocked.</span>';
+  if (r.event === 'shielded') shield = `<span class="rk-shield used">${shieldEmblemHtml()} Demotion Guard used: your demotion was blocked.</span>`;
   const charge = shieldNote(me);
-  const item = r.shield?.used ? `<span class="rk-shield used">🛡 Rank Shield saved you ${plural(r.shield.saved, 'point')}</span>`
-    : r.shield?.armed && (won ?? (delta !== null && delta > 0)) ? '<span class="rk-shield on">🛡 Shield kept - you won</span>' : '';
+  const item = r.shield?.used ? `<span class="rk-shield used">${shieldEmblemHtml()} Rank Shield saved you ${plural(r.shield.saved, 'point')}</span>`
+    : r.shield?.armed && (won ?? (delta !== null && delta > 0)) ? `<span class="rk-shield on">${shieldEmblemHtml()} Shield kept - you won</span>` : '';
   if (charge && (r.event === 'shielded' || me?.shieldCharge === 0)) shield += charge;
   const anim = after && up ? reveal('up', after.divIdx, r.event === 'zenith' ? 'Welcome to Zenith!' : `Rank up! ${rankName(after.divIdx)}`)
     : after && down ? reveal('down', after.divIdx, `Demoted to ${rankName(after.divIdx)}`) : '';
