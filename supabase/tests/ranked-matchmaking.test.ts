@@ -393,3 +393,23 @@ describe('the Social queue is unchanged', () => {
     expect(await status(t, m2)).toBe('void');
   });
 });
+
+// Migration 20261207: the last Ranked opponent (within 1 hour) is never paired again, however long either has waited.
+describe('no rematch with the last opponent', () => {
+  it('two players who just played are not re-paired while both are queued, and a different opponent is paired instead', async () => {
+    const t = await testDb();
+    const [a, b, c] = [await t.user('A'), await t.user('B'), await t.user('C')];
+    await a.call('pokejam_find_match', ['ranked']);
+    const m1 = (await b.call<string>('pokejam_find_match', ['ranked']))!;
+    await t.sql(`update public.pokejam_matches set status = 'done' where id = $1`, [m1]);
+    await a.call('pokejam_find_match', ['ranked']);
+    expect(await b.call('pokejam_find_match', ['ranked'])).toBeNull();
+    await waited(t, a, 300); // no fallback: a long wait does not lift the skip
+    expect(await b.call('pokejam_find_match', ['ranked'])).toBeNull();
+    const m2 = await c.call<string>('pokejam_find_match', ['ranked']);
+    expect(m2).toBeTruthy();
+    const info = await c.call<Record<string, string>>('pokejam_match_info', [m2]);
+    expect([info.host, info.guest]).toContain(c.id);
+    expect(await status(t, m1)).toBe('done');
+  });
+});
