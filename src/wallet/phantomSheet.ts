@@ -1,6 +1,6 @@
 // Drives a Phantom deeplink sign-in on screen: the tap that leaves for Phantom, what the page does when Phantom sends the player
 // back, and the wait for an answer left in the relay. The rules are in phantomLink.ts.
-import { ONLINE_CONFIGURED, supabase } from '../multiplayer/shared/supabase';
+import { ONLINE_CONFIGURED, ephemeralAuthClient, supabase } from '../multiplayer/shared/supabase';
 import { RETURN_KEY } from '../multiplayer/ranked/account';
 import {
   beginHandoff, clearHandoff, clearLanding, finishInSafari, handoffCode, landingStore, landingTrip, loadHandoff, reportFailure, restoreInApp,
@@ -233,7 +233,9 @@ async function resumeLanding(cb: Callback) {
       return;
     }
     draw({ kind: 'working', text: 'Signing in…' });
-    await finishInSafari(supabase().auth, relay(), { message: out.message, signature: out.signature, handoff: h, keepSession: sameApp });
+    // Same app: sign in here for real. A handoff: a throwaway client, so Safari stores nothing and never rotates or revokes the token.
+    const auth = sameApp ? supabase().auth : ephemeralAuthClient();
+    await finishInSafari(auth, relay(), { message: out.message, signature: out.signature, handoff: h, keepSession: sameApp });
     landingCtx = null;
     if (sameApp) {
       const rec = loadHandoff(localStore(), Date.now()).handoff;
