@@ -82,7 +82,9 @@ async function call<T>(body: Record<string, unknown> | null): Promise<T> {
   try {
     res = body
       ? await fetch(URL_, { method: 'POST', headers: { ...headers, 'content-type': 'application/json' }, body: JSON.stringify(body) })
-      : await fetch(`${URL_}?action=board`, { headers });
+      // No custom headers: a bare GET is a CORS "simple" request, so the browser sends no preflight OPTIONS (the function
+      // is deployed with --no-verify-jwt, so the board needs no key).
+      : await fetch(`${URL_}?action=board`);
   } catch {
     throw new AdsError('Could not reach the ad server. Check your connection.');
   }

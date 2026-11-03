@@ -63,6 +63,10 @@ From the moment the wallet signs, money may have moved, so the page saves a reco
 
 If the wallet sends a payment but the page never gets the signature (the tab dies during the prompt, or the wallet reports an error after sending), the page has nothing to hold. The `sweep` still books it from the chain, once it's scheduled.
 
+## How often the page asks for the board
+
+The board GET sends no custom headers (a CORS "simple" request, so no preflight; the function is deployed with `--no-verify-jwt`). The banner refreshes every 10 minutes, never while the tab is hidden, and shares the last board across tabs and reloads through `localStorage`. Errors back off (20 minutes, then 30). Each ad carries its own end time, so it still drops off on time.
+
 ## Before mainnet
 
 Nothing here has been deployed. No migration has been applied and no secret set. See the README's "On kungFuDOOM's OK (mainnet, the live site)" steps.
