@@ -2163,12 +2163,7 @@ body:has(.pause-btn) .music-btn:not(.docked) {
 .rk-card { display: inline-flex; align-items: center; gap: 6px; vertical-align: middle; }
 .rk-card-name { overflow-wrap: anywhere; }
 .rk-gallery { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; }
-.rk-gallery-shield { display: inline-flex; flex-direction: column; align-items: center; gap: 2px; color: var(--tier-2); }
-.rk-gallery-shield .rk-shield-ico { width: 96px; height: 96px; }
-.rk-gallery-shield b { font: 700 0.95rem var(--sport); letter-spacing: 0.05em; text-transform: uppercase; }
 @media (orientation: landscape) and (max-height: 520px) {
-  .rk-gallery-shield .rk-shield-ico { width: 56px; height: 56px; }
-  .rk-gallery-shield b { font-size: 0.8rem; }
   .rk-rb-img, .rk-rb-ph, .rk-rb-lg .rk-rb-img, .rk-rb-lg .rk-rb-ph { width: 56px; height: 56px; }
   .rk-rb-sm .rk-rb-img, .rk-rb-sm .rk-rb-ph { width: 24px; height: 24px; }
   .pf-badge .rk-rb-img, .pf-badge .rk-rb-ph { width: 52px; height: 52px; }

@@ -2,7 +2,7 @@
 // come from pokejam_profiles (via pokejam_ensure_profile) and are only diffed here to say what the last match did.
 import type { BadgeRank } from '../../ranked/badge';
 import { RANKED_PRESETS, type RankedPreset } from './presets';
-import { DIVISIONS, PLACEMENTS, TIERS, view, type MatchOutcome, type RankView, type Tier } from './rank';
+import { DIVISIONS, PLACEMENTS, TIERS, tierLabel, view, type MatchOutcome, type RankView, type Tier } from './rank';
 
 /** The rating columns of a pokejam_profiles row. */
 export interface ServerRank {
@@ -36,7 +36,8 @@ export function serverView(s: ServerRank): RankView {
   }
   const tier = s.tier as Tier;
   const division = s.division && (DIVISIONS as readonly string[]).includes(s.division) ? (s.division as RankView['division']) : null;
-  return { placed: true, tier, division, rp: s.rp, label: division ? `${tier} ${division} · ${s.rp} RP` : `${tier} · ${s.rp} RP` };
+  const shown = tierLabel(tier);
+  return { placed: true, tier, division, rp: s.rp, label: division ? `${shown} ${division} · ${s.rp} RP` : `${shown} · ${s.rp} RP` };
 }
 
 const position = (v: RankView) => (v.tier ? TIERS.indexOf(v.tier) * 3 + (v.division ? DIVISIONS.indexOf(v.division) : 0) : -1);

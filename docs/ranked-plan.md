@@ -14,12 +14,12 @@ Launch = **Season 1**, 6 weeks.
 - **Per-player stats that exist:** `PStats` (`src/game/types.ts:119`: pts, fgm/fga, tpm/tpa, reb, ast, stl, blk, dnk, sec, gs) are tracked per player in the client game (`game.ts`), but they are **not** in the report, and nothing server-side can verify them (the signed evidence log lets `winnerCheck.ts` replay a match in JS, not in SQL). So the performance factor uses **only the final score**, which both players report and which must agree for the match to count. Box-score stats (FG%, steals, blocks) are deliberately not used; see "Possible later" in section 3.
 - `supabase/migrations/20261021_pokejam_online.sql` (test-build ladder):
   - `pokejam_profiles` has `mmr, ladder, placements, shield, tier, division, rp`.
-  - `pokejam_apply_rank` is an Elo (K 64 / 24) ladder. It has 5 tiers x 3 divisions plus Pokémon Master, with 100-point divisions and a 2-game shield.
+  - `pokejam_apply_rank` is an Elo (K 64 / 24) ladder. It has 5 tiers x 3 divisions plus PokeJam Master, with 100-point divisions and a 2-game shield.
   - `pokejam_report_result` reconciles both players' reports. If they disagree the match is `void`. If the guest never reports, the host's report wins after 120 s. It calls `pokejam_apply_rank` for `queue = 'ranked'`.
   - `pokejam_leave_match` currently **voids** the match. Ranked needs different behaviour (section 8.2).
 - `20261104_pokejam_queue_heartbeat.sql`: `pokejam_find_match(p_queue)` runs as a poll every 2 s, and each poll is a heartbeat (`last_seen`, 15 s). The window is `100 + 25*s` capped at 1000 on `mmr`. Pairing skips blocked and banned users. The 15 s heartbeat is why ghosts no longer match.
 - Already in place and reusable: `pokejam_human_ok` (human check), `pokejam_banned`, `pokejam_rate_ok`, `pokejam_cleanup_maybe`, match evidence (`20261028`), game heartbeat (`20261106`), draft presence (`20261105`), requeue-stale (`20261107`), admin stats (`20261109`).
-- The trailer already advertises the ladder as Bronze ... Pokémon Master (`RANK_TIERS`, 6 badges). It needs a refresh for Prism, Eclipse and Zenith.
+- The trailer already advertises the ladder as Bronze ... PokeJam Master (`RANK_TIERS`, 6 badges). It needs a refresh for Prism, Eclipse and Zenith.
 
 The test-build Elo ladder is replaced by the points system below. Its columns stay in place, unused. Nothing is dropped.
 
@@ -27,21 +27,21 @@ The test-build Elo ladder is replaced by the points system below. Its columns st
 
 Order, **lowest to highest** (24 divisions, index 0..23, then one points-only tier):
 
-> Bronze 3 -> Bronze 2 -> Bronze 1 -> Silver 3 -> 2 -> 1 -> Gold 3 -> 2 -> 1 -> Platinum 3 -> 2 -> 1 -> Diamond 3 -> 2 -> 1 -> **Prism** 3 -> 2 -> 1 -> **Eclipse** 3 -> 2 -> 1 -> **Pokémon Master 3 -> 2 -> 1** -> **Zenith**
+> Bronze 3 -> Bronze 2 -> Bronze 1 -> Silver 3 -> 2 -> 1 -> Gold 3 -> 2 -> 1 -> Platinum 3 -> 2 -> 1 -> Diamond 3 -> 2 -> 1 -> **Prism** 3 -> 2 -> 1 -> **Eclipse** 3 -> 2 -> 1 -> **PokeJam Master 3 -> 2 -> 1** -> **Zenith**
 
-Division 3 is the lowest in a tier and division 1 the highest. Prism, Eclipse and Zenith are original names (generic metals and gems, plus the user's own Pokémon Master).
+Division 3 is the lowest in a tier and division 1 the highest. Prism, Eclipse and Zenith are original names (generic metals and gems, plus the user's own PokeJam Master).
 
 Every division is **100 points** (0..99). Reaching 100 promotes you with the remainder carried over. Dropping below 0 demotes you to 75 in the division below, unless the rank shield blocks it (section 5).
 
-**Ladder score** (used for matchmaking, seeding and the leaderboard): `div_idx * 100 + points`, so Bronze 3 0 pts = 0 and Pokémon Master 1 99 pts = 2399. Zenith adds `2400 + zenith_points`.
+**Ladder score** (used for matchmaking, seeding and the leaderboard): `div_idx * 100 + points`, so Bronze 3 0 pts = 0 and PokeJam Master 1 99 pts = 2399. Zenith adds `2400 + zenith_points`.
 
 ### Zenith (points-only top tier, no divisions)
 
-- **Entry:** promote out of Pokémon Master 1 (reach 100 points there). You enter Zenith with **100 Zenith points**. The buffer stops a single loss from bouncing you straight back out.
-- **Points:** open-ended, no divisions, no cap. Uses the Pokémon Master base values (win 20, loss 22) and the same performance formula (section 3). Zenith players carry `div_idx = 24` and `points = zenith points`.
-- **Exit:** a loss that takes Zenith points below 0 demotes you to Pokémon Master 1 with 75 points. The rank shield does not exist at this level (Gold and below only).
+- **Entry:** promote out of PokeJam Master 1 (reach 100 points there). You enter Zenith with **100 Zenith points**. The buffer stops a single loss from bouncing you straight back out.
+- **Points:** open-ended, no divisions, no cap. Uses the PokeJam Master base values (win 20, loss 22) and the same performance formula (section 3). Zenith players carry `div_idx = 24` and `points = zenith points`.
+- **Exit:** a loss that takes Zenith points below 0 demotes you to PokeJam Master 1 with 75 points. The rank shield does not exist at this level (Gold and below only).
 - **Inactivity:** after 7 days without a ranked game, lose 25 Zenith points per further 7 days (floor 50, applied lazily when the profile or leaderboard is read). This keeps the board live without a cron job.
-- **Leaderboard:** the Top 100 (section 8.3) is ordered by ladder score across every tier, so Zenith players sit on top ordered by Zenith points, and Pokémon Master players fill the rest until Zenith has enough entrants.
+- **Leaderboard:** the Top 100 (section 8.3) is ordered by ladder score across every tier, so Zenith players sit on top ordered by Zenith points, and PokeJam Master players fill the rest until Zenith has enough entrants.
 
 ## 3. Points per win and per loss, with performance
 
@@ -85,12 +85,12 @@ loss_cost = clamp(round(L * Ml) - adj, round(0.6 * L), L)
 | Diamond | 23 | 20 | **18..35** | **12..20** | ~+6 | 17 |
 | Prism | 22 | 21 | **18..33** | **13..21** | ~+4 | 25 |
 | Eclipse | 21 | 21 | **17..32** | **13..21** | ~+3 | 33 |
-| Pokémon Master | 20 | 22 | **16..30** | **13..22** | ~+2 | 50 |
+| PokeJam Master | 20 | 22 | **16..30** | **13..22** | ~+2 | 50 |
 | Zenith (points) | 20 | 22 | **16..30** | **13..22** | ~+2 | n/a |
 
 Avg net assumes winners average m ~ 0.12 (Mw ~ 0.97) and losers average m ~ 0.12 (Ml ~ 0.8). A player who wins more than half their games and wins big climbs much faster; a player who loses blowouts pays the full `L`.
 
-Reading it: a 50% player needs a bit over 20 wins to climb a whole tier in Bronze and about 100 in Eclipse. Bronze 3 to Pokémon Master 3 is around 340 wins at 50%. Below ~45% in Gold or higher you slowly sink, and blowout losses sink you faster than close ones. In Pokémon Master, you need about 10 wins per 9 losses to stand still.
+Reading it: a 50% player needs a bit over 20 wins to climb a whole tier in Bronze and about 100 in Eclipse. Bronze 3 to PokeJam Master 3 is around 340 wins at 50%. Below ~45% in Gold or higher you slowly sink, and blowout losses sink you faster than close ones. In PokeJam Master, you need about 10 wins per 9 losses to stand still.
 
 Streaks give no extra points, so the ladder is not tilt-bait.
 
@@ -132,7 +132,7 @@ q   = min(m, 0.25) / 0.25                         -- same margin share m as sect
 w_i = (0.6 + 0.4 * q) * (1 + clamp((opp_score - seed_score) / 1000, -0.2, +0.2))
 raw += (won ? +1 : -1) * w_i                      -- leaver: -1 * 1.0; opponent of a leaver: +1 * 0.6
 shift = clamp(round(20 * raw), -100, +100)        -- -100 .. +100 ladder points
-start_score = clamp(seed_score + shift, 0, 2299)  -- Bronze 3 0 pts .. Pokémon Master 1 99 pts
+start_score = clamp(seed_score + shift, 0, 2299)  -- Bronze 3 0 pts .. PokeJam Master 1 99 pts
 ```
 
   A 5-0 sweep with strong margins gives about +100, a 0-5 gives about -100, a 3-2 about +20. `w_i` is bounded to about 0.48..1.2, so `raw` is within -6..+6 and the clamp is what limits `shift`.
@@ -145,7 +145,7 @@ start_score = clamp(seed_score + shift, 0, 2299)  -- Bronze 3 0 pts .. Pokémon 
 seed_score = clamp(last_final_score - 600, 0, 1400)       -- last_final_score = ladder score at the end of your last archived season
 ```
 
-- A Zenith player counts as `2400 + zenith_points`, so everyone from Pokémon Master 3 and up seeds at the cap, 1400 (Diamond 1 0 pts). With the maximum +100 shift they can place no higher than Prism 3.
+- A Zenith player counts as `2400 + zenith_points`, so everyone from PokeJam Master 3 and up seeds at the cap, 1400 (Diamond 1 0 pts). With the maximum +100 shift they can place no higher than Prism 3.
 - A Gold 2 0 pts player (700) seeds at 100 and a Platinum 1 (1100) at 500 (Silver 1).
 - **New players** (no archived season): `seed_score = 0` (Bronze 3, 0 pts). Placements move them by 0..+100 at most, since the floor is 0.
 - A player who skipped a season uses the most recent archived final (no extra decay).
@@ -267,10 +267,10 @@ Total about **7.5-10.5 hours** of agent work (up from 5-7 h: performance formula
 ## Summary
 
 1. **Formula:** `m = (W_score - L_score) / (W_score + L_score)` from the agreed final score only (no box stats are reported). `win = clamp(round(W * clamp(0.8 + 1.4m, 0.8, 1.5)) + adj, round(0.8W), round(1.5W))`; `loss = clamp(round(L * (1 - 0.4 * (1 - min(m, 0.25)/0.25))) - adj, round(0.6L), L)`; `adj = clamp(opp_idx - my_idx, -3, +3)`.
-2. **Tier ranges (win min..max / loss min..max):** Bronze 24..45 / 11..19, Silver 22..41 / 11..19, Gold 20..38 / 11..19, Platinum 19..36 / 12..20, Diamond 18..35 / 12..20, Prism 18..33 / 13..21, Eclipse 17..32 / 13..21, Pokémon Master and Zenith 16..30 / 13..22.
+2. **Tier ranges (win min..max / loss min..max):** Bronze 24..45 / 11..19, Silver 22..41 / 11..19, Gold 20..38 / 11..19, Platinum 19..36 / 12..20, Diamond 18..35 / 12..20, Prism 18..33 / 13..21, Eclipse 17..32 / 13..21, PokeJam Master and Zenith 16..30 / 13..22.
 3. **Rank shield:** one charge blocks one demotion, Gold and below only, recharges after **N = 3** losses; leaver losses are not shielded; Bronze 3 floor stays. The old 3 tier-entry shield games are removed.
 4. **Placements and seeding:** 5 hidden-point placement matches per season; shift = `clamp(round(20 * Σ ±w_i), -100, +100)`; `seed = clamp(last_final_score - 600, 0, 1400)`; new players seed Bronze 3 0 pts. This replaces the fixed -6 division / Platinum 1 cap reset.
-5. **Top tier:** **Zenith**, points-only above Pokémon Master 1, entered at 100 points on promotion from PM 1, out below 0, 7-day inactivity decay. Leaderboard **Top 100** by ladder score, via `pokejam_ranked_leaderboard` + `my_position`, in a Top 100 tab on the Season screen.
+5. **Top tier:** **Zenith**, points-only above PokeJam Master 1, entered at 100 points on promotion from PM 1, out below 0, 7-day inactivity decay. Leaderboard **Top 100** by ladder score, via `pokejam_ranked_leaderboard` + `my_position`, in a Top 100 tab on the Season screen.
 6. **Seasons:** Season 1 launches at 6 weeks (`length_weeks` default 6, configurable); `ends_at` is set in `pokejam_ranked_open_season` (a generated column would fail because timestamptz + interval is not immutable); season number badge "S1" on the chip and Season screen; Season 2 starts by placements.
 7. **Online format:** **1v1** (host and guest, one team each). Leaver = max-cost loss with no performance reduction, 45 s reconnect, stayer wins at min gain (or no change if before tip-off), repeat leavers get 0/5/15/60 min cooldowns and x1.25 loss cost from the 3rd.
 8. **Estimate and PRs:** about **7.5-10.5 h** of agent work in 6 phases, shipped as **4 PRs** (rank core + schema, report/leavers/matchmaking, UI, leaderboard + polish), `NET_VERSION` stays 3.

@@ -1372,7 +1372,7 @@ function renderROutro(seg: Segment, t: number, a: number) {
 // ---------- cut: online ----------
 
 const RANK_TIERS: [string, string][] = [
-  ['BRONZE', '#b0703a'], ['SILVER', '#aab4c0'], ['GOLD', '#e6b422'], ['PLATINUM', '#3fbfb0'], ['DIAMOND', '#5aa8ff'], ['POKéMON MASTER', '#e0473f'],
+  ['BRONZE', '#b0703a'], ['SILVER', '#aab4c0'], ['GOLD', '#e6b422'], ['PLATINUM', '#3fbfb0'], ['DIAMOND', '#5aa8ff'], ['POKEJAM MASTER', '#e0473f'],
 ];
 const POSITIONS = ['PG', 'SG', 'SF', 'PF', 'C'] as const;
 
@@ -1575,7 +1575,7 @@ function tierBadge(x: number, y: number, size: number, name: string, color: stri
   ctx.save();
   ctx.translate(x, y);
   ctx.scale(k, k);
-  if (name === 'POKéMON MASTER') {
+  if (name === 'POKEJAM MASTER') {
     const crown = images.get('badge-Elite');
     if (crown) ctx.drawImage(crown, -size * 0.62, -size * 0.62, size * 1.24, size * 1.24);
   } else {
@@ -1611,7 +1611,7 @@ function tierBadge(x: number, y: number, size: number, name: string, color: stri
   ctx.restore();
 }
 
-/** Ranked: the ladder from Bronze to Pokémon Master, stamped ONE WEEK OR LESS. */
+/** Ranked: the ladder from Bronze to PokeJam Master, stamped ONE WEEK OR LESS. */
 function renderORanked(seg: Segment, t: number, a: number) {
   ctx.fillStyle = '#0a0620';
   ctx.fillRect(0, 0, W, H);
@@ -1651,7 +1651,7 @@ function renderORanked(seg: Segment, t: number, a: number) {
     ctx.fillText('OR LESS', 0, 52);
     ctx.restore();
   }
-  if (a > 1.7) plainText('5 PLACEMENT MATCHES. THEN CLIMB TO POKéMON MASTER.', W / 2, 980, 56, '#ffcb05');
+  if (a > 1.7) plainText('5 PLACEMENT MATCHES. THEN CLIMB TO POKEJAM MASTER.', W / 2, 980, 56, '#ffcb05');
 }
 
 /** A foil booster pack: crimped ends, a holo sheen and a question mark. */

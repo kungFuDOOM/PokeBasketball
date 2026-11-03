@@ -16,6 +16,7 @@ describe('rank badge art', () => {
   });
   it('maps every tier name and Zenith to its file', () => {
     expect(TIERS.map(stemForTier)).toEqual([...BADGE_FILES]);
+    expect(stemForTier('PokeJam Master')).toBe('master');
     expect(stemForTier('Pokémon Master')).toBe('master');
     expect(stemForTier('Zenith')).toBe('zenith');
     expect(stemForTier('Nope')).toBeNull();
@@ -25,11 +26,12 @@ describe('rank badge art', () => {
     expect(badgeImgHtml(ZENITH_IDX)).toContain('ranks/zenith.png');
     expect(badgeImgHtml(ZENITH_IDX)).toContain('alt="Zenith"');
     expect(badgeImgHtml(0)).toContain('alt="Bronze"');
-    expect(badgeImgHtml(TOP_DIV)).toContain('alt="Pokémon Master"');
+    expect(badgeImgHtml(TOP_DIV)).toContain('alt="PokeJam Master"');
     expect(badgeImgHtml(0)).toContain('@2x.png 2x');
   });
   it('local-mock badge: image for a tier, nothing when unranked', () => {
     expect(badgeImgForTier('Gold')).toContain('ranks/gold.png');
+    expect(badgeImgForTier('Pokémon Master')).toContain('alt="PokeJam Master"');
     expect(badgeImgForTier(null)).toBe('');
     expect(badgeUrl('gold', true)).toMatch(/ranks\/gold@2x\.png$/);
   });

@@ -19,7 +19,7 @@ describe('server rating mapping', () => {
     expect(serverView(parseProfile(row({ placements: 3 }))).label).toBe('Unranked, placements 3/5');
     const v = serverView(parseProfile(row({ placements: 5, tier: 'Gold', division: 'II', rp: 40 })));
     expect(v).toMatchObject({ placed: true, tier: 'Gold', division: 'II', rp: 40, label: 'Gold II · 40 RP' });
-    expect(serverView(parseProfile(row({ placements: 5, tier: 'Pokémon Master', rp: 12 }))).label).toBe('Pokémon Master · 12 RP');
+    expect(serverView(parseProfile(row({ placements: 5, tier: 'Pokémon Master', rp: 12 }))).label).toBe('PokeJam Master · 12 RP');
   });
 
   it('diffs two server rows into a match outcome', () => {

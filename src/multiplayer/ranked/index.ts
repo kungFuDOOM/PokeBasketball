@@ -17,7 +17,7 @@ import { startPhantomLink } from '../../wallet/phantomSheet';
 import { guardStaleBuild } from '../../wallet/staleBuild';
 import { isGuest, signInWithGoogle } from './account';
 import { badgeImgForTier } from '../../ranked/badge';
-import { TIER_COLORS, view, type MatchOutcome, type RankView } from './rank';
+import { TIER_COLORS, tierLabel, view, type MatchOutcome, type RankView } from './rank';
 import { LocalRankStore } from './rankStore';
 import { judgeNoteHtml, rankChipHtml, postMatchHtml, shieldItemHtml, shieldTagHtml, signInPanelHtml, weeklyCardHtml } from './view';
 import { mountUsernamePicker } from './picker';
@@ -54,7 +54,7 @@ async function online(ctx: ModeContext): Promise<SupabaseMatchService> {
 /** Tier badge art with the division and points as text (the local mock). */
 function badge(v: RankView): string {
   const color = v.tier ? TIER_COLORS[v.tier] : '#888';
-  return `<div class="rank-badge" style="--rc:${color}">${badgeImgForTier(v.tier, 'rank-badge-img')}<strong>${esc(v.tier ? `${v.tier}${v.division ? ` ${v.division}` : ''}` : 'Unranked')}</strong><span>${esc(v.placed ? `${v.rp} RP` : v.label.replace('Unranked, ', ''))}</span></div>`;
+  return `<div class="rank-badge" style="--rc:${color}">${badgeImgForTier(v.tier, 'rank-badge-img')}<strong>${esc(v.tier ? `${tierLabel(v.tier)}${v.division ? ` ${v.division}` : ''}` : 'Unranked')}</strong><span>${esc(v.placed ? `${v.rp} RP` : v.label.replace('Unranked, ', ''))}</span></div>`;
 }
 
 const localBadge = () => badge(view(store.get()));
@@ -69,7 +69,7 @@ function outcomeHtml(out: ReportOutcome): string {
     if (out.status === 'void') return '<p class="note center">The two results did not match, so this match was not rated.</p>';
     return '';
   }
-  const name = `${o.after.tier}${o.after.division ? ` ${o.after.division}` : ''}`;
+  const name = `${o.after.tier ? tierLabel(o.after.tier) : ''}${o.after.division ? ` ${o.after.division}` : ''}`;
   const msg = o.event === 'placed' ? `Placements complete! You placed ${o.after.label}.`
     : o.event === 'promoted' ? `Rank up! ${name}`
     : o.event === 'demoted' ? `Demoted to ${name}`

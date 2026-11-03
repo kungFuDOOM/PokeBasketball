@@ -39,7 +39,7 @@ Status (kfd/social): done except the boxes below.
 - Ratings change only server-side: the SECURITY DEFINER RPC applies the rank.ts rules after both reports agree or a host report passes the sanity check. A direct client write is shown to be rejected.
 - The SQL port of rank.ts matches the TS rules (parity test).
 - The result is verified, either by replaying the match or by both players reporting the same result.
-- Placements, promotion, demotion protection and Pokémon Master have been tried with real players.
+- Placements, promotion, demotion protection and PokeJam Master have been tried with real players.
 - Final rank badge art is in (from the image generator).
 - kungFuDOOM OKs it, then says "Merge" for Ranked.
 

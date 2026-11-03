@@ -5,7 +5,7 @@
 - **`src/multiplayer/rank.ts`** — pure, unit-tested ladder:
   - Hidden MMR, Elo update, start 1000. K = 64 for the 5 placement games, 24 afterwards.
   - "Unranked, placements X/5" until 5 games; the visible ladder is then seeded from MMR.
-  - Tiers by ladder MMR: Bronze <1000, Silver 1000, Gold 1300, Platinum 1600, Diamond 1900 (each 300 wide, divisions III/II/I of 100), Pokémon Master 2200+ (no divisions, RP = points above 2200). Ladder floor 700.
+  - Tiers by ladder MMR: Bronze <1000, Silver 1000, Gold 1300, Platinum 1600, Diamond 1900 (each 300 wide, divisions III/II/I of 100), PokeJam Master 2200+ (no divisions, RP = points above 2200). Ladder floor 700.
   - RP = position inside the division (0–99). Wins/losses move RP by the Elo delta; crossing a line promotes/demotes.
   - Demotion protection: at 0 RP of a division, the first 2 losses hold you there; the 3rd demotes. Any win resets it.
 - **`src/multiplayer/matchService.ts`** — `MatchService` interface (`getRank`, `findMatch`, `reportResult`).
@@ -23,7 +23,7 @@
 ## Open decisions
 - Netcode model (host-authoritative vs lockstep) and latency tolerance for an arcade game.
 - Draft format online (snake draft vs. pick from your own collection — ties into Pack Battles).
-- Season length / rank resets; whether Pokémon Master gets a leaderboard.
+- Season length / rank resets; whether PokeJam Master gets a leaderboard.
 - Friend invites: room codes vs. accounts/friends list.
 - Which Supabase project hosts it (new free project vs. reusing an existing one).
 
