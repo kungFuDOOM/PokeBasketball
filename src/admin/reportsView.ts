@@ -21,7 +21,7 @@ export const forever = (iso: string) => new Date(iso).getFullYear() > new Date()
 const badName = (name: string | null) => (name && isNameBlocked(name) ? ' <span class="tag bad">bad name</span>' : '');
 
 /** The buttons for one person. `role` shows in the confirm dialog so a moderator sees whether it is the reported player or a reporter. */
-export const actions = (r: { user_id: string; name: string | null }, banned: boolean, role: 'reported' | 'reporter' = 'reported', small = false) => {
+export const actions = (r: { user_id: string; name: string | null }, banned: boolean, role: 'reported' | 'reporter' | 'ranked' = 'reported', small = false) => {
   const d = `data-user="${esc(r.user_id)}" data-name="${esc(r.name ?? 'Trainer')}" data-role="${role}"`;
   const b = small ? 'btn small mini' : 'btn small';
   return banned
@@ -56,7 +56,7 @@ export function cheatCell(checks: Check[] | null | undefined): string {
 }
 
 /** Words for the confirm dialog: who it is about, and in which role. */
-export const personLabel = (name: string, role: string | undefined) => (role === 'reporter' ? `${name} (the reporter)` : role === 'reported' ? `${name} (the reported player)` : name);
+export const personLabel = (name: string, role: string | undefined) => (role === 'reporter' ? `${name} (the reporter)` : role === 'reported' ? `${name} (the reported player)` : role === 'ranked' ? `${name} (ranked)` : name);
 
 export function reportsHtml(rows: Reported[]): string {
   if (!rows.length) return '<p class="note">No reports in this period.</p>';

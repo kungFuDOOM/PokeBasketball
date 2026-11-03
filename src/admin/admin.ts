@@ -10,6 +10,7 @@ import './admin.css';
 import { CAPTCHA_ON, captchaToken } from '../multiplayer/shared/captcha';
 import { esc } from '../util';
 import { bansHtml, judgeFlagsHtml, judgeShadowHtml, personLabel, reportsHtml, when, type Ban, type JudgeFlag, type JudgeShadow, type Reported } from './reportsView';
+import { rankedPlayersHtml, rankedStatsHtml, type RankedPlayers, type RankedStats } from './rankedView';
 
 const URL = import.meta.env.VITE_SUPABASE_URL;
 const KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -89,6 +90,8 @@ function dashboard(sb: SupabaseClient, email: string) {
       <h3>Offline (Quick Play / CPU / Franchise)</h3>
       <p class="note">Offline counting started with this update (Oct 2026); earlier offline games aren't counted.</p>
       <div data-offline-body><p class="note">Loading…</p></div>
+      <h3>Ranked</h3>
+      <div data-ranked-body><p class="note">Loading…</p></div>
       <h3>Net cost (online, last 7 days)</h3>
       <div data-netcost-body><p class="note">Loading…</p></div>
       <h3>Judge, shadow mode (Ranked, last 7 days)</h3>
@@ -96,7 +99,7 @@ function dashboard(sb: SupabaseClient, email: string) {
       <h3>Judge flags (Ranked, last 7 days)</h3>
       <div data-flags-body><p class="note">Loading…</p></div></section>
     <nav class="tabs">
-      <button class="on" data-tab="reports">Reported</button><button data-tab="bans">Suspended</button><button data-tab="log">History</button>
+      <button class="on" data-tab="reports">Reported</button><button data-tab="bans">Suspended</button><button data-tab="log">History</button><button data-tab="ranked">Ranked</button>
       <label>Last <select data-days><option>1</option><option selected>7</option><option>30</option></select> days</label>
     </nav><section data-body><p class="note">Loading…</p></section>`);
   root.querySelector('[data-who]')!.innerHTML = `${esc(email)} · <button class="link" data-out>Sign out</button>`;
@@ -128,6 +131,7 @@ function dashboard(sb: SupabaseClient, email: string) {
         }
       }
       else if (tab === 'bans') body.innerHTML = bansHtml(await call<Ban[]>('pokejam_admin_bans'));
+      else if (tab === 'ranked') body.innerHTML = rankedPlayersHtml(await call<RankedPlayers>('pokejam_admin_ranked_players'));
       else body.innerHTML = logHtml(await call<LogRow[]>('pokejam_admin_history', { p_limit: 100 }));
     } catch (e) {
       body.innerHTML = `<p class="note">Couldn't load: ${esc((e as Error).message)}</p>`;
@@ -164,6 +168,7 @@ function dashboard(sb: SupabaseClient, email: string) {
   const netCostBody = root.querySelector<HTMLElement>('[data-netcost-body]')!;
   const shadowBody = root.querySelector<HTMLElement>('[data-shadow-body]')!;
   const flagsBody = root.querySelector<HTMLElement>('[data-flags-body]')!;
+  const rankedBody = root.querySelector<HTMLElement>('[data-ranked-body]')!;
   const loadStats = async () => {
     refresh.disabled = true;
     await Promise.all([
@@ -200,6 +205,13 @@ function dashboard(sb: SupabaseClient, email: string) {
           flagsBody.innerHTML = judgeFlagsHtml(await call<JudgeFlag[]>('pokejam_admin_judge_flags', { p_days: 7 }));
         } catch {
           flagsBody.innerHTML = '<p class="note">Judge flags unavailable.</p>';
+        }
+      })(),
+      (async () => {
+        try {
+          rankedBody.innerHTML = rankedStatsHtml(await call<RankedStats>('pokejam_admin_ranked_stats'));
+        } catch {
+          rankedBody.innerHTML = '<p class="note">Ranked stats unavailable.</p>';
         }
       })(),
     ]);
