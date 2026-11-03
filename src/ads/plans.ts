@@ -27,6 +27,17 @@ export function pickPlan(list: PlanOffer[], want: Plan): Plan {
   return list.some((o) => o.plan === want) ? want : (list[Math.floor((list.length - 1) / 2)]?.plan ?? want);
 }
 
+/**
+ * Separate badges for a plan card. "Best value" and "Save N%" are two chips so a narrow card can wrap them
+ * instead of running the words together across the next card.
+ */
+export function planBadges(save: number, best: boolean): string {
+  const bits: string[] = [];
+  if (best) bits.push('<span class="ad-badge best">Best value</span>');
+  if (save >= 5) bits.push(`<span class="ad-badge save">Save ${save}%</span>`);
+  return bits.length ? `<span class="ad-badges">${bits.join('')}</span>` : '';
+}
+
 /** Whole percent saved per hour against the shortest plan on offer (0 for that plan itself, or with no prices yet). */
 export function savePercent(o: PlanOffer, list: PlanOffer[]): number {
   const base = list[0];

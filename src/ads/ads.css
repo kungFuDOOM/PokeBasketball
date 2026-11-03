@@ -62,13 +62,16 @@
 .ad-theme.on { border-color: var(--accent); }
 .ad-theme.on small { color: var(--fg); }
 .ad-plans { display: grid; grid-template-columns: repeat(var(--n, 3), minmax(0, 1fr)); gap: 10px; }
-.ad-plan { position: relative; text-align: left; display: grid; gap: 4px; padding: 16px 12px 12px; border-radius: 12px; border: 2px solid var(--line); background: var(--bg); }
+.ad-plan { position: relative; min-width: 0; text-align: left; display: grid; gap: 4px; padding: 12px; border-radius: 12px; border: 2px solid var(--line); background: var(--bg); align-content: start; }
+.ad-badges { display: flex; flex-wrap: wrap; gap: 4px; max-width: 100%; min-width: 0; }
+.ad-badge { display: inline-block; max-width: 100%; font: 700 0.72rem/1.25 var(--sport); letter-spacing: 0.01em; padding: 3px 6px; border-radius: 4px; white-space: normal; overflow-wrap: anywhere; }
+.ad-badge.save { background: var(--good); color: #052414; }
+.ad-badge.best { background: var(--accent); color: #1a1400; }
 .ad-plan strong { font: 800 1.25rem/1 var(--sport); text-transform: uppercase; }
 .ad-price { font: 800 1.35rem/1.1 var(--sport); color: var(--ember); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 .ad-price small { font-size: 0.75rem; color: var(--muted); margin-left: 4px; }
 .ad-plan > small { font-size: 0.8rem; color: var(--muted); font-weight: 600; line-height: 1.25; }
 .ad-plan.on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, var(--bg)); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent); }
-.ad-save { position: absolute; top: -10px; right: 8px; font: 0.42rem/1 var(--pixel); background: var(--good); color: #052414; padding: 5px 6px 4px; border-radius: 4px; white-space: nowrap; }
 .ad-when { margin-bottom: 8px; }
 /* pay with: burn $PJAM or USDC (live only; hidden where the server doesn't offer USDC) */
 .ad-pay { margin-bottom: 10px; }

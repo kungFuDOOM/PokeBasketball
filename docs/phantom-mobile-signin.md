@@ -189,18 +189,19 @@ Needs a build with `VITE_MODE_RANKED=true`, the production relay migration appli
 6. Repeat, tapping **Cancel** in Phantom on the first trip: the app should show "Sign-in cancelled".
 7. Control: sign-in from plain Safari and from the Phantom in-app browser still work as before.
 
-## Paying with USDC from a phone: not built yet
+## Paying from Safari and the home-screen app
 
-Sign-in only, on purpose. Phones without an injected wallet still get "Open PokeJam in the Phantom app or browser extension" in the shop. Production is
-on mainnet with real USDC, this path can't be tested without a phone, and its failure mode is a player who paid and wasn't credited.
+Courtside ads (burn $PJAM or pay USDC) and Rank Shield USDC use the same deeplink when no wallet is injected. Inside Phantom's browser and on desktop with the extension, the injected `signAndSendTransaction` is unchanged.
 
-What it needs:
+`src/wallet/phantomPay.ts` builds the links. A saved Phantom session (from sign-in, or from a payment connect) skips connect. Otherwise the first tap opens `/ul/v1/connect`. The server still builds the transaction (the browser never calls a Solana RPC). A second tap opens `/ul/v1/signAndSendTransaction` with `{transaction, session}` encrypted to Phantom's key. That link is rebuilt if it is older than 45 seconds, because the blockhash goes stale. Phantom's docs mark this deeplink deprecated in favour of `signTransaction`, which does not submit; we still use it so Phantom submits and the existing confirm endpoints can read the payment. A phone test has to confirm the app still does.
 
-1. **Browser RPC access.** `prepareTransfer` calls `api.mainnet-beta.solana.com` from the browser, and the production CSP's `connect-src` doesn't list it. The public mainnet RPC also commonly refuses browser requests. Fetch the blockhash from a shield Edge Function, or add a paid RPC host to the CSP.
-2. **A longer-lived session.** Sign-in wipes the Phantom session on success. Either keep it for a short time (a change to the wipe rule), or run `connect` again first, which is one more trip per purchase.
-3. **Wallet match before signing.** Compare `public_key` from `connect` with the signed-in wallet, as `signAndSend` does with the injected provider.
-4. **A `pay` step.** `/ul/v1/signAndSendTransaction` with `{transaction: base58, session}`, carrying `intentId` in the pending state. A button tap is required, and the blockhash lives about 60 to 90 s, so rebuild the transaction if the player waits.
-5. **Lost-callback recovery.** Phantom may send the payment and the answer never reach us (a killed tab, a failed relay call). Before offering a retry, look up the intent's `reference` with `getSignaturesForAddress`, then go to `shield-usdc-confirm`. Without this a retry charges twice, because the server credits an intent once.
-6. **On return:** store `{intentId, signature}` under `pokejam.shop.usdc`, and the existing `resumeUsdc` and server confirm finish it. The server already credits only after reading the payment on-chain.
+The redirect always opens Safari. If Safari holds the trip it decrypts the signature and confirms. If it doesn't (the home-screen app, or a new tab), it leaves Phantom's encrypted reply in the same relay and shows the 4-character check code. The starter polls every 2.5 seconds, decrypts, and confirms that trip's own booking or intent. The relay still accepts only `{k, n, d}` or an error code: no session token and no signature in the clear. One player's reply cannot confirm another's booking, because the booking id is the one stored on the device that started the payment, and the server still checks signer, amount, memo and reference.
 
-The relay, `nacl.ts` and the callback code are reusable as they are, though the relay's `d` field would need checking against a transaction answer's size (it's just a signature, so 4 KB is plenty).
+The signature is written to the same pending records as the injected flow (`pokejam.adPending`, `pokejam.adUsdcPending`, `pokejam.shop.usdc.<intentId>`), and confirm is the existing `pokejam-ads-live` or `shield-usdc-confirm` call. No new migration.
+
+### What only a real iPhone can confirm
+
+- A tap from Safari and from the home-screen app opens Phantom for connect and for signAndSendTransaction, and Phantom still submits the transaction (the deeplink is marked deprecated).
+- The return lands in Safari, the check codes match, and switching back to the home-screen app confirms the ad or the shields within a few seconds.
+- Paying again reuses the session and does not ask to connect.
+- Rejecting in Phantom leaves the player uncharged, and the injected wallet on desktop still pays as before.

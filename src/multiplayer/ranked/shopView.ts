@@ -30,6 +30,10 @@ export interface ShopModel {
   usdcStep?: 'approve' | 'confirm' | null;
   /** A sent USDC payment the server has not settled: offer to check it again, and no new USDC payment until it is settled. */
   usdcUnconfirmed?: boolean;
+  /** No injected Phantom: the USDC control is a link that opens the Phantom app. */
+  usdcHandOff?: boolean;
+  /** Shown once the server has built the transfer and a tap must open Phantom. */
+  phantomApprove?: { href: string; code: string; blank: boolean } | null;
 }
 
 /**
@@ -64,8 +68,10 @@ function packHtml(p: ShopProduct, m: ShopModel, best: boolean): string {
   const card = m.card !== false;
   const cardLabel = here && m.rail !== 'usdc' ? 'Opening…' : usdc ? `Card ${usd(p.priceCents)}` : usd(p.priceCents);
   const usdcLabel = here && m.rail === 'usdc' ? (m.usdcStep === 'confirm' ? 'Confirming…' : 'Approve…') : `Pay ${usdcText(p.usdcAmount ?? 0)} USDC`;
-  const buttons = (card ? `<button class="btn primary shop-buy" type="button" data-a="buy" data-sku="${esc(p.sku)}"${can ? '' : ' disabled'}>${cardLabel}</button>` : '')
-    + (usdc ? `<button class="btn shop-buy shop-usdc" type="button" data-a="buy-usdc" data-sku="${esc(p.sku)}"${can && !m.usdcUnconfirmed ? '' : ' disabled'}>${usdcLabel}</button>` : '');
+  const usdcBtn = !usdc ? '' : m.usdcHandOff
+    ? `<a class="btn shop-buy shop-usdc" data-a="buy-usdc" data-sku="${esc(p.sku)}" href="#"${can && !m.usdcUnconfirmed ? '' : ' aria-disabled="true"'}>${usdcLabel}</a>`
+    : `<button class="btn shop-buy shop-usdc" type="button" data-a="buy-usdc" data-sku="${esc(p.sku)}"${can && !m.usdcUnconfirmed ? '' : ' disabled'}>${usdcLabel}</button>`;
+  const buttons = (card ? `<button class="btn primary shop-buy" type="button" data-a="buy" data-sku="${esc(p.sku)}"${can ? '' : ' disabled'}>${cardLabel}</button>` : '') + usdcBtn;
   return `<div class="shop-card${best ? ' best' : ''}${usdc ? ' has-usdc' : ''}" data-sku="${esc(p.sku)}">
     <span class="shop-units" aria-hidden="true">🛡<b>${p.units}</b></span>
     <span class="shop-name"><strong>${p.units} Rank Shields</strong><em>${esc(perShield(p))}${best ? ' · best value' : ''}</em>${block ? `<small>${esc(block)}</small>` : ''}</span>
@@ -86,6 +92,9 @@ export interface ShopViewOpts {
 /** The sheet's contents (the part that re-renders): packs on the left, held / consent / links on the right. */
 export function shopBodyHtml(m: ShopModel, o: ShopViewOpts = {}): string {
   const notice = m.notice ? `<p class="shop-notice ${m.notice.tone}" role="status">${esc(m.notice.text)}</p>` : '';
+  const approve = m.phantomApprove
+    ? `<a class="btn primary" data-a="phantom-approve" href="${esc(m.phantomApprove.href)}"${m.phantomApprove.blank ? ' target="_blank" rel="noopener"' : ''}>Approve in Phantom</a><p class="note">Check code <b>${esc(m.phantomApprove.code)}</b>. It must match the page Phantom opens. Then come back here.</p>`
+    : '';
   if (!m.signedIn) {
     return `<div class="shop-solo"><p class="shop-msg">Sign in to buy</p><p class="note">Rank Shields belong to your account. Sign in with ${(o.google ?? SIGNIN_GOOGLE) ? 'Google or Phantom' : 'Phantom'} from the Ranked screen.</p>${notice}</div>`;
   }
@@ -97,7 +106,7 @@ export function shopBodyHtml(m: ShopModel, o: ShopViewOpts = {}): string {
   return `<div class="shop-packs">${packs.map((p) => packHtml(p, m, p === best && packs.length > 1)).join('')}</div>
     <div class="shop-side">
       <p class="shop-held">Held <strong>${m.info.held} / ${m.info.cap}</strong></p>
-      ${notice}${retry}
+      ${notice}${approve}${retry}
       <label class="shop-age"><input type="checkbox" data-a="age"${m.agreed ? ' checked' : ''}${m.busy ? ' disabled' : ''}> <span>I'm 18+ or have a parent's permission</span></label>
       <p class="shop-fine">${m.card !== false ? '🔒 Secure checkout by Stripe. ' : ''}Digital item: one use per 24 hours, tied to your account, no cash value.</p>
       ${m.usdc && packs.some((p) => p.usdcAmount !== null) ? USDC_FINE(m.usdc.cluster) : ''}

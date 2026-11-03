@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import apiSource from './api.ts?raw';
-import { DM_CONTACTS, DM_ONLY, isPlan, offers, pickPlan, savePercent, type BoardPlan } from './plans';
+import { DM_CONTACTS, DM_ONLY, isPlan, offers, pickPlan, planBadges, savePercent, type BoardPlan } from './plans';
 import plansSource from './plans.ts?raw';
 import screenSource from './screen.ts?raw';
 import usdcSource from './usdcPay.ts?raw';
@@ -46,6 +46,10 @@ describe('the plans on the Advertise page', () => {
 
   it('work out what a longer plan saves against the shortest', () => {
     const burn = offers(PLANS, 'burn');
+    expect(planBadges(0, false)).toBe('');
+    expect(planBadges(55, true)).toBe('<span class="ad-badges"><span class="ad-badge best">Best value</span><span class="ad-badge save">Save 55%</span></span>');
+    expect(planBadges(37, false)).toBe('<span class="ad-badges"><span class="ad-badge save">Save 37%</span></span>');
+    expect(planBadges(55, true)).not.toContain('Best value ·');
     expect(savePercent(burn[0], burn)).toBe(0);
     expect(savePercent(burn[1], burn)).toBe(55);
     const usdc = offers(PLANS, 'usdc');

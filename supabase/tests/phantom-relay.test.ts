@@ -104,6 +104,14 @@ describe('phantom relay: home-screen handoff payloads (no migration needed)', ()
     expect(await r.take(id)).toEqual(sealed);
     expect(await r.take(id)).toBeNull();
   });
+  it('accepts a sealed payment signature and refuses one in the clear', async () => {
+    const r = await relay();
+    const sealed = { n: 'N'.repeat(32), d: 'D'.repeat(88) };
+    expect(await r.put('P'.repeat(43), sealed)).toBe(true);
+    expect(await r.put('Q'.repeat(43), { signature: '5'.repeat(87), intentId: '11111111-1111-1111-1111-111111111111' })).toBe(false);
+    expect(await r.take('P'.repeat(43))).toEqual(sealed);
+    expect(await r.count()).toBe(0);
+  });
   it('still refuses a token in the clear', async () => {
     const r = await relay();
     expect(await r.put(ID, { rt: 'refresh', k: 'J'.repeat(44), n: 'a', d: 'b' })).toBe(false);

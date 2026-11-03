@@ -5,6 +5,8 @@ import { RETURN_KEY } from '../multiplayer/ranked/account';
 import {
   beginHandoff, clearHandoff, clearLanding, finishInSafari, handoffCode, landingStore, landingTrip, loadHandoff, reportFailure, restoreInApp,
 } from './phantomHandoff';
+import { rememberSignInSession } from './phantomPay';
+import { resumePay } from './phantomPayUi';
 import {
   PhantomLinkError, advance, authError, beginConnect, clearPending, isStandalone, standaloneSignal, stepError, loadPending, parseCallback, relayPut, relayTake, routeCallback, savePending, signLink,
   type Callback, type HandoffRef, type Pending, type PhantomResponse, type RelayClient, type ReturnTo, type Store,
@@ -90,6 +92,8 @@ async function apply(p: Pending, r: PhantomResponse) {
   try {
     const out = advance(sessionStore(), p, r, { host: location.host, uri: `${location.origin}${location.pathname}`, now: Date.now() });
     if (out.kind === 'need-sign') {
+      // Keep Phantom's session so a later payment can skip connect. The secret stays in this browser's storage.
+      try { rememberSignInSession(localStore(), out.pending); } catch { /* storage unavailable */ }
       // This stops at a button: a universal link only opens the app reliably from a tap, and this code isn't running in one.
       watch(out.pending);
       return;
@@ -228,6 +232,7 @@ async function resumeLanding(cb: Callback) {
     draw({ kind: 'working', text: 'Checking with Phantom…' });
     const out = advance(landing, trip, cb.response, { host: location.host, uri: `${location.origin}${location.pathname}`, now });
     if (out.kind === 'need-sign') {
+      try { rememberSignInSession(localStore(), out.pending); } catch { /* storage unavailable: the next payment connects again */ }
       // A button, not a redirect: a universal link only opens the app reliably from a tap.
       draw({ kind: 'sign-ready', href: signLink(out.pending, here()), newTab: false, code: handoffCode(h.id) });
       return;
@@ -252,6 +257,9 @@ async function resumeLanding(cb: Callback) {
 
 /** On page load: a callback from Phantom (`search`, kept by public/phantom-return.js), and/or a sign-in in progress here. */
 export function resumePhantom(search: string | undefined) {
+  try {
+    if (resumePay(search)) return;
+  } catch { /* a payment resume that throws has already cleared its own trip */ }
   try { resume(search); } catch (e) {
     // A record left by an older build that the code above did not expect: say so, and clear it rather than loop on it.
     try { clearPending(sessionStore()); clearHandoff(localStore()); clearLanding(landingStore(localStore())); } catch { /* storage is gone */ }
@@ -277,7 +285,7 @@ function resume(search: string | undefined) {
     draw({ kind: 'working', text: 'Passing this back…' });
     ctx = 'safari';
   relayPut(relay(), cb).catch(() => false).then((ok) => {
-      draw(ok ? { kind: 'go-back', app: cb.app } : failedState(stepError('HO-PASS'), 'safari'));
+      draw(ok ? { kind: 'go-back', app: cb.app, code: handoffCode(cb.id) } : failedState(stepError('HO-PASS'), 'safari'));
     });
     return;
   }
