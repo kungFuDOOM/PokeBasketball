@@ -26,6 +26,22 @@ export function supabase(): SupabaseClient {
 }
 
 /**
+ * A throwaway auth client for Safari finishing a home-screen app's Phantom sign-in: it keeps the session in memory only, never
+ * refreshes it (a refresh would rotate the token handed to the app), never reads the URL, and never touches 'pokejam.auth'
+ * (Safari's own guest session). Nothing is left behind once the page goes, so it is never signed out (that would revoke the session).
+ */
+export function ephemeralAuthClient(): SupabaseClient['auth'] {
+  if (!ONLINE_CONFIGURED) throw new Error('Online play is not configured for this build.');
+  const mem = new Map<string, string>();
+  return createClient(URL!, KEY!, {
+    auth: {
+      persistSession: false, autoRefreshToken: false, detectSessionInUrl: false, storageKey: 'pokejam.phantom.ephemeral',
+      storage: { getItem: (k) => mem.get(k) ?? null, setItem: (k, v) => { mem.set(k, v); }, removeItem: (k) => { mem.delete(k); } },
+    },
+  }).auth;
+}
+
+/**
  * An RPC request that outlives the page (fetch with keepalive): for leaving the queue or a match while the tab is
  * closing or going to the background, where a normal request may never be sent. Never throws; the promise settles
  * when the server answered or the request failed (callers that only fire and forget can ignore it).

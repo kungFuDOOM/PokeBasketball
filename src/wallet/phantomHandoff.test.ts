@@ -7,7 +7,7 @@ import {
   HANDOFF_KEY, LANDING_KEY, beginHandoff, clearHandoff, finishInSafari, handoffCode, landingStore, landingTrip, loadHandoff, openRefreshToken,
   reportFailure, restoreInApp, sealRefreshToken, type AppAuth, type SafariAuth,
 } from './phantomHandoff';
-import { FLOW_TTL_MS, PENDING_KEY, advance, loadPending, parseCallback, signLink, type RelayClient, type Store } from './phantomLink';
+import { FLOW_TTL_MS, PENDING_KEY, PhantomLinkError, advance, authError, loadPending, newId, parseCallback, relayPut, signLink, stepError, type RelayClient, type Store } from './phantomLink';
 import { sheetHtml } from './phantomView';
 
 const WALLET = '7EcDhSYGxXyscszYEp35KHN8vvw3svAuLKTzXwCFLtV';
@@ -60,8 +60,12 @@ function mockSafariAuth(fail = false) {
   const calls: string[] = [];
   const auth: SafariAuth = {
     signInWithWeb3: async () => { calls.push('signIn'); return fail ? { data: null, error: { message: 'bad' } } : { data: { session: { refresh_token: REFRESH } }, error: null }; },
-    signOut: async (o) => { calls.push(`signOut:${o.scope}`); },
   };
+  // A sign-out or /logout here would revoke the session handed to the app (PJ-RF-400): record it so tests can prove it never happens.
+  Object.assign(auth, {
+    signOut: async (o?: { scope?: string }) => { calls.push(`signOut:${o?.scope}`); return { error: null }; },
+    logout: async () => { calls.push('logout'); },
+  });
   return { auth, calls };
 }
 function mockAppAuth(ok = true) {
@@ -174,7 +178,7 @@ describe('Safari finishes the sign-in without the app\'s storage', () => {
 
     const sa = mockSafariAuth();
     await finishInSafari(sa.auth, relay.sb, { message: signed.message, signature: signed.signature, handoff: cb.handoff! });
-    expect(sa.calls).toEqual(['signIn', 'signOut:local']);
+    expect(sa.calls).toEqual(['signIn']); // never signs out: that would revoke the app's session
     expect(relay.rows.size).toBe(1);
     expect(relay.rows.has(handoffId)).toBe(true);
     const wire = JSON.stringify(relay.sent);
@@ -207,16 +211,40 @@ describe('Safari finishes the sign-in without the app\'s storage', () => {
     const link = beginHandoff(memStore(), { loc, returnTo: 'ranked', now: NOW });
     const { cb } = safariConnect(memStore(), ph, link);
     const sa = mockSafariAuth(true);
-    await expect(finishInSafari(sa.auth, relay.sb, { message: 'm', signature: new Uint8Array(64), handoff: cb.handoff! })).rejects.toThrow(/Could not sign in/);
+    await expect(finishInSafari(sa.auth, relay.sb, { message: 'm', signature: new Uint8Array(64), handoff: cb.handoff! })).rejects.toMatchObject({ diag: expect.stringMatching(/^W3-/) });
     expect(relay.rows.size).toBe(0);
   });
-  it('signs out locally only, after the relay write, and says so when the relay refuses', async () => {
+  it('never signs out or logs out, and says so when the relay refuses', async () => {
     const ph = fakePhantom();
     const { cb } = safariConnect(memStore(), ph, beginHandoff(memStore(), { loc, returnTo: 'ranked', now: NOW }));
     const sa = mockSafariAuth();
     const bad: RelayClient = { rpc: async () => ({ data: null, error: { message: 'x' } }) };
-    await expect(finishInSafari(sa.auth, bad, { message: 'm', signature: new Uint8Array(64), handoff: cb.handoff! })).rejects.toThrow(/Could not pass that back/);
-    expect(sa.calls).toEqual(['signIn', 'signOut:local']);
+    await expect(finishInSafari(sa.auth, bad, { message: 'm', signature: new Uint8Array(64), handoff: cb.handoff! })).rejects.toMatchObject({ diag: 'HO-PUT' });
+    expect(sa.calls).toEqual(['signIn']);
+  });
+  it('finishInSafari never calls signOut or logout on a successful handoff (PJ-RF-400)', async () => {
+    const ph = fakePhantom();
+    const { cb } = safariConnect(memStore(), ph, beginHandoff(memStore(), { loc, returnTo: 'ranked', now: NOW }));
+    const relay = mockRelay();
+    const sa = mockSafariAuth();
+    await finishInSafari(sa.auth, relay.sb, { message: 'm', signature: new Uint8Array(64), handoff: cb.handoff! });
+    expect(relay.rows.size).toBe(1);
+    expect(sa.calls).not.toContain('logout');
+    expect(sa.calls.some((c) => c.startsWith('signOut'))).toBe(false);
+    expect(sa.calls).toEqual(['signIn']);
+  });
+  it('runs only one restore at a time: overlapping polls share it and spend the token once', async () => {
+    const app = memStore();
+    const relay = mockRelay();
+    const link = beginHandoff(app, { loc, returnTo: 'ranked', now: NOW });
+    const ph = fakePhantom();
+    const { cb } = safariConnect(memStore(), ph, link);
+    await finishInSafari(mockSafariAuth().auth, relay.sb, { message: 'm', signature: new Uint8Array(64), handoff: cb.handoff! });
+    const aa = mockAppAuth();
+    const [a, b] = await Promise.all([restoreInApp(app, relay.sb, aa.auth, NOW + 1000), restoreInApp(app, relay.sb, aa.auth, NOW + 1000)]);
+    expect(a).toEqual({ kind: 'done', returnTo: 'ranked' });
+    expect(b).toEqual(a);
+    expect(aa.used).toEqual([REFRESH]);
   });
   it('keeps the session when this very page is the app', async () => {
     const ph = fakePhantom();
@@ -233,7 +261,7 @@ describe('Safari finishes the sign-in without the app\'s storage', () => {
     const { pending } = safariConnect(memStore(), ph, link);
     const cb2 = parseCallback(ph.sign(signLink(pending, loc)))!;
     const trip = landingTrip(cb2, null, NOW)!;
-    expect(() => advance(memStore(), trip, cb2.response, env(NOW))).toThrow(/Could not read/);
+    expect(() => advance(memStore(), trip, cb2.response, env(NOW))).toThrow(/couldn't be read/);
   });
 });
 
@@ -256,13 +284,13 @@ describe('handoff seal and open', () => {
   });
   it('rejects the wrong key, a tampered box, and a body without a token, all with the same error', () => {
     const sealed = sealRefreshToken(REFRESH, pub);
-    expect(() => openRefreshToken(sealed, { secret: base58Encode(randomBytes(32)) })).toThrow(/Could not read/);
+    expect(() => openRefreshToken(sealed, { secret: base58Encode(randomBytes(32)) })).toThrow(/couldn't read the handed-back/);
     const d = base58Decode(sealed.d!); d[3] ^= 1;
-    expect(() => openRefreshToken({ ...sealed, d: base58Encode(d) }, rec)).toThrow(/Could not read/);
-    expect(() => openRefreshToken({ n: sealed.n }, rec)).toThrow(/Could not read/);
+    expect(() => openRefreshToken({ ...sealed, d: base58Encode(d) }, rec)).toThrow(/couldn't read the handed-back/);
+    expect(() => openRefreshToken({ n: sealed.n }, rec)).toThrow(/couldn't read the handed-back/);
     const n = randomBytes(24), eph = randomBytes(32);
     const noRt = { k: base58Encode(boxPublicKey(eph)), n: base58Encode(n), d: base58Encode(boxSeal(new TextEncoder().encode('{"x":1}'), n, boxBefore(base58Decode(pub), eph))) };
-    expect(() => openRefreshToken(noRt, rec)).toThrow(/Could not read/);
+    expect(() => openRefreshToken(noRt, rec)).toThrow(/couldn't read the handed-back/);
   });
   it('the app wipes its handoff when the answer is for another key, and never applies it', async () => {
     const app = memStore();
@@ -271,7 +299,7 @@ describe('handoff seal and open', () => {
     const relay = mockRelay();
     relay.rows.set(id, sealRefreshToken(REFRESH, pub)); // sealed to somebody else's key
     const aa = mockAppAuth();
-    await expect(restoreInApp(app, relay.sb, aa.auth, NOW)).rejects.toThrow(/Could not read/);
+    await expect(restoreInApp(app, relay.sb, aa.auth, NOW)).rejects.toThrow(/couldn't read the handed-back/);
     expect(aa.used).toEqual([]);
     expect(app.m.size).toBe(0);
   });
@@ -281,7 +309,7 @@ describe('handoff seal and open', () => {
     const h = loadHandoff(app, NOW).handoff!;
     const relay = mockRelay();
     relay.rows.set(h.id, sealRefreshToken(REFRESH, base58Encode(boxPublicKey(base58Decode(h.secret)))));
-    await expect(restoreInApp(app, relay.sb, mockAppAuth(false).auth, NOW)).rejects.toThrow(/Could not sign in/);
+    await expect(restoreInApp(app, relay.sb, mockAppAuth(false).auth, NOW)).rejects.toMatchObject({ diag: expect.stringMatching(/^RF-/) });
     expect(app.m.size).toBe(0);
   });
 });
@@ -388,5 +416,94 @@ describe('stripping the URL (public/phantom-return.js)', () => {
   });
   it('resumePhantom drops the in-memory copy', () => {
     expect(readFileSync(new URL('./phantomSheet.ts', import.meta.url), 'utf8')).toMatch(/__phantomCb\?: string \}\)\.__phantomCb = undefined/);
+  });
+});
+
+describe('failures reach the waiting app with the same step and message', () => {
+  const setup = () => {
+    const app = memStore();
+    const relay = mockRelay();
+    const h = parseCallback(fakePhantom().error(beginHandoff(app, { loc, returnTo: 'ranked', now: NOW }), '4001'))!.handoff!;
+    return { app, relay, h };
+  };
+  const cases: [string, PhantomLinkError][] = [
+    ['connect unreadable', stepError('CN-READ')],
+    ['connect refused by Phantom', stepError('CN-PH')],
+    ['signature unreadable', stepError('SG-READ')],
+    ['sign refused by Phantom', stepError('SG-PH')],
+    ['expired', stepError('EXP')],
+    ['mismatch', stepError('MIS')],
+    ['server said Chain ID is not valid', authError('W3', { status: 400, code: 'validation_failed', message: 'siws: Chain ID is not valid' })],
+    ['server rate limit', authError('W3', { status: 429, message: 'rate limit' })],
+    ['no network', authError('W3', { status: 0, name: 'AuthRetryableFetchError', message: 'Failed to fetch' })],
+  ];
+  for (const [name, err] of cases) {
+    it(`${name}: the app shows Safari's message and code`, async () => {
+      const { app, relay, h } = setup();
+      await reportFailure(relay.sb, h, err);
+      const put = relay.sent[0] as { p_payload: { e: string } };
+      expect(put.p_payload.e).toMatch(/^-?[0-9]{1,6}$/);
+      const got = await restoreInApp(app, relay.sb, mockAppAuth().auth, NOW).catch((e) => e as PhantomLinkError);
+      expect(got).toBeInstanceOf(PhantomLinkError);
+      if (!(got instanceof PhantomLinkError)) return;
+      expect(got.diag).toBe(err.diag);
+      expect(got.message).toBe(err.message);
+      expect(got.cancelled).toBe(false);
+    });
+  }
+  it('cancel stays 4001', async () => {
+    const { app, relay, h } = setup();
+    await reportFailure(relay.sb, h, stepError('CXL'));
+    expect((relay.sent[0] as { p_payload: { e: string } }).p_payload.e).toBe('4001');
+    await expect(restoreInApp(app, relay.sb, mockAppAuth().auth, NOW)).rejects.toMatchObject({ cancelled: true, diag: 'CXL' });
+  });
+  it('an unknown error, or a failure that cannot be told, is reported as code 1 and shows the generic Phantom message', async () => {
+    const { app, relay, h } = setup();
+    await reportFailure(relay.sb, h, new Error('boom with a token eyJhbGciOi'));
+    expect(JSON.stringify(relay.sent)).not.toContain('eyJ');
+    await expect(restoreInApp(app, relay.sb, mockAppAuth().auth, NOW)).rejects.toMatchObject({ diag: 'PH-UNK' });
+  });
+  it('a refreshSession refusal in the app keeps its status and reason', async () => {
+    const { app, relay, h } = setup();
+    const ph = fakePhantom();
+    void ph;
+    // Safari's good result, then the server turns the refresh token down with a 400.
+    await relayPut(relay.sb, { id: h.id, app: true, response: sealRefreshToken(REFRESH, h.pub) });
+    const auth: AppAuth = { refreshSession: async () => ({ data: null, error: { status: 400, code: 'refresh_token_not_found', message: 'Invalid Refresh Token: Refresh Token Not Found' } }) };
+    await expect(restoreInApp(app, relay.sb, auth, NOW)).rejects.toMatchObject({ diag: 'RF-400-OTHER', message: expect.stringMatching(/app couldn't use the handed-back sign-in/) });
+  });
+  it('a refreshSession that throws (offline) is RF NET', async () => {
+    const { app, relay, h } = setup();
+    await relayPut(relay.sb, { id: h.id, app: true, response: sealRefreshToken(REFRESH, h.pub) });
+    const auth: AppAuth = { refreshSession: async () => { throw new TypeError('Load failed'); } };
+    await expect(restoreInApp(app, relay.sb, auth, NOW)).rejects.toMatchObject({ diag: 'RF-0-NET' });
+  });
+});
+
+describe('records left by an older build', () => {
+  it('a handoff or pending record with missing or odd fields does not crash and is either normalized or wiped', () => {
+    const s = memStore();
+    s.setItem(HANDOFF_KEY, JSON.stringify({ v: 1, id: 'x', secret: 's', expiresAt: NOW + 1000 }));
+    expect(loadHandoff(s, NOW).handoff?.returnTo).toBe('ranked');
+    s.setItem(HANDOFF_KEY, JSON.stringify({ v: 2, id: 'x' }));
+    expect(loadHandoff(s, NOW)).toEqual({ handoff: null, expired: false });
+    expect(s.m.size).toBe(0);
+    s.setItem(HANDOFF_KEY, 'null');
+    expect(loadHandoff(s, NOW)).toEqual({ handoff: null, expired: false });
+    s.setItem(HANDOFF_KEY, '{not json');
+    expect(loadHandoff(s, NOW)).toEqual({ handoff: null, expired: false });
+    const p = memStore();
+    p.setItem(PENDING_KEY, JSON.stringify({ v: 1, id: 'i', secret: 's', step: 'connect' })); // no expiresAt
+    expect(loadPending(p, NOW)).toEqual({ pending: null, expired: false });
+    p.setItem(PENDING_KEY, JSON.stringify({ v: 1, id: 'i', secret: 's', step: 'sign', expiresAt: NOW + 1000, handoff: 'junk' }));
+    const got = loadPending(p, NOW).pending!;
+    expect(got.handoff).toBeUndefined();
+    expect(got).toMatchObject({ app: false, opened: false, returnTo: 'ranked' });
+    p.setItem(PENDING_KEY, 'null');
+    expect(loadPending(p, NOW)).toEqual({ pending: null, expired: false });
+  });
+  it('a sign step with no message from an older build fails as STATE, not a crash', () => {
+    const p = { v: 1 as const, id: newId(), step: 'sign' as const, app: false, opened: true, returnTo: 'ranked' as const, expiresAt: NOW + 1000, secret: base58Encode(randomBytes(32)) };
+    expect(() => advance(memStore(), p, { n: 'a', d: 'b' }, env(NOW))).toThrow(expect.objectContaining({ diag: 'STATE' }));
   });
 });

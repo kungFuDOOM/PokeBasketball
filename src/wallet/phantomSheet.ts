@@ -1,14 +1,16 @@
 // Drives a Phantom deeplink sign-in on screen: the tap that leaves for Phantom, what the page does when Phantom sends the player
 // back, and the wait for an answer left in the relay. The rules are in phantomLink.ts.
-import { ONLINE_CONFIGURED, supabase } from '../multiplayer/shared/supabase';
+import { ONLINE_CONFIGURED, ephemeralAuthClient, supabase } from '../multiplayer/shared/supabase';
 import { RETURN_KEY } from '../multiplayer/ranked/account';
 import {
   beginHandoff, clearHandoff, clearLanding, finishInSafari, handoffCode, landingStore, landingTrip, loadHandoff, reportFailure, restoreInApp,
 } from './phantomHandoff';
 import {
-  PhantomLinkError, advance, beginConnect, clearPending, isStandalone, loadPending, parseCallback, relayPut, relayTake, routeCallback, savePending, signLink,
+  PhantomLinkError, advance, authError, beginConnect, clearPending, isStandalone, standaloneSignal, stepError, loadPending, parseCallback, relayPut, relayTake, routeCallback, savePending, signLink,
   type Callback, type HandoffRef, type Pending, type PhantomResponse, type RelayClient, type ReturnTo, type Store,
 } from './phantomLink';
+import { formatDiag, type DiagContext } from './phantomDiag';
+import { runningBuild } from './staleBuild';
 import { sheetBodyHtml, sheetHtml, type SheetState } from './phantomView';
 
 const POLL_MS = 2500;
@@ -19,7 +21,6 @@ const localStore = (): Store => window.localStorage;
 let landingCtx: HandoffRef | null = null;
 const tripStore = (): Store => (landingCtx ? landingStore(localStore()) : sessionStore());
 const here = () => ({ origin: location.origin, pathname: location.pathname });
-const expiredText = 'That sign-in expired. Try again.';
 
 let stop: (() => void) | null = null;
 
@@ -63,15 +64,29 @@ function onSheetClick(e: Event) {
   }
 }
 
-const fail = (e: unknown) => {
+/** The step key behind a failure, for the code on screen. Anything that isn't one of ours is UNK. */
+const diagKey = (e: unknown): string => (e instanceof PhantomLinkError && e.diag ? e.diag : 'UNK');
+const hostWindow = () => window as unknown as Parameters<typeof isStandalone>[0];
+/** Which page this is, for the code: the home-screen app, Safari finishing for it (or passing an answer on), or a normal tab. */
+let ctx: DiagContext = 'tab';
+
+const failedState = (e: unknown, c: DiagContext): SheetState => {
+  const err = e instanceof PhantomLinkError ? e : stepError('UNK');
+  return {
+    kind: 'failed', tone: err.cancelled ? 'warn' : 'bad', text: err.message,
+    diag: formatDiag({ key: diagKey(err), ctx: c, standalone: standaloneSignal(hostWindow()), build: runningBuild() }),
+  };
+};
+
+const fail = (e: unknown, c: DiagContext = landingCtx ? 'safari' : ctx) => {
   stop?.();
   stop = null;
-  const cancelled = e instanceof PhantomLinkError && e.cancelled;
-  if (landingCtx) { clearLanding(tripStore()); void reportFailure(relay(), landingCtx, cancelled); landingCtx = null; }
-  draw({ kind: 'failed', tone: cancelled ? 'warn' : 'bad', text: e instanceof Error ? e.message : 'Could not sign in with Phantom.' });
+  if (landingCtx) { clearLanding(tripStore()); void reportFailure(relay(), landingCtx, e); landingCtx = null; }
+  draw(failedState(e, c));
 };
 
 async function apply(p: Pending, r: PhantomResponse) {
+  ctx = p.app ? 'app' : 'tab';
   try {
     const out = advance(sessionStore(), p, r, { host: location.host, uri: `${location.origin}${location.pathname}`, now: Date.now() });
     if (out.kind === 'need-sign') {
@@ -80,8 +95,12 @@ async function apply(p: Pending, r: PhantomResponse) {
       return;
     }
     draw({ kind: 'working', text: 'Signing in…' });
-    const { error } = await supabase().auth.signInWithWeb3({ chain: 'solana', message: out.message, signature: out.signature });
-    if (error) throw new PhantomLinkError('Could not sign in with Phantom. Try again.');
+    let failure: unknown = null;
+    try {
+      const { error } = await supabase().auth.signInWithWeb3({ chain: 'solana', message: out.message, signature: out.signature });
+      failure = error;
+    } catch (e) { failure = e; }
+    if (failure) throw authError('W3', failure);
     // Reopen where the player started, through the same path as coming back from Google, with a clean client.
     markReturn(p.returnTo);
     location.reload();
@@ -92,6 +111,7 @@ async function apply(p: Pending, r: PhantomResponse) {
 
 /** Shows the step in progress and watches the relay for its answer. */
 function watch(p: Pending) {
+  ctx = p.app ? 'app' : 'tab';
   if (p.step === 'sign' && !p.opened) draw({ kind: 'sign-ready', href: signLink(p, here()), newTab: p.app });
   else draw({ kind: 'approve', step: p.step === 'connect' ? 1 : 2 });
   stop?.();
@@ -99,7 +119,7 @@ function watch(p: Pending) {
   const tick = async () => {
     if (busy || document.visibilityState === 'hidden') return;
     const { pending, expired } = loadPending(sessionStore(), Date.now());
-    if (expired) return fail(new PhantomLinkError(expiredText));
+    if (expired) return fail(stepError('EXP'));
     if (!pending?.opened) return;
     busy = true;
     const answer = await relayTake(relay(), pending.id).catch(() => null);
@@ -128,7 +148,8 @@ function watch(p: Pending) {
  * rest of the sign-in to Safari (phantomHandoff.ts); anywhere else the trip is kept in this tab's sessionStorage.
  */
 export function startPhantomLink(a: HTMLAnchorElement, returnTo: ReturnTo) {
-  const app = isStandalone(window as unknown as Parameters<typeof isStandalone>[0]);
+  const app = isStandalone(hostWindow());
+  ctx = app ? 'app' : 'tab';
   if (app) {
     a.href = beginHandoff(localStore(), { loc: here(), returnTo, now: Date.now() });
     a.target = '_blank';
@@ -151,6 +172,7 @@ export function startPhantomLink(a: HTMLAnchorElement, returnTo: ReturnTo) {
 
 /** The home-screen app, waiting for Safari to leave the sealed session in the relay. Survives an iOS reload: the handoff is in localStorage. */
 function watchHandoff() {
+  ctx = 'app';
   const { handoff } = loadHandoff(localStore(), Date.now());
   if (!handoff) return;
   draw({ kind: 'wait-safari', code: handoffCode(handoff.id) });
@@ -195,6 +217,7 @@ function watchHandoff() {
 async function resumeLanding(cb: Callback) {
   const h = cb.handoff!;
   landingCtx = h;
+  ctx = 'safari';
   const landing = tripStore();
   const now = Date.now();
   // This very page is the app that started it (a redirect that did open in the app): keep the session here instead of passing it on.
@@ -210,7 +233,9 @@ async function resumeLanding(cb: Callback) {
       return;
     }
     draw({ kind: 'working', text: 'Signing in…' });
-    await finishInSafari(supabase().auth, relay(), { message: out.message, signature: out.signature, handoff: h, keepSession: sameApp });
+    // Same app: sign in here for real. A handoff: a throwaway client, so Safari stores nothing and never rotates or revokes the token.
+    const auth = sameApp ? supabase().auth : ephemeralAuthClient();
+    await finishInSafari(auth, relay(), { message: out.message, signature: out.signature, handoff: h, keepSession: sameApp });
     landingCtx = null;
     if (sameApp) {
       const rec = loadHandoff(localStore(), Date.now()).handoff;
@@ -227,6 +252,14 @@ async function resumeLanding(cb: Callback) {
 
 /** On page load: a callback from Phantom (`search`, kept by public/phantom-return.js), and/or a sign-in in progress here. */
 export function resumePhantom(search: string | undefined) {
+  try { resume(search); } catch (e) {
+    // A record left by an older build that the code above did not expect: say so, and clear it rather than loop on it.
+    try { clearPending(sessionStore()); clearHandoff(localStore()); clearLanding(landingStore(localStore())); } catch { /* storage is gone */ }
+    draw(failedState(stepError('STATE'), ctx));
+  }
+}
+
+function resume(search: string | undefined) {
   (window as unknown as { __phantomCb?: string }).__phantomCb = undefined; // it holds a trip's keys: don't leave them on window
   if (!ONLINE_CONFIGURED) return;
   let store: Store;
@@ -242,17 +275,18 @@ export function resumePhantom(search: string | undefined) {
   }
   if (cb) {
     draw({ kind: 'working', text: 'Passing this back…' });
-    relayPut(relay(), cb).catch(() => false).then((ok) => {
-      draw(ok ? { kind: 'go-back', app: cb.app } : { kind: 'failed', tone: 'bad', text: 'Could not pass that back. Go back to PokeJam and try again.' });
+    ctx = 'safari';
+  relayPut(relay(), cb).catch(() => false).then((ok) => {
+      draw(ok ? { kind: 'go-back', app: cb.app } : failedState(stepError('HO-PASS'), 'safari'));
     });
     return;
   }
   if (pending) { watch(pending); return; }
-  if (expired) { fail(new PhantomLinkError(expiredText)); return; }
+  if (expired) { fail(stepError('EXP')); return; }
   // The home-screen app was reloaded while Safari was finishing the sign-in.
   const h = loadHandoff(local, Date.now());
   if (h.handoff) { watchHandoff(); return; }
-  if (h.expired) { fail(new PhantomLinkError(expiredText)); return; }
+  if (h.expired) { fail(stepError('EXP')); return; }
   // Safari, reopened between the two Phantom trips: the button is still there.
   const ls = landingStore(local);
   const l = loadPending(ls, Date.now());
@@ -260,5 +294,5 @@ export function resumePhantom(search: string | undefined) {
     landingCtx = l.pending.handoff;
     if (l.pending.opened) draw({ kind: 'approve', step: 2 });
     else draw({ kind: 'sign-ready', href: signLink(l.pending, here()), newTab: false, code: handoffCode(l.pending.handoff.id) });
-  } else if (l.expired) fail(new PhantomLinkError(expiredText));
+  } else if (l.expired) fail(stepError('EXP'));
 }

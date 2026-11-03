@@ -51,13 +51,26 @@ const securityHeaders = (supabaseUrl: string | undefined, captcha: boolean, adsA
   ],
 });
 
-export default defineConfig(({ mode }) => ({
+/** Writes build-id.txt next to index.html: the page fetches it (no-store) to learn whether a newer build is live. See src/wallet/staleBuild.ts. */
+const buildIdFile = (id: string): Plugin => {
+  let admin = false;
+  return {
+    name: 'build-id-file',
+    apply: 'build',
+    // The admin build (vite.admin.config.ts) runs after this one in the same dist/ and must not overwrite the id with its own.
+    configResolved(c) { admin = JSON.stringify(c.build.rollupOptions.input ?? '').includes('admin.html'); },
+    generateBundle() { if (!admin) this.emitFile({ type: 'asset', fileName: 'build-id.txt', source: id }); },
+  };
+};
+
+export default defineConfig(({ mode }) => {
+  // '.' is the working directory (what process.cwd() is). Spelled this way because src/csp.test.ts imports this file and the project has no Node types.
+  const env = loadEnv(mode, '.', 'VITE_');
+  const buildId = env.VITE_BUILD_ID || `t${Date.now().toString(36)}`;
+  return {
   base: './',
-  plugins: [(() => {
-    // '.' is the working directory, as process.cwd() (spelled this way so src/csp.test.ts can type-check this file without Node types).
-    const env = loadEnv(mode, '.', 'VITE_');
-    return securityHeaders(env.VITE_SUPABASE_URL, !!env.VITE_TURNSTILE_SITE_KEY, env.VITE_ADS_API || undefined);
-  })()],
+  define: { __PJ_BUILD__: JSON.stringify(mode === 'production' ? buildId : 'dev') },
+  plugins: [securityHeaders(env.VITE_SUPABASE_URL, !!env.VITE_TURNSTILE_SITE_KEY, env.VITE_ADS_API || undefined), buildIdFile(buildId)],
   build: {
     // Older iPads (iPadOS 13/14, Safari 12-14) and Android WebViews: lower ?. ?? ??= instead of shipping them as written.
     target: ['es2019', 'chrome70', 'safari12', 'firefox68', 'edge79'],
@@ -68,4 +81,5 @@ export default defineConfig(({ mode }) => ({
       },
     },
   },
-}));
+};
+});

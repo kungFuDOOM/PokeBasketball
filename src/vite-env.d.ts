@@ -29,3 +29,6 @@ interface ImportMetaEnv {
   /** Cloudflare Turnstile site key: when set, a bot check runs before a first anonymous sign-in. */
   readonly VITE_TURNSTILE_SITE_KEY?: string;
 }
+
+/** Replaced at build time (vite.config.ts): VITE_BUILD_ID, or a timestamp when that is unset. Also written to build-id.txt for the stale-bundle check. */
+declare const __PJ_BUILD__: string | undefined;

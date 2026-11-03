@@ -8,6 +8,8 @@ Where the wallet is injected, nothing changed: `signInWithPhantom` in `src/walle
 | --- | --- |
 | `src/wallet/phantomLink.ts` | The rules: links, encryption, callback parsing, state, expiry, the sign-in message, relay calls. No DOM. |
 | `src/wallet/phantomHandoff.ts` | The home-screen app path: the app's handoff, Safari finishing the sign-in alone, and the sealed refresh token between them. No DOM. |
+| `src/wallet/phantomDiag.ts` | Step-specific messages, the diagnostic code, and the numeric code Safari leaves in the relay. No DOM. |
+| `src/wallet/staleBuild.ts` | Reloads before a sign-in if a newer build is live (see below). |
 | `src/wallet/nacl.ts` | x25519 + xsalsa20-poly1305. WebCrypto has neither on the browsers we support, and this avoids a dependency. |
 | `src/wallet/phantomSheet.ts`, `phantomView.ts` | The status sheet and what the page does on return. |
 | `public/phantom-return.js` | Takes the callback out of the URL before analytics load. |
@@ -17,7 +19,7 @@ Where the wallet is injected, nothing changed: `signInWithPhantom` in `src/walle
 
 1. The tap on **Sign in with Phantom** makes a fresh x25519 key and a one-time id, and follows `phantom.com/ul/v1/connect`.
 2. Phantom approves and redirects to `https://pokejam.xyz/?pj_phantom=<id>&...` with an encrypted `{public_key, session}`.
-3. The page builds the Sign in with Solana message and shows a **Sign in Phantom** button. It must be a button: a universal link opens
+3. The page builds the Sign in with Solana message (with `Chain ID: solana:mainnet`, see below) and shows a **Sign in Phantom** button. It must be a button: a universal link opens
    the app reliably only from a tap, and this code isn't running in one.
 4. That tap follows `phantom.com/ul/v1/signMessage`. Phantom redirects back with an encrypted `{signature}`.
 5. The page checks wallet, nonce and expiry, then calls `signInWithWeb3({ chain: 'solana', message, signature })`. Supabase verifies the signature.
@@ -41,16 +43,83 @@ sign-in and the app only collects the result:
    keeps the trip (session, wallet, nonce, message) in **its own** localStorage (`pokejam.phantom.landing`, 10 minutes) and shows
    **Sign in Phantom** and the same check code. A tap is required.
 3. **Second trip.** The tap follows `signMessage`; its `redirect_link` repeats the handoff params, so Safari needs nothing from the app.
-   Safari verifies wallet, nonce and expiry and calls `signInWithWeb3`.
+   Safari verifies wallet, nonce and expiry and calls `signInWithWeb3` on a **throwaway client** (`ephemeralAuthClient()`:
+   memory storage, `persistSession: false`, `autoRefreshToken: false`, `detectSessionInUrl: false`), so Safari stores nothing, never
+   rotates the token, and leaves its own `pokejam.auth` guest session alone.
 4. **Hand-over.** Safari seals `{rt: <refresh token>}` (nothing else) to the handoff public key with a one-use key and a fresh nonce, and
-   puts `{k, n, d}` in the relay under the handoff id. It then signs itself out with `signOut({ scope: 'local' })`: that clears Safari
-   only and does **not** revoke the session the app is about to use. Safari says "Signed in — go back to the PokeJam app on your home screen."
+   puts `{k, n, d}` in the relay under the handoff id. It **never** signs out: Supabase's `/logout`, even with `scope: 'local'`,
+   revokes that session on the server, so the app's refresh failed with `refresh_token_not_found` (PJ-RF-400). The throwaway
+   client simply goes away with the page. Safari says "Signed in — go back to the PokeJam app on your home screen."
 5. **App restores.** It takes the row (deleted by the read), wipes its handoff, opens the box and calls
-   `supabase.auth.refreshSession({ refresh_token })`, then reloads into Ranked/Profile like the other paths. Rotation means Safari's copy
+   `supabase.auth.refreshSession({ refresh_token })` (only one restore runs at a time, so the poll and `visibilitychange` cannot
+   race to spend the single-use token), then reloads into Ranked/Profile like the other paths. Rotation means Safari's copy
    of the token is dead anyway.
 
 Cancel, failure and expiry wipe both sides. If Safari fails or the player cancels there, it leaves an error code in the relay so the app
 stops waiting.
+
+## iOS: the return link always opens Safari (honest note)
+
+On iOS, Phantom's `redirect_link` opens **Safari**, never the home-screen app, and there is no way to make it do otherwise. So a sign-in
+started in the home-screen app always has a Safari step (the app can't finish it alone), and the player has to switch back to the
+home-screen app **by hand** afterwards. The app picks the result up within a few seconds of becoming visible. That is a limit of iOS and of
+Phantom's deeplinks, not something this code can hide; the copy on both screens says so.
+
+## The Chain ID bug (live, fixed)
+
+`buildSiwsMessage` used to write `Chain ID: mainnet`. Supabase Auth validates it with `^solana:(main|dev|test|local)net$` and answered
+`400 validation_failed "siws: Chain ID is not valid"`, so the deeplink path never signed anyone in. It now writes `Chain ID: solana:mainnet`
+(`SIWS_CHAIN_ID`). The extension path doesn't pass a `chainId`, so supabase-js leaves the line out, which the server accepts.
+
+`src/wallet/siwsServerRules.test.ts` encodes the server's rules and checks our message against them: Chain ID regexp (or absent), https URI
+(or localhost) on the redirect allow list, Domain equal to the URI host, RFC 3339 Issued At within 10 minutes of now either way, Expiration
+Time and Not Before respected, at most 20 KB, and a 64-byte signature (checked in `advance`).
+
+## Diagnostic codes
+
+Every failure the player sees in this flow shows a plain sentence and, under it, a small code:
+
+    PJ-<step>[-<HTTP status>-<reason>] · <context> · <standalone signal> · b<build>        e.g.  PJ-W3-400-CHAIN · app · sa:nav · b1a2b3c
+
+- **context**: `app` = the standalone home-screen app, `safari` = the landing page finishing (or passing on) a handoff, `tab` = the normal in-tab flow.
+- **standalone signal**: what `isStandalone()` saw on *this* page: `sa:nav` (`navigator.standalone`, checked first), `sa:standalone`, `sa:fullscreen`,
+  `sa:minimal-ui` (the `display-mode` media query), or `sa:no`. Safari's own page is normally `sa:no`.
+- **build**: the first 7 characters of `VITE_BUILD_ID` (`b` + id), or `bdev`. An old bundle resumed from memory shows up here.
+- The code never contains ids, keys, wallet addresses, nonces, tokens or server text; an unknown key prints as `UNK`.
+
+| Step key | Message | Meaning | Relay code |
+| --- | --- | --- | --- |
+| `CN-READ` | Phantom's connect answer couldn't be read | Missing, undecryptable or wrong-shaped connect answer | 100 |
+| `CN-PH` | Phantom couldn't finish connecting | Phantom returned an error code on connect | 101 |
+| `SG-READ` | Phantom's signature answer couldn't be read | Missing, undecryptable, or not 64 bytes | 110 |
+| `SG-PH` | Phantom couldn't finish signing | Phantom returned an error code on sign | 111 |
+| `EXP` | This sign-in expired | Older than 10 minutes | 120 |
+| `MIS` | That sign-in didn't match | Message wallet or nonce differs from the trip | 130 |
+| `STATE` | This sign-in couldn't be continued | Saved state missing or from an older build | 131 |
+| `CXL` | Cancelled in Phantom | The player said no (error 4001). Not shown in red | 4001 |
+| `PH-UNK` | Phantom couldn't finish that | An error code we don't know (older builds always send this) | 1 |
+| `W3-<status>-<reason>` | Signing in was refused by the server | `signInWithWeb3` failed (Safari, or the in-tab flow) | 20000 + reason index × 1000 + status |
+| `RF-<status>-<reason>` | The app couldn't use the handed-back sign-in | `refreshSession` failed in the app | local |
+| `HO-PUT` | Couldn't hand the sign-in back to the app | Safari signed in but the relay write failed | local |
+| `HO-PASS` | Couldn't pass Phantom's answer back to PokeJam | A landing tab couldn't leave the answer for the tab that holds the key | local |
+| `HB-READ` | The app couldn't read the handed-back sign-in | The sealed box didn't open | local |
+| `UNK` | Couldn't sign in with Phantom | Anything unexpected | local (sent as 1) |
+
+Reason tokens for `W3`/`RF`, from the HTTP status and Supabase's `error_code`/message (raw text is never kept): `CHAIN` (Chain ID), `URI`
+(redirect URI), `DOMAIN`, `EXPIRED` (expiration / Issued At window), `SIG` (signature), `RATE` (429), `NET` (status 0, no answer), `SRV` (5xx),
+`DISABLED` (Web3 provider off), `OTHER`. Reason indexes, in that order of the list in `phantomDiag.ts`: OTHER 0, CHAIN 1, URI 2, DOMAIN 3, EXPIRED 4,
+SIG 5, RATE 6, NET 7, SRV 8, DISABLED 9. "Local" steps happen on one page and can't be reported through the relay, so a waiting app that
+gets `1` shows `PH-UNK`. Relay codes always match `^-?[0-9]{1,6}$`, so no migration is needed.
+
+## Stale bundle guard
+
+An iOS home-screen app can be resumed from memory with a JavaScript bundle from before the last deploy (`assets/game.js` isn't hashed and is
+cached for 10 minutes), which would run old sign-in code. `vite.config.ts` writes `build-id.txt` (the `VITE_BUILD_ID`, or a timestamp) next to
+`index.html`, and bakes the same id into the bundle (`__PJ_BUILD__`). When the sign-in panel (the one with the Phantom button) is drawn, and
+whenever the page becomes visible again while that button is on screen, `staleBuild.ts` fetches it with `cache: 'no-store'` and reloads once if it
+differs. It never runs during a match, skips while a sign-in is under way, is throttled to once per 20 s, stays silent on any network problem, and
+won't reload twice for the same live build (so a cache that keeps serving old code can't loop). `dev` builds never reload. A pending/handoff
+record left by an older build is validated field by field and wiped if unusable; if anything still throws, the sheet shows `STATE`.
 
 ## Which tab gets the answer (everything that is not the home-screen app)
 
