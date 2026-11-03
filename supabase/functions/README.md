@@ -11,6 +11,7 @@ Step 3 of the plan on issue #4: after a battle has a winner, buy the winner's Co
 | `../migrations/20261023_pokejam_pack_payouts.sql` | `pokejam_pack_machines`, `pokejam_pack_ledger`, `pokejam_pack_prizes`, and their functions. RLS is on: players read only their own prizes and ledger rows. Every write goes through service-role functions. |
 | `../migrations/20261024_pokejam_pack_keep_or_sell.sql` | Keep it or sell it back at the reveal: the `revealed` state, `choice` / `choose_by` / `sell_estimate`, and `pokejam_pack_choose_prize`, the one prize write a player makes. |
 | `pokejam-pack-payouts/` | The prize worker. Each run recovers stuck prizes, then settles up to 5. |
+| `pokejam-ads/` | Billboard ads: book the courtside LED board by burning $PJAM (below). |
 | `pokejam-judge-worker/` | Judges the next Ranked match in the queue, one per run, and decides it if it's disputed and `judge_authoritative` is on. See "The judge queue" below. |
 | `pokejam-pack-machines/` | Refreshes `pokejam_pack_machines` from CC's live prices, odds and stock, for the lobby. |
 | `_shared/pack/` | Ported from the devnet-verified Bun prototype: CC client, Solana RPC, Core transfer, signing, machines and the worker. Imports use explicit `.ts` extensions, so the same files run in Deno and in vitest. |
@@ -22,6 +23,183 @@ How a prize moves:
 4. The card is open and in the house wallet, so the prize waits as `revealed` for `PRIZE_CHOICE_SECONDS` (default 120). The winner sees the card with **Keep it** and **Sell it back** (about `sell_estimate`: insured value × the machine's buyback rate; the credit is CC's actual quote). The client calls `sb.rpc('pokejam_pack_choose_prize', { p_id, p_choice: 'keep' | 'sell' })`. It returns false if the prize isn't theirs or isn't waiting any more, and the prize row says which. The next run (at most a minute later on the every-minute cron) settles it. With no pick, the winner's saved preference (`prefer_cash`) applies once `choose_by` passes. CC's buyback window is 72 hours, so the wait costs nothing.
 5. It then either sends the card (a Core transfer, after checking the owner on-chain) or sells it back and credits the buyback.
 6. If CC refuses to sell `PRIZE_FALLBACK_ATTEMPTS` times (default 3), the winner is credited the whole pot. A house short of USDC keeps retrying instead.
+
+## Billboard ads (`pokejam-ads/`, `../migrations/20261203_pokejam_ads.sql`)
+
+Advertisers put their message on the courtside LED board in every game, and pay by **burning $PJAM** from their own wallet. **Devnet only** until kungFuDOOM approves mainnet; the code refuses any other cluster (see `_shared/ads/config.ts`).
+
+**How a booking moves.**
+1. On the Advertise page (`src/ads/screen.ts`), the advertiser writes the ad (24 characters, filtered like trainer names), picks one of 8 colour themes, a plan and a start.
+2. `prepare` checks their balance and books it as unpaid. Unpaid bookings hold no space, so nobody can block the board without burning.
+3. It returns one unsigned transaction: SPL Token `BurnChecked` of the price from the advertiser's own token account, plus the memo `pokejam-ad:<code>`. Their wallet signs it.
+4. `confirm` reads the landed transaction from the chain with the RPC's own parser and checks it before the ad is paid for:
+   - it succeeded;
+   - its memo names this booking;
+   - the booking's wallet signed;
+   - the burns of this mint under its token program, from that wallet, add up to at least the price.
+   - One signature pays for one booking.
+5. The ad gets the first opening from its start.
+
+**The server never signs a burn and holds no key on mainnet.** The tokens leave the supply; nobody receives them.
+
+| Plan | Price (base units in `pokejam_config`) | |
+| --- | --- | --- |
+| 1 hour | `ad_price_hour` = 100,000 PJAM | |
+| 1 day | `ad_price_day` = 1,500,000 PJAM | 37% off 24 hours |
+| 1 week | `ad_price_week` = 7,500,000 PJAM | 55% off 168 hours |
+
+Prices and the number of spots (`ad_spots`, default 3) change with one `update public.pokejam_config …`, no deploy. Live ads take turns on the ticker, one per repeat; with none booked it shows YOUR AD HERE.
+
+**Never lose a burn.** Every successful burn of the token whose memo names a booking becomes airtime. It's found three independent ways:
+
+1. **The page:** it confirms the burn the moment the wallet signs, and asks again on its next visit if it closed first.
+2. **The wallet:** connecting it on any device settles that wallet's unpaid bookings from its own history.
+3. **The chain:** the sweeper walks the mint's own history (`ad_scan_cursor`) every few minutes. It needs no page, and spam bookings can't crowd it out.
+
+| What happens | What the advertiser gets |
+| --- | --- |
+| The board fills up (or this wallet already holds a spot) while they sign | The ad moves to the next opening, for the full time, and says so. |
+| The node's reply is lost after it sent the burn | Still found and paid. |
+| The page gave up waiting, then the burn landed | Paid by the sweeper or the next visit. |
+| A burn lands days late (a durable nonce) | Paid: bookings are never deleted, and the price is locked when booked. |
+| A second burn for an ad that's already paid | An extra run of the same ad, straight after. |
+| A hand-made burn of more or less than the price | Devnet: airtime in proportion, at the locked rate. Under a minute's worth is recorded as dust. Live: a burn below the price books nothing and is kept as burn credit; more runs longer. |
+| Someone else burns for the ad | It runs: anyone may pay for an ad. |
+| The node refuses the burn, it fails on-chain, or it expires unsent | Nothing was burned, and the page says exactly that. |
+| The page showed an old price | Refused before signing (`expect`), so the wallet never shows a surprise amount. |
+
+**What may run** (`pokejam_ad_verdict`, checked live as the advertiser types and again before anything is burned):
+- **Characters:** the board only has capitals, digits, spaces and `$ ! ? . , & + @ # : ' / % -`, so look-alike letters, invisible characters and emoji can't get in.
+- **Disguises:** each word is compared with look-alikes undone (`5H1T`, `$H!T`), repeated letters and plurals allowed. Runs of short pieces are joined (`F U C K`, `SH IT`, `KISS MY A S S`), slurs and phrases are also checked with spaces removed, and a few words backwards.
+- **No false alarms:** ordinary phrases that only run together by accident are left alone (`PUSH IT`, `WHO RULES`, `KUNG FU`, `TEAM ROCKET`, `THERAPIST`).
+- **Also refused:** links and spelled-out domains (`@handle` and `$ticker` are fine), giveaway and wallet-drainer scams (`FREE SOL`, `AIRDROP`, `SEED PHRASE`, `CONNECT WALLET`, `DM ME`), posing as staff (`OFFICIAL`, `ADMIN`, `KUNGFUDOOM`), and hate numbers.
+- The tests list what's blocked and what's allowed (`supabase/tests/ads.test.ts`).
+
+**Griefing:**
+- Unpaid bookings hold no space, and each wallet may have 10 an hour.
+- One spot per advertiser at a time, so one wallet can't take the whole board.
+- Every action is rate-limited per caller, a salted hash of the IP (`pokejam_ad_allow`).
+- The board is cached. The devnet faucet gives one claim a day per wallet and three per caller.
+- Reports only flag an ad for moderators, one per person, so a crowd can't take a paid ad down. With `ADS_ALERT_WEBHOOK_URL` set, the 1st, 3rd and 10th report post to Slack or Discord.
+
+**Moderation** (admin.html, **Ads** tab: what's live and coming up, most-reported first):
+- **Take down:** its spot frees up. The advertiser keeps the time it had left, and puts new text on it from **Your ads**, signed by their wallet (`replace`). The text passes the same check.
+- **Take down + ban:** every ad from that wallet comes down for good, and it can't book again. This is the one case where burned tokens buy nothing, kept for abuse. **Lift** undoes the ban.
+- **Stop new bookings** (burns already sent still settle): `update public.pokejam_config set value = 'true' where key = 'ads_paused';`
+
+### On kungFuDOOM's "Merge" (devnet, the test site)
+
+1. **Migration:** `20261203_pokejam_ads`.
+2. **The test token:**
+   - `bun --use-system-ca scripts/ads-devnet-setup.ts <faucet-keypair.json>` makes "PJAM (devnet)": a Token-2022 mint with $PJAM's 6 decimals, whose mint authority is a new faucet keypair.
+   - The faucet needs about 1 devnet SOL. Devnet's RPC airdrop is closed, so use https://faucet.solana.com.
+   - Keep the keypair file out of the repo.
+3. **Deploy:** `supabase functions deploy pokejam-ads --no-verify-jwt` (the page calls it without signing in).
+4. **Secrets:**
+   - `ADS_CLUSTER=devnet`
+   - `AD_MINT=<the test mint>`
+   - `AD_FAUCET_SECRET=<the faucet keypair file's contents>`: the "Get free test $PJAM" button, 25M test PJAM and a little test SOL per wallet a day.
+   - `ADS_ALLOWED_ORIGINS=<test site>`
+5. **Schedule:** POST `{"action":"sweep"}` to `pokejam-ads` with the service key every 2 minutes (pg_cron + pg_net). Optional: `ADS_ALERT_WEBHOOK_URL` for reports.
+6. **Vercel `pokejam-test`:** `VITE_MODE_ADS=true`. This adds Courtside Ads to the title screen, the page at `#advertise`, and booked ads on every court.
+
+**Mainnet, only on kungFuDOOM's OK:** (this is the devnet function's own switch. The live site doesn't use it: it uses `pokejam-ads-live`, below.)
+- Set `ADS_CLUSTER=mainnet-beta` and `ADS_ALLOW_MAINNET=approved-by-kungfudoom`. The mint is then always the official $PJAM, `GQe9QiBBV4G6bRUCxx2JgKrzT7G7RD17FJquBWgVpump` (Token-2022), and the faucet is off whatever is set.
+- Use a paid RPC (`ADS_RPC_URL`): the public mainnet RPC rate-limits the history lookups.
+- Set prices for the token's market at the time.
+
+**Test it locally against devnet:**
+1. Run the devnet smoke test: `bun --use-system-ca scripts/ads-devnet-smoke.ts <mint> <faucet-keypair.json>`. It makes real burns every way they can arrive (relayed, wallet-sent, page closed, never confirmed, short, second, paid by a friend), plus one the node refuses, and checks that the supply fell by exactly what was burned.
+2. To try the whole page:
+   1. `VITE_MODE_ADS=true VITE_ADS_API=http://localhost:8787/api/ads npm run build`
+   2. `AD_MINT=<mint> AD_FAUCET_SECRET_FILE=<keypair.json> bun --use-system-ca scripts/ads-dev-server.ts`
+   3. Open http://localhost:8787/#advertise.
+
+## Billboard ads on the live site (`pokejam-ads-live/`, `../migrations/20261204_pokejam_ads_live.sql`)
+
+The live site (pokejam.xyz) books the same courtside LED board on **Solana mainnet**, through its own function. It runs the same handler as the devnet `pokejam-ads` above (`_shared/ads/handler.ts`), configured by `adsConfigLive` in `_shared/ads/config.ts`. The devnet function, its secrets and its tables are unchanged. The client (`src/ads/api.ts`) only ever calls `pokejam-ads-live`. Advertisers pay from their own wallet in one of two ways:
+- **Burn $PJAM** (an hour, a day or a week), like the devnet flow above except that the burn must cover the price and come from the booking's wallet.
+- **Pay in USDC** (a week or a month), sent to kungfudoom.sns.
+
+More detail, including the open questions, is in `docs/ads-live.md`.
+
+**Its own rows.** Live bookings use separate tables (`pokejam_live_ads`, `pokejam_live_ad_reports`, `pokejam_live_ad_usdc_intents`) and `pokejam_live_ad_*` functions. The ban list (`pokejam_ad_bans`) is shared on purpose, so a wallet banned on either board is banned on both. Its settings sit in `pokejam_config` under `live_` plus the devnet key (`live_ad_price_week`, `live_ad_usdc_month`, `live_ad_spots`, `live_ads_paused`, …). `adsConfigLive.dbName` maps every SQL call to the live names, so devnet and mainnet bookings never mix. The migration is additive only: it drops nothing and doesn't change any function the devnet site uses.
+
+**Secrets.** Edge Function secrets are shared by the whole project, so anything the devnet function also reads gets an `ADS_LIVE_` name here:
+
+| Secret | | |
+| --- | --- | --- |
+| `ADS_ALLOW_MAINNET` | required on mainnet | Must be exactly `true`. Anything else, such as `TRUE`, ` true`, `1` or the devnet function's approval phrase, and the function refuses to start. |
+| `ADS_LIVE_CLUSTER` | optional | `devnet` runs this function against devnet (for a staging copy). Anything else, or unset, means `mainnet-beta`. This is the live counterpart of `ADS_CLUSTER`, which stays the devnet function's own and doesn't affect this one. |
+| `ADS_PJAM_MINT` | optional on mainnet | The token burned. It defaults to the official $PJAM, `GQe9QiBBV4G6bRUCxx2JgKrzT7G7RD17FJquBWgVpump`. It must be a valid address, and the mint must have 6 decimals. It's required on a devnet staging copy, which has no default. |
+| `ADS_USDC_RECEIVER` | optional | The wallet paid in USDC. It defaults to kungfudoom.sns, `FPwoDYkHTFef4Fg45o1wzReXiVoYGP6KXEgRyfqqBpyk`. Changing it also needs a client rebuild, because the page refuses to sign a transfer to any other receiver than `USDC_RECEIVER` in `_shared/ads/usdc-chain.ts`. The payment must land in that wallet's USDC associated token account. The USDC mint is never configurable: on mainnet it is Circle's `EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v`. |
+| `ADS_LIVE_RPC_URL` | strongly advised | A paid mainnet RPC. The public one rate-limits history lookups. All chain reads happen here; the browser never calls an RPC. |
+| `ADS_LIVE_ALLOWED_ORIGINS` | advised | `https://pokejam.xyz` (comma-separated exact origins). If it's empty, any origin may call. |
+| `ADS_LIVE_PRIORITY_MICROLAMPORTS` | optional | The priority fee on the burn. Default 20,000 on mainnet. |
+| `ADS_ALERT_WEBHOOK_URL` | optional | Shared with the devnet function: report alerts to Slack or Discord. |
+
+**No faucet on mainnet**, whatever is set: `AD_FAUCET_SECRET` is ignored, the `faucet` action answers 404, the board reports `faucet: false` and the page hides the button.
+
+**Plans and prices.** Only the bookable courtside half is self-serve. The ticker ($75/week, $250/month) and the ticker + courtside combo ($650/month) are arranged by DM (X @pokejamsol or t.me/PokeJamSol) and paid in SOL. The Advertise page lists them with no checkout.
+
+Prices are rows in `public.pokejam_live_ad_plans` (`method`, `plan`, `amount`, `enabled`), in whole tokens. The Edge Function reads the table on every quote, booking and intent, and the page draws its plans from the board's `plans`, so a change needs no deploy and no client rebuild. The board is cached for 10 seconds.
+
+| Plan | Burn $PJAM (`burn`) | USDC (`usdc`) |
+| --- | --- | --- |
+| 1 hour (`hour`) | 100,000 | not on sale |
+| 1 day (`day`) | 1,500,000 | not on sale |
+| 1 week (`week`) | 7,500,000 | 150 |
+| 1 month, 720 h (`month`) | not on sale | 500 |
+
+```sql
+-- Change a price
+update public.pokejam_live_ad_plans set amount = 200000 where method = 'burn' and plan = 'hour';
+-- Stop selling a plan
+update public.pokejam_live_ad_plans set enabled = false where method = 'usdc' and plan = 'month';
+-- Sell a plan another way (plan is one of hour, day, week, month)
+insert into public.pokejam_live_ad_plans(method, plan, amount) values ('burn', 'month', 20000000);
+```
+
+A check constraint refuses a zero or negative price. The table has row-level security on and no grants to `anon` or `authenticated`. Re-applying the migration keeps any price you set.
+
+A booking keeps the price it was made at for one day. After that, and for any extra run, the current price applies if it's higher. `public/contact.html` also states the $150 and $500 prices as static text, so update it by hand if they change.
+
+**How a burn is checked** (`_shared/ads/verify.ts`, on the live board's strict settings, `strictBurn` in `adsConfigLive`):
+- The transaction succeeded, and is read at `finalized` commitment on mainnet (`confirmed` on a devnet staging copy).
+- Its top-level memo is exactly `pokejam-ad:<code>` for this booking, and it's no older than the booking.
+- The booking's wallet signed it, and only burns that wallet authorised from its own token account count (the owner comes from the chain's token balances). A delegate's, a multisig's or a stranger's burn doesn't count.
+- The token is the configured mint under the program that owns it. The mint must have 6 decimals, or the function refuses to sell, because the prices assume them.
+- `pokejam_live_ad_pay` compares the amount with the price. **Less than the price books nothing, not even a shorter slot** (a pro-rated burn would buy hours at the week's cheaper rate; the devnet board still pro-rates). The server builds the exact amount, so only a hand-crafted transaction can be short. Burned tokens can't come back, so a short burn is kept as **burn credit** (`20261205_pokejam_ads_burn_credit.sql`, table `pokejam_live_ad_burn_credit`) for the wallet that signed it and owns the burned account, after the same checks as any burn (finalized, mint, decimals, age, one signature once). A booking is paid when its burn plus that wallet's unspent credit reaches the locked price. Credit pays exactly what the burn is short of, oldest rows first, and the rest stays credit. It's spent in the same transaction as the booking, under the same advisory lock as every pay function, and never by another wallet, a banned one, or an ad that was already taken down. The database also refuses a burn whose burner isn't the booking's wallet, and refuses a non-finite, zero, negative or fractional amount. `prepare` builds the burn for the price minus the wallet's credit (one base unit if credit already covers it), and the page refuses to sign any other amount. A burn above the price runs longer at the plan's rate, as before; credit never adds to that. Credit alone books nothing: the wallet's own finalized burn naming the booking is what authorises spending it, so there is no separate redeem action to guard. The sweep credits short burns it finds.
+- `burn_sig` is unique and payments take an advisory lock, so a signature pays once, across burns and USDC.
+
+**How a USDC payment works** (`_shared/ads/usdc-*.ts`, adapted from the USDC payment pattern on `origin/claude/shield-usdc-only`, copied, not merged):
+1. `usdc-intent` first runs every check that could refuse the ad: the text filter, a ban, paused sales, the price the page showed, and the wallet's USDC and SOL. It then saves a one-time intent with an exact amount, a reference key and a memo, which expires in 15 minutes. It returns an unsigned SPL `TransferChecked` to the receiver's USDC account. The page rebuilds that transaction itself and checks it matches before the wallet signs.
+2. `usdc-confirm` reads the payment from the chain at `finalized` commitment on mainnet (`confirmed` on devnet) and checks that:
+   - the mint is USDC;
+   - the destination is the associated token account of the receiver;
+   - the amount is at least the price;
+   - the advertiser's wallet signed;
+   - the transaction succeeded.
+3. A signature books only once, because `usdc_sig` and the intent's signature are unique. With no signature, `usdc-confirm` finds the payment by the intent's reference key, so a page closed mid-payment still books on its next visit. A payment that really landed after its intent expired still books.
+4. **Retries:** `usdc-confirm` and `confirm` are safe to repeat, and the page keeps asking until it gets a final answer (`docs/ads-live.md`). A wallet-sent USDC payment the chain has never seen is answered `410 expired` once its intent has expired, which frees the page. A relayed transaction counts as never sent only if a node refused it and the chain has no record of its signature.
+5. **Recovery with no page open:** the live `sweep` reads the receiver's USDC account history past a cursor (`live_ad_usdc_scan_cursor`, at `finalized`, at most 3 pages and 25 checks a run, 3 days back on the first run). It matches each intent memo with `pokejam_live_ad_usdc_find` and checks it as in step 2. It then re-checks the last day's open intents (at most 20, `pokejam_live_ad_usdc_open`) by reference key. If it hits a cap, the cursor stops at the last payment checked, so nothing is skipped. The sweep's reply carries a `usdc` summary.
+
+**Layout.** The board keeps two halves. The `$PJAM · OFFICIAL POKEJAM TOKEN` half stays a fixed house ad. Booked ads replace only the "YOUR AD HERE" half (`src/game/ledBoard.ts`, `houseAds()` / `bookableHalfOn()` in `src/data/ads.ts`), and that half shows YOUR AD HERE when nothing is booked. The board is part of the court scenery, and the Advertise page is its own screen (title menu → Courtside Ads, `#advertise`), so no ad UI ever covers the game.
+
+**Moderation.** admin.html's Ads tab has a Devnet / Live (mainnet) switch. Live calls `pokejam_admin_live_ads` and `pokejam_admin_live_ad_remove`, which work like the devnet ones and are logged in `pokejam_admin_log`. The ban list is shared by both boards, so **Lift** is `pokejam_admin_ad_unban` on either. To stop new bookings: `update public.pokejam_config set value = 'true' where key = 'live_ads_paused';` Payments already sent still settle.
+
+### On kungFuDOOM's OK (mainnet, the live site)
+
+1. **Migrations**, in this order, after every other migration: `20261203_pokejam_ads`, then `20261204_pokejam_ads_live`, then `20261205_pokejam_ads_burn_credit`. All are additive and safe to re-apply.
+2. **Check the prices:** `select * from public.pokejam_live_ad_plans;`. They're seeded with the confirmed amounts.
+3. **Secrets:**
+   ```sh
+   supabase secrets set ADS_ALLOW_MAINNET=true ADS_LIVE_RPC_URL=<paid mainnet RPC> ADS_LIVE_ALLOWED_ORIGINS=https://pokejam.xyz
+   ```
+   Add `ADS_PJAM_MINT` and `ADS_USDC_RECEIVER` only to change their defaults.
+4. **Deploy:** `supabase functions deploy pokejam-ads-live --no-verify-jwt`. The page calls it without signing in.
+5. **Schedule:** POST `{"action":"sweep"}` to `pokejam-ads-live` with the service key every few minutes (pg_cron + pg_net), as for devnet.
+6. **The site's build:** `VITE_MODE_ADS=true`. The client calls `<VITE_SUPABASE_URL>/functions/v1/pokejam-ads-live`, whose origin is already in the CSP's `connect-src`. Set `VITE_ADS_API` only for a function hosted elsewhere: it must be https, and its origin is added to `connect-src`. No Solana RPC is added, and no inline script.
 
 ## Online play: TURN credentials (`pokejam-ice/`)
 

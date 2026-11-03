@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { CollectorCrypt } from './collector-crypt.ts';
 import { MAINNET_APPROVAL, authorized, packConfig } from './config.ts';
 import { generateKeypair } from './ed25519.ts';
@@ -7,6 +7,10 @@ import { MAX_ATTEMPTS, runPayouts } from './payouts.ts';
 import { Rpc } from './rpc.ts';
 import { sqlStore } from './store.ts';
 import { fakeChain, fakeCollectorCrypt, route, sql, testDb } from './test/helpers.ts';
+
+// Each test starts its own in-process Postgres and fake chain: under 1s alone, but 8-10s when the whole suite runs in
+// parallel on a busy machine, past vitest's 5s default. Test-only; the code under test has its own timeouts.
+vi.setConfig({ testTimeout: 30_000 });
 
 const quiet = { info: () => {}, warn: () => {}, error: () => {} };
 
