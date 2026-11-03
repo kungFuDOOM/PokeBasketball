@@ -61,6 +61,8 @@ export interface ResultsOptions {
   shareOpponent?: string;
   buttons: { id: string; label: string; kind?: 'primary' | 'ghost' }[];
   onAction: (id: string) => void;
+  /** After the player actually shares the result. Omitted when nothing should be recorded. */
+  onShare?: () => void;
 }
 
 export function resultsScreen(root: HTMLElement, g: Game, opts: ResultsOptions) {
@@ -111,7 +113,7 @@ export function resultsScreen(root: HTMLElement, g: Game, opts: ResultsOptions) 
       userScore: g.score[0],
       oppScore: g.score[1],
       potg: { name: pog.mon.name, pts: pog.stats.pts },
-    }));
+    }), opts.onShare);
   }
   root.querySelector('[data-replay]')?.addEventListener('click', () => watchAgain(g));
 }

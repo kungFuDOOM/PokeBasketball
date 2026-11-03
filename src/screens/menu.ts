@@ -120,6 +120,8 @@ export interface TitleOptions {
   onAdvertise?: () => void;
   /** Opens the player profile. */
   onProfile?: () => void;
+  /** Weekly challenges and the card raffle. */
+  onChallenges?: () => void;
 }
 
 const TIPS = [
@@ -273,6 +275,7 @@ export function menuScreen(root: HTMLElement, settings: Settings, onChange: () =
             <a href="terms.html">Terms</a>
             <a href="contact.html">Contact</a>
             <a href="patch-notes.html">Patch notes</a>
+            ${opts.onChallenges ? '<button class="link-btn" data-go="challenges">Challenges</button>' : ''}
             <a href="https://github.com/kungFuDOOM/PokeBasketball" target="_blank" rel="noopener">GitHub</a>
             <button class="link-btn" data-go="delete">Delete saved data</button>
           </p>
@@ -334,6 +337,7 @@ export function menuScreen(root: HTMLElement, settings: Settings, onChange: () =
   if (opts.onMultiplayer) $('[data-go="multiplayer"]')!.addEventListener('click', leave(opts.onMultiplayer));
   if (opts.onAdvertise) $('[data-go="advertise"]')!.addEventListener('click', leave(opts.onAdvertise));
   if (opts.onProfile) $('[data-go="profile"]')!.addEventListener('click', leave(opts.onProfile));
+  if (opts.onChallenges) $('[data-go="challenges"]')!.addEventListener('click', leave(opts.onChallenges));
   startNew.addEventListener('click', tryNew);
   $('[data-go="continue"]')?.addEventListener('click', leave(opts.onContinue));
   $('[data-go="resume-draft"]')?.addEventListener('click', leave(opts.onResumeDraft));

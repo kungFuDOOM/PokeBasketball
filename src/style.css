@@ -2483,3 +2483,41 @@ body:has(.pause-btn) .music-btn:not(.docked) {
 @media (max-width: 700px), (max-height: 500px) {
   .results .actions .btn.big[data-a="find-ranked"] { font-size: 1rem; padding: 11px 16px; letter-spacing: 0.04em; }
 }
+
+/* Weekly challenges. A menu screen, never over the court. Short landscape (844x390, 932x430) and portrait (390x844)
+   stay inside the screen, including the home-screen web app's safe area (the Dynamic Island sits on the side in landscape). */
+.menu:has(.ch) {
+  padding-top: max(12px, env(safe-area-inset-top, 0px));
+  padding-bottom: max(12px, env(safe-area-inset-bottom, 0px));
+  padding-left: max(12px, env(safe-area-inset-left, 0px));
+  padding-right: max(12px, env(safe-area-inset-right, 0px));
+}
+.ch { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.ch-when, .ch-base, .ch-bonus, .ch-odds, .ch-last, .ch-rules, .ch .note { margin: 0; font-size: 0.92rem; overflow-wrap: anywhere; }
+.ch-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.ch-list li { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 6px 10px; border: 2px solid var(--line); border-radius: 8px; background: rgba(0, 0, 0, 0.2); min-width: 0; }
+.ch-list li.done { border-color: var(--good, #3dd68c); }
+.ch-list span { display: flex; flex-direction: column; min-width: 0; }
+.ch-list small { color: var(--muted); font-size: 0.78rem; }
+.ch-list strong { font: 700 0.95rem var(--sport); white-space: nowrap; }
+.ch-rules a { color: var(--accent); }
+.ch-wallet { display: block; }
+@media (orientation: landscape) and (max-height: 450px) {
+  .menu:has(.ch) .title { margin-bottom: 4px; }
+  .menu:has(.ch) .logo { font-size: 1.35rem; }
+  .menu:has(.ch) .tag { margin-top: 0; font-size: 0.85rem; }
+  .menu:has(.ch) .card.setup { padding: 8px 10px; gap: 6px; }
+  .ch { gap: 4px; }
+  .ch-when, .ch-base, .ch-bonus, .ch-odds, .ch-last, .ch-rules, .ch .note { font-size: 0.78rem; line-height: 1.25; }
+  .ch-list { grid-template-columns: 1fr 1fr; gap: 4px; }
+  .ch-list li { padding: 3px 8px; }
+  .ch-list small { display: none; }
+}
+@media (orientation: portrait) and (max-width: 420px) {
+  .menu:has(.ch) { padding-top: max(8px, env(safe-area-inset-top, 0px)); padding-bottom: max(8px, env(safe-area-inset-bottom, 0px)); }
+  .menu:has(.ch) .title { margin-bottom: 8px; padding-inline: 48px; }
+  .menu:has(.ch) .logo { font-size: 1.6rem; }
+  .menu:has(.ch) .tag { margin-top: 4px; font-size: 0.95rem; }
+  .ch-list li { padding: 8px; }
+  .ch-bonus, .ch-odds { font-size: 0.88rem; }
+}

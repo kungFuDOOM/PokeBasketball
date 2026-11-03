@@ -11,6 +11,7 @@ import { CAPTCHA_ON, captchaToken } from '../multiplayer/shared/captcha';
 import { esc } from '../util';
 import { AD_RPC, adAction, adConfirm, adsHtml, boardSwitch, isAdBoard, type AdBan, type AdBoard, type AdRow } from './adsView';
 import { bansHtml, judgeFlagsHtml, judgeShadowHtml, personLabel, reportsHtml, when, type Ban, type JudgeFlag, type JudgeShadow, type Reported } from './reportsView';
+import { raffleHtml, type RaffleAdmin } from './raffleView';
 import { rankedPlayersHtml, rankedStatsHtml, type RankedPlayers, type RankedStats } from './rankedView';
 
 const URL = import.meta.env.VITE_SUPABASE_URL;
@@ -100,7 +101,7 @@ function dashboard(sb: SupabaseClient, email: string) {
       <h3>Judge flags (Ranked, last 7 days)</h3>
       <div data-flags-body><p class="note">Loading…</p></div></section>
     <nav class="tabs">
-      <button class="on" data-tab="reports">Reported</button><button data-tab="bans">Suspended</button><button data-tab="ads">Ads</button><button data-tab="ranked">Ranked</button><button data-tab="log">History</button>
+      <button class="on" data-tab="reports">Reported</button><button data-tab="bans">Suspended</button><button data-tab="ads">Ads</button><button data-tab="ranked">Ranked</button><button data-tab="raffle">Raffle</button><button data-tab="log">History</button>
       <label>Last <select data-days><option>1</option><option selected>7</option><option>30</option></select> days</label>
     </nav><section data-body><p class="note">Loading…</p></section>`);
   root.querySelector('[data-who]')!.innerHTML = `${esc(email)} · <button class="link" data-out>Sign out</button>`;
@@ -109,6 +110,7 @@ function dashboard(sb: SupabaseClient, email: string) {
   const days = root.querySelector<HTMLSelectElement>('[data-days]')!;
   let tab = 'reports';
   let judged = false;
+  let raffleWhich: 'current' | 'previous' = 'current';
   // Which ads board the Ads tab shows: the devnet test site's or the live (mainnet) one. Remembered on this device.
   const BOARD_KEY = 'pokejam.admin.adBoard';
   let adBoard: AdBoard = (() => { try { const b = localStorage.getItem(BOARD_KEY); return isAdBoard(b) ? b : 'devnet'; } catch { return 'devnet'; } })();
@@ -136,6 +138,7 @@ function dashboard(sb: SupabaseClient, email: string) {
       }
       else if (tab === 'bans') body.innerHTML = bansHtml(await call<Ban[]>('pokejam_admin_bans'));
       else if (tab === 'ranked') body.innerHTML = rankedPlayersHtml(await call<RankedPlayers>('pokejam_admin_ranked_players'));
+      else if (tab === 'raffle') body.innerHTML = raffleHtml(await call<RaffleAdmin>('pokejam_admin_raffle', { p_which: raffleWhich }));
       else if (tab === 'ads') {
         const board = adBoard;
         const rpc = AD_RPC[board];
@@ -162,6 +165,25 @@ function dashboard(sb: SupabaseClient, email: string) {
       body.innerHTML = '<p class="note">Loading…</p>';
       void show();
       return;
+    }
+    const raffle = (e.target as HTMLElement).closest<HTMLButtonElement>('[data-raffle]');
+    if (raffle && tab === 'raffle') {
+      const which = raffle.dataset.which;
+      if (raffle.dataset.raffle === 'which' && (which === 'current' || which === 'previous')) {
+        raffleWhich = which;
+        void show();
+        return;
+      }
+      if (raffle.dataset.raffle === 'draw') {
+        const week = raffle.dataset.week ?? '';
+        if (!confirm(`Draw a winner for the week of ${week}? This is final. No prize is sent from here.`)) return;
+        raffle.disabled = true;
+        const { data, error } = await sb.functions.invoke('pokejam-raffle-draw', { body: { week } });
+        if (error) alert(`Didn't draw: ${error.message}`);
+        else if (data && typeof data === 'object' && 'error' in data && data.error) alert(`Didn't draw: ${String(data.error)}`);
+        await show();
+        return;
+      }
     }
     const ad = (e.target as HTMLElement).closest<HTMLButtonElement>('[data-ad]');
     if (ad) {

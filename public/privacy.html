@@ -48,7 +48,7 @@
   <p class="meta">Last updated: November 3, 2026</p>
 
   <div class="summary">
-    <p><strong>The short version:</strong> Poké Jam is a free browser game. Its sponsor and ad spots are text only, and there is no ad network or ad tracking. We count visits with Cloudflare Web Analytics and <a href="#analytics">Google Analytics</a>, which gives us anonymous traffic stats and sets cookies. Playing on your own (Quick Play, Franchise, drafts) needs no account, and those saves stay on your own device. If you choose to <a href="#online">play online</a>, the game makes you an anonymous account and keeps what online play needs, listed below. The only other things the game sends are a short <a href="#crash">crash report</a> if it breaks and anonymous <a href="#counts">gameplay counts</a>. The only thing you can buy is the optional <a href="#shields">Rank Shield</a>, paid in USDC from your own Phantom wallet.</p>
+    <p><strong>The short version:</strong> Poké Jam is a free browser game. Its sponsor and ad spots are text only, and there is no ad network or ad tracking. We count visits with Cloudflare Web Analytics and <a href="#analytics">Google Analytics</a>, which gives us anonymous traffic stats and sets cookies. Playing on your own (Quick Play, Franchise, drafts) needs no account, and those saves stay on your own device. If you choose to <a href="#online">play online</a>, the game makes you an anonymous account and keeps what online play needs, listed below. The only other things the game sends are a short <a href="#crash">crash report</a> if it breaks and anonymous <a href="#counts">gameplay counts</a>. The only thing you can buy is the optional <a href="#shields">Rank Shield</a>, paid in USDC from your own Phantom wallet. Signed-in players can also do <a href="#raffle">weekly challenges</a> for a free card drawing. No purchase is required, and we do not collect a shipping address.</p>
   </div>
 
   <h2 id="privacy">Privacy policy</h2>
@@ -92,6 +92,16 @@
 
   <h3 id="counts">Gameplay counts</h3>
   <p>When you play on your own, the game sends anonymous gameplay counts to our Supabase project: that a game started or finished, the mode (Quick Play, Franchise, Season Draft), whether it was played, watched or simmed, and franchise season results (how far your team got). Each count is tagged with a random device id stored in your browser. No name, email, IP address or other personal info is stored with it. Clearing site data (or <strong>Delete saved data</strong>) resets the id. We use the counts only to see how much the game is played.</p>
+
+  <h3 id="raffle">Weekly challenges and the card drawing</h3>
+  <p>Weekly challenges and the free Pokémon card drawing are optional. They are only counted for a signed-in account (not a guest). No purchase is required, and holding or buying anything is not required to enter. The <a href="raffle-rules.html">rules</a> explain the entries.</p>
+  <p>For a signed-in player we store, on that account:</p>
+  <ul>
+    <li>That a Quick Play or Franchise game was played (not simmed or watched), and that the Share button was used. We do not store the words that were shared.</li>
+    <li>The online matches and rank changes we already keep, counted again for that week.</li>
+    <li>When a moderator runs the drawing: the PJAM balance of the linked wallet at that moment (read from Solana, not from the player), the number of entries, and the winner. The wallet address itself is the one already stored for Rank Shields.</li>
+  </ul>
+  <p>We do not ask for a mailing address, phone number, or real name for the drawing, and the game does not pay or ship the card. The operator handles the prize by hand. Drawing records are kept while the account exists. Deleting the account removes them, except a note in the moderator log that a drawing happened.</p>
 
   <h3>Deleting your data</h3>
   <p>Press <strong>Delete saved data</strong> at the bottom of the title screen to erase everything the game has stored on your device, including the online sign-in. Clearing this site's data in your browser settings does the same. To have an online account's records deleted from our servers, email us at the address below and say which trainer name it was (use the same device if you can, so we can match the account). We delete the account and its match records within 30 days of confirming the request. Crash reports hold no account information and are deleted after 30 days anyway.</p>
