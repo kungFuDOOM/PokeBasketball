@@ -195,7 +195,7 @@ type Scene = 'tipoff' | 'logo' | 'wall' | 'clock' | 'legends' | 'badges' | 'evol
   | 'w-hook' | 'w-choice' | 'w-speed' | 'w-sim'
   | 'tr-hook' | 'tr-menu' | 'tr-stars'
   | 'rk-hook' | 'rk-place' | 'rk-climb' | 'rk-season'
-  | 'c-hook' | 'c-list' | 'c-bonus';
+  | 'c-hook' | 'c-list' | 'c-bonus' | 'c-prize';
 type Segment =
   | { kind: Scene; t0: number; t1: number }
   | { kind: 'tr-drill'; t0: number; t1: number; drill: TrainingDrill; seed: number; start: number; events: number[] }
@@ -1390,7 +1390,7 @@ const RANK_TIERS: [string, string][] = [
 ];
 const POSITIONS = ['PG', 'SG', 'SF', 'PF', 'C'] as const;
 
-function roundRect(x: number, y: number, w: number, h: number, r: number, fill: string, stroke?: string, lw = 6) {
+function roundRect(x: number, y: number, w: number, h: number, r: number, fill: string | CanvasGradient, stroke?: string, lw = 6) {
   ctx.beginPath();
   ctx.roundRect(x, y, w, h, r);
   ctx.fillStyle = fill;
@@ -2422,7 +2422,7 @@ function renderCHook(seg: Segment, t: number, a: number) {
     once('ch2', t, seg.t0 + 0.5, () => { flash = 0.2; cue(t, 'slam'); cue(t, 'crowd_big'); });
     jamText('CHALLENGES', W / 2, 520, 150, { fill: '#21d07a', scale: pop(0.5), maxW: W - 120 });
   }
-  if (a > 1.1) plainText('EVERY WEEK. NEW GOALS. CARD RAFFLE.', W / 2, 730, 60, '#ffcb05');
+  if (a > 1.1) plainText('EVERY WEEK. NEW GOALS. WIN A POKéMON CARD.', W / 2, 730, 60, '#ffcb05');
 }
 
 /** The four goals, each ticking to done as the list goes down. */
@@ -2473,6 +2473,59 @@ function renderCList(seg: Segment, t: number, a: number) {
     ctx.restore();
     void total;
   });
+}
+
+/** The prize: the weekly winner gets a Pokémon card from Collector Crypt. */
+function renderCPrize(seg: Segment, t: number, a: number) {
+  ctx.fillStyle = '#05060f';
+  ctx.fillRect(0, 0, W, H);
+  ctx.save();
+  ctx.translate(W / 2, 470);
+  ctx.rotate(a * 0.4);
+  for (let i = 0; i < 16; i++) {
+    ctx.rotate((Math.PI * 2) / 16);
+    ctx.fillStyle = i % 2 ? 'rgba(255,203,5,0.09)' : 'rgba(122,162,255,0.07)';
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.lineTo(-90, -1200);
+    ctx.lineTo(90, -1200);
+    ctx.fill();
+  }
+  ctx.restore();
+  once('cp1', t, seg.t0 + 0.05, () => { flash = 0.25; cue(t, 'slam'); cue(t, 'crowd_big'); });
+  jamText('WEEKLY WINNER GETS', W / 2, 110, 90, { fill: '#f8f8f0', scale: a < 0.2 ? easeOutBack(a / 0.2) : 1 });
+  // A holo card flipping in.
+  const k = easeOutBack(clamp01((a - 0.2) / 0.35));
+  const flip = Math.abs(Math.cos(clamp01((a - 0.2) / 0.5) * Math.PI * 2));
+  ctx.save();
+  ctx.translate(W / 2, 470);
+  ctx.scale(k * Math.max(0.08, a < 0.7 ? flip : 1), k);
+  ctx.rotate(Math.sin(a * 2) * 0.03);
+  ctx.shadowColor = 'rgba(255,203,5,0.8)';
+  ctx.shadowBlur = 70;
+  const cw = 300;
+  const ch = 420;
+  const hue = (a * 140) % 360;
+  const g = ctx.createLinearGradient(-cw / 2, -ch / 2, cw / 2, ch / 2);
+  g.addColorStop(0, `hsl(${hue}, 85%, 60%)`);
+  g.addColorStop(0.5, '#fff7c2');
+  g.addColorStop(1, `hsl(${(hue + 160) % 360}, 85%, 55%)`);
+  roundRect(-cw / 2, -ch / 2, cw, ch, 18, '#ffcb05', '#000', 8);
+  ctx.shadowBlur = 0;
+  roundRect(-cw / 2 + 18, -ch / 2 + 18, cw - 36, ch - 36, 12, g, 'rgba(0,0,0,0.5)', 4);
+  ctx.font = `160px ${PIXEL}`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = '#000';
+  ctx.fillText('?', 10, 22);
+  ctx.fillStyle = '#fff';
+  ctx.fillText('?', 0, 12);
+  ctx.restore();
+  if (a > 0.8) {
+    once('cp2', t, seg.t0 + 0.8, () => { cue(t, 'coin'); });
+    jamText('A POKéMON CARD', W / 2, 800, 110, { scale: 0.3 + 0.7 * easeOutBack(clamp01((a - 0.8) / 0.22)) });
+  }
+  if (a > 1.2) plainText('FROM COLLECTOR CRYPT', W / 2, 940, 72, '#ffcb05');
 }
 
 /** Bonus raffle entries: no purchase needed, hold PJAM or play for them. */
@@ -2577,6 +2630,7 @@ function renderSegment(seg: Segment, t: number, first: boolean) {
     case 'c-hook': renderCHook(seg, t, a); break;
     case 'c-list': renderCList(seg, t, a); break;
     case 'c-bonus': renderCBonus(seg, t, a); break;
+    case 'c-prize': renderCPrize(seg, t, a); break;
     case 'clip': renderClip(seg, t, first); break;
   }
 }
@@ -2716,11 +2770,12 @@ export async function prepare(): Promise<{ frames: number; fps: number }> {
   } else if (CUT === 'challenges') {
     add({ kind: 'c-hook', t0: t, t1: t + 2.2 });
     musicStart = 0.1;
-    add({ kind: 'c-list', t0: t, t1: t + 3.8 });
+    add({ kind: 'c-list', t0: t, t1: t + 3.6 });
     clip([['dunk']], 3.0, 1.9);
-    add({ kind: 'c-bonus', t0: t, t1: t + 3.2 });
-    clip([['fire'], ['three']], 2.6, 1.4);
-    add({ kind: 'outro', t0: t, t1: t + 3.6 });
+    add({ kind: 'c-prize', t0: t, t1: t + 2.6 });
+    add({ kind: 'c-bonus', t0: t, t1: t + 3.0 });
+    clip([['fire'], ['three']], 2.4, 1.3);
+    add({ kind: 'outro', t0: t, t1: t + 3.4 });
     musicEnd = s[s.length - 1].t0 + 1.6;
   } else if (CUT === 'ranked') {
     add({ kind: 'rk-hook', t0: t, t1: t + 2.2 });
