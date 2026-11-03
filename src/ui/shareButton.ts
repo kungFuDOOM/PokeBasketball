@@ -10,8 +10,9 @@ export const shareButtonHtml = () => `
     <p class="share-toast" role="status" data-share-toast hidden></p>
   </div>`;
 
-/** Wires up the markup from shareButtonHtml inside `root`. Uses the native share sheet when there is one, else a small menu. */
-export function bindShare(root: HTMLElement, text: string) {
+/** Wires up the markup from shareButtonHtml inside `root`. Uses the native share sheet when there is one, else a small menu.
+ *  `onShared` runs after a share actually goes out (the sheet, Post on X, or a successful copy), not when it is cancelled. */
+export function bindShare(root: HTMLElement, text: string, onShared?: () => void) {
   const wrap = root.querySelector<HTMLElement>('[data-share]');
   if (!wrap) return;
   const btn = wrap.querySelector<HTMLButtonElement>('[data-share-btn]')!;
@@ -47,6 +48,7 @@ export function bindShare(root: HTMLElement, text: string) {
     if (typeof navigator.share === 'function') {
       try {
         await navigator.share({ title: 'PokeJam', text, url: SHARE_URL });
+        onShared?.();
         return;
       } catch (err) {
         if ((err as DOMException)?.name === 'AbortError') return;
@@ -54,12 +56,13 @@ export function bindShare(root: HTMLElement, text: string) {
     }
     open();
   });
-  x.addEventListener('click', close);
+  x.addEventListener('click', () => { close(); onShared?.(); });
   wrap.querySelector('[data-share-copy]')!.addEventListener('click', async () => {
     close();
     try {
       await navigator.clipboard.writeText(copyText(text));
       say('Copied!');
+      onShared?.();
     } catch {
       say('Could not copy');
     }

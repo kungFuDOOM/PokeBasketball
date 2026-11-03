@@ -42,6 +42,7 @@ import { badgeSvg } from './ui/badges';
 import { guardZoom } from './ui/noZoom';
 import { abbr, esc, guardNameInputs, lettersName, shuffle } from './util';
 import { initErrorReports } from './telemetry/errors';
+import { notePlayedOffline, noteShared } from './raffle/notify';
 import { offlineStats } from './telemetry/offlineStats';
 import { installTouchGuard } from './ui/touchGuard';
 import { isIntroMode, startingFiveEnabled } from './screens/intro.logic';
@@ -173,6 +174,11 @@ function menu() {
         drafted: dt ? `${dt.name}${dt.record ? ` · ${dt.record.w}-${dt.record.l}` : ''}${dt.rank ? ` · #${dt.rank}` : ''}` : null,
       };
       void import('./screens/profile').then((m) => m.openProfile({ root: app, back: menu }, local));
+    },
+    onChallenges: () => {
+      app.className = 'screen-menu';
+      window.scrollTo(0, 0);
+      void import('./raffle/screen').then((m) => m.openChallenges({ root: app, back: menu }));
     },
     onQuick: () => quick('draft'),
     onTutorial: () => training(),
@@ -378,6 +384,7 @@ function playUserGame(f: Franchise, g: FGame) {
   const stat = offlineStats().start('franchise');
   withIntro(app, cfg, 'franchise', settings, () => playGame(app, cfg, audio, (game) => {
     stat.finish('played');
+    notePlayedOffline('franchise', 'played');
     void afterUserGame(f, g, game, sides, uidOf, 'played');
   }, hub, {
     startingFive: startingFiveEnabled(settings.introMode ?? 'full', 'franchise', false, false),
@@ -460,6 +467,7 @@ async function afterUserGame(f: Franchise, g: FGame, game: Game, sides: [number,
       tag: resultTag(label, mode),
       headline: won ? (g.round === 'final' ? 'Champions!' : 'You win!') : `${f.teams[sides[1]].name} win`,
       extraHtml: (newBadge !== undefined ? badgeHtml(f, newBadge) : '') + progressHtml(f, progress),
+      onShare: noteShared,
       buttons: [
         { id: 'continue', label: 'Continue', kind: 'primary' },
         { id: 'games', label: `All ${g.round ? 'playoff' : 'week'} games` },

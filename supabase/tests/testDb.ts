@@ -16,7 +16,7 @@ const MIGRATIONS = ['20261021_pokejam_online.sql', '20261022_pokejam_social.sql'
   '20261129_pokejam_judge_jobs.sql', '20261130_pokejam_judge_cron.sql', '20261201_pokejam_judge_decides.sql', '20261202_pokejam_phantom_relay.sql',
   '20261203_pokejam_ads.sql', '20261204_pokejam_ads_live.sql', '20261205_pokejam_ads_burn_credit.sql',
   '20261206_pokejam_admin_ranked_stats.sql', '20261207_pokejam_ranked_quit_bans.sql',
-  '20261209_pokejam_discord_signin.sql']
+  '20261209_pokejam_discord_signin.sql', '20261210_pokejam_weekly_raffle.sql']
   .map((f) => readFileSync(new URL(`../migrations/${f}`, import.meta.url), 'utf8'));
 
 // Auto usernames are Tr1, Tr2, ...: digits only after the prefix, so they can never spell a blocked word.
@@ -27,7 +27,7 @@ export async function testDb() {
   await db.exec(`
     create role anon; create role authenticated; create role service_role;
     create schema auth;
-    create table auth.users (id uuid primary key, created_at timestamptz not null default now());
+    create table auth.users (id uuid primary key, created_at timestamptz not null default now(), is_anonymous boolean not null default false);
     create function auth.uid() returns uuid language sql stable as $$ select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $$;
     create function auth.jwt() returns jsonb language sql stable as $$ select coalesce(nullif(current_setting('request.jwt.claims', true), ''), '{}')::jsonb $$;
     create schema extensions;

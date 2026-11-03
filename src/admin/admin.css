@@ -29,6 +29,8 @@ body:has(.admin) { background: var(--bg); color: var(--fg); }
 .admin .rep-acts i { font-style: normal; font-size: 0.8em; color: var(--muted); margin-right: 2px; }
 .admin .btn.mini { padding: 3px 8px; font-size: 0.75rem; }
 .admin .btn.danger { border-color: var(--red); color: #ffb4a3; }
+.admin tr.win { background: #0f3d1e; }
+.admin .raffle-which { display: flex; gap: 8px; margin: 0 0 8px; }
 /* Narrow screens: each Reported row becomes a wrapping card, with name, cheat tag, report count and the actions up front. */
 @media (max-width: 1000px) {
   .admin table.reports thead { display: none; }

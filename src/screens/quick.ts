@@ -16,6 +16,7 @@ import { withIntro } from './intro';
 import { startingFiveEnabled } from './intro.logic';
 import { playGame } from './play';
 import { resultsScreen } from './results';
+import { notePlayedOffline, noteShared } from '../raffle/notify';
 import { offlineStats } from '../telemetry/offlineStats';
 import { claimUserTeam, resultTag, type GameMode } from './watch';
 
@@ -201,6 +202,7 @@ export function quickPlay(root: HTMLElement, settings: Settings, audio: Audio, a
     const stat = offlineStats().start('quick');
     const done = (g: Game) => {
       stat.finish(mode);
+      notePlayedOffline('quick', mode);
       // Watch and Sim are CPU-vs-CPU; the results screen still treats your side as the user's (headline, Share).
       if (cpu) claimUserTeam(g);
       root.className = 'screen-results';
@@ -208,6 +210,7 @@ export function quickPlay(root: HTMLElement, settings: Settings, audio: Audio, a
       resultsScreen(root, g, {
         tag: resultTag(`Quick Play · ${court.venue}`, mode),
         shareOpponent: court.venue,
+        onShare: noteShared,
         buttons: [
           { id: 'rematch', label: 'Rematch', kind: 'primary' },
           ...(drafted ? [] : [{ id: 'redraft', label: 'Redraft' }]),

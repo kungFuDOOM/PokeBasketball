@@ -20,6 +20,7 @@ import { MatchOverError, connect, iceFor, type Connected, type MatchLink } from 
 import { netStatsRow, submitNetStats } from './netStats';
 import type { OnlineMatch, OnlineOpponent, ReportReason, SupabaseMatchService } from './onlineMatchService';
 import { onPageExit } from './pageExit';
+import { noteShared, warmWeekly } from '../../raffle/notify';
 import { keepaliveRpc } from './supabase';
 import type { ModeContext } from './types';
 
@@ -278,6 +279,7 @@ export async function playOnline(ctx: ModeContext, o: OnlineGameOptions) {
     try {
       const opp: OnlineOpponent = { ...match.opponent, matchId: match.id, mySide: match.side };
       const out = await service.reportResult(match.queue, opp, { won, score: [mine, theirs], engineVersion: g.engineVersion, seed: g.seed, resyncs: ls?.stats.resyncs ?? 0 });
+      warmWeekly();
       if (match.queue === 'ranked') oppRank = (await service.matchRanks(match.id, match.side)).opp; // fails soft: no badge on an error
       note = show(out);
       later = out.later;
@@ -291,6 +293,7 @@ export async function playOnline(ctx: ModeContext, o: OnlineGameOptions) {
       headline: won ? 'You win!' : `${g.teams[1 - match.side].name} win`,
       extraHtml: `<div data-outcome>${note}</div>`,
       buttons: onlineResultsButtons(match.queue),
+      onShare: noteShared,
       onAction: (a) => {
         if (a === 'report') return reportScreen(ctx, service, match, ctx.back);
         // Ranked: leave this room's peer link for good, then search for someone new (never a rematch).

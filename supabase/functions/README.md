@@ -13,6 +13,7 @@ Step 3 of the plan on issue #4: after a battle has a winner, buy the winner's Co
 | `pokejam-pack-payouts/` | The prize worker. Each run recovers stuck prizes, then settles up to 5. |
 | `pokejam-ads/` | Billboard ads: book the courtside LED board by burning $PJAM (below). |
 | `pokejam-judge-worker/` | Judges the next Ranked match in the queue, one per run, and decides it if it's disputed and `judge_authoritative` is on. See "The judge queue" below. |
+| `pokejam-raffle-draw/` | Draws one closed week's card raffle. Reads PJAM balances; the database picks the winner. See `docs/weekly-challenges.md`. No cron. |
 | `pokejam-pack-machines/` | Refreshes `pokejam_pack_machines` from CC's live prices, odds and stock, for the lobby. |
 | `_shared/pack/` | Ported from the devnet-verified Bun prototype: CC client, Solana RPC, Core transfer, signing, machines and the worker. Imports use explicit `.ts` extensions, so the same files run in Deno and in vitest. |
 
@@ -304,6 +305,10 @@ Passed on 2026-10-23:
 - **Time ran out:** a Double Gust PSA 9 was sold back for $29.75.
 - **Pot too small:** the $20 pot was refused against the $25 machine and refunded.
 - **House wallet:** 694.1 → 678.6 USDC-Dev.
+
+## Weekly card raffle (`pokejam-raffle-draw/`, `../migrations/20261210_pokejam_weekly_raffle.sql`)
+
+A moderator draws the winner after the week ends (Monday 00:00 Pacific). The function reads whole PJAM from the linked wallet (`RAFFLE_RPC_URL`, or mainnet if unset) and calls `pokejam_raffle_commit_draw`. The seed is generated in Postgres. Nothing is paid or shipped. Details, defaults, and the apply steps are in `docs/weekly-challenges.md`. Do not schedule it; the Raffle tab on the moderation page runs it once per week.
 
 ## Deploy (when kungFuDOOM approves)
 

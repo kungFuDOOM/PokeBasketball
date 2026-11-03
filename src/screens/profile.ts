@@ -68,7 +68,7 @@ export function profileHtml(m: ProfileModel, phantom: PhantomAction, o: { error?
   if (!rows.length) rows.push(row('Stats', 'Play a game and your record shows up here.'));
   return `<div class="pf" data-pf="profile"><div class="pf-left">${left.join('')}</div>
     <div class="pf-right"><dl class="pf-stats">${rows.join('')}</dl>
-    <div class="actions center"><button class="btn ghost" data-a="back">Back</button></div></div></div>`;
+    <div class="actions center"><button class="btn ghost" type="button" data-a="challenges">Challenges</button><button class="btn ghost" data-a="back">Back</button></div></div></div>`;
 }
 
 /** Opens the profile. `local` is what this device knows (franchise and Season Draft records). */
@@ -80,6 +80,9 @@ export async function openProfile(ctx: { root: HTMLElement; back(): void }, loca
   const draw = (m: ProfileModel, extra?: { error?: string | null; busy?: boolean }) => {
     root.innerHTML = panel('PROFILE', m.signedIn ? 'Your record' : 'Your record on this device', profileHtml(m, phantomAction(), extra));
     root.querySelector('[data-a="back"]')?.addEventListener('click', ctx.back);
+    root.querySelector('[data-a="challenges"]')?.addEventListener('click', () => {
+      void import('../raffle/screen').then((mod) => mod.openChallenges({ root: ctx.root, back: () => { void openProfile(ctx, local); } }));
+    });
   };
   draw(base);
   if (!ONLINE_CONFIGURED) return;
