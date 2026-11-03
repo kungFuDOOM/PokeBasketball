@@ -2476,3 +2476,10 @@ body:has(.pause-btn) .music-btn:not(.docked) {
 .rk-signin-btns .btn.dc-btn { background: #5865F2; border-color: #5865F2; color: #fff; gap: 8px; }
 .rk-signin-btns .btn.dc-btn:hover:not(:disabled) { background: #4752c4; border-color: #4752c4; }
 .rk-signin-btns .btn.dc-btn .dc-ico { flex: none; }
+
+/* Ranked results: the longer "FIND RANKED OPPONENT" label stays on a line where it fits and wraps evenly where it doesn't.
+   Phones (844x390 / 932x430 landscape, 390x844 portrait): smaller type and padding, never wider than the screen. */
+.results .actions .btn[data-a="find-ranked"] { max-width: 100%; text-wrap: balance; }
+@media (max-width: 700px), (max-height: 500px) {
+  .results .actions .btn.big[data-a="find-ranked"] { font-size: 1rem; padding: 11px 16px; letter-spacing: 0.04em; }
+}

@@ -15,6 +15,7 @@ import { quitNoticeText } from '../ranked/view';
 import { showIntro } from '../../screens/intro';
 import { INTRO_CAP_MS, INTRO_LEN_MS, IntroVotes, startingFiveEnabled } from '../../screens/intro.logic';
 import { PreGate } from './pre';
+import { onlineResultsButtons } from './resultsButtons';
 import { MatchOverError, connect, iceFor, type Connected, type MatchLink } from './netplay';
 import { netStatsRow, submitNetStats } from './netStats';
 import type { OnlineMatch, OnlineOpponent, ReportReason, SupabaseMatchService } from './onlineMatchService';
@@ -46,6 +47,7 @@ export interface OnlineGameOptions {
   match: OnlineMatch;
   /** Shown on the results screen. */
   outcomeHtml: string | ((out: ReportOutcome) => string);
+  /** Social: another match. Ranked: a fresh search for a different opponent (no rematch). */
   playAgain(): void;
 }
 
@@ -288,8 +290,14 @@ export async function playOnline(ctx: ModeContext, o: OnlineGameOptions) {
       tag: match.queue === 'ranked' ? 'Ranked match' : 'Social match',
       headline: won ? 'You win!' : `${g.teams[1 - match.side].name} win`,
       extraHtml: `<div data-outcome>${note}</div>`,
-      buttons: [{ id: 'again', label: 'Play again', kind: 'primary' }, { id: 'hub', label: 'Back', kind: 'ghost' }, { id: 'report', label: 'Report or block', kind: 'ghost' }],
-      onAction: (a) => (a === 'again' ? o.playAgain() : a === 'report' ? reportScreen(ctx, service, match, ctx.back) : ctx.back()),
+      buttons: onlineResultsButtons(match.queue),
+      onAction: (a) => {
+        if (a === 'report') return reportScreen(ctx, service, match, ctx.back);
+        // Ranked: leave this room's peer link for good, then search for someone new (never a rematch).
+        if (a === 'find-ranked' && match.queue === 'ranked') { link.close(); return o.playAgain(); }
+        if (a === 'again' && match.queue !== 'ranked') return o.playAgain();
+        ctx.back();
+      },
     });
     // Ranked, other player not reported yet: fill in the rating change when the server has rated the match.
     void later?.then((out) => {
