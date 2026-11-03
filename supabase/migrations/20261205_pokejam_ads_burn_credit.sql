@@ -10,17 +10,19 @@
 --     So credit always belongs to the wallet that signed AND owned the burned account, and a burn from anyone else is
 --     never credited. The credit row is keyed by the burn's signature, which is unique: one burn is credit once, ever.
 --   - A booking is paid when (the burn that names it) + (that wallet's unspent credit) is at least the booking's price.
---     Credit rows are used whole, oldest first, and only as many as needed; a row is marked used by the booking it paid
---     for, in the same transaction, under the same advisory lock every pay function takes, so credit can't be spent twice.
---   - A burn that is already at least the price never touches credit.
+--     Credit pays only what the burn is short of, oldest rows first; whatever is left of a row stays credit. So the page's
+--     sum is exact, and credit never turns into airtime the advertiser didn't ask for. It is spent in the same transaction
+--     as the booking, under the same advisory lock every pay function takes, so it can't be spent twice.
+--   - A burn that is already at least the price never touches credit. Nor does a banned wallet's burn: its credit stays.
 --   - NO pro-rated airtime: a short burn buys no slot, shorter or otherwise. Credit alone books nothing; it needs a burn.
---   - An overpaid burn (or burn + credit above the price) keeps the existing rule: it runs longer at the plan's rate.
+--   - An overpaid burn keeps the existing rule: it runs longer at the plan's rate. Credit never adds to that.
 --   - The price is still locked for a day (then the higher of the locked and current price applies); extra runs pay the
 --     current price. Credit is a number of tokens, not a price: a price rise after the credit was made applies in full.
 --   - A signature counts once across burns, credit, USDC payments and intents (pay checks all four, USDC pay too).
 --
--- Additive: one new table, one new column, two functions redefined with "create or replace" (pokejam_live_ad_pay, which now
--- credits short burns, and pokejam_live_ad_usdc_pay, which now also refuses a signature that is credit), one new function.
+-- Additive: one new table, one new column, three functions redefined with "create or replace" (pokejam_live_ad_pay, which
+-- now credits short burns, pokejam_live_ad_usdc_pay, which now also refuses a signature that is credit, and
+-- pokejam_live_ad_view, which now also reports credit_used), one new function.
 -- Safe to apply again. Devnet (pokejam-ads, 20261203) is untouched.
 
 create table if not exists public.pokejam_live_ad_burn_credit (
@@ -28,25 +30,42 @@ create table if not exists public.pokejam_live_ad_burn_credit (
   wallet text not null check (wallet ~ '^[1-9A-HJ-NP-Za-km-z]{32,44}$'),
   -- PJAM base units (6 decimals).
   amount numeric(39, 0) not null check (amount > 0),
+  -- How much of it is unspent.
+  remaining numeric(39, 0) not null check (remaining >= 0),
   -- The booking whose memo the short burn carried.
   ad_id uuid references public.pokejam_live_ads(id),
   created_at timestamptz not null default now(),
-  -- The booking this credit paid toward, once it has.
+  -- The booking that spent the last of it, once one has (each booking's share is in pokejam_live_ads.credit_used).
   used_for uuid references public.pokejam_live_ads(id),
   used_at timestamptz,
-  check ((used_for is null) = (used_at is null))
+  check (remaining <= amount),
+  check ((used_for is null) = (used_at is null)),
+  check ((remaining = 0) = (used_for is not null))
 );
-create index if not exists pokejam_live_ad_burn_credit_open on public.pokejam_live_ad_burn_credit (wallet, created_at) where used_for is null;
+create index if not exists pokejam_live_ad_burn_credit_open on public.pokejam_live_ad_burn_credit (wallet, created_at) where remaining > 0;
 alter table public.pokejam_live_ad_burn_credit enable row level security;
 revoke all on public.pokejam_live_ad_burn_credit from anon, authenticated, public;
 
--- How much credit a booking used (audit), when it used any.
+-- How much credit a booking used, when it used any. Every base unit spent is in exactly one of these.
 alter table public.pokejam_live_ads add column if not exists credit_used numeric(39, 0);
+
+-- pokejam_live_ad_view (20261204) plus credit_used, for the receipt.
+create or replace function public.pokejam_live_ad_view(a public.pokejam_live_ads)
+returns jsonb language sql stable set search_path = public as $$
+  select jsonb_build_object('id', a.id, 'code', a.code, 'wallet', a.wallet, 'text', a.text, 'theme', a.theme, 'plan', a.plan,
+    'hours', a.hours, 'pay_method', a.pay_method, 'price', a.price::text, 'state', a.state, 'wants_start', a.wants_start,
+    'starts_at', a.starts_at, 'ends_at', a.ends_at, 'moved', a.moved, 'burn_sig', a.burn_sig, 'burned', a.burned::text,
+    'credit_used', a.credit_used::text,
+    'usdc_sig', a.usdc_sig, 'usdc_paid', a.usdc_paid::text, 'paid_at', a.paid_at,
+    'blockhash', a.blockhash, 'created_at', a.created_at, 'extra_of', a.extra_of, 'replaces', a.replaces,
+    'replaced_by', a.replaced_by, 'removed_reason', a.removed_reason, 'removed_left', a.removed_left,
+    'banned', exists (select 1 from public.pokejam_ad_bans b where b.wallet = a.wallet));
+$$;
 
 -- A wallet's unspent credit, in PJAM base units, as text.
 create or replace function public.pokejam_live_ad_credit(p_wallet text)
 returns text language sql stable security definer set search_path = public as $$
-  select coalesce(sum(amount), 0)::text from public.pokejam_live_ad_burn_credit where wallet = p_wallet and used_for is null;
+  select coalesce(sum(remaining), 0)::text from public.pokejam_live_ad_burn_credit where wallet = p_wallet and remaining > 0;
 $$;
 
 -- pokejam_live_ad_pay (20261204) plus credit. p_burned comes from a burn the function has verified for this booking's wallet.
@@ -62,8 +81,10 @@ declare
   banned boolean;
   rate_price numeric;
   rate_hours int;
+  short_by numeric;
   taken numeric := 0;
-  taken_sigs text[] := '{}';
+  left_to_spend numeric;
+  part numeric;
 begin
   perform pg_advisory_xact_lock(hashtext('pokejam_live_ads'));
   select * into dup from public.pokejam_live_ads where burn_sig = p_sig or usdc_sig = p_sig;
@@ -80,7 +101,7 @@ begin
   end if;
   select * into a from public.pokejam_live_ads where id = p_id for update;
   if not found then raise exception 'no such booking'; end if;
-  if p_burned is null or p_burned <= 0 then raise exception 'nothing was burned'; end if;
+  if p_burned is null or p_burned = 'NaN' or p_burned <= 0 or p_burned <> trunc(p_burned) then raise exception 'nothing was burned'; end if;
   if a.pay_method = 'usdc' then
     rate_price := public.pokejam_live_ad_price('hour');
     rate_hours := 1;
@@ -93,19 +114,20 @@ begin
     end if;
   end if;
 
-  if rate_price is not null and p_burned < rate_price then
-    -- Short on its own: add this wallet's unspent credit, oldest first, only as much as it takes.
-    for c in select * from public.pokejam_live_ad_burn_credit where wallet = a.wallet and used_for is null
-      order by created_at, signature for update
-    loop
-      exit when p_burned + taken >= rate_price;
-      taken := taken + c.amount;
-      taken_sigs := taken_sigs || c.signature;
-    end loop;
+  banned := exists (select 1 from public.pokejam_ad_bans where wallet = a.wallet);
+  short_by := case when rate_price is null then null else greatest(rate_price - p_burned, 0) end;
+  -- Only the wallet's own burn can earn or spend its credit. The Edge Function has checked that; this is the last line.
+  if (short_by is null or short_by > 0) and p_burner is distinct from a.wallet then
+    raise exception 'that burn did not come from the wallet that booked this ad';
   end if;
-  if rate_price is null or p_burned + taken < rate_price then
+  -- Short on its own, and the wallet's unspent credit covers the rest: it will spend exactly the rest (below, with the booking).
+  if short_by > 0 and not banned and (select coalesce(sum(remaining), 0) from public.pokejam_live_ad_burn_credit
+      where wallet = a.wallet and remaining > 0) >= short_by then
+    taken := short_by;
+  end if;
+  if short_by is null or p_burned + taken < rate_price then
     -- Still short: it buys no slot, not even a shorter one. Keep the burn as credit for this wallet, spend none.
-    insert into public.pokejam_live_ad_burn_credit(signature, wallet, amount, ad_id) values (p_sig, a.wallet, p_burned, a.id);
+    insert into public.pokejam_live_ad_burn_credit(signature, wallet, amount, remaining, ad_id) values (p_sig, a.wallet, p_burned, p_burned, a.id);
     if a.state = 'pending' then
       update public.pokejam_live_ads set state = 'dust', burn_sig = p_sig, burned = p_burned, burner = p_burner, paid_at = now()
       where id = a.id returning * into a;
@@ -114,7 +136,6 @@ begin
   end if;
 
   secs := least(floor((p_burned + taken) * rate_hours * 3600 / rate_price), 366 * 86400)::int;
-  banned := exists (select 1 from public.pokejam_ad_bans where wallet = a.wallet);
   if a.state <> 'pending' then
     insert into public.pokejam_live_ads(code, wallet, text, theme, plan, hours, price, wants_start, extra_of)
     values (encode(extensions.gen_random_bytes(6), 'hex'), a.wallet, a.text, a.theme,
@@ -126,9 +147,18 @@ begin
   update public.pokejam_live_ads set state = 'paid', burn_sig = p_sig, burned = p_burned, burner = p_burner, paid_at = now(),
     starts_at = s, ends_at = s + make_interval(secs => secs), moved = s > want + interval '1 minute', credit_used = nullif(taken, 0)
   where id = a.id returning * into a;
-  if taken_sigs <> '{}' then
-    update public.pokejam_live_ad_burn_credit set used_for = a.id, used_at = now() where signature = any(taken_sigs) and used_for is null;
-  end if;
+  -- Oldest first, in this transaction: the booking and the spend both happen, or neither does.
+  left_to_spend := taken;
+  for c in select * from public.pokejam_live_ad_burn_credit where wallet = a.wallet and remaining > 0
+    order by created_at, signature for update
+  loop
+    exit when left_to_spend = 0;
+    part := least(c.remaining, left_to_spend);
+    left_to_spend := left_to_spend - part;
+    update public.pokejam_live_ad_burn_credit set remaining = remaining - part,
+      used_for = case when remaining = part then a.id end, used_at = case when remaining = part then now() end
+    where signature = c.signature;
+  end loop;
   if banned or (a.extra_of is not null and exists (select 1 from public.pokejam_live_ads o where o.id = a.extra_of and o.state = 'removed')) then
     update public.pokejam_live_ads set state = 'removed', removed_at = now(), removed_left = secs,
       removed_reason = case when banned then 'wallet banned' else (select removed_reason from public.pokejam_live_ads where id = a.extra_of) end
@@ -191,6 +221,8 @@ end $$;
 -- Service role only, like every other live ad function.
 revoke all on function public.pokejam_live_ad_credit(text) from public, anon, authenticated;
 grant execute on function public.pokejam_live_ad_credit(text) to service_role;
+revoke all on function public.pokejam_live_ad_view(public.pokejam_live_ads) from public, anon, authenticated;
+grant execute on function public.pokejam_live_ad_view(public.pokejam_live_ads) to service_role;
 revoke all on function public.pokejam_live_ad_pay(uuid, text, numeric, text) from public, anon, authenticated;
 grant execute on function public.pokejam_live_ad_pay(uuid, text, numeric, text) to service_role;
 revoke all on function public.pokejam_live_ad_usdc_pay(uuid, text, numeric, text) from public, anon, authenticated;

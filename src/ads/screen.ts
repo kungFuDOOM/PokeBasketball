@@ -13,7 +13,7 @@ import type { TeamDef } from '../game/types';
 import { AD_MAX, AD_THEMES, THEME_ORDER, adTextOk, boardAfterAd, cleanAdText, type AdTheme, type BoardAd } from '../data/ads';
 import { drawLedBoard } from '../game/ledBoard';
 import { esc } from '../util';
-import { ADS_CONFIGURED, AdsError, adsApi, explorer, replaceMessage, shortTokens, tokens, type Board, type Booking, type Quote } from './api';
+import { ADS_CONFIGURED, AdsError, adsApi, exactTokens, explorer, replaceMessage, shortTokens, tokens, type Board, type Booking, type Quote } from './api';
 import { applyBoard } from './board';
 import { BurnGuardError, burnNeeded, checkBurnTransaction } from './burnGuard';
 import { DM_CONTACTS, DM_ONLY, isPlan, offers, pickPlan, savePercent, type PayMethod, type Plan } from './plans';
@@ -181,7 +181,7 @@ export function openAdvertise(root: HTMLElement, back: () => void) {
         </ol>
         <ul class="ad-fine">
           <li>The board has a few spots, and live ads take turns. If it fills up while you're signing, your ad runs at the next opening for the full time you paid for.</li>
-          <li>Payments are final: burns can't be undone or refunded, and USDC payments aren't refunded unless the law requires it. The page only ever builds a burn of exactly the price, and won't let you sign less. If a burn below the price still reaches us (only a hand-made transaction can), it books nothing, not even a shorter slot, but it isn't lost: it becomes burn credit for the wallet that made it. The page shows that credit, and the next burn for a full slot is only the price minus your credit. Credit belongs to that wallet, each burn counts once, and it can't be moved or cashed out. A burn or payment made through this page is found even if you close the page while it's going through: your wallet's history and a scan of the chain both look for it.</li>
+          <li>Payments are final: burns can't be undone or refunded, and USDC payments aren't refunded unless the law requires it. The page only ever builds a burn of exactly the price, and won't let you sign less. If a burn below the price still reaches us (only a hand-made transaction can), it books nothing, not even a shorter slot, but it isn't lost: it becomes burn credit for the wallet that made it, if that wallet signed it from its own account. The page shows that credit, and the next burn for a full slot is only the price minus your credit. A burn is always needed: if credit covers the whole price, it's 0.000001 $PJAM. Credit counts as tokens, so if a price goes up, your credit covers less of it. It only counts toward burn plans, belongs to that wallet, and can't be moved, refunded or cashed out. Each burn counts once. A burn or payment made through this page is found even if you close the page while it's going through: your wallet's history and a scan of the chain both look for it.</li>
           <li>Ads are checked before you burn: no explicit words, slurs, links, giveaway or wallet scams, or posing as staff. If moderators still take one down, you keep the time it had left and can run it with new text. Only wallets banned for abuse lose it.</li>
           <li>One spot per advertiser at a time, so nobody can buy the whole board.</li>
           <li>Every ad is marked AD on the board.</li>
@@ -462,6 +462,7 @@ export function openAdvertise(root: HTMLElement, back: () => void) {
     // Burn credit counts toward the price: the burn is the price less the credit, and never less than that.
     const credit = s.credit ?? 0n;
     const need = price !== null ? burnNeeded(price, credit) : null;
+    const covered = price !== null && credit >= price;
     const short = s.wallet && s.balance !== null && need !== null && s.balance < need;
     const noSol = s.wallet && s.lamports !== null && s.lamports < 20_000;
     const can = !!(b && !b.paused && qp?.price && textOk && s.verdict?.ok && s.wallet && !short && !noSol && !s.busy && !held().length);
@@ -473,22 +474,22 @@ export function openAdvertise(root: HTMLElement, back: () => void) {
         <dl>
           <dt>Runs</dt><dd>${qp ? `${esc(fmtTime(qp.starts_at))} → ${esc(fmtTime(qp.ends_at))}` : '…'}</dd>
           <dt>Length</dt><dd>${PLAN_LABEL[s.plan].name}</dd>
-          ${credit > 0n && price !== null ? `<dt>Price</dt><dd>${tokens(price, dec)} <small>$PJAM</small></dd><dt>Your burn credit</dt><dd>−${tokens(credit > price ? price : credit, dec)} <small>$PJAM</small></dd>` : ''}
-          <dt>Burn</dt><dd class="ad-burn">${need !== null ? `${tokens(need, dec)} <small>$PJAM</small>` : '…'}</dd>
+          ${credit > 0n && price !== null ? `<dt>Price</dt><dd>${tokens(price, dec)} <small>$PJAM</small></dd><dt>Your burn credit</dt><dd>−${exactTokens(price - need!, dec)} <small>$PJAM</small></dd>` : ''}
+          <dt>Burn</dt><dd class="ad-burn">${need !== null ? `${exactTokens(need, dec)} <small>$PJAM</small>` : '…'}</dd>
         </dl>
         ${qp?.moved ? `<p class="ad-warn">The board is full at that time, so this would start at the next opening.</p>` : ''}
       </div>
       ${walletHtml()}
       ${b?.paused ? '<p class="ad-err">Ad sales are paused right now.</p>' : ''}
-      ${short ? `<p class="ad-err">This wallet has ${tokens(s.balance!, dec)} $PJAM; this ad burns ${tokens(need!, dec)}.</p>` : ''}
+      ${short ? `<p class="ad-err">This wallet has ${exactTokens(s.balance!, dec)} $PJAM; this ad burns ${exactTokens(need!, dec)}.${covered ? ' Your credit covers the price and stays yours, but a burn is what books it.' : ''}</p>` : ''}
       ${noSol ? '<p class="ad-err">This wallet needs a little SOL for the network fee.</p>' : ''}
       ${s.text && (!textOk || s.verdict?.ok === false) ? '<p class="ad-err">Fix your message first (see above).</p>' : ''}
-      <button class="btn primary big ad-go" data-a="burn"${can ? '' : ' disabled'}>${s.busy ? 'Working…' : need !== null ? `Burn ${tokens(need, dec)} $PJAM` : 'Burn $PJAM'}</button>
+      <button class="btn primary big ad-go" data-a="burn"${can ? '' : ' disabled'}>${s.busy ? 'Working…' : need !== null ? `Burn ${exactTokens(need, dec)} $PJAM` : 'Burn $PJAM'}</button>
       ${s.step ? `<ol class="ad-steps">${steps.map((x, i) => `<li class="${i + 1 < s.step ? 'done' : i + 1 === s.step ? 'on' : ''}">${esc(x)}</li>`).join('')}</ol>` : ''}
       ${s.error ? `<p class="ad-err">${esc(s.error)}</p>` : ''}
       ${heldHtml()}
-      ${credit > 0n ? `<p class="ad-note">You have ${tokens(credit, dec)} $PJAM of burn credit from an earlier burn that was below a price. It counts toward this ad, and is used up when this burn books it.</p>` : ''}
-      <p class="ad-fineprint">Burning is permanent and can't be refunded. Your wallet shows exactly what you sign: one burn of ${need !== null ? tokens(need, dec) : 'the price'} $PJAM from your own account, and a memo naming this booking. The page checks the burn before your wallet sees it and never offers one below the price${credit > 0n ? ' less your credit' : ''}.</p>`;
+      ${credit > 0n ? `<p class="ad-note">You have ${exactTokens(credit, dec)} $PJAM of burn credit from an earlier burn that was below a price. This ad uses only what it needs${covered ? ", and a burn of 0.000001 $PJAM is still what books it" : ''}. Any credit left stays yours. If the burn doesn't book the ad, your credit isn't touched and the burn is added to it.</p>` : ''}
+      <p class="ad-fineprint">Burning is permanent and can't be refunded. Your wallet shows exactly what you sign: one burn of ${need !== null ? exactTokens(need, dec) : 'the price'} $PJAM from your own account, and a memo naming this booking. The page checks the burn before your wallet sees it and never offers one below the price${credit > 0n ? ' less your credit' : ''}.</p>`;
     bindCheckout();
   }
 
@@ -752,7 +753,7 @@ export function openAdvertise(root: HTMLElement, back: () => void) {
     const now = Date.now();
     switch (a.state) {
       case 'pending': return pending().some((p) => p.id === a.id) ? '<span class="ad-tag wait">Waiting for your burn to land…</span>' : '<span class="ad-tag">Not paid (nothing burned)</span>';
-      case 'dust': return '<span class="ad-tag bad">Burn below the price: kept as credit, not running</span>';
+      case 'dust': return '<span class="ad-tag bad">Burn below the price: counted as burn credit, not running</span>';
       case 'removed':
         if (a.banned) return `<span class="ad-tag bad">Taken down: wallet banned</span>`;
         if (a.replaced_by) return '<span class="ad-tag">Taken down, replaced with new text</span>';
@@ -954,7 +955,7 @@ function receiptHtml(b: Booking, board: Board | null) {
     <dl>
       <dt>Runs</dt><dd>${esc(fmtTime(b.starts_at!))} → ${esc(fmtTime(b.ends_at!))}</dd>
       ${usdcPaid ? `<dt>Paid</dt><dd class="ad-burn ad-usdc">${usd(b.price, board?.usdcPay?.decimals ?? 6)} <small>USDC</small></dd>`
-        : `<dt>Burned</dt><dd class="ad-burn">${tokens(b.price, dec)} <small>$PJAM</small></dd>`}
+        : `<dt>Burned</dt><dd class="ad-burn">${exactTokens(b.burned ?? b.price, dec)} <small>$PJAM</small></dd>${b.credit_used ? `<dt>Burn credit used</dt><dd>${exactTokens(b.credit_used, dec)} <small>$PJAM</small></dd>` : ''}`}
     </dl>
     ${b.moved ? '<p class="ad-warn">The board filled up while you were signing, so your ad runs at the next opening, for the full time you paid for.</p>' : ''}
     ${sig && board ? `<a class="btn ghost" href="${esc(explorer('tx', sig, board.cluster))}" target="_blank" rel="noopener">See the ${usdcPaid ? 'payment' : 'burn'} on Solscan</a>` : ''}

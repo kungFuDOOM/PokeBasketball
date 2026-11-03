@@ -43,6 +43,10 @@ export interface Booking {
   ends_at: string | null;
   moved: boolean;
   burn_sig: string | null;
+  /** What this booking's own burn took, in base units. */
+  burned?: string | null;
+  /** Burn credit spent on this booking, in base units (null when none). */
+  credit_used?: string | null;
   usdc_sig?: string | null;
   created_at: string;
   extra_of: string | null;
@@ -129,6 +133,14 @@ export function tokens(base: string | bigint, decimals = 6): string {
   const whole = (v / unit).toLocaleString('en-US');
   const frac = v % unit;
   return frac ? `${whole}.${frac.toString().padStart(decimals, '0').replace(/0+$/, '').slice(0, 2)}` : whole;
+}
+
+/** Base units → every decimal, for an amount someone signs for: 1 base unit is "0.000001", where tokens() would say "0.00". */
+export function exactTokens(base: string | bigint, decimals = 6): string {
+  const v = BigInt(base);
+  const unit = 10n ** BigInt(decimals);
+  const frac = v % unit;
+  return `${(v / unit).toLocaleString('en-US')}${frac ? `.${frac.toString().padStart(decimals, '0').replace(/0+$/, '')}` : ''}`;
 }
 
 /** "1.5M", "100K": short amounts for tight spots. */

@@ -27,7 +27,7 @@ const USDC = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
 const H = 3_600_000;
 
 interface Ad {
-  id: string; code: string; state: string; plan: string; hours: number; pay_method: string; price: string; starts_at: string; ends_at: string;
+  id: string; wallet: string; code: string; state: string; plan: string; hours: number; pay_method: string; price: string; starts_at: string; ends_at: string;
   text: string; theme: string; burn_sig: string | null; usdc_sig: string | null; usdc_paid: string | null; extra_of: string | null; removed_reason: string | null;
 }
 interface Intent { id: string; plan: string; hours: number; amount: string; text: string; status: string; reference: string; memo: string; signature: string | null; ad_id: string | null; cluster: string; receiver: string; mint: string }
@@ -70,7 +70,7 @@ async function testDb(before = '') {
   let n = 0;
   const create = (text = 'BUY MORE POTIONS', plan = 'hour', wallet = WALLET) =>
     service<Ad>('pokejam_live_ad_create', [wallet, text, 'gold', plan, null, null, null]);
-  const pay = (ad: Ad, burned: string | bigint = ad.price, sig = `burn${++n}`) => service<Ad>('pokejam_live_ad_pay', [ad.id, sig, String(burned), WALLET]);
+  const pay = (ad: Ad, burned: string | bigint = ad.price, sig = `burn${++n}`) => service<Ad>('pokejam_live_ad_pay', [ad.id, sig, String(burned), ad.wallet]);
   const intent = (text = 'BUY MORE POTIONS', plan = 'week', wallet = WALLET, expect: string | null = null) =>
     service<Intent>('pokejam_live_ad_usdc_intent', [wallet, text, 'fire', plan, null, ref(), `pokejam-ad-usdc:${++n}abcdef`, RECEIVER, USDC, 'mainnet-beta', expect]);
   const usdcPay = (i: Intent, sig = `usdc${++n}`, amount: string = i.amount, payer = WALLET) =>

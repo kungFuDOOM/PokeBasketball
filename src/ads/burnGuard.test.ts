@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { buildBurnTransaction, buildMessage, burnCheckedIx, memoIx, unsignedTransaction, SPL_2022_PROGRAM } from '../../supabase/functions/_shared/ads/tx.ts';
 import { base64Encode } from '../../supabase/functions/_shared/pack/bytes.ts';
+import { exactTokens, tokens } from './api';
 import { BurnGuardError, burnNeeded, checkBurnTransaction } from './burnGuard';
 
 const MINT = 'GQe9QiBBV4G6bRUCxx2JgKrzT7G7RD17FJquBWgVpump';
@@ -16,6 +17,21 @@ const burn = (amount: bigint, o: { code?: string; owner?: string; mint?: string 
   code: o.code ?? CODE, recentBlockhash: BLOCKHASH, priorityMicroLamports: 0,
 });
 const want = (credit = 0n) => ({ owner: OWNER, mint: MINT, code: CODE, price: PRICE, credit });
+
+describe('the page shows the amount it asks you to sign, to the last digit', () => {
+  it('shows the one-base-unit burn as it is, where the short form would say 0.00', () => {
+    expect(tokens(1n)).toBe('0.00'); // why checkout doesn't use it
+    expect(exactTokens(1n)).toBe('0.000001');
+  });
+
+  it('never rounds or trims a top-up', () => {
+    expect(exactTokens(59_999_999_999n)).toBe('59,999.999999');
+    expect(exactTokens(100_000_000_000n)).toBe('100,000');
+    expect(exactTokens(1_500_000n)).toBe('1.5');
+    expect(exactTokens('0')).toBe('0');
+    expect(exactTokens(18_446_744_073_709_551_615n)).toBe('18,446,744,073,709.551615');
+  });
+});
 
 describe('the page signs a burn of exactly what the booking needs', () => {
   it('needs the price less the credit, and at least one base unit', () => {

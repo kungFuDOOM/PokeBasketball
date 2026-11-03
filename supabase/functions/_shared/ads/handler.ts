@@ -158,10 +158,11 @@ async function findByMemo(cfg: AdsConfig, rpc: AdsDeps['rpc'], b: Booking, limit
 }
 
 /** Checks each landed transaction for a burn naming booking `b`, and pays for airtime with every one that has one. */
-async function settle(cfg: AdsConfig, deps: AdsDeps, b: Booking, sigs: string[]): Promise<{ booking: Booking; why?: string; seen: boolean }> {
+async function settle(cfg: AdsConfig, deps: AdsDeps, b: Booking, sigs: string[]): Promise<{ booking: Booking; why?: string; seen: boolean; counted: boolean }> {
   const mint = await mintInfo(cfg, deps.rpc);
   let why: string | undefined;
   let seen = false;
+  let counted = false;
   let out = b;
   for (const sig of sigs) {
     const tx = await getTx(cfg, deps.rpc, sig);
@@ -174,8 +175,9 @@ async function settle(cfg: AdsConfig, deps: AdsDeps, b: Booking, sigs: string[])
     // The booking itself, or (for a second burn) its extra run.
     out = paid;
     why = undefined;
+    counted = true;
   }
-  return { booking: out, why, seen };
+  return { booking: out, why, seen, counted };
 }
 
 /** Walks the mint's history since the last run for every burn whose memo names a booking, and pays for each. */
@@ -322,15 +324,18 @@ export async function adsHandler(req: Request, cfg: AdsConfig, rawDeps: AdsDeps)
         const [accounts, lamports, mint, blockhash] = await Promise.all([
           tokenAccounts(cfg, deps.rpc, w), solBalance(deps.rpc, w), mintInfo(cfg, deps.rpc), deps.rpc.latestBlockhash()]);
         // Live: burn credit (earlier short burns by this wallet) counts toward the price, so the burn is price - credit. The
-        // page is told both and refuses to sign anything else. Never less than one base unit: a burn needs an amount, and
-        // with credit alone a burn is what triggers the booking.
+        // page is told both and refuses to sign anything else. Never less than one base unit: even when credit covers the
+        // price, the wallet's own finalized burn naming this booking is what authorises spending its credit. That keeps one
+        // proof of who is asking (the chain's), with no second way in to guard.
         const credit = cfg.strictBurn && cfg.dbName ? BigInt(await deps.db<string>('pokejam_ad_credit', { p_wallet: w })) : 0n;
         const burnAmount = price > credit ? price - credit : 1n;
         // One account must hold the whole burn: it comes out of a single account.
         const from = accounts.find((a) => a.amount >= burnAmount);
         const total = accounts.reduce((s, a) => s + a.amount, 0n);
         if (!from) {
-          throw new Refusal(total >= burnAmount ? 'Your $PJAM is split across token accounts: move it into one first.' : 'Not enough $PJAM in this wallet for that plan.',
+          throw new Refusal(total >= burnAmount ? 'Your $PJAM is split across token accounts: move it into one first.'
+            : credit >= price ? 'Your burn credit covers this plan, but a burn of 0.000001 $PJAM is what books it, and this wallet has none. Your credit stays yours.'
+            : 'Not enough $PJAM in this wallet for that plan.',
             400, { short: true, balance: total.toString(), price: burnAmount.toString() });
         }
         if (lamports < FEE_RESERVE) throw new Refusal('This wallet needs a little SOL for the network fee.', 400, { noSol: true });
@@ -387,7 +392,8 @@ export async function adsHandler(req: Request, cfg: AdsConfig, rawDeps: AdsDeps)
         // Give a just-sent burn up to 20 seconds to confirm; after that the page asks again.
         for (let i = 0; i < 10; i++) {
           const r = await settle(cfg, deps, b, [sig]);
-          if (r.booking.burn_sig === sig) return json({ booking: r.booking });
+          // `counted` with another burn_sig: a short burn for an ad that's already settled, kept as credit. It did count.
+          if (r.counted) return json({ booking: r.booking });
           if (r.seen) {
             // It landed but isn't a burn for this ad (it failed, or burned nothing). Nothing more will come of it.
             return json({ booking: b, error: `That transaction doesn't pay for this ad: ${r.why}.`, notBurned: r.why === 'transaction failed' }, 400);
