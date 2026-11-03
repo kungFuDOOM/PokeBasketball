@@ -131,6 +131,14 @@ export interface RankedMe {
   /** Highest division index reached this season (only once placed). */
   peakIdx?: number | null;
   cooldownUntil: string | null;
+  /** Quit offences still on the record (after the 14-day decay). 0 on an older server. */
+  quitOffences?: number;
+  /** When Ranked matchmaking opens again. Null when the player is not banned. */
+  banUntil?: string | null;
+  /** When the latest quit offence was recorded. */
+  quitAt?: string | null;
+  /** The latest offence was in the last few minutes (the server's clock). */
+  quitRecent?: boolean;
   /** The Rank Shield item (not the automatic Demotion Guard above). Absent on an older server. */
   shieldItem?: ShieldItem;
 }
@@ -224,6 +232,10 @@ export function parseMe(raw: unknown): RankedMe | null {
     shieldCharge: charge === null ? null : charge > 0 ? 1 : 0, shieldLossesLeft: nullable(r.shield_losses_left),
     shieldActive: r.shield_active === true, wins: nullable(r.wins) ?? 0, losses: nullable(r.losses) ?? 0, peakIdx: placing ? null : nullable(r.peak_idx),
     cooldownUntil: typeof r.cooldown_until === 'string' ? r.cooldown_until : null,
+    quitOffences: Math.max(0, nullable(r.quit_offences) ?? 0),
+    banUntil: typeof r.ban_until === 'string' ? r.ban_until : null,
+    quitAt: typeof r.quit_at === 'string' ? r.quit_at : null,
+    quitRecent: r.quit_recent === true,
     ...itemOf(r),
   };
 }

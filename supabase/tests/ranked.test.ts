@@ -282,7 +282,7 @@ describe('leavers', () => {
     expect(await prof(t, p.host.id)).toMatchObject({ div_idx: 7, points: 50, wins: 0, losses: 0 });
   });
 
-  it('repeat leavers: cooldown 0/5/15/60 min and x1.25 from the 3rd leave in 24 h', async () => {
+  it('repeat leavers: ban 0 / 15 min / 1 day / 7 days and x1.25 from the 3rd leave in 24 h', async () => {
     const t = await testDb();
     const a = await t.user('A');
     const costs: number[] = [], cooldowns: number[] = [];
@@ -290,7 +290,9 @@ describe('leavers', () => {
       const b = await t.user('B' + i);
       await setRank(t, a, { div: 12, points: 90 }); // Diamond 3 (L 20)
       await setRank(t, b, { div: 12, points: 50 });
-      await t.sql('update public.pokejam_ranked_profiles set cooldown_until = null'); // the cooldown is checked in ranked-matchmaking.test.ts
+      // The ban itself is checked in ranked-quit-bans.test.ts. Clear it so the cost of the next leave can be measured.
+      await t.sql('update public.pokejam_ranked_profiles set cooldown_until = null, ban_until = null');
+      await t.sql('update public.pokejam_ranked_quits set ban_until = null');
       const before = await prof(t, a.id);
       const p = await rankedPair(t, a, b);
       await a.call('pokejam_leave_match', [p.mid]); // dodge: only the leaver changes
@@ -301,7 +303,11 @@ describe('leavers', () => {
       await t.sql('delete from public.pokejam_queue');
     }
     expect(costs).toEqual([20, 20, 25, 25]); // 3rd and 4th: round(20 * 1.25) = 25
-    expect(cooldowns.map((c) => Math.round(c / 5) * 5)).toEqual([0, 5, 15, 60]);
+    expect(cooldowns[0]).toBe(0);
+    expect(cooldowns[1]).toBeGreaterThan(13); // 15 minutes
+    expect(cooldowns[1]).toBeLessThanOrEqual(15);
+    expect(cooldowns[2]).toBeGreaterThan(1400); // 1 day
+    expect(cooldowns[3]).toBeGreaterThan(10000); // 7 days
     expect((await prof(t, a.id)).leaver_flagged).toBe(true);
   });
 

@@ -26,10 +26,10 @@ export const FPS = 30;
  * multiplayer announcement: Social is live, Ranked is coming, Pack Battles teased) or 'watch' (an 18-second
  * spot for Play / Watch / Sim: spectate at 1x, 2x or 4x, skip, or sim straight to the final) or 'training'
  * (an 18-second spot for the Training drills and the new Alley-Oop drill, filmed on real practice games with
- * their floor markers).
+ * their floor markers) or 'ranked' (a 20-second Season 1 launch spot: placements, the real tier badges up to Zenith).
  */
-type Cut = 'main' | 'vertical' | 'franchise' | 'top5' | 'online' | 'watch' | 'training';
-const CUT: Cut = (['vertical', 'franchise', 'top5', 'online', 'watch', 'training'] as const).find((c) => c === new URLSearchParams(location.search).get('cut')) ?? 'main';
+type Cut = 'main' | 'vertical' | 'franchise' | 'top5' | 'online' | 'watch' | 'training' | 'ranked';
+const CUT: Cut = (['vertical', 'franchise', 'top5', 'online', 'watch', 'training', 'ranked'] as const).find((c) => c === new URLSearchParams(location.search).get('cut')) ?? 'main';
 const VERTICAL = CUT === 'vertical';
 /** The top 5 cut is dressed as a 90s sports highlight show ("POKé CENTER"). */
 const RETRO = CUT === 'top5';
@@ -105,6 +105,11 @@ const MATCHUPS: Record<Cut, { home: TeamDef; away: TeamDef; court: CourtStyle }>
   },
   watch: { home: pallet([25, 6, 9, 3, 143]), away: gym('Viridian Quakes', [34, 31, 112, 51, 76]), court: COURTS['Viridian Quakes'] },
   // Training: your five (PG to C) against Brock's gym, like the real drills.
+  ranked: {
+    home: { name: 'You', abbr: 'YOU', color: '#3b6fd8', color2: '#16224a', human: false, roster: mons(ONLINE_PICKS.you) },
+    away: { name: 'Rival', abbr: 'RVL', color: '#e3350d', color2: '#4a0d04', human: false, roster: mons(ONLINE_PICKS.rival) },
+    court: COURTS['Indigo Elite'],
+  },
   training: { home: gym('Pewter Boulders', [74, 95, 111, 76, 142]), away: pallet([25, 448, 6, 445, 143]), court: COURTS['Pewter Boulders'] },
 };
 const { home: HOME, away: AWAY, court: COURT } = MATCHUPS[CUT];
@@ -183,7 +188,8 @@ type Scene = 'tipoff' | 'logo' | 'wall' | 'clock' | 'legends' | 'badges' | 'evol
   | 't-title' | 't-num'
   | 'o-live' | 'o-match' | 'o-draft' | 'o-ranked' | 'o-packs'
   | 'w-hook' | 'w-choice' | 'w-speed' | 'w-sim'
-  | 'tr-hook' | 'tr-menu' | 'tr-stars';
+  | 'tr-hook' | 'tr-menu' | 'tr-stars'
+  | 'rk-hook' | 'rk-place' | 'rk-climb' | 'rk-season';
 type Segment =
   | { kind: Scene; t0: number; t1: number }
   | { kind: 'tr-drill'; t0: number; t1: number; drill: TrainingDrill; seed: number; start: number; events: number[] }
@@ -624,6 +630,7 @@ function renderClip(seg: Segment & { kind: 'clip' }, t: number, first: boolean) 
   if (seg.style === 'hero' && !RETRO) scorebug(c.sg.g);
   if (CUT === 'online') onlineTag(t);
   if (CUT === 'watch') spectatorBar(1);
+  if (CUT === 'ranked') rankedTag();
   if (RETRO) {
     retroBug();
     ticker(t);
@@ -892,11 +899,11 @@ function renderOutro(seg: Segment, t: number, a: number) {
   renderBackground(t, 0.66);
   const k = clamp01(a / 0.25);
   once('outro-hit', t, seg.t0 + 0.25, () => { flash = 0.3; cue(t, 'slam'); cue(t, 'crowd_big'); });
-  const pjAt = CUT === 'online' || CUT === 'watch' || CUT === 'training' ? 1.6 : 2.2;
+  const pjAt = CUT === 'online' || CUT === 'watch' || CUT === 'training' || CUT === 'ranked' ? 1.6 : 2.2;
   const pj = a - pjAt;
   if (pj < 0) {
     logo(W / 2, H / 2 - 150, 170, a < 0.25 ? 3 - 2 * k * k : 1);
-    if (a > 0.6) jamText(CUT === 'online' ? 'PLAY ONLINE NOW. FREE.' : CUT === 'watch' ? 'PLAY IT. WATCH IT. SIM IT.' : CUT === 'training' ? 'TRAIN UP. THEN JAM.' : 'PLAY FREE IN YOUR BROWSER', W / 2, H / 2 + 40, 64, { fill: '#f8f8f0' });
+    if (a > 0.6) jamText(CUT === 'online' ? 'PLAY ONLINE NOW. FREE.' : CUT === 'watch' ? 'PLAY IT. WATCH IT. SIM IT.' : CUT === 'training' ? 'TRAIN UP. THEN JAM.' : CUT === 'ranked' ? 'RANKED IS LIVE. CLIMB NOW.' : 'PLAY FREE IN YOUR BROWSER', W / 2, H / 2 + 40, 64, { fill: '#f8f8f0' });
     if (a > 1.0) plainText('pokejam.xyz', W / 2, H / 2 + 170, 80, '#ffcb05');
   } else {
     // $PJAM: gold, glinting, center stage.
@@ -2215,6 +2222,175 @@ function renderTrStars(seg: Segment, t: number, a: number) {
   }
 }
 
+// ---------- cut: ranked ----------
+
+/** Season 1 tiers in climbing order: name (the top ordinary tier is branded PokeJam Master), badge file stem (public/ranks), and the game's tier colour (style.css). */
+const RK_TIERS: [string, string, string][] = [
+  ['BRONZE', 'bronze', '#c9824a'], ['SILVER', 'silver', '#b8c2cf'], ['GOLD', 'gold', '#f2c53d'], ['PLATINUM', 'platinum', '#5fd4c4'],
+  ['DIAMOND', 'diamond', '#6fb6ff'], ['PRISM', 'prism', '#c58bff'], ['ECLIPSE', 'eclipse', '#ff7a59'], ['POKEJAM MASTER', 'master', '#ff5db1'],
+  ['ZENITH', 'zenith', '#ffe27a'],
+];
+
+function rankBadge(stem: string, x: number, y: number, size: number, k = 1, glow = 0) {
+  const img = images.get(`rank-${stem}`);
+  if (!img) return;
+  ctx.save();
+  if (glow > 0) {
+    ctx.shadowColor = `rgba(255,226,122,${glow})`;
+    ctx.shadowBlur = 90 * glow;
+  }
+  const s = size * k;
+  ctx.drawImage(img, x - s / 2, y - s / 2, s, s);
+  ctx.restore();
+}
+
+/** "RANKED · SEASON 1" chip over the filmed games. */
+function rankedTag() {
+  ctx.save();
+  roundRect(W - 400, 38, 350, 58, 29, 'rgba(5,6,15,0.85)', '#ffe27a', 4);
+  ctx.font = `800 36px ${SPORT}`;
+  ctx.fillStyle = '#ffe27a';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('RANKED · SEASON 1', W - 225, 68);
+  ctx.restore();
+}
+
+/** RANKED IS LIVE, Season 1. */
+function renderRkHook(seg: Segment, t: number, a: number) {
+  renderBackground(t, 0.72);
+  const pop = (at: number) => 0.3 + 0.7 * easeOutBack(clamp01((a - at) / 0.22));
+  once('rkh1', t, seg.t0 + 0.05, () => { flash = 0.2; cue(t, 'slam'); cue(t, 'crowd_big'); });
+  const shake = a < 0.45 ? (Math.random() - 0.5) * 22 : 0;
+  jamText('RANKED', W / 2 + shake, 300 + shake, 220, { scale: pop(0.05) });
+  if (a > 0.5) {
+    once('rkh2', t, seg.t0 + 0.5, () => cue(t, 'slam'));
+    const s = pop(0.5);
+    ctx.save();
+    ctx.translate(W / 2, 560);
+    ctx.scale(s, s);
+    roundRect(-400, -80, 800, 160, 80, '#c0281b', '#fff', 8);
+    ctx.fillStyle = Math.floor(a * 3) % 2 === 0 ? '#fff' : 'rgba(255,255,255,0.35)';
+    ctx.beginPath();
+    ctx.arc(-310, 0, 28, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.font = `76px ${PIXEL}`;
+    ctx.fillStyle = '#fff';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('IS LIVE', 40, 6);
+    ctx.restore();
+  }
+  if (a > 1.0) {
+    once('rkh3', t, seg.t0 + 1.0, () => cue(t, 'coin'));
+    jamText('SEASON 1', W / 2, 800, 120, { fill: '#ffe27a', scale: pop(1.0) });
+  }
+}
+
+/** Five placement matches, then the rank reveal. */
+function renderRkPlace(seg: Segment, t: number, a: number) {
+  renderBackground(t, 0.88);
+  jamText('5 PLACEMENT MATCHES', W / 2, 140, 100, { scale: a < 0.2 ? easeOutBack(a / 0.2) : 1 });
+  const results = ['W', 'W', 'L', 'W', 'W'];
+  results.forEach((r, i) => {
+    const at = 0.2 + i * 0.2;
+    const x = W / 2 + (i - 2) * 190;
+    ctx.save();
+    ctx.globalAlpha = a > at ? 1 : 0.35;
+    roundRect(x - 75, 250, 150, 150, 75, a > at ? (r === 'W' ? '#21a366' : '#c0281b') : 'rgba(10,13,31,0.9)', '#fff', 5);
+    ctx.restore();
+    if (a < at) return;
+    once(`rkp${i}`, t, seg.t0 + at, () => cue(t, r === 'W' ? 'card' : 'tick'));
+    ctx.save();
+    ctx.font = `80px ${PIXEL}`;
+    ctx.fillStyle = '#fff';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(r, x + 4, 330);
+    ctx.restore();
+  });
+  const reveal = 1.4;
+  if (a > reveal) {
+    once('rkp-reveal', t, seg.t0 + reveal, () => { flash = 0.3; cue(t, 'slam'); cue(t, 'crowd_big'); });
+    const k = easeOutBack(clamp01((a - reveal) / 0.3));
+    rankBadge('gold', W / 2 - 380, 700, 320, k, 0.6);
+    plainText('YOU PLACED', W / 2 + 160, 590, 56, '#aab0d8');
+    jamText('GOLD 2', W / 2 + 160, 730, 140, { fill: '#f2c53d', scale: 0.3 + 0.7 * k, maxW: 760 });
+  }
+}
+
+/** The ladder: eight tiers light up one by one, then Zenith above them all. */
+function renderRkClimb(seg: Segment, t: number, a: number) {
+  ctx.fillStyle = '#07051a';
+  ctx.fillRect(0, 0, W, H);
+  const glow = ctx.createRadialGradient(W / 2, 520, 60, W / 2, 520, 1000);
+  glow.addColorStop(0, 'rgba(139,92,246,0.35)');
+  glow.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = glow;
+  ctx.fillRect(0, 0, W, H);
+  const zAt = 1.9;
+  if (a < zAt) {
+    jamText('CLIMB THE LADDER', W / 2, 130, 110, { scale: a < 0.2 ? easeOutBack(a / 0.2) : 1 });
+    // A rising staircase: each tier a step higher.
+    RK_TIERS.slice(0, 8).forEach(([name, stem, color], i) => {
+      const at = 0.2 + i * 0.17;
+      const x = 150 + i * 231;
+      const y = 820 - i * 62;
+      if (a < at) {
+        ctx.save();
+        ctx.globalAlpha = 0.18;
+        rankBadge(stem, x, y, 170);
+        ctx.restore();
+        return;
+      }
+      once(`rkc${i}`, t, seg.t0 + at, () => cue(t, i === 7 ? 'slam' : 'badge'));
+      const k = easeOutBack(clamp01((a - at) / 0.2));
+      rankBadge(stem, x, y, 190, k);
+      ctx.save();
+      ctx.font = `800 ${name.length > 9 ? 30 : 36}px ${SPORT}`;
+      ctx.fillStyle = color;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(name, x, y + 120);
+      ctx.restore();
+    });
+    return;
+  }
+  // Zenith.
+  const za = a - zAt;
+  once('rkc-z', t, seg.t0 + zAt, () => { flash = 0.45; cue(t, 'slam'); cue(t, 'evolve'); cue(t, 'crowd_big'); });
+  ctx.save();
+  ctx.translate(W / 2, 470);
+  ctx.rotate(za * 0.5);
+  for (let i = 0; i < 18; i++) {
+    ctx.rotate((Math.PI * 2) / 18);
+    ctx.fillStyle = i % 2 ? 'rgba(255,226,122,0.10)' : 'rgba(255,255,255,0.05)';
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.lineTo(-80, -1200);
+    ctx.lineTo(80, -1200);
+    ctx.fill();
+  }
+  ctx.restore();
+  const k = za < 0.3 ? 2.2 - 1.2 * easeOutBack(za / 0.3) : 1 + 0.03 * Math.sin(za * 5);
+  rankBadge('zenith', W / 2, 450, 420, k, 1);
+  jamText('ZENITH', W / 2, 780, 170, { fill: '#ffe27a', scale: za < 0.25 ? 0.3 + 0.7 * easeOutBack(za / 0.25) : 1 });
+  if (za > 0.6) plainText('ABOVE POKEJAM MASTER. ONLY THE BEST.', W / 2, 950, 60, '#f8f8f0');
+}
+
+/** Season 1, six weeks, and no rage quitting. */
+function renderRkSeason(seg: Segment, t: number, a: number) {
+  renderBackground(t, 0.86);
+  const pop = (at: number) => 0.3 + 0.7 * easeOutBack(clamp01((a - at) / 0.22));
+  once('rks1', t, seg.t0 + 0.05, () => { flash = 0.15; cue(t, 'slam'); });
+  jamText('SEASON 1', W / 2, 260, 170, { fill: '#ffe27a', scale: pop(0.05) });
+  if (a > 0.4) {
+    once('rks2', t, seg.t0 + 0.4, () => cue(t, 'slam'));
+    jamText('6 WEEKS. GO.', W / 2, 470, 130, { fill: '#f8f8f0', scale: pop(0.4) });
+  }
+  if (a > 1.0) plainText("DON'T RAGE QUIT. QUITTERS GET BANNED.", W / 2, 700, 64, '#ff7a59');
+}
+
 // ---------- shared ----------
 
 function pjam(x: number, y: number, size: number, pj: number) {
@@ -2278,6 +2454,10 @@ function renderSegment(seg: Segment, t: number, first: boolean) {
     case 'tr-menu': renderTrMenu(seg, t, a); break;
     case 'tr-drill': renderTrDrill(seg, t, first); break;
     case 'tr-stars': renderTrStars(seg, t, a); break;
+    case 'rk-hook': renderRkHook(seg, t, a); break;
+    case 'rk-place': renderRkPlace(seg, t, a); break;
+    case 'rk-climb': renderRkClimb(seg, t, a); break;
+    case 'rk-season': renderRkSeason(seg, t, a); break;
     case 'clip': renderClip(seg, t, first); break;
   }
 }
@@ -2311,6 +2491,7 @@ export async function prepare(): Promise<{ frames: number; fps: number }> {
   await preload(POKEMON);
   await Promise.all([
     loadImage('icon', `${import.meta.env.BASE_URL}icon.svg`),
+    ...RK_TIERS.map(([, stem]) => loadImage(`rank-${stem}`, `${import.meta.env.BASE_URL}ranks/${stem}@2x.png`)),
     ...[...BADGES, 'Elite'].map((b) => loadImage(`badge-${b}`, `data:image/svg+xml;charset=utf-8,${encodeURIComponent(badgeSvg(b, true, 200))}`)),
   ]);
   await document.fonts.load(`40px ${PIXEL}`);
@@ -2412,6 +2593,16 @@ export async function prepare(): Promise<{ frames: number; fps: number }> {
     add({ kind: 'o-packs', t0: t, t1: t + 3.4 });
     for (let i = 0; i < 2; i++) clip([['dunk']], 0.9, 0.6, false, 'montage');
     add({ kind: 'outro', t0: t, t1: t + 4.2 });
+    musicEnd = s[s.length - 1].t0 + 1.6;
+  } else if (CUT === 'ranked') {
+    add({ kind: 'rk-hook', t0: t, t1: t + 2.2 });
+    musicStart = 0.1;
+    add({ kind: 'rk-place', t0: t, t1: t + 2.6 });
+    clip([['dunk']], 3.2, 2.0);
+    add({ kind: 'rk-climb', t0: t, t1: t + 3.8 });
+    clip([['block'], ['buzzer'], ['fire']], 2.6, 1.5);
+    add({ kind: 'rk-season', t0: t, t1: t + 2.2 });
+    add({ kind: 'outro', t0: t, t1: t + 3.4 });
     musicEnd = s[s.length - 1].t0 + 1.6;
   } else if (CUT === 'training') {
     add({ kind: 'tr-hook', t0: t, t1: t + 2.2 });

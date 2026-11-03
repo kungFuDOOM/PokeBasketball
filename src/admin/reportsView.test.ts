@@ -38,6 +38,19 @@ describe('admin Reported tab', () => {
     expect(reporter.map((b) => b.match(/data-act="([^"]+)"/)![1])).toEqual(['24', '168', '0', 'name']);
   });
 
+  it('shows the Ranked offence count and ban, with a clear button only while the ban is running', () => {
+    const until = '2099-01-01T00:00:00Z';
+    const html = reportsHtml([row({ quit_offences: 3, ranked_ban_until: until })]);
+    expect(html).toContain('Ranked quits: 3');
+    expect(html).toContain('Ranked banned until');
+    expect(html).toContain('data-act="clear-ranked"');
+    expect(html).toContain('data-user="aaaaaaaa-1"');
+    const quiet = reportsHtml([row({ quit_offences: 1, ranked_ban_until: null })]);
+    expect(quiet).toContain('Ranked quits: 1');
+    expect(quiet).not.toContain('clear-ranked');
+    expect(reportsHtml([row()])).not.toContain('Ranked quits');
+  });
+
   it('keeps Dismiss on a suspended reported player, but not on the Suspended tab', () => {
     expect(reportsHtml([row({ banned_until: '2026-11-30T00:00:00Z' })]).match(/data-act="dismiss"/g)).toHaveLength(1);
     expect(bansHtml([{ user_id: 'x', name: 'X', until: '2026-11-30T00:00:00Z', reason: null, auto: false, since: '2026-10-30T00:00:00Z' }])).not.toContain('dismiss');

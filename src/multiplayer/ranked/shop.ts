@@ -1,10 +1,13 @@
 // Rank Shield shop sheet (behind MODE_SHIELD_SHOP; the card path needs MODE_SHIELD_STRIPE, USDC needs MODE_SHIELD_USDC): loads the packs, sends a sku to the shield-create-checkout Edge Function,
 // and hands the player to Stripe's hosted page. It never sees card data or a price it could change, and it never credits
 // anything: coming back from Stripe it only waits (polls pokejam_shield_me) for the webhook's credit to show up.
+import { base64Encode } from '../../../supabase/functions/_shared/pack/bytes.ts';
 import { supabase } from '../shared/supabase';
 import type { SupabaseMatchService } from '../shared/onlineMatchService';
 import { MODE_SHIELD_STRIPE, MODE_SHIELD_USDC, SHIELD_USDC_CLUSTER } from '../../config/features';
 import { getPhantomProvider, type WalletUser } from '../../wallet/phantom';
+import { armPay, beginPayConnect, clearSession, loadPay, loadSession, markPayOpened, payCode, payFresh, sessionFor, signAndSendLink, type PhantomSession } from '../../wallet/phantomPay';
+import { onPay, onPayError, payAsApp, savedContinue, tripStore, watchPay } from '../../wallet/phantomPayUi';
 import { SHOP_NOTICES, USDC_NOTICES, gotShields, pollForRise, shopBodyHtml, shopHtml, usdcOption, type ShopModel, type ShopNotice } from './shopView';
 import { UsdcPayError, clearPending, isFinalRefusal, loadPending, parseIntent, pollConfirm, prepareTransfer, savePending, sendAndRemember, type ConfirmAnswer, type PayProvider, type PendingPayment } from './usdcPay';
 
@@ -66,7 +69,8 @@ export function openShop(svc: SupabaseMatchService, o: ShopOptions = {}) {
   const open = () => sheet.isConnected;
   const render = () => { body.innerHTML = shopBodyHtml(m); };
   const say = (n: ShopNotice | null) => { m.notice = n; render(); };
-  const close = () => { sheet.remove(); document.removeEventListener('keydown', onKey); prev?.focus?.(); o.onClose?.(); };
+  let stopListen = () => {};
+  const close = () => { stopListen(); sheet.remove(); document.removeEventListener('keydown', onKey); prev?.focus?.(); o.onClose?.(); };
   const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') close(); };
   document.addEventListener('keydown', onKey);
   sheet.addEventListener('click', (e) => {
@@ -74,8 +78,38 @@ export function openShop(svc: SupabaseMatchService, o: ShopOptions = {}) {
     if (t === sheet || t.closest('[data-a="shop-close"]')) return close();
     const buy = t.closest<HTMLButtonElement>('[data-a="buy"]');
     if (buy && !buy.disabled) void buyPack(buy.dataset.sku ?? '');
-    const usdc = t.closest<HTMLButtonElement>('[data-a="buy-usdc"]');
-    if (usdc && !usdc.disabled) void buyUsdc(usdc.dataset.sku ?? '');
+    const usdc = t.closest<HTMLElement>('[data-a="buy-usdc"]');
+    if (usdc && usdc.getAttribute('aria-disabled') !== 'true' && !(usdc as HTMLButtonElement).disabled) {
+      const sku = usdc.dataset.sku ?? '';
+      if (!getPhantomProvider() && usdc instanceof HTMLAnchorElement) {
+        const session = sessionFor(localStorage, SHIELD_USDC_CLUSTER, wallet);
+        if (!session) {
+          if (!sku || !m.agreed || m.busy || !wallet) { e.preventDefault(); return; }
+          usdc.href = beginPayConnect(tripStore(), {
+            loc: { origin: location.origin, pathname: location.pathname }, app: payAsApp(),
+            cluster: SHIELD_USDC_CLUSTER, kind: 'shield', now: Date.now(), hash: location.hash, sku,
+          });
+          if (payAsApp()) { usdc.target = '_blank'; usdc.rel = 'noopener'; }
+          watchPay();
+          return;
+        }
+      }
+      e.preventDefault();
+      void buyUsdc(sku);
+    }
+    const approve = t.closest<HTMLAnchorElement>('[data-a="phantom-approve"]');
+    if (approve) {
+      const trip = loadPay(tripStore(), Date.now()).trip;
+      if (!trip || !payFresh(trip, Date.now())) {
+        e.preventDefault();
+        const session = sessionFor(localStorage, SHIELD_USDC_CLUSTER, wallet);
+        if (session && trip?.sku) void buyUsdcDeeplink(trip.sku, session);
+        return;
+      }
+      markPayOpened(tripStore(), Date.now());
+      if (payAsApp()) { approve.target = '_blank'; approve.rel = 'noopener'; }
+      watchPay();
+    }
     if (t.closest<HTMLButtonElement>('[data-a="retry-usdc"]')) void settleUsdc();
   });
   sheet.addEventListener('change', (e) => {
@@ -100,18 +134,15 @@ export function openShop(svc: SupabaseMatchService, o: ShopOptions = {}) {
     }
   }
 
-  /** Pay in USDC: server intent -> Phantom signs and sends -> the server reads the payment back from Solana and credits. */
-  async function buyUsdc(sku: string) {
+  /** Pay in USDC through an injected Phantom. */
+  async function buyUsdcInjected(sku: string, provider: PayProvider) {
     if (!sku || !m.agreed || m.busy || !wallet) return;
-    if (unsettled().length) return settleUsdc(); // sent from another tab since this sheet opened: never pay twice
+    if (unsettled().length) return settleUsdc();
     m.busy = sku;
     m.rail = 'usdc';
     m.usdcStep = 'approve';
     say(null);
     try {
-      // Checked first: a phone signed in through the Phantom app has no injected wallet here, and shouldn't use up an intent.
-      const provider = getPhantomProvider() as PayProvider | null;
-      if (!provider) throw new UsdcPayError(USDC_NOTICES.noPhantom.text, 'no-phantom');
       const intent = parseIntent(await callFn('shield-usdc-intent', { sku, ageConfirmed: true }));
       // The badge says which network this build is for: never send money on another one.
       if (intent.cluster !== SHIELD_USDC_CLUSTER) throw new UsdcPayError('The shop is on a different Solana network than this page. Reload and try again.');
@@ -127,6 +158,57 @@ export function openShop(svc: SupabaseMatchService, o: ShopOptions = {}) {
       m.usdcUnconfirmed = unsettled().length > 0;
       if (open()) render();
     }
+  }
+
+  const payLoc = () => ({ origin: location.origin, pathname: location.pathname });
+
+  /** No injected wallet: the server builds the transfer, then a tap opens Phantom's signAndSendTransaction deeplink. */
+  async function buyUsdcDeeplink(sku: string, session: PhantomSession) {
+    if (!sku || !m.agreed || m.busy || !wallet) return;
+    if (session.wallet !== wallet) {
+      try { clearSession(localStorage); } catch { /* storage unavailable */ }
+      if (open()) say(USDC_NOTICES.wrongWallet);
+      return;
+    }
+    if (unsettled().length) return settleUsdc();
+    m.busy = sku;
+    m.rail = 'usdc';
+    m.usdcStep = 'approve';
+    m.phantomApprove = null;
+    say(null);
+    try {
+      const intent = parseIntent(await callFn('shield-usdc-intent', { sku, ageConfirmed: true }));
+      if (intent.cluster !== SHIELD_USDC_CLUSTER) throw new UsdcPayError('The shop is on a different Solana network than this page. Reload and try again.');
+      const built = await prepareTransfer(intent, wallet);
+      const trip = armPay(tripStore(), {
+        session, kind: 'shield', intentId: intent.intentId, txBase64: base64Encode(built.transaction),
+        app: payAsApp(), now: Date.now(), sku,
+      });
+      m.phantomApprove = { href: signAndSendLink(trip, payLoc(), location.hash), code: payCode(trip), blank: payAsApp() };
+      if (open()) say(USDC_NOTICES.approve);
+    } catch (e) {
+      m.phantomApprove = null;
+      if (open()) say(e instanceof UsdcPayError && e.kind === 'rejected' ? USDC_NOTICES.rejected : { tone: 'bad', text: e instanceof Error ? e.message : 'The payment did not go through.' });
+    } finally {
+      m.busy = null;
+      m.rail = 'card';
+      m.usdcStep = m.phantomApprove ? 'approve' : null;
+      m.usdcUnconfirmed = unsettled().length > 0;
+      if (open()) render();
+    }
+  }
+
+  /** Injected Phantom when this browser has one; otherwise the deeplink, using a saved session when there is one. */
+  async function buyUsdc(sku: string) {
+    const provider = getPhantomProvider() as PayProvider | null;
+    if (provider) return buyUsdcInjected(sku, provider);
+    const session = sessionFor(localStorage, SHIELD_USDC_CLUSTER, wallet);
+    if (!session) {
+      const other = loadSession(localStorage, SHIELD_USDC_CLUSTER);
+      if (open()) say(other && other.wallet !== wallet ? USDC_NOTICES.wrongWallet : { tone: 'bad', text: 'Tap Pay again to open Phantom and connect the wallet you signed in with.' });
+      return;
+    }
+    return buyUsdcDeeplink(sku, session);
   }
 
   /** Payments with a signature that the server has not settled: saved ones, plus any that storage refused. */
@@ -213,6 +295,30 @@ export function openShop(svc: SupabaseMatchService, o: ShopOptions = {}) {
 
   // USDC is for players signed in with Phantom only: the wallet comes from the Supabase user (the server re-reads it from the JWT).
   let wallet = '';
+  m.usdcHandOff = !getPhantomProvider();
+  const offPay = onPay((ev) => {
+    if (!open() || !wallet) return;
+    if (ev.kind === 'connected' && ev.payKind === 'shield') {
+      savedContinue();
+      if (ev.session.wallet !== wallet) {
+        try { clearSession(localStorage); } catch { /* storage unavailable */ }
+        say(USDC_NOTICES.wrongWallet);
+        return;
+      }
+      if (ev.sku) void buyUsdcDeeplink(ev.sku, ev.session);
+      return;
+    }
+    if (ev.kind === 'signed' && ev.payKind === 'shield') {
+      void finishUsdc({ intentId: ev.intentId, signature: ev.signature, wallet: ev.wallet, at: Date.now() });
+    }
+  });
+  const offErr = onPayError((err) => {
+    if (!open()) return;
+    m.busy = null;
+    m.phantomApprove = null;
+    say({ tone: 'bad', text: err instanceof Error ? err.message : 'The payment did not go through.' });
+  });
+  stopListen = () => { offPay(); offErr(); };
   /** Payments that could not be written to storage (private mode, full): they only last while this sheet is open. */
   const unsaved = new Map<string, PendingPayment>();
   void (async () => {
@@ -224,7 +330,22 @@ export function openShop(svc: SupabaseMatchService, o: ShopOptions = {}) {
     }
     await refresh();
     if (!open()) return;
-    if (wallet) void settleUsdc();
+    if (wallet) {
+      const cont = savedContinue();
+      const session = sessionFor(localStorage, SHIELD_USDC_CLUSTER, wallet);
+      if (unsettled().length) void settleUsdc();
+      else if (cont?.payKind === 'shield' && cont.sku && session) void buyUsdcDeeplink(cont.sku, session);
+      else {
+        try {
+          const trip = loadPay(tripStore(), Date.now()).trip;
+          if (trip && trip.kind === 'shield' && !trip.opened && payFresh(trip, Date.now())) {
+            m.phantomApprove = { href: signAndSendLink(trip, { origin: location.origin, pathname: location.pathname }, location.hash), code: payCode(trip), blank: trip.app };
+            m.usdcStep = 'approve';
+            if (open()) render();
+          }
+        } catch { /* storage unavailable */ }
+      }
+    }
     if (!MODE_SHIELD_STRIPE) { /* no card payments: a Stripe return means nothing here */ } else if (o.returned === 'cancel') say(SHOP_NOTICES.cancelled);
     else if (o.returned === 'success') void waitForPayment();
   })();
