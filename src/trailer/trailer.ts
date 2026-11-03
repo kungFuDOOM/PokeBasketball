@@ -2224,10 +2224,10 @@ function renderTrStars(seg: Segment, t: number, a: number) {
 
 // ---------- cut: ranked ----------
 
-/** Season 1 tiers in climbing order: name, badge file stem (public/ranks), and the game's tier colour (style.css). */
+/** Season 1 tiers in climbing order: name (the top ordinary tier is branded PokeJam Master), badge file stem (public/ranks), and the game's tier colour (style.css). */
 const RK_TIERS: [string, string, string][] = [
   ['BRONZE', 'bronze', '#c9824a'], ['SILVER', 'silver', '#b8c2cf'], ['GOLD', 'gold', '#f2c53d'], ['PLATINUM', 'platinum', '#5fd4c4'],
-  ['DIAMOND', 'diamond', '#6fb6ff'], ['PRISM', 'prism', '#c58bff'], ['ECLIPSE', 'eclipse', '#ff7a59'], ['POKéMON MASTER', 'master', '#ff5db1'],
+  ['DIAMOND', 'diamond', '#6fb6ff'], ['PRISM', 'prism', '#c58bff'], ['ECLIPSE', 'eclipse', '#ff7a59'], ['POKEJAM MASTER', 'master', '#ff5db1'],
   ['ZENITH', 'zenith', '#ffe27a'],
 ];
 
@@ -2375,7 +2375,7 @@ function renderRkClimb(seg: Segment, t: number, a: number) {
   const k = za < 0.3 ? 2.2 - 1.2 * easeOutBack(za / 0.3) : 1 + 0.03 * Math.sin(za * 5);
   rankBadge('zenith', W / 2, 450, 420, k, 1);
   jamText('ZENITH', W / 2, 780, 170, { fill: '#ffe27a', scale: za < 0.25 ? 0.3 + 0.7 * easeOutBack(za / 0.25) : 1 });
-  if (za > 0.6) plainText('ABOVE POKéMON MASTER. ONLY THE BEST.', W / 2, 950, 60, '#f8f8f0');
+  if (za > 0.6) plainText('ABOVE POKEJAM MASTER. ONLY THE BEST.', W / 2, 950, 60, '#f8f8f0');
 }
 
 /** Season 1, six weeks, and no rage quitting. */
