@@ -2443,6 +2443,7 @@ body:has(.pause-btn) .music-btn:not(.docked) {
 .ph-msg[data-tone="bad"] { color: #ff8a80; }
 .ph-msg[data-tone="warn"] { color: var(--accent); }
 .ph-code b { color: var(--accent); letter-spacing: 0.12em; font-family: var(--pixel); font-size: 0.8em; }
+.ph-diag { margin: 0; color: var(--muted); font: 0.68rem ui-monospace, Menlo, Consolas, monospace; letter-spacing: 0.02em; overflow-wrap: anywhere; user-select: all; }
 .ph-btns { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
 .ph-body .btn { text-decoration: none; display: inline-flex; align-items: center; justify-content: center; min-height: 44px; }
 .rk-signin a[data-a="phantom-browse"] { color: inherit; }

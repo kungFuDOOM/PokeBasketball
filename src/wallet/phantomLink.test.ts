@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { base58Decode, base58Encode, randomBytes } from '../../supabase/functions/_shared/pack/bytes.ts';
 import { boxBefore, boxOpen, boxPublicKey, boxSeal } from './nacl';
 import {
-  FLOW_TTL_MS, PENDING_KEY, PhantomLinkError, advance, beginConnect, buildSiwsMessage, checkSiwsMessage, isStandalone, loadPending, parseCallback,
+  FLOW_TTL_MS, PENDING_KEY, PhantomLinkError, advance, beginConnect, buildSiwsMessage, checkSiwsMessage, isStandalone, loadPending, standaloneSignal, parseCallback,
   relayPut, relayTake, routeCallback, signLink, type Callback, type RelayClient, type Store,
 } from './phantomLink';
 import { SIGN_IN_STATEMENT, signInWithPhantom, type Web3Client } from './phantom';
@@ -198,11 +198,11 @@ describe('state, replay and tampering', () => {
   });
   it('refuses a connect answer without a real address or session', () => {
     const { s, link } = start();
-    expect(() => advance(s, pendingOf(s), parseCallback(fakePhantom().connect(link, 'not-an-address'))!.response, env(NOW))).toThrow(/Could not read/);
+    expect(() => advance(s, pendingOf(s), parseCallback(fakePhantom().connect(link, 'not-an-address'))!.response, env(NOW))).toThrow(/answer couldn't be read/);
   });
   it('refuses a signature of the wrong length', () => {
     const { s, ph, pending, sign } = toSignStep();
-    expect(() => advance(s, { ...pending, opened: true }, parseCallback(ph.sign(sign, randomBytes(32)))!.response, env(NOW))).toThrow(/Could not read/);
+    expect(() => advance(s, { ...pending, opened: true }, parseCallback(ph.sign(sign, randomBytes(32)))!.response, env(NOW))).toThrow(/answer couldn't be read/);
   });
 });
 
@@ -233,7 +233,7 @@ describe('the Sign in with Solana message', () => {
   it('is laid out exactly as supabase-js lays it out', () => {
     expect(m).toBe([
       'pokejam.xyz wants you to sign in with your Solana account:', WALLET, '', SIGN_IN_STATEMENT, '',
-      'Version: 1', 'URI: https://pokejam.xyz/', 'Issued At: 2026-11-02T12:00:00.000Z', 'Expiration Time: 2026-11-02T12:10:00.000Z', 'Chain ID: mainnet', `Nonce: ${nonce}`,
+      'Version: 1', 'URI: https://pokejam.xyz/', 'Issued At: 2026-11-02T12:00:00.000Z', 'Expiration Time: 2026-11-02T12:10:00.000Z', 'Chain ID: solana:mainnet', `Nonce: ${nonce}`,
     ].join('\n'));
   });
   it('matches what supabase-js builds for the same fields, signed by a wallet with signMessage', async () => {
@@ -244,14 +244,14 @@ describe('the Sign in with Solana message', () => {
     const auth = new AuthClient({ url: 'https://x.invalid/auth/v1', persistSession: false, autoRefreshToken: false, fetch: async () => new Response('{}', { status: 400 }) });
     await auth.signInWithWeb3({
       chain: 'solana', statement: SIGN_IN_STATEMENT, wallet,
-      options: { url: 'https://pokejam.xyz/', signInWithSolana: { issuedAt: new Date(NOW).toISOString(), expirationTime: new Date(NOW + FLOW_TTL_MS).toISOString(), chainId: 'mainnet', nonce } },
+      options: { url: 'https://pokejam.xyz/', signInWithSolana: { issuedAt: new Date(NOW).toISOString(), expirationTime: new Date(NOW + FLOW_TTL_MS).toISOString(), chainId: 'solana:mainnet', nonce } },
     } as never).catch(() => null);
     expect(signed).toBe(m);
   });
   it('our own check passes a good message and refuses the wrong wallet, nonce or a passed expiry', () => {
     expect(() => checkSiwsMessage(m, { address: WALLET, nonce, now: NOW })).not.toThrow();
-    expect(() => checkSiwsMessage(m, { address: 'other', nonce, now: NOW })).toThrow(/did not match/);
-    expect(() => checkSiwsMessage(m, { address: WALLET, nonce: 'x', now: NOW })).toThrow(/did not match/);
+    expect(() => checkSiwsMessage(m, { address: 'other', nonce, now: NOW })).toThrow(/didn't match/);
+    expect(() => checkSiwsMessage(m, { address: WALLET, nonce: 'x', now: NOW })).toThrow(/didn't match/);
     expect(() => checkSiwsMessage(m, { address: WALLET, nonce, now: NOW + FLOW_TTL_MS })).toThrow(/expired/);
   });
 });
@@ -340,6 +340,16 @@ describe('detecting a home-screen app', () => {
     expect(isStandalone({ navigator: {}, matchMedia: () => ({ matches: true }) })).toBe(true);
     expect(isStandalone({ navigator: { standalone: false }, matchMedia: () => ({ matches: false }) })).toBe(false);
     expect(isStandalone({})).toBe(false);
+    for (const mode of ['standalone', 'fullscreen', 'minimal-ui']) {
+      const w = { navigator: {}, matchMedia: (q: string) => ({ matches: q === `(display-mode: ${mode})` }) };
+      expect(isStandalone(w), mode).toBe(true);
+      expect(standaloneSignal(w)).toBe(mode);
+    }
+    expect(isStandalone({ matchMedia: (q: string) => ({ matches: q === '(display-mode: browser)' }) })).toBe(false);
+    expect(isStandalone({ matchMedia: () => { throw new Error('no'); } })).toBe(false);
+    // navigator.standalone is checked first, so its signal is the one reported.
+    expect(standaloneSignal({ navigator: { standalone: true }, matchMedia: () => ({ matches: true }) })).toBe('nav');
+    expect(standaloneSignal({})).toBeNull();
   });
 });
 

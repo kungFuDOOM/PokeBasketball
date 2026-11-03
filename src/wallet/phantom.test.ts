@@ -60,6 +60,8 @@ describe('signInWithPhantom', () => {
     expect(arg.chain).toBe('solana');
     expect(arg.wallet).toBe(phantom);
     expect(arg.statement).not.toMatch(/\n/);
+    // No chainId: supabase-js then leaves "Chain ID" out of the message, which the server accepts. A bare "mainnet" is a 400.
+    expect(JSON.stringify(Object.keys(arg).sort())).not.toMatch(/chainId/i);
   });
   it('throws a WalletError without calling Supabase when Phantom is missing', async () => {
     const c = client({ error: null });

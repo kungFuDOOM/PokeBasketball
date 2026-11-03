@@ -11,9 +11,10 @@
 // The dapp secret rides in the URL Phantom already holds for this trip and never reaches the server. It only decrypts this one
 // trip's connect and sign answers. Nothing here logs keys, sessions or tokens.
 import { base58Decode, base58Encode, randomBytes } from '../../supabase/functions/_shared/pack/bytes.ts';
+import { relayCodeOf } from './phantomDiag';
 import { boxBefore, boxOpen, boxPublicKey, boxSeal } from './nacl';
 import {
-  FLOW_TTL_MS, PHANTOM_UL, PhantomLinkError, clearPending, newId, redirectLink, relayPut, relayTake,
+  FLOW_TTL_MS, PHANTOM_UL, PhantomLinkError, authError, clearPending, newId, phantomErrorFor, redirectLink, relayPut, relayTake, stepError,
   type Callback, type HandoffRef, type Pending, type PhantomResponse, type RelayClient, type ReturnTo, type Store,
 } from './phantomLink';
 
@@ -33,8 +34,6 @@ export interface AppHandoff {
 }
 
 const b58 = (b: Uint8Array) => base58Encode(b);
-const gone = 'That sign-in expired. Try again.';
-const unreadable = 'Could not read the answer from Phantom. Try again.';
 
 /** A short check code shown on both screens, so a player can tell that the Safari page belongs to the sign-in they started. */
 export const handoffCode = (id: string): string => id.slice(-4).toUpperCase();
@@ -66,8 +65,8 @@ export function loadHandoff(store: Store, now: number): { handoff: AppHandoff | 
   if (!raw) return { handoff: null, expired: false };
   try {
     const h = JSON.parse(raw) as AppHandoff;
-    if (h?.v === 1 && typeof h.id === 'string' && typeof h.secret === 'string' && typeof h.expiresAt === 'number') {
-      if (h.expiresAt > now) return { handoff: h, expired: false };
+    if (h && h.v === 1 && typeof h.id === 'string' && typeof h.secret === 'string' && typeof h.expiresAt === 'number') {
+      if (h.expiresAt > now) return { handoff: { ...h, returnTo: h.returnTo === 'profile' ? 'profile' : 'ranked' }, expired: false };
       clearHandoff(store);
       return { handoff: null, expired: true };
     }
@@ -84,7 +83,7 @@ export function openRefreshToken(r: PhantomResponse, h: Pick<AppHandoff, 'secret
     const rt = body && typeof body === 'object' ? (body as { rt?: unknown }).rt : undefined;
     if (typeof rt === 'string' && rt) return rt;
   } catch { /* the same answer as a bad tag */ }
-  throw new PhantomLinkError(unreadable);
+  throw stepError('HB-READ');
 }
 
 export interface AppAuth {
@@ -99,7 +98,7 @@ export type Restore = { kind: 'none' } | { kind: 'waiting' } | { kind: 'done'; r
  */
 export async function restoreInApp(store: Store, relay: RelayClient, auth: AppAuth, now: number): Promise<Restore> {
   const { handoff, expired } = loadHandoff(store, now);
-  if (expired) throw new PhantomLinkError(gone);
+  if (expired) throw stepError('EXP');
   if (!handoff) return { kind: 'none' };
   const answer = await relayTake(relay, handoff.id).catch(() => null);
   if (!answer) return { kind: 'waiting' };
@@ -107,13 +106,15 @@ export async function restoreInApp(store: Store, relay: RelayClient, auth: AppAu
   if (loadHandoff(store, now).handoff?.id !== handoff.id) return { kind: 'none' };
   clearHandoff(store);
   if (answer.e !== undefined) {
-    if (answer.e === '4001') throw new PhantomLinkError('Sign-in cancelled in Phantom.', true);
-    throw new PhantomLinkError('Phantom could not finish that. Try again.');
+    throw phantomErrorFor(answer.e, 'connect');
   }
   const refresh_token = openRefreshToken(answer, handoff);
-  let ok = false;
-  try { const { data, error } = await auth.refreshSession({ refresh_token }); ok = !error && !!data?.session; } catch { /* reported below */ }
-  if (!ok) throw new PhantomLinkError('Could not sign in with Phantom. Try again.');
+  let failure: unknown = null;
+  try {
+    const { data, error } = await auth.refreshSession({ refresh_token });
+    if (error || !data?.session) failure = error ?? { status: 200 };
+  } catch (e) { failure = e; }
+  if (failure) throw authError('RF', failure);
   return { kind: 'done', returnTo: handoff.returnTo };
 }
 
@@ -157,17 +158,21 @@ export interface SafariAuth {
 export async function finishInSafari(auth: SafariAuth, relay: RelayClient, o: { message: string; signature: Uint8Array; handoff: HandoffRef; keepSession?: boolean }): Promise<void> {
   const { data, error } = await auth.signInWithWeb3({ chain: 'solana', message: o.message, signature: o.signature });
   const rt = data?.session?.refresh_token;
-  if (error || !rt) throw new PhantomLinkError('Could not sign in with Phantom. Try again.');
+  if (error || !rt) throw authError('W3', error ?? { status: 200 });
   // The app's own page finished this (a redirect that did open in the app): the session stays where it is.
   if (o.keepSession) return;
   const stored = await relayPut(relay, { id: o.handoff.id, app: true, response: sealRefreshToken(rt, o.handoff.pub) }).catch(() => false);
   try { await auth.signOut({ scope: 'local' }); } catch { /* the browser's copy is only a convenience */ }
-  if (!stored) throw new PhantomLinkError('Could not pass that back. Go back to PokeJam and try again.');
+  if (!stored) throw stepError('HO-PUT');
 }
 
-/** Tells a waiting app that Safari gave up, so it stops waiting. Best effort. */
-export async function reportFailure(relay: RelayClient, h: HandoffRef, cancelled: boolean): Promise<void> {
-  await relayPut(relay, { id: h.id, app: true, response: { e: cancelled ? '4001' : '1' } }).catch(() => false);
+/**
+ * Tells a waiting app that Safari gave up, so it stops waiting and shows the same step-specific message. `why` is the error (its
+ * step key becomes a numeric code in the relay), or true for "cancelled". Best effort.
+ */
+export async function reportFailure(relay: RelayClient, h: HandoffRef, why: unknown): Promise<void> {
+  const key = why === true || (why instanceof PhantomLinkError && why.cancelled) ? 'CXL' : why instanceof PhantomLinkError ? why.diag ?? 'UNK' : 'UNK';
+  await relayPut(relay, { id: h.id, app: true, response: { e: relayCodeOf(key) } }).catch(() => false);
 }
 
 /** Wipes Safari's trip state. */
