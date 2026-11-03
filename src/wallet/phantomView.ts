@@ -10,7 +10,7 @@ export type SheetState =
   | { kind: 'safari-done'; code: string }
   | { kind: 'working'; text: string }
   | { kind: 'failed'; text: string; tone: 'warn' | 'bad'; diag?: string }
-  | { kind: 'go-back'; app: boolean };
+  | { kind: 'go-back'; app: boolean; code?: string };
 
 const CANCEL = '<button class="btn ghost" type="button" data-a="phantom-cancel">Cancel</button>';
 const codeLine = (code: string) => `<p class="note center ph-code">Check code <b>${esc(code)}</b> — the PokeJam app shows the same one.</p>`;
@@ -30,9 +30,13 @@ function inner(s: SheetState): string {
       <p class="note center ph-code">Check code <b>${esc(s.code)}</b></p>${CLOSE}`;
     case 'working': return `<p class="ph-msg">${esc(s.text)}</p>`;
     case 'failed': return `<p class="ph-msg" data-tone="${s.tone}" role="alert">${esc(s.text)}</p>${s.diag ? `<p class="ph-diag" data-diag>${esc(s.diag)}</p>` : ''}${CLOSE}`;
-    case 'go-back': return `<p class="ph-msg">Phantom answered.</p><p class="note center">${s.app
+    case 'go-back': return `<p class="ph-msg">Phantom answered.</p>${s.code ? `<p class="note center ph-code">Check code <b>${esc(s.code)}</b>. It should match the page you started from.</p>` : ''}<p class="note center">${s.app
       ? 'Go back to the PokeJam app on your home screen to continue.'
       : 'Go back to the PokeJam tab you started from to continue.'}</p>${CLOSE}`;
+    default: {
+      const _never: never = s;
+      return _never;
+    }
   }
 }
 

@@ -245,6 +245,9 @@ describe('admin clear', () => {
     const reported = (await mod.call<Row[]>('pokejam_admin_reports', [7])).find((r) => r.user_id === a.id)!;
     expect(reported.quit_offences).toBe(2);
     expect(secsLeft(reported.ranked_ban_until)).toBeGreaterThan(800);
+    const ranked = (await mod.call<{ players: Row[] }>('pokejam_admin_ranked_players')).players.find((p) => p.user_id === a.id)!;
+    expect(ranked.quit_offences).toBe(2);
+    expect(secsLeft(ranked.ranked_ban_until)).toBeGreaterThan(800);
     await mod.call('pokejam_admin_ban', [a.id, 24, 'reports reviewed']);
     const banned = (await mod.call<Row[]>('pokejam_admin_bans')).find((r) => r.user_id === a.id)!;
     expect(banned.quit_offences).toBe(2);

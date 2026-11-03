@@ -152,6 +152,9 @@ async function renderHome(ctx: ModeContext) {
       // With Stripe off a stale ?shop=success|cancel is just cleaned up: no shop, no "payment" message.
       if (MODE_SHIELD_STRIPE) void showShop(svc, actions, returned);
     }
+    try {
+      if (MODE_SHIELD_SHOP && localStorage.getItem('pokejam.phantom.payContinue')?.includes('"shield"')) void showShop(svc, actions);
+    } catch { /* storage unavailable */ }
   } catch {
     if (slot.isConnected) slot.innerHTML = '<p class="note">Could not load your rank from the server.</p>';
   }

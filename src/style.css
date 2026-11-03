@@ -737,7 +737,8 @@ li.empty { color: var(--muted); }
 @keyframes grade { 0% { opacity: 0; transform: translate(-50%, 6px); } 12%, 75% { opacity: 1; transform: translate(-50%, 0); } 100% { opacity: 0; } }
 
 .banner {
-  position: absolute; top: 34%; left: 0; right: 0;
+  /* Starts below the courtside LED board (it ends at 35.6% of a full-height court), and clear of the notch's sides. */
+  position: absolute; top: 37%; left: env(safe-area-inset-left, 0px); right: env(safe-area-inset-right, 0px);
   text-align: center;
   opacity: 0;
   transform: scale(0.9);
@@ -802,7 +803,8 @@ li.empty { color: var(--muted); }
 .stick-zone { position: absolute; left: 0; bottom: 0; width: 45%; height: 70%; pointer-events: auto; touch-action: none; }
 .stick-base {
   position: absolute;
-  left: 90px; top: 60%;
+  /* Resting spot, nudged inside the landscape safe area (notch / Dynamic Island, home bar). Where it floats to on touch is unchanged. */
+  left: calc(90px + env(safe-area-inset-left, 0px)); top: calc(60% - env(safe-area-inset-bottom, 0px));
   width: 104px; height: 104px;
   margin: -52px 0 0 -52px;
   border-radius: 50%;
@@ -1481,7 +1483,7 @@ body:has(.pause-btn) .music-btn:not(.docked) {
 .x-link:hover { color: #fff; }
 .x-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 /* Narrow portrait: push the logo below the X + music buttons. */
-@media (max-width: 480px) and (orientation: portrait) { .menu:not(:has(.mp-teams)) .menu-in .title { padding-top: 44px; } }
+@media (max-width: 480px) and (orientation: portrait) { .menu:not(:has(.mp-teams)) .menu-in .title { padding-top: max(44px, calc(env(safe-area-inset-top, 0px) + 6px)); } }
 
 /* Browsers without color-mix() (Safari < 16.2, Chrome < 111) drop those whole declarations; give the main cards and
    rows a plain fallback so they still have a background and border. */

@@ -1,5 +1,5 @@
-// The moderation page (admin.html): reported players, suspensions and the moderators' action log, with suspend,
-// lift and reset-name actions. Not linked from the game. Moderators sign in with an email link to an existing
+// The moderation page (admin.html): reported players, suspensions, courtside ads, Ranked stats and the moderators' action log, with
+// suspend, lift, reset-name and take-down-ad actions (devnet or live ads board). Not linked from the game. Moderators sign in with an email link to an existing
 // account listed in pokejam_admins (migration 20261031); every call is checked on the server, so the page shows
 // nothing to anyone else. Its session is kept apart from the game's anonymous one (its own storage key).
 import '../framed';
@@ -9,7 +9,9 @@ import '../style.css';
 import './admin.css';
 import { CAPTCHA_ON, captchaToken } from '../multiplayer/shared/captcha';
 import { esc } from '../util';
+import { AD_RPC, adAction, adConfirm, adsHtml, boardSwitch, isAdBoard, type AdBan, type AdBoard, type AdRow } from './adsView';
 import { bansHtml, judgeFlagsHtml, judgeShadowHtml, personLabel, reportsHtml, when, type Ban, type JudgeFlag, type JudgeShadow, type Reported } from './reportsView';
+import { rankedPlayersHtml, rankedStatsHtml, type RankedPlayers, type RankedStats } from './rankedView';
 
 const URL = import.meta.env.VITE_SUPABASE_URL;
 const KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -89,6 +91,8 @@ function dashboard(sb: SupabaseClient, email: string) {
       <h3>Offline (Quick Play / CPU / Franchise)</h3>
       <p class="note">Offline counting started with this update (Oct 2026); earlier offline games aren't counted.</p>
       <div data-offline-body><p class="note">Loading…</p></div>
+      <h3>Ranked</h3>
+      <div data-ranked-body><p class="note">Loading…</p></div>
       <h3>Net cost (online, last 7 days)</h3>
       <div data-netcost-body><p class="note">Loading…</p></div>
       <h3>Judge, shadow mode (Ranked, last 7 days)</h3>
@@ -96,7 +100,7 @@ function dashboard(sb: SupabaseClient, email: string) {
       <h3>Judge flags (Ranked, last 7 days)</h3>
       <div data-flags-body><p class="note">Loading…</p></div></section>
     <nav class="tabs">
-      <button class="on" data-tab="reports">Reported</button><button data-tab="bans">Suspended</button><button data-tab="log">History</button>
+      <button class="on" data-tab="reports">Reported</button><button data-tab="bans">Suspended</button><button data-tab="ads">Ads</button><button data-tab="ranked">Ranked</button><button data-tab="log">History</button>
       <label>Last <select data-days><option>1</option><option selected>7</option><option>30</option></select> days</label>
     </nav><section data-body><p class="note">Loading…</p></section>`);
   root.querySelector('[data-who]')!.innerHTML = `${esc(email)} · <button class="link" data-out>Sign out</button>`;
@@ -105,6 +109,9 @@ function dashboard(sb: SupabaseClient, email: string) {
   const days = root.querySelector<HTMLSelectElement>('[data-days]')!;
   let tab = 'reports';
   let judged = false;
+  // Which ads board the Ads tab shows: the devnet test site's or the live (mainnet) one. Remembered on this device.
+  const BOARD_KEY = 'pokejam.admin.adBoard';
+  let adBoard: AdBoard = (() => { try { const b = localStorage.getItem(BOARD_KEY); return isAdBoard(b) ? b : 'devnet'; } catch { return 'devnet'; } })();
   const call = async <T>(fn: string, args?: Record<string, unknown>): Promise<T> => {
     const { data, error } = await sb.rpc(fn, args);
     if (error) throw new Error(error.message);
@@ -113,7 +120,7 @@ function dashboard(sb: SupabaseClient, email: string) {
 
   const show = async () => {
     root.querySelectorAll<HTMLButtonElement>('[data-tab]').forEach((b) => b.classList.toggle('on', b.dataset.tab === tab));
-    days.parentElement!.hidden = tab !== 'reports';
+    days.parentElement!.hidden = tab !== 'reports' && tab !== 'ads';
     try {
       if (tab === 'reports') {
         const rows = await call<Reported[]>('pokejam_admin_reports', { p_days: Number(days.value) });
@@ -128,6 +135,18 @@ function dashboard(sb: SupabaseClient, email: string) {
         }
       }
       else if (tab === 'bans') body.innerHTML = bansHtml(await call<Ban[]>('pokejam_admin_bans'));
+      else if (tab === 'ranked') body.innerHTML = rankedPlayersHtml(await call<RankedPlayers>('pokejam_admin_ranked_players'));
+      else if (tab === 'ads') {
+        const board = adBoard;
+        const rpc = AD_RPC[board];
+        try {
+          const [rows, bans] = await Promise.all([call<AdRow[]>(rpc.list, { p_days: Number(days.value) }), call<AdBan[]>(rpc.bans)]);
+          if (tab === 'ads' && board === adBoard) body.innerHTML = adsHtml(rows, bans, board);
+        } catch (e) {
+          // Keep the switch, so a board whose migration isn't applied yet doesn't trap the moderator on it.
+          if (tab === 'ads' && board === adBoard) body.innerHTML = `${boardSwitch(board)}<p class="note">Couldn't load the ${board} board: ${esc((e as Error).message)}</p>`;
+        }
+      }
       else body.innerHTML = logHtml(await call<LogRow[]>('pokejam_admin_history', { p_limit: 100 }));
     } catch (e) {
       body.innerHTML = `<p class="note">Couldn't load: ${esc((e as Error).message)}</p>`;
@@ -136,6 +155,34 @@ function dashboard(sb: SupabaseClient, email: string) {
   root.querySelectorAll<HTMLButtonElement>('[data-tab]').forEach((b) => b.addEventListener('click', () => { tab = b.dataset.tab!; void show(); }));
   days.addEventListener('change', () => void show());
   body.addEventListener('click', async (e) => {
+    const sw = (e.target as HTMLElement).closest<HTMLButtonElement>('[data-board]:not([data-ad])');
+    if (sw && isAdBoard(sw.dataset.board)) {
+      adBoard = sw.dataset.board;
+      try { localStorage.setItem(BOARD_KEY, adBoard); } catch { /* private mode: just this page load */ }
+      body.innerHTML = '<p class="note">Loading…</p>';
+      void show();
+      return;
+    }
+    const ad = (e.target as HTMLElement).closest<HTMLButtonElement>('[data-ad]');
+    if (ad) {
+      // Removing keeps the advertiser's remaining time for new text; a ban takes every ad of theirs down for good.
+      // The button carries the board it was drawn for, so a switch mid-click can't send it to the other board.
+      const act = ad.dataset.ad!;
+      const board: AdBoard = isAdBoard(ad.dataset.board) ? ad.dataset.board : 'devnet';
+      if (!confirm(adConfirm(act, ad.dataset.text ?? 'this ad', ad.dataset.wallet ?? '', board))) return;
+      const reason = act === 'unban' ? '' : prompt('Reason (the advertiser sees it):', act === 'ban' ? 'abusive ads' : 'breaks the ad rules') ?? '';
+      const what = adAction(act, board, { id: ad.dataset.id, wallet: ad.dataset.wallet }, reason);
+      if (!what) return;
+      ad.disabled = true;
+      try {
+        await call(what.fn, what.args);
+        await show();
+      } catch (x) {
+        alert(`Didn't work: ${(x as Error).message}`);
+        ad.disabled = false;
+      }
+      return;
+    }
     const b = (e.target as HTMLElement).closest<HTMLButtonElement>('[data-act]');
     if (!b) return;
     const user = b.dataset.user!;
@@ -166,6 +213,7 @@ function dashboard(sb: SupabaseClient, email: string) {
   const netCostBody = root.querySelector<HTMLElement>('[data-netcost-body]')!;
   const shadowBody = root.querySelector<HTMLElement>('[data-shadow-body]')!;
   const flagsBody = root.querySelector<HTMLElement>('[data-flags-body]')!;
+  const rankedBody = root.querySelector<HTMLElement>('[data-ranked-body]')!;
   const loadStats = async () => {
     refresh.disabled = true;
     await Promise.all([
@@ -202,6 +250,13 @@ function dashboard(sb: SupabaseClient, email: string) {
           flagsBody.innerHTML = judgeFlagsHtml(await call<JudgeFlag[]>('pokejam_admin_judge_flags', { p_days: 7 }));
         } catch {
           flagsBody.innerHTML = '<p class="note">Judge flags unavailable.</p>';
+        }
+      })(),
+      (async () => {
+        try {
+          rankedBody.innerHTML = rankedStatsHtml(await call<RankedStats>('pokejam_admin_ranked_stats'));
+        } catch {
+          rankedBody.innerHTML = '<p class="note">Ranked stats unavailable.</p>';
         }
       })(),
     ]);

@@ -29,6 +29,8 @@ export const SHIELD_USDC_CLUSTER: 'devnet' | 'mainnet-beta' = import.meta.env.VI
  */
 export const JUDGE_AUTHORITATIVE = import.meta.env.VITE_JUDGE_AUTHORITATIVE === 'true';
 export const MODE_PACK_BATTLES = import.meta.env.VITE_MODE_PACK_BATTLES === 'true';
+/** Billboard ads: book the courtside LED board by burning $PJAM (the Advertise page, and booked ads in every game). */
+export const MODE_ADS = import.meta.env.VITE_MODE_ADS === 'true';
 export const ANY_MULTIPLAYER = MODE_SOCIAL || MODE_RANKED || MODE_PACK_BATTLES;
 // Ranked sign-in: Google is offered only when VITE_SIGNIN_GOOGLE is exactly "true"; default OFF = Phantom-only sign-in.
 export const SIGNIN_GOOGLE = import.meta.env.VITE_SIGNIN_GOOGLE === "true";

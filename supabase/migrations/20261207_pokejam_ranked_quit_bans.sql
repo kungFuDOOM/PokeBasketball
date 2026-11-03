@@ -405,3 +405,102 @@ grant execute on function
   public.pokejam_admin_reports(int),
   public.pokejam_admin_bans()
   to authenticated;
+
+-- As 20261206, plus quit_offences and ranked_ban_until so the Ranked players tab can show and clear a quit ban.
+create or replace function public.pokejam_admin_ranked_players(p_limit int default 200)
+returns jsonb
+language plpgsql
+stable
+security definer
+set search_path = public
+as $fn$
+declare
+  lim int := greatest(1, least(coalesce(p_limit, 200), 500));
+  sid int;
+  s_number int;
+  s_status text;
+  wallets jsonb := '{}'::jsonb;
+  players jsonb;
+begin
+  perform public.pokejam_require_admin();
+  select s.id, s.number, s.status into sid, s_number, s_status
+  from public.pokejam_seasons s
+  order by (s.status = 'active') desc, s.number desc
+  limit 1;
+  if sid is null then
+    return jsonb_build_object('season_number', null, 'season_status', null, 'players', '[]'::jsonb);
+  end if;
+  if to_regclass('auth.identities') is not null then
+    begin
+      execute $q$
+        select coalesce(jsonb_object_agg(w.user_id, w.wallet), '{}'::jsonb)
+        from (
+          select s.user_id::text as user_id, min(s.addr) as wallet
+          from (
+            select i.user_id, public.pokejam_admin_solana_addr(i.identity_data) as addr
+            from auth.identities i
+            where i.provider = 'web3'
+              and i.user_id in (select p.user_id from public.pokejam_ranked_profiles p where p.season_id = $1)
+          ) s
+          where s.addr is not null
+          group by s.user_id
+        ) w
+      $q$ into wallets using sid;
+    exception
+      when undefined_table or undefined_column then
+        wallets := '{}'::jsonb;
+    end;
+  end if;
+  select coalesce(jsonb_agg(jsonb_build_object(
+      'user_id', x.user_id,
+      'name', x.name,
+      'wallet', x.wallet,
+      'status', x.status,
+      'div_idx', x.div_idx,
+      'points', x.points,
+      'placements_played', x.placements_played,
+      'rating', x.rating,
+      'wins', x.wins,
+      'losses', x.losses,
+      'matches', x.wins + x.losses,
+      'last_game_at', x.last_game_at,
+      'shields', x.shields,
+      'flags', x.flags,
+      'banned_until', x.banned_until,
+      'quit_offences', x.quit_offences,
+      'ranked_ban_until', x.ranked_ban_until
+    ) order by x.rating desc, x.wins desc, x.user_id), '[]'::jsonb)
+  into players
+  from (
+    select p.user_id,
+      coalesce(nullif(u.username, ''), pr.trainer_name) as name,
+      wallets ->> (p.user_id::text) as wallet,
+      p.status, p.div_idx, p.points, p.placements_played,
+      public.pokejam_ranked_ladder(p.div_idx, p.points) as rating,
+      p.wins, p.losses, p.last_game_at,
+      coalesce(inv.count, 0) as shields,
+      coalesce(f.flag_n, 0) as flags,
+      b.until as banned_until,
+      (public.pokejam_ranked_quit_shown(p.user_id)).offences as quit_offences,
+      (public.pokejam_ranked_quit_shown(p.user_id)).ban_until as ranked_ban_until
+    from public.pokejam_ranked_profiles p
+    left join public.pokejam_usernames u on u.user_id = p.user_id
+    left join public.pokejam_profiles pr on pr.id = p.user_id
+    left join public.pokejam_shield_inventory inv on inv.user_id = p.user_id
+    left join public.pokejam_bans b on b.user_id = p.user_id and b.until > now()
+    left join (
+      select jf.user_id, count(*)::int as flag_n
+      from public.pokejam_judge_flags jf
+      where jf.user_id is not null
+      group by jf.user_id
+    ) f on f.user_id = p.user_id
+    where p.season_id = sid
+    order by public.pokejam_ranked_ladder(p.div_idx, p.points) desc, p.wins desc, p.user_id
+    limit lim
+  ) x;
+  return jsonb_build_object('season_number', s_number, 'season_status', s_status, 'players', players);
+end
+$fn$;
+
+revoke all on function public.pokejam_admin_ranked_players(int) from public, anon, authenticated;
+grant execute on function public.pokejam_admin_ranked_players(int) to authenticated;
