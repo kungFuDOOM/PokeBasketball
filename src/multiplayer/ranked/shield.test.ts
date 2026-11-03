@@ -45,7 +45,10 @@ describe('formatting', () => {
 
 describe('Rank Shield chip', () => {
   it('shows the count and an ARM toggle', () => {
-    expect(shieldItemHtml(item(), NOW)).toMatch(/x3[\s\S]*data-a="arm" aria-pressed="false">ARM</);
+    const h = shieldItemHtml(item(), NOW);
+    expect(h).toMatch(/x3[\s\S]*data-a="arm" aria-pressed="false">ARM</);
+    expect(h).toContain('class="rk-shield-ico"');
+    expect(h).not.toMatch(/🛡|🛡️/);
     expect(shieldItemHtml(item({ armed: true }), NOW)).toContain('aria-pressed="true">ARMED');
     expect(shieldItemHtml(null)).toBe('');
   });
