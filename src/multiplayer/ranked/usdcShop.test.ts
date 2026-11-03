@@ -287,10 +287,18 @@ describe('shop sheet by payment flags', () => {
     expect(hasCard(h)).toBe(true);
     expect(hasUsdc(h)).toBe(true);
   });
+  it('a signed-in player with no wallet gets a link step and no USDC button', () => {
+    const h = shopBodyHtml(model({ card: true, linkWallet: true }));
+    expect(h).toContain('data-a="link-wallet"');
+    expect(h).toContain('>Link Phantom to buy</a>');
+    expect(h).not.toContain('data-a="buy-usdc"');
+    expect(h).toContain('Your rank stays here');
+  });
   it('USDC only for a non-Phantom player: no buy buttons at all, a hint instead', () => {
     const h = shopBodyHtml(model({ card: false, usdc: null }));
     expect(hasCard(h) || hasUsdc(h)).toBe(false);
-    expect(h).toContain('Sign in with Phantom');
+    expect(h).toContain('Link Phantom to buy');
+    expect(h).not.toContain('data-a="buy-usdc"');
   });
   it('both off: no shop button on the hub', async () => {
     const { shieldItemHtml } = await import('./view');

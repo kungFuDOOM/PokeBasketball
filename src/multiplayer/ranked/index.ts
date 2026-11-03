@@ -13,6 +13,9 @@ import { OnlineError, SupabaseMatchService } from '../shared/onlineMatchService'
 import { ONLINE_CONFIGURED, ensureSignedIn, supabase } from '../shared/supabase';
 import type { ModeContext } from '../shared/types';
 import { phantomAction, signInWithPhantom, WalletError } from '../../wallet/phantom';
+import { startGoogleHandoff } from '../../wallet/googleSheet';
+import { googleSignInPlan } from '../../wallet/googleHandoff';
+import { isStandalone } from '../../wallet/phantomLink';
 import { startPhantomLink } from '../../wallet/phantomSheet';
 import { guardStaleBuild } from '../../wallet/staleBuild';
 import { isGuest, signInWithGoogle } from './account';
@@ -190,8 +193,9 @@ export async function rankedAccount(): Promise<SupabaseMatchService> {
 }
 
 /**
- * Ranked is for signed-in accounts: a Phantom wallet, plus Google (links the guest account so stats carry over) when the
- * SIGNIN_GOOGLE build flag is on. Also used by the profile screen.
+ * Ranked is for signed-in accounts: Continue with Google or Continue with Phantom. Google is a plain OAuth sign-in.
+ * On the iPhone home-screen app the return opens Safari, so Safari finishes it and the app picks up the session.
+ * Also used by the profile screen. VITE_SIGNIN_GOOGLE=false hides Google.
  */
 export function mountSignIn(slot: HTMLElement, o: { returnTo: 'ranked' | 'profile'; onSignedIn(): void; error?: string | null; busy?: boolean }) {
   slot.innerHTML = signInPanelHtml(phantomAction(), { busy: o.busy, error: o.error ?? null });
@@ -203,6 +207,10 @@ export function mountSignIn(slot: HTMLElement, o: { returnTo: 'ranked' | 'profil
   if (SIGNIN_GOOGLE) {
     slot.querySelector('[data-a="google"]')?.addEventListener('click', () => {
       again(null, true);
+      if (googleSignInPlan(isStandalone(window as unknown as Parameters<typeof isStandalone>[0])) === 'handoff') {
+        startGoogleHandoff(o.returnTo); // Safari finishes; this app waits. Same-tab OAuth would lose the verifier.
+        return;
+      }
       signInWithGoogle(sb, location, undefined, o.returnTo).catch(fail); // on success the browser leaves for Google and comes back to this page
     });
   }

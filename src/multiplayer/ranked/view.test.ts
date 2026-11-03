@@ -130,11 +130,13 @@ describe('sign-in panel', () => {
   it('offers Google and, depending on the device, Phantom sign-in, the phone deep link or the download page', () => {
     const base = signInPanelHtml({ kind: 'sign-in' }, { google: true });
     expect(base).toContain('data-a="google"');
+    expect(base).toContain('Continue with Google');
     expect(base).toContain('data-a="phantom"');
-    expect(base).toContain('Signing in with Google keeps your guest stats');
+    expect(base).toContain('Continue with Phantom');
+    expect(base).toContain('Buying shields needs a linked Phantom wallet');
     const phone = signInPanelHtml({ kind: 'deeplink', browseHref: 'https://phantom.app/ul/browse/x?ref=y' });
     expect(phone).toContain('data-a="phantom-link"');
-    expect(phone).toContain('>Sign in with Phantom</a>');
+    expect(phone).toContain('>Continue with Phantom</a>');
     expect(phone).toContain('href="https://phantom.app/ul/browse/x?ref=y"'); // the fallback: PokeJam in Phantom's browser
     const install = signInPanelHtml({ kind: 'install', href: 'https://phantom.app/download' });
     expect(install).toContain('https://phantom.app/download');

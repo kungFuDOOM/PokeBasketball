@@ -13,7 +13,8 @@ const MIGRATIONS = ['20261021_pokejam_online.sql', '20261022_pokejam_social.sql'
   '20261115_pokejam_match_ranks.sql', '20261116_pokejam_admin_reports_reporter.sql', '20261117_pokejam_rank_shield.sql', '20261118_pokejam_shield_shop.sql',
   '20261119_pokejam_shield_usdc.sql', '20261121_pokejam_report_dismiss.sql', '20261122_pokejam_match_verdicts.sql', '20261123_pokejam_admin_reports_checks.sql',
   '20261124_pokejam_ranked_presets.sql', '20261126_pokejam_net_cost_stats.sql', '20261127_pokejam_random_host.sql', '20261128_pokejam_match_setup.sql',
-  '20261129_pokejam_judge_jobs.sql', '20261130_pokejam_judge_cron.sql', '20261201_pokejam_judge_decides.sql', '20261202_pokejam_phantom_relay.sql']
+  '20261129_pokejam_judge_jobs.sql', '20261130_pokejam_judge_cron.sql', '20261201_pokejam_judge_decides.sql', '20261202_pokejam_phantom_relay.sql',
+  '20261209_pokejam_google_signin.sql']
   .map((f) => readFileSync(new URL(`../migrations/${f}`, import.meta.url), 'utf8'));
 
 // Auto usernames are Tr1, Tr2, ...: digits only after the prefix, so they can never spell a blocked word.
@@ -24,7 +25,7 @@ export async function testDb() {
   await db.exec(`
     create role anon; create role authenticated; create role service_role;
     create schema auth;
-    create table auth.users (id uuid primary key);
+    create table auth.users (id uuid primary key, created_at timestamptz not null default now());
     create function auth.uid() returns uuid language sql stable as $$ select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $$;
     create function auth.jwt() returns jsonb language sql stable as $$ select coalesce(nullif(current_setting('request.jwt.claims', true), ''), '{}')::jsonb $$;
     create schema extensions;
@@ -55,7 +56,7 @@ export async function testDb() {
    */
   const user = async (name = 'Trainer', anonymous = false, username?: string | null) => {
     const id = crypto.randomUUID();
-    await db.query('insert into auth.users(id) values ($1)', [id]);
+    await db.query(`insert into auth.users(id, created_at) values ($1, now() - interval '2 days')`, [id]);
     const sql = as('authenticated', id, undefined, anonymous);
     await sql('select public.pokejam_ensure_profile($1)', [name]);
     const pick = username === undefined ? (anonymous ? null : `Tr${++nameSeq}`) : username;

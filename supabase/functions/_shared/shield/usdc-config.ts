@@ -67,6 +67,14 @@ function fromRecord(r: Record<string, unknown> | null | undefined): string | nul
 }
 
 /**
+ * The wallet a payment may charge. A Phantom sign-in carries it on the user record. A Google account carries it only
+ * after pokejam_link_wallet stored one. An identity wins when both exist. Junk is ignored.
+ */
+export function paymentWallet(user: WalletUser | null | undefined, linked: string | null | undefined): string | null {
+  return solanaAddressOf(user) ?? (isAddress(linked) ? linked : null);
+}
+
+/**
  * The Solana address a Supabase user signed in with (Sign in with Solana), or null for a Google or guest user. Same rules as
  * src/wallet/phantom.ts getSolanaAddress. Call it on the user record Supabase Auth returned for the verified JWT.
  */

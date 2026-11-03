@@ -1,5 +1,6 @@
 // Who is signed in, and how a guest becomes a Ranked player. Ranked needs a real account (Google or a Phantom wallet);
 // everything else (Social, offline) keeps working with the anonymous guest session.
+// Google is a plain signInWithOAuth. It does not link the guest account. A wallet is linked later, only for payments.
 import { getSolanaAddress, type WalletUser } from '../../wallet/phantom';
 
 /** localStorage key set just before leaving for Google, so the game can reopen Ranked when the browser comes back. */
@@ -19,8 +20,9 @@ export function accountOf(user: AccountUser | null | undefined): Account {
   const sol = getSolanaAddress(user);
   if (sol) return { kind: 'phantom', label: shortAddress(sol) };
   const providers = [user.app_metadata?.provider, ...(user.app_metadata?.providers ?? []), ...(user.identities ?? []).map((i) => i.provider)];
-  if (providers.includes('google')) return { kind: 'google', label: user.email ?? 'Google account' };
-  return { kind: 'member', label: user.email ?? 'Signed in' };
+  // The email and the Google name stay off every label. The public name is the username picked in game.
+  if (providers.includes('google')) return { kind: 'google', label: 'Google' };
+  return { kind: 'member', label: 'Signed in' };
 }
 
 /** Ranked is for signed-in accounts only. A missing user counts as a guest. */
@@ -37,27 +39,19 @@ export function returnUrl(loc: { origin: string; pathname: string; search?: stri
 /** The slice of the Supabase client the sign-in uses. */
 export interface AuthClient {
   auth: {
-    getUser(): PromiseLike<{ data: { user: AccountUser | null } }>;
-    linkIdentity(c: { provider: 'google'; options?: { redirectTo?: string } }): PromiseLike<{ error: { message: string } | null }>;
-    signInWithOAuth(c: { provider: 'google'; options?: { redirectTo?: string } }): PromiseLike<{ error: { message: string } | null }>;
+    signInWithOAuth(c: { provider: 'google'; options?: { redirectTo?: string; queryParams?: { prompt?: string } } }): PromiseLike<{ error: { message: string } | null }>;
   };
 }
 type Store = Pick<Storage, 'setItem' | 'removeItem'> | null;
 const localStore = (): Store => { try { return typeof localStorage === 'undefined' ? null : localStorage; } catch { return null; } };
 
 /**
- * Sign in with Google. A guest links Google to the guest account (linkIdentity), so their stats and name carry over; if
- * Supabase refuses that (manual linking off, or this Google account already has a PokeJam account) it falls back to a plain
- * Google sign-in, which opens that account instead. Either way the browser leaves for Google and comes back to this page.
+ * Sign in with Google in this tab (Safari, Chrome, desktop). The browser leaves for Google and comes back to this page.
+ * A home-screen app does not call this: the return would land in Safari without the PKCE verifier. That path is googleHandoff.ts.
  */
 export async function signInWithGoogle(sb: AuthClient, loc: { origin: string; pathname: string; search?: string }, store: Store = localStore(), returnTo: 'ranked' | 'profile' = 'ranked'): Promise<void> {
-  const options = { redirectTo: returnUrl(loc) };
+  const options = { redirectTo: returnUrl(loc), queryParams: { prompt: 'select_account' as const } };
   try { store?.setItem(RETURN_KEY, returnTo); } catch { /* storage unavailable: the player just lands on the menu */ }
-  const { data } = await sb.auth.getUser();
-  if (data.user?.is_anonymous) {
-    const linked = await sb.auth.linkIdentity({ provider: 'google', options });
-    if (!linked.error) return;
-  }
   const { error } = await sb.auth.signInWithOAuth({ provider: 'google', options });
   if (error) {
     try { store?.removeItem(RETURN_KEY); } catch { /* ignore */ }

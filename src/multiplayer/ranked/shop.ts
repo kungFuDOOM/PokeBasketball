@@ -4,6 +4,7 @@
 import { supabase } from '../shared/supabase';
 import type { SupabaseMatchService } from '../shared/onlineMatchService';
 import { MODE_SHIELD_STRIPE, MODE_SHIELD_USDC, SHIELD_USDC_CLUSTER } from '../../config/features';
+import { armLinkAnchor, linkInjectedWallet } from '../../wallet/linkSheet';
 import { getPhantomProvider, type WalletUser } from '../../wallet/phantom';
 import { SHOP_NOTICES, USDC_NOTICES, gotShields, pollForRise, shopBodyHtml, shopHtml, usdcOption, type ShopModel, type ShopNotice } from './shopView';
 import { UsdcPayError, clearPending, isFinalRefusal, loadPending, parseIntent, pollConfirm, prepareTransfer, savePending, sendAndRemember, type ConfirmAnswer, type PayProvider, type PendingPayment } from './usdcPay';
@@ -77,6 +78,17 @@ export function openShop(svc: SupabaseMatchService, o: ShopOptions = {}) {
     const usdc = t.closest<HTMLButtonElement>('[data-a="buy-usdc"]');
     if (usdc && !usdc.disabled) void buyUsdc(usdc.dataset.sku ?? '');
     if (t.closest<HTMLButtonElement>('[data-a="retry-usdc"]')) void settleUsdc();
+    const link = t.closest<HTMLAnchorElement>('[data-a="link-wallet"]');
+    if (link) {
+      if (!userId) { e.preventDefault(); return; }
+      const provider = getPhantomProvider();
+      if (provider) {
+        e.preventDefault();
+        void linkInjectedWallet(userId).then(() => { m.linkWallet = false; m.usdc = { cluster: SHIELD_USDC_CLUSTER }; say({ tone: 'ok', text: 'Phantom linked. You can pay with USDC.' }); }).catch((err: unknown) => say({ tone: 'bad', text: err instanceof Error ? err.message : 'Could not link the wallet.' }));
+        return;
+      }
+      armLinkAnchor(link, userId);
+    }
   });
   sheet.addEventListener('change', (e) => {
     const box = (e.target as Element).closest<HTMLInputElement>('[data-a="age"]');
@@ -211,16 +223,26 @@ export function openShop(svc: SupabaseMatchService, o: ShopOptions = {}) {
     if (open()) render();
   }
 
-  // USDC is for players signed in with Phantom only: the wallet comes from the Supabase user (the server re-reads it from the JWT).
+  // USDC needs a wallet on this account: the Phantom they signed in with, or one linked afterwards. The server re-reads it.
   let wallet = '';
+  let userId = '';
   /** Payments that could not be written to storage (private mode, full): they only last while this sheet is open. */
   const unsaved = new Map<string, PendingPayment>();
   void (async () => {
     if (MODE_SHIELD_USDC) {
       const { data } = await supabase().auth.getSession().catch(() => ({ data: { session: null } }));
-      const opt = usdcOption(data.session?.user as WalletUser | undefined, true, SHIELD_USDC_CLUSTER);
+      userId = data.session?.user?.id ?? '';
+      let linked: string | null = null;
+      if (userId) {
+        try {
+          const read = await supabase().rpc('pokejam_my_wallet');
+          linked = typeof read.data === 'string' ? read.data : null;
+        } catch { linked = null; }
+      }
+      const opt = usdcOption(data.session?.user as WalletUser | undefined, true, SHIELD_USDC_CLUSTER, linked);
       wallet = opt?.wallet ?? '';
       if (opt) m.usdc = { cluster: opt.cluster };
+      else if (userId) m.linkWallet = true;
     }
     await refresh();
     if (!open()) return;

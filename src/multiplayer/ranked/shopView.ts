@@ -2,6 +2,7 @@
 // unit-tests in node. Menus only: nothing here is drawn over the court or the in-game HUD. shop.ts wires the buttons.
 import { SIGNIN_GOOGLE } from '../../config/features';
 import { esc } from '../../util';
+import { isAddress } from '../../../supabase/functions/_shared/pack/bytes.ts';
 import { getSolanaAddress, type WalletUser } from '../../wallet/phantom';
 import type { ShopInfo, ShopProduct } from './serverRank';
 
@@ -30,14 +31,17 @@ export interface ShopModel {
   usdcStep?: 'approve' | 'confirm' | null;
   /** A sent USDC payment the server has not settled: offer to check it again, and no new USDC payment until it is settled. */
   usdcUnconfirmed?: boolean;
+  /** Signed in, USDC is on, and this account has no wallet yet. */
+  linkWallet?: boolean;
 }
 
 /**
- * The USDC option for this player: only when the flag is on AND the Supabase user signed in with a Phantom (Solana) wallet.
- * Guests and Google users get null. The server re-reads the wallet from the verified JWT and trusts nothing sent from here.
+ * The USDC option for this player: the flag is on, and they have a Solana wallet. That is the Phantom they signed in with,
+ * or a wallet linked afterwards onto a Google account. The server re-reads it and trusts nothing sent from here.
  */
-export function usdcOption(user: WalletUser | null | undefined, enabled: boolean, cluster: 'devnet' | 'mainnet-beta'): { wallet: string; cluster: 'devnet' | 'mainnet-beta' } | null {
-  const wallet = enabled ? getSolanaAddress(user) : null;
+export function usdcOption(user: WalletUser | null | undefined, enabled: boolean, cluster: 'devnet' | 'mainnet-beta', linked?: string | null): { wallet: string; cluster: 'devnet' | 'mainnet-beta' } | null {
+  if (!enabled) return null;
+  const wallet = getSolanaAddress(user) ?? (isAddress(linked) ? linked : null);
   return wallet ? { wallet, cluster } : null;
 }
 
@@ -66,11 +70,14 @@ function packHtml(p: ShopProduct, m: ShopModel, best: boolean): string {
   const usdcLabel = here && m.rail === 'usdc' ? (m.usdcStep === 'confirm' ? 'Confirming…' : 'Approve…') : `Pay ${usdcText(p.usdcAmount ?? 0)} USDC`;
   const buttons = (card ? `<button class="btn primary shop-buy" type="button" data-a="buy" data-sku="${esc(p.sku)}"${can ? '' : ' disabled'}>${cardLabel}</button>` : '')
     + (usdc ? `<button class="btn shop-buy shop-usdc" type="button" data-a="buy-usdc" data-sku="${esc(p.sku)}"${can && !m.usdcUnconfirmed ? '' : ' disabled'}>${usdcLabel}</button>` : '');
+  const hint = m.linkWallet ? '' : '<small>Link Phantom to buy</small>';
   return `<div class="shop-card${best ? ' best' : ''}${usdc ? ' has-usdc' : ''}" data-sku="${esc(p.sku)}">
     <span class="shop-units" aria-hidden="true">🛡<b>${p.units}</b></span>
     <span class="shop-name"><strong>${p.units} Rank Shields</strong><em>${esc(perShield(p))}${best ? ' · best value' : ''}</em>${block ? `<small>${esc(block)}</small>` : ''}</span>
-    <span class="shop-pay">${buttons || '<small>Sign in with Phantom to pay with USDC</small>'}</span></div>`;
+    <span class="shop-pay">${buttons || hint}</span></div>`;
 }
+
+const LINK_STEP = `<div class="shop-link"><p class="note">USDC payments use a Phantom wallet on this account. Your rank stays here.</p><a class="btn primary" data-a="link-wallet" href="https://phantom.app/download">Link Phantom to buy</a></div>`;
 
 const USDC_FINE = (c: 'devnet' | 'mainnet-beta') => `<p class="shop-fine shop-usdc-note">${c === 'devnet'
   ? '<span class="shop-net" data-net="devnet">Devnet test USDC</span> Phantom must be on devnet. No real money.'
@@ -94,7 +101,7 @@ export function shopBodyHtml(m: ShopModel, o: ShopViewOpts = {}): string {
   const packs = m.info.products;
   if (!packs.length) return `<div class="shop-solo"><p class="shop-msg">Shop coming soon</p>${notice}</div>`;
   const best = packs[packs.length - 1];
-  return `<div class="shop-packs">${packs.map((p) => packHtml(p, m, p === best && packs.length > 1)).join('')}</div>
+  return `${m.linkWallet ? LINK_STEP : ''}<div class="shop-packs">${packs.map((p) => packHtml(p, m, p === best && packs.length > 1)).join('')}</div>
     <div class="shop-side">
       <p class="shop-held">Held <strong>${m.info.held} / ${m.info.cap}</strong></p>
       ${notice}${retry}

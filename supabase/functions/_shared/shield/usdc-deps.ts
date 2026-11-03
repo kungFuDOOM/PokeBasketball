@@ -1,7 +1,7 @@
 // Wires the USDC handlers to Supabase (service role) and the Solana RPC. Shared by the two Edge Functions; has no logic of its own.
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { Rpc } from '../pack/rpc.ts';
-import { solanaAddressOf, usdcConfig, type UsdcConfig } from './usdc-config.ts';
+import { paymentWallet, usdcConfig, type UsdcConfig } from './usdc-config.ts';
 import type { UsdcDeps } from './usdc-handlers.ts';
 import { fetchTransaction } from './usdc-verify.ts';
 
@@ -19,7 +19,9 @@ export function usdcRuntime(): { cfg: UsdcConfig; deps: UsdcDeps } {
     async userOf(jwt) {
       const { data, error } = await admin.auth.getUser(jwt);
       if (error || !data.user) return null;
-      return { id: data.user.id, anonymous: data.user.is_anonymous === true, wallet: solanaAddressOf(data.user) };
+      // A linked wallet lives on the profile, not on the Google identity. A missing function (migration not applied yet) leaves Phantom sign-in working.
+      const linked = await call<string | null>('pokejam_linked_wallet', { p_user: data.user.id }).catch(() => null);
+      return { id: data.user.id, anonymous: data.user.is_anonymous === true, wallet: paymentWallet(data.user, linked) };
     },
     createIntent: (a) => call('pokejam_shield_usdc_intent', {
       p_user: a.user, p_anonymous: a.anonymous, p_sku: a.sku, p_wallet: a.wallet, p_reference: a.reference, p_memo: a.memo,

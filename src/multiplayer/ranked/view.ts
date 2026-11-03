@@ -109,16 +109,16 @@ export function signInPanelHtml(phantom: PhantomAction, o: { busy?: boolean; err
   const dis = o.busy ? ' disabled' : '';
   const cls = google ? 'btn big' : 'btn primary big';
   const phantomBtn = phantom.kind === 'sign-in'
-    ? `<button class="${cls}" data-a="phantom"${dis}>Sign in with Phantom</button>`
+    ? `<button class="${cls}" data-a="phantom"${dis}>Continue with Phantom</button>`
     : phantom.kind === 'deeplink'
       // mountSignIn points this at Phantom during the tap. Until then it goes where a missing wallet would.
-      ? `<a class="${cls}" data-a="phantom-link" href="${esc(PHANTOM_DOWNLOAD_URL)}">Sign in with Phantom</a>`
+      ? `<a class="${cls}" data-a="phantom-link" href="${esc(PHANTOM_DOWNLOAD_URL)}">Continue with Phantom</a>`
       : `<a class="${cls}" data-a="phantom-install" href="${esc(phantom.href)}" target="_blank" rel="noopener">Get Phantom</a>`;
-  const googleBtn = google ? `<button class="btn primary big" data-a="google"${dis}>Sign in with Google</button>` : '';
+  const googleBtn = google ? `<button class="btn primary big" data-a="google"${dis}>Continue with Google</button>` : '';
   const how = google
-    ? 'Signing in with Google keeps your guest stats. A wallet is a fresh account. Signing only proves you own it. It costs nothing and never moves funds.'
+    ? 'Google or Phantom. You can play Ranked with either. Buying shields needs a linked Phantom wallet. Signing never moves funds.'
     : 'A wallet is a fresh account. Signing only proves you own it. It costs nothing and never moves funds.';
-  const phantomNote = phantom.kind === 'install' ? 'Phantom was not found in this browser. Install it, then come back and tap Sign in with Phantom.' : '';
+  const phantomNote = phantom.kind === 'install' ? 'Phantom was not found in this browser. Install it, then come back and tap Continue with Phantom.' : '';
   return `<div class="rk-signin" data-rk="signin">
     <p class="rk-why">${esc(o.why ?? 'Ranked needs a signed-in account so your rank is yours. Guests can still play Social and offline.')}</p>
     <div class="actions center rk-signin-btns">

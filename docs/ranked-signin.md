@@ -3,18 +3,22 @@
 Ranked needs a real account. Guests (Supabase anonymous users) can still play Social and offline; the Ranked screen shows a
 sign-in panel instead of Find match, and the server refuses guests (migration `20261113_pokejam_ranked_signin.sql`).
 
-Two ways to sign in:
+Two ways to sign in. Both can play Ranked. The public name is the username picked in the game. The Google email and the Google
+profile name are never shown.
 
-- **Google** (OAuth). A guest who taps it is *linked* (`linkIdentity`), so their name and stats carry over. If linking is off
-  or that Google account already has a PokeJam account, it falls back to a normal Google sign-in (that account opens instead).
-- **Phantom** (Sign in with Solana, `signInWithWeb3`). Supabase cannot link a wallet to a guest account, so this is a fresh
-  account. No transaction, no payment: the wallet only signs the login message.
-  Phones without an injected wallet hand off to the Phantom app: see [`phantom-mobile-signin.md`](phantom-mobile-signin.md).
+- **Continue with Google** (`signInWithOAuth`, provider `google`). A plain sign-in. It does not link the guest account.
+  Set `VITE_SIGNIN_GOOGLE=false` to hide the button. It is on otherwise.
+- **Continue with Phantom** (Sign in with Solana, `signInWithWeb3`). Unchanged. No transaction, no payment: the wallet only
+  signs the login message. Phones without an injected wallet hand off to the Phantom app: see
+  [`phantom-mobile-signin.md`](phantom-mobile-signin.md).
 
-**Launch flag:** Google is hidden unless the build sets `VITE_SIGNIN_GOOGLE=true` (`SIGNIN_GOOGLE` in `src/config/features.ts`);
-by default Ranked sign-in is Phantom-only, so the Google setup in section 1 can wait until the flag is turned on.
+Buying Rank Shields with USDC needs a Phantom wallet on that same account. A Google player taps **Link Phantom to buy**.
+`supabase-js` `linkIdentity` accepts OAuth and ID-token credentials only, not `signInWithWeb3`, so the wallet is not a second
+Supabase identity. The player signs a one-time message, `pokejam-link-wallet` checks the signature, and
+`pokejam_link_wallet` stores the address on that user id. Rank, history and shields stay, because they are already stored
+under that id. One wallet, one account. Payments with no wallet are refused (`no_wallet`) and the shop shows the link step.
 
-Nothing below has been done for you. Do these by hand in the dashboards, **before** turning Ranked on.
+Nothing below has been done for you. Do the Google steps by hand before this ships. Do not change anything else in Auth.
 
 ## 1. Google Cloud (OAuth client)
 
@@ -31,14 +35,40 @@ Nothing below has been done for you. Do these by hand in the dashboards, **befor
 Project `ksvfgxodbwfntqnahukn` (the shared gauntlet-legends project):
 
 1. **Authentication → Sign In / Providers → Google**: enable, paste the Client ID and Client secret, save.
-2. **Authentication → Sign In / Providers → Web3 Wallet**: enable **Solana**. (Wallet sign-in needs the Web3 provider on;
-   with Auth CAPTCHA on, `signInWithWeb3` passes no token, so check wallet sign-in works on a preview first.)
-3. **Authentication → URL Configuration**:
-   - Site URL: `https://pokejam.xyz`
-   - Redirect URLs: add `https://pokejam.xyz` and `https://pokejam.xyz/**` (add `http://localhost:5173/**` for local testing if wanted).
-4. **Authentication → Sign In / Providers → Allow manual linking: ON.** `linkIdentity` (guest → Google, keeping stats)
-   needs it. Without it the client falls back to a plain Google sign-in and a guest's stats stay on the guest account.
-5. Keep **Anonymous sign-ins** on (guests still play Social).
+2. **Web3 Wallet / Solana** stays on. Do not change it.
+3. **Authentication → URL Configuration** already allows `https://pokejam.xyz/**`. Leave it. That covers the Google return,
+   including the `?pj_google=` handoff query. (Add `http://localhost:5173/**` for local testing if wanted.)
+4. Manual linking stays as it is. This flow does not use `linkIdentity`.
+5. Keep **Anonymous sign-ins** on (guests still play Social). Web3 Solana stays on (Phantom sign-in).
+
+## iPhone home screen and Safari
+
+Google's redirect always opens Safari, never the installed home-screen app, and the two do not share storage. The PKCE code
+verifier has to be created in the browser that comes back, so the app does not start OAuth itself.
+
+1. The app makes a handoff key, shows a 4-character check code, and opens Safari on `/?pj_google=…&pj_gk=…`.
+2. Safari starts `signInWithOAuth` and Google returns to Safari. `public/google-return.js` takes the code out of the address
+   bar before analytics. A throwaway client (`pokejam.google.oauth`, not `pokejam.auth`) exchanges it.
+3. Safari seals the refresh token to the app's key and puts it in the existing Phantom relay. It does not sign out: that
+   would revoke the session.
+4. The player switches back to the app. The app calls `refreshSession` and reloads into Ranked.
+
+A normal Safari or desktop tab just redirects in place. The check code is the same idea as Phantom sign-in: the Safari page
+and the app show the same code, so a link the player did not start does not match. Phantom sign-in is a separate path and
+is not changed.
+
+## Linking Phantom, and abuse
+
+Apply `supabase/migrations/20261209_pokejam_google_signin.sql` (it is not applied by the repo), then deploy the
+`pokejam-link-wallet` Edge Function. Without the function the link button cannot store a wallet. USDC payments read the
+linked address with `pokejam_linked_wallet` after the identity check, and still refuse a player with neither.
+
+Google accounts are cheap. What already applied still applies, per user id: 5 placement matches before a rank is shown,
+bans, the human check when it is on, the judge, and the matchmaking rate limit. On top of that, an account created in the
+last 24 hours can start at most 10 ranked matches that day (enough to place and play a few). Every match that got an
+opponent counts, so leaving does not reset it. After a day the cap is gone. A new Google account is a new user id; the cap
+slows a pile of new accounts, and a ban does not follow them. The email is not stored in our tables and is not on the
+leaderboard.
 
 ## 3. Database
 

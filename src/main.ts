@@ -541,4 +541,14 @@ if (ANY_MULTIPLAYER) {
     } catch { return false; }
   })();
   if (phantomCb || phantomPending) void import('./wallet/phantomSheet').then((m) => m.resumePhantom(phantomCb));
+  const googleCb = (window as unknown as { __googleCb?: string }).__googleCb;
+  const linkCb = (window as unknown as { __linkCb?: string }).__linkCb;
+  const googlePending = (() => {
+    try { return !!(localStorage.getItem('pokejam.google.handoff') || localStorage.getItem('pokejam.google.landing')); } catch { return false; }
+  })();
+  const linkPending = (() => {
+    try { return !!(localStorage.getItem('pokejam.link.handoff') || localStorage.getItem('pokejam.link.pending') || localStorage.getItem('pokejam.link.landing')); } catch { return false; }
+  })();
+  if (googleCb || googlePending) void import('./wallet/googleSheet').then((m) => m.resumeGoogle(googleCb));
+  if (linkCb || linkPending) void import('./wallet/linkSheet').then((m) => m.resumeLink(linkCb));
 }
