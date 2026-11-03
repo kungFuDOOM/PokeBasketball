@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 
 const css: string = readFileSync('src/style.css', 'utf8');
 const main: string = readFileSync('src/main.ts', 'utf8');
+const adsCss: string = readFileSync('src/ads/ads.css', 'utf8');
 const rule = (sel: string) => css.match(new RegExp(`${sel.replace(/[.[\]():]/g, '\\$&')} \\{([^}]*)\\}`))?.[1] ?? '';
 
 describe('music button vs pause button', () => {
@@ -19,7 +20,27 @@ describe('music button vs pause button', () => {
     expect(r).toMatch(/right: calc\(max\(10px, env\(safe-area-inset-right, 0px\)\) \+ 40px \+ 10px\)/);
     expect(r).toMatch(/top: max\(8px, env\(safe-area-inset-top, 0px\)\)/);
   });
+  it('joins the Advertise page header, so it never floats over the plans or the checkout', () => {
+    expect(main).toMatch(/const dock = app\.querySelector\('[^']*\.ad-top[^']*'\)/);
+  });
   it('docked music buttons in menus keep their static layout', () => {
     expect(rule('.music-btn.docked')).toMatch(/position: static/);
+  });
+});
+
+describe('courtside ads stay clear of the phone and the HUD', () => {
+  it('the Advertise page keeps out of every safe area', () => {
+    const ads = adsCss.match(/\.ads \{[^}]*\}/)![0];
+    for (const side of ['top', 'right', 'bottom', 'left']) expect(ads).toMatch(new RegExp(`env\\(safe-area-inset-${side}`));
+    const narrow = adsCss.match(/@media \(max-width: 520px\) \{\s*\.ads \{[^}]*\}/)![0];
+    for (const side of ['top', 'right', 'bottom', 'left']) expect(narrow).toMatch(new RegExp(`env\\(safe-area-inset-${side}`));
+  });
+  it('the HUD banner starts below the LED board, which ends at 96 of 270 court rows', () => {
+    const top = Number(rule('.banner').match(/top: (\d+)%/)![1]);
+    expect(top).toBeGreaterThan((96 / 270) * 100);
+    expect(rule('.banner')).toMatch(/env\(safe-area-inset-left/);
+  });
+  it('the narrow title keeps the logo below the corner buttons under a notch', () => {
+    expect(css).toMatch(/\.menu-in \.title \{ padding-top: max\(44px, calc\(env\(safe-area-inset-top, 0px\) \+ 6px\)\); \}/);
   });
 });

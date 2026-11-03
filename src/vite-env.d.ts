@@ -4,6 +4,13 @@ interface ImportMetaEnv {
   readonly VITE_MODE_SOCIAL?: string;
   readonly VITE_MODE_RANKED?: string;
   readonly VITE_MODE_PACK_BATTLES?: string;
+  readonly VITE_MODE_ADS?: string;
+  /**
+   * Full URL of the live ads Edge Function (pokejam-ads-live). Optional: unset, the client uses
+   * VITE_SUPABASE_URL + /functions/v1/pokejam-ads-live. Set it for local development or a function hosted elsewhere;
+   * builds require https and add its origin to the CSP's connect-src (vite.config.ts adsApiOrigin).
+   */
+  readonly VITE_ADS_API?: string;
   /** "true" once judge_authoritative is on in pokejam_config: Ranked stops a game after 3 resyncs instead of 12. */
   readonly VITE_JUDGE_AUTHORITATIVE?: string;
   /** "true" shows the Rank Shield shop (needs Ranked). Stripe keys never go in the build: they are Supabase secrets. */

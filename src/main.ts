@@ -37,7 +37,7 @@ import { safeName } from './nameFilter';
 import { gamesScreen } from './screens/games';
 import type { TutorialStart } from './screens/tutorial';
 import { isTutorialDone } from './tutorial/store';
-import { ANY_MULTIPLAYER, MODE_SHIELD_STRIPE } from './config/features';
+import { ANY_MULTIPLAYER, MODE_ADS, MODE_SHIELD_STRIPE } from './config/features';
 import { badgeSvg } from './ui/badges';
 import { guardZoom } from './ui/noZoom';
 import { abbr, esc, guardNameInputs, lettersName, shuffle } from './util';
@@ -48,6 +48,8 @@ import { isIntroMode, startingFiveEnabled } from './screens/intro.logic';
 
 initErrorReports();
 installTouchGuard();
+// Booked billboard ads, for the courtside LED board in every game.
+if (MODE_ADS) void import('./ads/board').then((b) => b.startLiveAds());
 
 const app = document.querySelector<HTMLElement>('#app')!;
 const audio = new Audio();
@@ -97,9 +99,10 @@ const syncTrack = () => {
   music.setTrack(trackFor(app.className));
   // Games keep their own sound toggle in the pause menu, and that corner belongs to the pause button.
   musicBtn.hidden = app.classList.contains('screen-game');
-  // Draft boards and the franchise hub have buttons in that corner, so the music button joins them there;
+  // Draft boards, the franchise hub and the Advertise page have buttons in that corner, so the music button joins them
+  // there (on the Advertise page it scrolls away with the page instead of floating over the plans and checkout);
   // elsewhere it floats top-right.
-  const dock = app.querySelector('.draft-head .head-actions, .hub-head');
+  const dock = app.querySelector('.draft-head .head-actions, .hub-head, .ad-top');
   if (dock) {
     if (musicBtn.parentElement !== dock) dock.appendChild(musicBtn);
   } else if (musicBtn.parentElement !== document.body) document.body.appendChild(musicBtn);
@@ -158,6 +161,9 @@ function menu() {
       app.className = 'screen-menu';
       window.scrollTo(0, 0);
       void import('./multiplayer/hub').then((h) => h.multiplayerHub({ root: app, settings, audio }, menu));
+    },
+    onAdvertise: !MODE_ADS ? undefined : () => {
+      void import('./ads/screen').then((a) => a.openAdvertise(app, menu));
     },
     onProfile: () => {
       app.className = 'screen-menu';
@@ -530,6 +536,10 @@ if (introShot === 'offline' || introShot === 'online') {
     },
   });
 } else menu();
+// A link straight to the Advertise page: pokejam.xyz/#advertise.
+const advertise = () => { if (MODE_ADS && location.hash === '#advertise') void import('./ads/screen').then((a) => a.openAdvertise(app, menu)); };
+advertise();
+window.addEventListener('hashchange', advertise);
 
 // Back from the Phantom app, or reloaded while a Phantom sign-in is in progress in this tab.
 if (ANY_MULTIPLAYER) {
