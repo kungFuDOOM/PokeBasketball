@@ -664,6 +664,52 @@ describe('the live board keeps a short burn as credit, and never as airtime', ()
     expect(await t.db.sql('select signature from public.pokejam_live_ad_burn_credit')).toHaveLength(0);
   });
 
+  it("a burn whose memo names two bookings counts for the signer's booking only, once", async () => {
+    const t = await setup(LIVE);
+    const mine = await t.prepare({ plan: 'hour', text: 'mine' });
+    const { keypair: friend } = await generateKeypair();
+    // Their booking, created in their name. Preparing it would also ask them to burn, which this test doesn't.
+    const other = await t.db.call<Booking>('pokejam_live_ad_create', { p_wallet: friend.address, p_text: 'not mine', p_theme: 'gold', p_plan: 'hour', p_start: null });
+    const { message } = buildMessage(t.me.address, [
+      burnCheckedIx(SPL_2022_PROGRAM, MY_ACCOUNT, MINT, t.me.address, HOUR / 2n, 6),
+      // Theirs is named first. It must not take the burn or the credit.
+      memoIx(`pokejam-ad:${other.code}`),
+      memoIx(`pokejam-ad:${mine.body.booking.code}`),
+    ], base58Encode(randomBytes(32)));
+    const sig = t.land(await signTransactionBase64(base64Encode(unsignedTransaction(message, 1)), t.me));
+    const wrong = await t.call({ action: 'confirm', id: other.id, signature: sig });
+    expect(wrong.status).toBe(400);
+    expect(wrong.body.booking.state).toBe('pending');
+    expect((await t.call({ action: 'confirm', id: mine.body.booking.id, signature: sig })).body.booking.state).toBe('dust');
+    expect(await credit(t)).toBe(String(HOUR / 2n));
+    expect(await credit(t, friend.address)).toBe('0');
+    // Asking again, and the sweep, leave it on this wallet and off the other booking.
+    expect((await t.call({ action: 'confirm', id: mine.body.booking.id, signature: sig })).status).toBe(200);
+    await t.sweep();
+    expect((await t.call({ action: 'confirm', id: other.id })).body.booking.state).toBe('pending');
+    expect(await credit(t)).toBe(String(HOUR / 2n));
+    expect(await credit(t, friend.address)).toBe('0');
+  });
+
+  it("one transaction naming two of your own bookings doesn't hide your ads", async () => {
+    const t = await setup(LIVE);
+    const first = await t.prepare({ plan: 'hour', text: 'first ad' });
+    const second = await t.prepare({ plan: 'hour', text: 'second ad' });
+    const { message } = buildMessage(t.me.address, [
+      burnCheckedIx(SPL_2022_PROGRAM, MY_ACCOUNT, MINT, t.me.address, HOUR / 2n, 6),
+      memoIx(`pokejam-ad:${first.body.booking.code}`),
+      memoIx(`pokejam-ad:${second.body.booking.code}`),
+    ], base58Encode(randomBytes(32)));
+    t.land(await signTransactionBase64(base64Encode(unsignedTransaction(message, 1)), t.me));
+    const mine = await t.call({ action: 'mine', wallet: t.me.address });
+    expect(mine.status).toBe(200);
+    const ads = mine.body.ads as Booking[];
+    // Newest pending booking is looked at first, so the second one keeps the burn and the first stays unpaid.
+    const states = [ads.find((a) => a.id === first.body.booking.id)?.state, ads.find((a) => a.id === second.body.booking.id)?.state].sort();
+    expect(states).toEqual(['dust', 'pending']);
+    expect(await credit(t)).toBe(String(HOUR / 2n));
+  });
+
   it('a short burn is credited only after the same checks as any burn: finalized, age, decimals, mint', async () => {
     const t = await setup(LIVE);
     const p = await t.prepare({ plan: 'hour' });

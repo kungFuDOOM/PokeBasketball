@@ -13,7 +13,7 @@ import type { TeamDef } from '../game/types';
 import { AD_MAX, AD_THEMES, THEME_ORDER, adTextOk, boardAfterAd, cleanAdText, type AdTheme, type BoardAd } from '../data/ads';
 import { drawLedBoard } from '../game/ledBoard';
 import { esc } from '../util';
-import { ADS_CONFIGURED, AdsError, adsApi, exactTokens, explorer, replaceMessage, shortTokens, tokens, type Board, type Booking, type Quote } from './api';
+import { ADS_CONFIGURED, AdsError, adsApi, exactTokens, explorer, replaceMessage, shortTokens, type Board, type Booking, type Quote } from './api';
 import { applyBoard } from './board';
 import { BurnGuardError, burnNeeded, checkBurnTransaction } from './burnGuard';
 import { DM_CONTACTS, DM_ONLY, isPlan, offers, pickPlan, savePercent, type PayMethod, type Plan } from './plans';
@@ -176,12 +176,12 @@ export function openAdvertise(root: HTMLElement, back: () => void) {
       <section class="ad-section ad-how"><h2>How it works</h2>
         <ol>
           <li><b>Write it, see it.</b> The preview is the real board. Pick colours and how long it runs.</li>
-          <li><b>Burn or pay to book.</b> Your wallet signs one Solana transaction: a burn of the price from your own $PJAM, or a USDC transfer of the price from your own wallet. The site never holds your tokens or your keys.</li>
+          <li><b>Burn or pay to book.</b> Your wallet signs one Solana transaction: a burn of what the booking needs (the price, minus any burn credit) from your own $PJAM, or a USDC transfer of the price from your own wallet. The site never holds your tokens or your keys.</li>
           <li><b>Checked on-chain.</b> Our server reads the payment from Solana and puts your ad on the board, in every game, on every court.</li>
         </ol>
         <ul class="ad-fine">
           <li>The board has a few spots, and live ads take turns. If it fills up while you're signing, your ad runs at the next opening for the full time you paid for.</li>
-          <li>Payments are final: burns can't be undone or refunded, and USDC payments aren't refunded unless the law requires it. The page only ever builds a burn of exactly the price, and won't let you sign less. If a burn below the price still reaches us (only a hand-made transaction can), it books nothing, not even a shorter slot, but it isn't lost: it becomes burn credit for the wallet that made it, if that wallet signed it from its own account. The page shows that credit, and the next burn for a full slot is only the price minus your credit. A burn is always needed: if credit covers the whole price, it's 0.000001 $PJAM. Credit counts as tokens, so if a price goes up, your credit covers less of it. It only counts toward burn plans, belongs to that wallet, and can't be moved, refunded or cashed out. Each burn counts once. A burn or payment made through this page is found even if you close the page while it's going through: your wallet's history and a scan of the chain both look for it.</li>
+          <li>Payments are final: burns can't be undone or refunded, and USDC payments aren't refunded unless the law requires it. The page only ever builds a burn of exactly what the booking needs, and won't let you sign less. That amount is the price, minus burn credit this wallet already has. If a burn below the price still reaches us (only a hand-made transaction can), it books nothing, not even a shorter slot, but it isn't lost: it becomes burn credit for the wallet that signed it from its own account. The page shows that credit, and the next burn for a full slot is only the price minus your credit. A burn is always what books it: if credit already covers the price, that burn is one base unit (0.000001 $PJAM) and only the price is taken from your credit. Credit counts as tokens, so if a price goes up, your credit covers less of it. It only counts toward burn plans, belongs to that wallet, and can't be moved, refunded or cashed out. Each burn counts once. A burn or payment made through this page is found even if you close the page while it's going through: your wallet's history and a scan of the chain both look for it.</li>
           <li>Ads are checked before you burn: no explicit words, slurs, links, giveaway or wallet scams, or posing as staff. If moderators still take one down, you keep the time it had left and can run it with new text. Only wallets banned for abuse lose it.</li>
           <li>One spot per advertiser at a time, so nobody can buy the whole board.</li>
           <li>Every ad is marked AD on the board.</li>
@@ -371,7 +371,7 @@ export function openAdvertise(root: HTMLElement, back: () => void) {
       return `<button class="ad-plan ${o.plan === picked ? 'on' : ''}" data-plan="${o.plan}">
         ${save >= 5 ? `<span class="ad-save">${best ? 'Best value · ' : ''}Save ${save}%</span>` : ''}
         <strong>${PLAN_LABEL[o.plan].name}</strong>
-        <span class="ad-price">${o.amount === null ? '…' : method === 'usdc' ? usd(o.amount, dec) : tokens(o.amount, dec)}<small>${method === 'usdc' ? 'USDC' : '$PJAM'}</small></span>
+        <span class="ad-price">${o.amount === null ? '…' : method === 'usdc' ? usd(o.amount, dec) : exactTokens(o.amount, dec)}<small>${method === 'usdc' ? 'USDC' : '$PJAM'}</small></span>
         <small>${perHour}${PLAN_LABEL[o.plan].per}</small>
       </button>`;
     }).join('');
@@ -431,7 +431,7 @@ export function openAdvertise(root: HTMLElement, back: () => void) {
   function walletHtml(): string {
     const b = s.board;
     if (s.wallet) {
-      const bal = s.balance !== null && b ? `${tokens(s.balance, b.decimals)} $PJAM` : '…';
+      const bal = s.balance !== null && b ? `${exactTokens(s.balance, b.decimals)} $PJAM` : '…';
       return `<div class="ad-wallet">
         <img src="${esc(s.wallet.icon)}" alt="" width="28" height="28">
         <div><strong>${esc(shortAddress(s.wallet.address))}</strong><small>${esc(bal)}</small></div>
@@ -474,7 +474,7 @@ export function openAdvertise(root: HTMLElement, back: () => void) {
         <dl>
           <dt>Runs</dt><dd>${qp ? `${esc(fmtTime(qp.starts_at))} → ${esc(fmtTime(qp.ends_at))}` : '…'}</dd>
           <dt>Length</dt><dd>${PLAN_LABEL[s.plan].name}</dd>
-          ${credit > 0n && price !== null ? `<dt>Price</dt><dd>${tokens(price, dec)} <small>$PJAM</small></dd><dt>Your burn credit</dt><dd>−${exactTokens(price - need!, dec)} <small>$PJAM</small></dd>` : ''}
+          ${credit > 0n && price !== null ? `<dt>Price</dt><dd>${exactTokens(price, dec)} <small>$PJAM</small></dd><dt>Your burn credit</dt><dd>−${exactTokens(price - need!, dec)} <small>$PJAM</small></dd>` : ''}
           <dt>Burn</dt><dd class="ad-burn">${need !== null ? `${exactTokens(need, dec)} <small>$PJAM</small>` : '…'}</dd>
         </dl>
         ${qp?.moved ? `<p class="ad-warn">The board is full at that time, so this would start at the next opening.</p>` : ''}

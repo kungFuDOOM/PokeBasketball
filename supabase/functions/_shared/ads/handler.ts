@@ -420,7 +420,13 @@ export async function adsHandler(req: Request, cfg: AdsConfig, rawDeps: AdsDeps)
         let any = false;
         for (const b of pending) {
           const sigs = await findByMemo(cfg, deps.rpc, b).catch(() => []);
-          if (sigs.length && (await settle(cfg, deps, b, sigs)).booking.state !== 'pending') any = true;
+          if (!sigs.length) continue;
+          try {
+            if ((await settle(cfg, deps, b, sigs)).booking.state !== 'pending') any = true;
+          } catch (e) {
+            // One transaction can name two of this wallet's bookings. The first one keeps it; the second is already used.
+            if (!/burn already used/.test((e as Error).message)) throw e;
+          }
         }
         return json({ ads: any ? await deps.db<Booking[]>('pokejam_ad_mine', { p_wallet: w }) : mine });
       }

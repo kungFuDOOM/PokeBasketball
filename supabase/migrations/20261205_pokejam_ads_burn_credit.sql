@@ -1,8 +1,9 @@
 -- Burn credit for the LIVE ad board (pokejam-ads-live). Needs 20261204_pokejam_ads_live.sql.
 --
--- Why: burned tokens can't come back. The page only ever builds a burn of exactly the price, so a burn below the price can
--- only be a hand-made transaction. 20261204 booked nothing for it, which also made the tokens worthless. Now a short burn
--- is kept as CREDIT for the wallet that made it, and counts toward a full slot later.
+-- Why: burned tokens can't come back. The page only ever builds a burn of exactly what the booking needs (the price, minus
+-- this wallet's credit, or one base unit when credit already covers the price), so a burn below that can only be a
+-- hand-made transaction. 20261204 booked nothing for it, which also made the tokens worthless. Now a short burn is kept
+-- as CREDIT for the wallet that made it, and counts toward a full slot later.
 --
 -- The rules:
 --   - Credit is recorded only for a burn the Edge Function has already checked like any other burn (finalized, the right
@@ -13,8 +14,11 @@
 --     Credit pays only what the burn is short of, oldest rows first; whatever is left of a row stays credit. So the page's
 --     sum is exact, and credit never turns into airtime the advertiser didn't ask for. It is spent in the same transaction
 --     as the booking, under the same advisory lock every pay function takes, so it can't be spent twice.
---   - A burn that is already at least the price never touches credit. Nor does a banned wallet's burn: its credit stays.
+--   - A burn that is already at least the price never touches credit. Nor does a banned wallet's burn, or a burn naming an
+--     ad that was already taken down: spending credit there would book an ad that stays down, so the burn joins the credit.
 --   - NO pro-rated airtime: a short burn buys no slot, shorter or otherwise. Credit alone books nothing; it needs a burn.
+--   - The burner must be the booking's wallet for every burn, short or full. A direct call can't skip the check the
+--     Edge Function already makes. NaN, infinities, zero, negatives and fractions are refused and leave no credit.
 --   - An overpaid burn keeps the existing rule: it runs longer at the plan's rate. Credit never adds to that.
 --   - The price is still locked for a day (then the higher of the locked and current price applies); extra runs pay the
 --     current price. Credit is a number of tokens, not a price: a price rise after the credit was made applies in full.
@@ -101,7 +105,11 @@ begin
   end if;
   select * into a from public.pokejam_live_ads where id = p_id for update;
   if not found then raise exception 'no such booking'; end if;
-  if p_burned is null or p_burned = 'NaN' or p_burned <= 0 or p_burned <> trunc(p_burned) then raise exception 'nothing was burned'; end if;
+  -- Finite whole base units only. NaN and the infinities compare equal to themselves and would otherwise slip past "<= 0".
+  if p_burned is null or p_burned = 'NaN' or p_burned = 'Infinity' or p_burned = '-Infinity'
+     or p_burned <= 0 or p_burned <> trunc(p_burned) then raise exception 'nothing was burned'; end if;
+  -- Every burn, not only a short one. The Edge Function has checked the signer and the token-account owner; this is the last line.
+  if p_burner is distinct from a.wallet then raise exception 'that burn did not come from the wallet that booked this ad'; end if;
   if a.pay_method = 'usdc' then
     rate_price := public.pokejam_live_ad_price('hour');
     rate_hours := 1;
@@ -116,12 +124,9 @@ begin
 
   banned := exists (select 1 from public.pokejam_ad_bans where wallet = a.wallet);
   short_by := case when rate_price is null then null else greatest(rate_price - p_burned, 0) end;
-  -- Only the wallet's own burn can earn or spend its credit. The Edge Function has checked that; this is the last line.
-  if (short_by is null or short_by > 0) and p_burner is distinct from a.wallet then
-    raise exception 'that burn did not come from the wallet that booked this ad';
-  end if;
   -- Short on its own, and the wallet's unspent credit covers the rest: it will spend exactly the rest (below, with the booking).
-  if short_by > 0 and not banned and (select coalesce(sum(remaining), 0) from public.pokejam_live_ad_burn_credit
+  -- Not when the ad would stay down: a ban, or an ad moderators already took down. The burn joins the credit instead.
+  if short_by > 0 and not banned and a.state <> 'removed' and (select coalesce(sum(remaining), 0) from public.pokejam_live_ad_burn_credit
       where wallet = a.wallet and remaining > 0) >= short_by then
     taken := short_by;
   end if;
@@ -147,18 +152,22 @@ begin
   update public.pokejam_live_ads set state = 'paid', burn_sig = p_sig, burned = p_burned, burner = p_burner, paid_at = now(),
     starts_at = s, ends_at = s + make_interval(secs => secs), moved = s > want + interval '1 minute', credit_used = nullif(taken, 0)
   where id = a.id returning * into a;
-  -- Oldest first, in this transaction: the booking and the spend both happen, or neither does.
-  left_to_spend := taken;
-  for c in select * from public.pokejam_live_ad_burn_credit where wallet = a.wallet and remaining > 0
-    order by created_at, signature for update
-  loop
-    exit when left_to_spend = 0;
-    part := least(c.remaining, left_to_spend);
-    left_to_spend := left_to_spend - part;
-    update public.pokejam_live_ad_burn_credit set remaining = remaining - part,
-      used_for = case when remaining = part then a.id end, used_at = case when remaining = part then now() end
-    where signature = c.signature;
-  end loop;
+  -- Oldest first, in this transaction: the booking and the spend both happen, or neither does. A miss here rolls the booking back.
+  if taken > 0 then
+    left_to_spend := taken;
+    for c in select * from public.pokejam_live_ad_burn_credit where wallet = a.wallet and remaining > 0
+      order by created_at, signature for update
+    loop
+      exit when left_to_spend = 0;
+      part := least(c.remaining, left_to_spend);
+      left_to_spend := left_to_spend - part;
+      update public.pokejam_live_ad_burn_credit set remaining = remaining - part,
+        used_for = case when remaining = part then a.id end, used_at = case when remaining = part then now() end
+      where signature = c.signature and remaining = c.remaining;
+      if not found then raise exception 'credit changed while booking'; end if;
+    end loop;
+    if left_to_spend <> 0 then raise exception 'credit changed while booking'; end if;
+  end if;
   if banned or (a.extra_of is not null and exists (select 1 from public.pokejam_live_ads o where o.id = a.extra_of and o.state = 'removed')) then
     update public.pokejam_live_ads set state = 'removed', removed_at = now(), removed_left = secs,
       removed_reason = case when banned then 'wallet banned' else (select removed_reason from public.pokejam_live_ads where id = a.extra_of) end

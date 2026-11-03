@@ -272,15 +272,19 @@ describe('credit belongs to one wallet', () => {
     expect((await t.board()).live).toHaveLength(0);
   });
 
-  it('a burn by anyone but the booking wallet can neither earn nor spend credit, even if a caller forgets to check', async () => {
+  it('a burn by anyone but the booking wallet can neither earn nor spend credit, nor pay the ad, even if a caller forgets to check', async () => {
     const t = await setup();
     await t.pay(await t.create('hour'), HOUR - 1n, 'seed');
     const a = await t.create('hour');
     await expect(t.fn('pokejam_live_ad_pay', [a.id, 'stranger', '5', OTHER])).rejects.toThrow(/did not come from the wallet/);
     await expect(t.fn('pokejam_live_ad_pay', [a.id, 'stranger', '5', null])).rejects.toThrow(/did not come from the wallet/);
+    // A full-price burn is the same rule: it must not book the ad either.
+    await expect(t.fn('pokejam_live_ad_pay', [a.id, 'strangerfull', String(HOUR), OTHER])).rejects.toThrow(/did not come from the wallet/);
+    await expect(t.fn('pokejam_live_ad_pay', [a.id, 'strangerfull', String(HOUR * 2n), null])).rejects.toThrow(/did not come from the wallet/);
     expect(await t.credit()).toBe((HOUR - 1n).toString());
     expect(await t.credit(OTHER)).toBe('0');
     expect((await t.fn<Ad>('pokejam_live_ad_get', [a.id])).state).toBe('pending');
+    expect((await t.board()).live).toHaveLength(0);
   });
 
   it("a banned wallet's burn spends no credit: the burn joins its credit and nothing is booked", async () => {
@@ -289,6 +293,22 @@ describe('credit belongs to one wallet', () => {
     const a = await t.create('hour');
     await t.sql(`insert into public.pokejam_ad_bans(wallet, reason) values ($1, 'test')`, [WALLET]);
     expect((await t.pay(a, HOUR / 2n, 'after')).state).toBe('dust');
+    expect(await t.credit()).toBe(HOUR.toString());
+  });
+
+  it("a burn naming an ad that was taken down spends no credit: the burn joins it and no new run is booked", async () => {
+    const t = await setup();
+    const live = await t.pay(await t.create('hour'), HOUR, 'live');
+    await t.pay(await t.create('hour'), HOUR / 2n, 'seed');
+    await t.fn('pokejam_live_ad_remove', [live.id, 'rules', false]);
+    const again = await t.pay(live, HOUR / 2n, 'more');
+    expect(again).toMatchObject({ id: live.id, state: 'removed' });
+    expect(await t.sql(`select id from public.pokejam_live_ads where extra_of is not null`)).toHaveLength(0);
+    expect(await t.credit()).toBe(HOUR.toString());
+    expect((await t.board()).live).toHaveLength(0);
+    // A full-price burn still follows the old rule (recorded, and it stays down) and still does not spend the credit.
+    const full = await t.pay(live, HOUR, 'full');
+    expect(full).toMatchObject({ extra_of: live.id, state: 'removed' });
     expect(await t.credit()).toBe(HOUR.toString());
   });
 
@@ -340,6 +360,17 @@ describe('no pro-rated airtime, and the price lock still applies', () => {
     expect((await t.pay(old, 150_000_000_000n, 'b')).state).toBe('paid'); // 50 + 100 + 150 = 300
   });
 
+  it('credit that fills a week books the whole week, not an hour less', async () => {
+    const t = await setup();
+    const week = await t.create('week');
+    const price = BigInt(week.price);
+    await t.pay(week, price / 2n, 'half');
+    const paid = await t.pay(await t.create('week'), price - price / 2n, 'rest');
+    expect(Date.parse(paid.ends_at!) - Date.parse(paid.starts_at!)).toBe(168 * H);
+    expect(paid.credit_used).toBe((price / 2n).toString());
+    expect(await t.credit()).toBe('0');
+  });
+
   it('a price fall after the credit never undercuts the locked price of a fresh booking', async () => {
     const t = await setup();
     const a = await t.create('hour'); // locked 100k
@@ -352,7 +383,7 @@ describe('amounts', () => {
   it('refuses zero, negative, fractional and not-a-number burns, and they leave no credit', async () => {
     const t = await setup();
     const a = await t.create('hour');
-    for (const bad of ['0', '-5', '1.5', 'NaN']) await expect(t.pay(a, bad, `bad${bad}`)).rejects.toThrow(/nothing was burned/);
+    for (const bad of ['0', '-5', '1.5', 'NaN', 'Infinity', '-Infinity']) await expect(t.pay(a, bad, `bad${bad}`)).rejects.toThrow(/nothing was burned/);
     expect(await t.credit()).toBe('0');
     expect(await t.sql('select signature from public.pokejam_live_ad_burn_credit')).toHaveLength(0);
   });
@@ -397,6 +428,7 @@ describe('the booking and the spend happen together or not at all', () => {
       create trigger test_boom before update on public.pokejam_live_ad_burn_credit for each row execute function public.test_boom();`);
     await expect(t.pay(a, HOUR / 2n, 'retry')).rejects.toThrow(/boom/);
     expect(await t.fn<Ad>('pokejam_live_ad_get', [a.id])).toMatchObject({ state: 'pending', burn_sig: null, starts_at: null });
+    expect(await t.credit()).toBe((HOUR / 2n).toString());
     expect((await t.board()).live).toHaveLength(0);
   });
 });
