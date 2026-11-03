@@ -1,8 +1,9 @@
 // Rank Shield shop sheet as an HTML string, plus the "wait for the payment to land" poll. Pure (no DOM, no network), so it
 // unit-tests in node. Menus only: nothing here is drawn over the court or the in-game HUD. shop.ts wires the buttons.
-import { SIGNIN_GOOGLE } from '../../config/features';
+import { SIGNIN_DISCORD } from '../../config/features';
 import { shieldEmblemHtml } from '../../ranked/shieldEmblem';
 import { esc } from '../../util';
+import { isAddress } from '../../../supabase/functions/_shared/pack/bytes.ts';
 import { getSolanaAddress, type WalletUser } from '../../wallet/phantom';
 import type { ShopInfo, ShopProduct } from './serverRank';
 
@@ -31,6 +32,8 @@ export interface ShopModel {
   usdcStep?: 'approve' | 'confirm' | null;
   /** A sent USDC payment the server has not settled: offer to check it again, and no new USDC payment until it is settled. */
   usdcUnconfirmed?: boolean;
+  /** Signed in, USDC is on, and this account has no wallet yet. */
+  linkWallet?: boolean;
   /** No injected Phantom: the USDC control is a link that opens the Phantom app. */
   usdcHandOff?: boolean;
   /** Shown once the server has built the transfer and a tap must open Phantom. */
@@ -38,11 +41,12 @@ export interface ShopModel {
 }
 
 /**
- * The USDC option for this player: only when the flag is on AND the Supabase user signed in with a Phantom (Solana) wallet.
- * Guests and Google users get null. The server re-reads the wallet from the verified JWT and trusts nothing sent from here.
+ * The USDC option for this player: the flag is on, and they have a Solana wallet. That is the Phantom they signed in with,
+ * or a wallet linked afterwards onto a Discord account. The server re-reads it and trusts nothing sent from here.
  */
-export function usdcOption(user: WalletUser | null | undefined, enabled: boolean, cluster: 'devnet' | 'mainnet-beta'): { wallet: string; cluster: 'devnet' | 'mainnet-beta' } | null {
-  const wallet = enabled ? getSolanaAddress(user) : null;
+export function usdcOption(user: WalletUser | null | undefined, enabled: boolean, cluster: 'devnet' | 'mainnet-beta', linked?: string | null): { wallet: string; cluster: 'devnet' | 'mainnet-beta' } | null {
+  if (!enabled) return null;
+  const wallet = getSolanaAddress(user) ?? (isAddress(linked) ? linked : null);
   return wallet ? { wallet, cluster } : null;
 }
 
@@ -73,11 +77,14 @@ function packHtml(p: ShopProduct, m: ShopModel, best: boolean): string {
     ? `<a class="btn shop-buy shop-usdc" data-a="buy-usdc" data-sku="${esc(p.sku)}" href="#"${can && !m.usdcUnconfirmed ? '' : ' aria-disabled="true"'}>${usdcLabel}</a>`
     : `<button class="btn shop-buy shop-usdc" type="button" data-a="buy-usdc" data-sku="${esc(p.sku)}"${can && !m.usdcUnconfirmed ? '' : ' disabled'}>${usdcLabel}</button>`;
   const buttons = (card ? `<button class="btn primary shop-buy" type="button" data-a="buy" data-sku="${esc(p.sku)}"${can ? '' : ' disabled'}>${cardLabel}</button>` : '') + usdcBtn;
+  const hint = m.linkWallet ? '' : '<small>Link Phantom to buy</small>';
   return `<div class="shop-card${best ? ' best' : ''}${usdc ? ' has-usdc' : ''}" data-sku="${esc(p.sku)}">
     <span class="shop-units" aria-hidden="true">${shieldEmblemHtml()}<b>${p.units}</b></span>
     <span class="shop-name"><strong>${p.units} Rank Shields</strong><em>${esc(perShield(p))}${best ? ' · best value' : ''}</em>${block ? `<small>${esc(block)}</small>` : ''}</span>
-    <span class="shop-pay">${buttons || '<small>Sign in with Phantom to pay with USDC</small>'}</span></div>`;
+    <span class="shop-pay">${buttons || hint}</span></div>`;
 }
+
+const LINK_STEP = `<div class="shop-link"><p class="note">USDC payments use a Phantom wallet on this account. Your rank stays here.</p><a class="btn primary" data-a="link-wallet" href="https://phantom.app/download">Link Phantom to buy</a></div>`;
 
 const USDC_FINE = (c: 'devnet' | 'mainnet-beta') => `<p class="shop-fine shop-usdc-note">${c === 'devnet'
   ? '<span class="shop-net" data-net="devnet">Devnet test USDC</span> Phantom must be on devnet. No real money.'
@@ -86,8 +93,8 @@ const USDC_FINE = (c: 'devnet' | 'mainnet-beta') => `<p class="shop-fine shop-us
 const LINKS = `<span class="shop-links"><a href="terms.html#sale" target="_blank" rel="noopener">Terms of sale</a><a href="terms.html#refunds" target="_blank" rel="noopener">Refunds</a><a href="privacy.html" target="_blank" rel="noopener">Privacy</a></span>`;
 
 export interface ShopViewOpts {
-  /** Offer Google in the guest sign-in hint (default: the SIGNIN_GOOGLE build flag). */
-  google?: boolean;
+  /** Offer Discord in the guest sign-in hint (default: the SIGNIN_DISCORD build flag). */
+  discord?: boolean;
 }
 
 /** The sheet's contents (the part that re-renders): packs on the left, held / consent / links on the right. */
@@ -97,14 +104,14 @@ export function shopBodyHtml(m: ShopModel, o: ShopViewOpts = {}): string {
     ? `<a class="btn primary" data-a="phantom-approve" href="${esc(m.phantomApprove.href)}"${m.phantomApprove.blank ? ' target="_blank" rel="noopener"' : ''}>Approve in Phantom</a><p class="note">Check code <b>${esc(m.phantomApprove.code)}</b>. It must match the page Phantom opens. Then come back here.</p>`
     : '';
   if (!m.signedIn) {
-    return `<div class="shop-solo"><p class="shop-msg">Sign in to buy</p><p class="note">Rank Shields belong to your account. Sign in with ${(o.google ?? SIGNIN_GOOGLE) ? 'Google or Phantom' : 'Phantom'} from the Ranked screen.</p>${notice}</div>`;
+    return `<div class="shop-solo"><p class="shop-msg">Sign in to buy</p><p class="note">Rank Shields belong to your account. Sign in with ${(o.discord ?? SIGNIN_DISCORD) ? 'Discord or Phantom' : 'Phantom'} from the Ranked screen.</p>${notice}</div>`;
   }
   const retry = m.usdcUnconfirmed ? `<button class="btn primary" type="button" data-a="retry-usdc"${m.busy ? ' disabled' : ''}>Check my payment again</button>` : '';
   if (!m.info) return `<div class="shop-solo">${notice || '<p class="note">Loading the shop…</p>'}${retry}</div>`;
   const packs = m.info.products;
   if (!packs.length) return `<div class="shop-solo"><p class="shop-msg">Shop coming soon</p>${notice}</div>`;
   const best = packs[packs.length - 1];
-  return `<div class="shop-packs">${packs.map((p) => packHtml(p, m, p === best && packs.length > 1)).join('')}</div>
+  return `${m.linkWallet ? LINK_STEP : ''}<div class="shop-packs">${packs.map((p) => packHtml(p, m, p === best && packs.length > 1)).join('')}</div>
     <div class="shop-side">
       <p class="shop-held">Held <strong>${m.info.held} / ${m.info.cap}</strong></p>
       ${notice}${approve}${retry}

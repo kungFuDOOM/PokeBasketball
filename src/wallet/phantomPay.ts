@@ -162,7 +162,7 @@ export function beginPayConnect(store: Store, o: { loc: PayLoc; app: boolean; cl
   const q = new URLSearchParams({
     app_url: o.loc.origin,
     dapp_encryption_public_key: base58Encode(boxPublicKey(secret)),
-    redirect_link: redirectLink(o.loc, trip.id, o.app, undefined, o.hash),
+    redirect_link: redirectLink(o.loc, trip.id, o.app, undefined, undefined, undefined, o.hash),
     cluster: o.cluster,
   });
   return `${PHANTOM_UL}/connect?${q}`;
@@ -204,7 +204,7 @@ export function signAndSendLink(trip: PayTrip, loc: PayLoc, hash?: string): stri
   const q = new URLSearchParams({
     dapp_encryption_public_key: base58Encode(boxPublicKey(base58Decode(trip.secret))),
     nonce: sealed.nonce,
-    redirect_link: redirectLink(loc, trip.id, trip.app, undefined, hash),
+    redirect_link: redirectLink(loc, trip.id, trip.app, undefined, undefined, undefined, hash),
     payload: sealed.payload,
   });
   return `${PHANTOM_UL}/signAndSendTransaction?${q}`;

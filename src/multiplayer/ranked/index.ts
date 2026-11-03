@@ -1,7 +1,7 @@
 // Ranked: placements, tiers and divisions (rules in rank.ts).
 // Online (Supabase configured): two real players are matched by the server, which rates the match; the rating shown
 // here is always read back from the server. Not configured: the local mock (CPU opponent, rating in localStorage).
-import { SIGNIN_GOOGLE } from '../../config/features';
+import { SIGNIN_DISCORD } from '../../config/features';
 import { TIER_LIST_TEXT } from '../../ranked/rank';
 import { esc } from '../../util';
 import { evidenceQueue } from '../shared/evidenceQueue';
@@ -14,9 +14,12 @@ import { ONLINE_CONFIGURED, ensureSignedIn, supabase } from '../shared/supabase'
 import type { RankedMe } from './serverRank';
 import type { ModeContext } from '../shared/types';
 import { phantomAction, signInWithPhantom, WalletError } from '../../wallet/phantom';
+import { startDiscordHandoff } from '../../wallet/discordSheet';
+import { discordSignInPlan } from '../../wallet/discordHandoff';
+import { isStandalone } from '../../wallet/phantomLink';
 import { startPhantomLink } from '../../wallet/phantomSheet';
 import { guardStaleBuild } from '../../wallet/staleBuild';
-import { isGuest, signInWithGoogle } from './account';
+import { isGuest, signInWithDiscord } from './account';
 import { badgeImgForTier } from '../../ranked/badge';
 import { TIER_COLORS, tierLabel, view, type MatchOutcome, type RankView } from './rank';
 import { LocalRankStore } from './rankStore';
@@ -195,8 +198,9 @@ export async function rankedAccount(): Promise<SupabaseMatchService> {
 }
 
 /**
- * Ranked is for signed-in accounts: a Phantom wallet, plus Google (links the guest account so stats carry over) when the
- * SIGNIN_GOOGLE build flag is on. Also used by the profile screen.
+ * Ranked is for signed-in accounts: Continue with Discord or Continue with Phantom. Discord is a plain OAuth sign-in.
+ * On the iPhone home-screen app the return opens Safari, so Safari finishes it and the app picks up the session.
+ * Also used by the profile screen. VITE_SIGNIN_DISCORD=false hides Discord.
  */
 export function mountSignIn(slot: HTMLElement, o: { returnTo: 'ranked' | 'profile'; onSignedIn(): void; error?: string | null; busy?: boolean }) {
   slot.innerHTML = signInPanelHtml(phantomAction(), { busy: o.busy, error: o.error ?? null });
@@ -204,11 +208,15 @@ export function mountSignIn(slot: HTMLElement, o: { returnTo: 'ranked' | 'profil
   const sb = supabase();
   const again = (error: string | null = null, busy = false) => mountSignIn(slot, { ...o, error, busy });
   const fail = (e: unknown) => again(e instanceof Error ? e.message : 'Could not sign in.');
-  // Flag off: no Google button is rendered and this branch is dropped from the build, so Google sign-in can't be started.
-  if (SIGNIN_GOOGLE) {
-    slot.querySelector('[data-a="google"]')?.addEventListener('click', () => {
+  // Flag off: no Discord button is rendered and this branch is dropped from the build, so Discord sign-in can't be started.
+  if (SIGNIN_DISCORD) {
+    slot.querySelector('[data-a="discord"]')?.addEventListener('click', () => {
       again(null, true);
-      signInWithGoogle(sb, location, undefined, o.returnTo).catch(fail); // on success the browser leaves for Google and comes back to this page
+      if (discordSignInPlan(isStandalone(window as unknown as Parameters<typeof isStandalone>[0])) === 'handoff') {
+        startDiscordHandoff(o.returnTo); // Safari finishes; this app waits. Same-tab OAuth would lose the verifier.
+        return;
+      }
+      signInWithDiscord(sb, location, undefined, o.returnTo).catch(fail); // on success the browser leaves for Discord and comes back to this page
     });
   }
   slot.querySelector<HTMLAnchorElement>('[data-a="phantom-link"]')?.addEventListener('click', (e) => {

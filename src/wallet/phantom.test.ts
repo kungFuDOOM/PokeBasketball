@@ -89,13 +89,13 @@ describe('getSolanaAddress', () => {
   });
   it('falls back to user_metadata for a web3 user whose identities are missing', () => {
     expect(getSolanaAddress({ app_metadata: { provider: 'web3' }, user_metadata: { custom_claims: { address: ADDR, chain: 'solana' } } })).toBe(ADDR);
-    expect(getSolanaAddress({ app_metadata: { provider: 'google' }, user_metadata: { custom_claims: { address: ADDR, chain: 'solana' } } })).toBeNull();
+    expect(getSolanaAddress({ app_metadata: { provider: 'discord' }, user_metadata: { custom_claims: { address: ADDR, chain: 'solana' } } })).toBeNull();
   });
-  it('is null for guests, Google users, other chains, junk and nothing', () => {
+  it('is null for guests, Discord users, other chains, junk and nothing', () => {
     expect(getSolanaAddress(null)).toBeNull();
     expect(getSolanaAddress(undefined)).toBeNull();
     expect(getSolanaAddress({})).toBeNull();
-    expect(getSolanaAddress({ identities: [{ provider: 'google', identity_data: { email: 'a@b.c' } }] })).toBeNull();
+    expect(getSolanaAddress({ identities: [{ provider: 'discord', identity_data: { email: 'a@b.c' } }] })).toBeNull();
     expect(getSolanaAddress({ identities: [{ provider: 'web3', identity_data: { custom_claims: { address: '0xabc', chain: 'ethereum' } } }] })).toBeNull();
     expect(getSolanaAddress({ identities: [{ provider: 'web3', identity_data: { custom_claims: { address: 'short', chain: 'solana' } } }] })).toBeNull();
     expect(getSolanaAddress({ identities: [{ provider: 'web3', identity_data: null }] })).toBeNull();

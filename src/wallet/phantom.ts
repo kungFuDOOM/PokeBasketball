@@ -121,7 +121,7 @@ function fromRecord(r: Record<string, unknown> | null | undefined): string | nul
   return null;
 }
 
-/** The Solana address a Supabase user signed in with, or null (a Google or guest user, or a user with no wallet identity). */
+/** The Solana address a Supabase user signed in with, or null (a Discord or guest user, or a user with no wallet identity). */
 export function getSolanaAddress(user: WalletUser | null | undefined): string | null {
   if (!user) return null;
   for (const id of user.identities ?? []) {

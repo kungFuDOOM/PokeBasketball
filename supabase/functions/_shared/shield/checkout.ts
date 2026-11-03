@@ -67,7 +67,7 @@ export async function checkoutHandler(req: Request, cfg: CheckoutConfig, deps: C
   const jwt = req.headers.get('authorization')?.replace(/^Bearer\s+/i, '') ?? '';
   const user = jwt ? await deps.userOf(jwt).catch(() => null) : null;
   if (!user) return json({ error: 'Sign in to buy' }, 401);
-  if (user.anonymous) return json({ error: 'Sign in with Google or Phantom to buy', code: 'guest' }, 403);
+  if (user.anonymous) return json({ error: 'Sign in with Discord or Phantom to buy', code: 'guest' }, 403);
 
   let body: { sku?: unknown; ageConfirmed?: unknown } | null = null;
   try { body = (await req.json()) as typeof body; } catch { /* handled below */ }

@@ -1057,7 +1057,9 @@ button.gl-row:hover { border-color: var(--muted); }
 .gl-at { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.08em; }
 
 /* ---------- title screen: attract mode, PLAY, mode cards, ticker ---------- */
-.menu { min-height: 100vh; overflow: visible; padding-bottom: 64px; }
+.menu { min-height: 100vh; overflow: visible; padding-bottom: 64px; padding-top: max(40px, env(safe-area-inset-top, 0px)); }
+.shop-link { grid-column: 1 / -1; display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; }
+.shop-link .btn { text-decoration: none; min-height: 44px; }
 .attract { position: fixed; inset: 0; z-index: 0; background: #0a0d1f; overflow: hidden; }
 .attract-canvas { width: 100%; height: 100%; object-fit: cover; image-rendering: pixelated; display: block; }
 .attract-dim { position: absolute; inset: 0; background: linear-gradient(180deg, rgba(10, 13, 31, 0.72), rgba(10, 13, 31, 0.84) 60%, rgba(10, 13, 31, 0.94)); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); }
@@ -1766,7 +1768,8 @@ body:has(.pause-btn) .music-btn:not(.docked) {
   .rk-delta { font-size: 1.7rem; }
   .rk-signin { gap: 6px; }
   .rk-signin .note { margin: 2px 0; font-size: 0.8rem; }
-  .rk-signin-btns .btn.big { padding: 8px 14px; font-size: 1rem; }
+  .rk-signin-btns { flex-direction: column; align-items: stretch; }
+  .rk-signin-btns .btn.big { padding: 8px 14px; font-size: 1rem; width: 100%; }
   .rk-right .btn.big { padding: 9px 22px; font-size: 1.05rem; }
   .rk-ban, .rk-warn { padding: 4px 8px; }
   .rk-ban strong { font-size: 0.9rem; }
@@ -2468,6 +2471,11 @@ body:has(.pause-btn) .music-btn:not(.docked) {
 .ph-btns { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
 .ph-body .btn { text-decoration: none; display: inline-flex; align-items: center; justify-content: center; min-height: 44px; }
 .rk-signin a[data-a="phantom-browse"] { color: inherit; }
+
+/* Continue with Discord: blurple, icon beside the label, same 44px target as the Phantom button. */
+.rk-signin-btns .btn.dc-btn { background: #5865F2; border-color: #5865F2; color: #fff; gap: 8px; }
+.rk-signin-btns .btn.dc-btn:hover:not(:disabled) { background: #4752c4; border-color: #4752c4; }
+.rk-signin-btns .btn.dc-btn .dc-ico { flex: none; }
 
 /* Ranked results: the longer "FIND RANKED OPPONENT" label stays on a line where it fits and wraps evenly where it doesn't.
    Phones (844x390 / 932x430 landscape, 390x844 portrait): smaller type and padding, never wider than the screen. */

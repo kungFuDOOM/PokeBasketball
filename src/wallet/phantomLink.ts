@@ -6,6 +6,7 @@
 // random one-time id in the redirect link: it rejects unsolicited or replayed callbacks and keys the relay.
 import { base58Decode, base58Encode, isAddress, randomBytes } from '../../supabase/functions/_shared/pack/bytes.ts';
 import { boxBefore, boxOpen, boxPublicKey, boxSeal } from './nacl';
+import { buildLinkMessage, checkLinkMessage } from '../../supabase/functions/_shared/wallet/link';
 import { SIGN_IN_STATEMENT } from './phantom';
 import { authKey, classifyAuthError, diagMessage, keyFromRelay } from './phantomDiag';
 
@@ -13,6 +14,8 @@ export const PHANTOM_UL = 'https://phantom.com/ul/v1';
 /** The whole sign-in, and the lifetime of the signed message. */
 export const FLOW_TTL_MS = 10 * 60_000;
 export const PENDING_KEY = 'pokejam.phantom.pending';
+/** Wallet linking uses its own key, so a Phantom sign-in in progress is never touched. */
+export const LINK_PENDING_KEY = 'pokejam.link.pending';
 /** The query marker on the way back. public/phantom-return.js strips it, and Phantom's params, before anything else runs. */
 export const RETURN_PARAM = 'pj_phantom';
 export const APP_PARAM = 'pj_app';
@@ -47,6 +50,13 @@ export interface Pending {
   nonce?: string;
   /** Set when Safari is finishing a home-screen app's sign-in. */
   handoff?: HandoffRef;
+  /**
+   * Unset for sign-in (the SIWS message, unchanged). 'link' asks Phantom to sign a wallet-link message instead.
+   * Sign-in never sets this.
+   */
+  purpose?: 'link';
+  /** The signed-in user a link message is bound to. Sign-in leaves it unset. */
+  userId?: string;
 }
 
 /** Phantom's answer, trimmed to fields we use. Also the exact shape stored in the relay: ciphertext, or an error code. */
@@ -150,22 +160,35 @@ export function openFrom(phantomPub: string, secret: string, r: PhantomResponse,
 
 // ---------- Links ----------
 
-export function redirectLink(loc: { origin: string; pathname: string }, id: string, app: boolean, h?: HandoffRef, hash?: string): string {
-  const hand = h ? `&${HANDOFF_ID_PARAM}=${h.id}&${HANDOFF_PUB_PARAM}=${h.pub}&${HANDOFF_SECRET_PARAM}=${h.secret}` : '';
+export function redirectLink(loc: { origin: string; pathname: string }, id: string, app: boolean, h?: HandoffRef, flow?: 'link', userId?: string, hash?: string): string {
+  // Sign-in (flow unset) keeps the original parameter names. Linking uses its own, so a link callback is not a sign-in.
+  const link = flow === 'link';
+  const param = link ? 'pj_wlink' : RETURN_PARAM;
+  const appParam = link ? 'pj_wapp' : APP_PARAM;
+  const hand = h
+    ? link
+      ? `&pj_wh=${h.id}&pj_wk=${h.pub}&pj_ws=${h.secret}`
+      : `&${HANDOFF_ID_PARAM}=${h.id}&${HANDOFF_PUB_PARAM}=${h.pub}&${HANDOFF_SECRET_PARAM}=${h.secret}`
+    : '';
+  const uid = link && userId ? `&pj_uid=${encodeURIComponent(userId)}` : '';
   const frag = hash && /^#[A-Za-z0-9_-]*$/.test(hash) ? hash : '';
-  return `${loc.origin}${loc.pathname}?${RETURN_PARAM}=${id}${app ? `&${APP_PARAM}=1` : ''}${hand}${frag}`;
+  return `${loc.origin}${loc.pathname}?${param}=${id}${app ? `&${appParam}=1` : ''}${hand}${uid}${frag}`;
 }
 export const newId = () => base58Encode(randomBytes(32));
 
 /** Starts a sign-in: stores a fresh key and id in this tab and returns the connect link. Synchronous, so it can run inside a tap. */
-export function beginConnect(store: Store, o: { loc: { origin: string; pathname: string }; app: boolean; returnTo: ReturnTo; now: number }): string {
+export function beginConnect(store: Store, o: { loc: { origin: string; pathname: string }; app: boolean; returnTo: ReturnTo; now: number; purpose?: 'link'; userId?: string; storageKey?: string }): string {
   const secret = randomBytes(32);
-  const p: Pending = { v: 1, id: newId(), step: 'connect', app: o.app, opened: true, returnTo: o.returnTo, expiresAt: o.now + FLOW_TTL_MS, secret: base58Encode(secret) };
-  savePending(store, p);
+  const link = o.purpose === 'link';
+  const p: Pending = {
+    v: 1, id: newId(), step: 'connect', app: o.app, opened: true, returnTo: o.returnTo, expiresAt: o.now + FLOW_TTL_MS, secret: base58Encode(secret),
+    ...(link && o.userId ? { purpose: 'link' as const, userId: o.userId } : {}),
+  };
+  savePending(store, p, o.storageKey ?? (link ? LINK_PENDING_KEY : PENDING_KEY));
   const q = new URLSearchParams({
     app_url: o.loc.origin,
     dapp_encryption_public_key: base58Encode(boxPublicKey(secret)),
-    redirect_link: redirectLink(o.loc, p.id, o.app),
+    redirect_link: redirectLink(o.loc, p.id, o.app, undefined, link ? 'link' : undefined, o.userId),
     cluster: 'mainnet-beta',
   });
   return `${PHANTOM_UL}/connect?${q}`;
@@ -178,7 +201,7 @@ export function signLink(p: Pending, loc: { origin: string; pathname: string }):
   const q = new URLSearchParams({
     dapp_encryption_public_key: base58Encode(boxPublicKey(base58Decode(p.secret))),
     nonce: sealed.nonce,
-    redirect_link: redirectLink(loc, p.id, p.app, p.handoff),
+    redirect_link: redirectLink(loc, p.id, p.app, p.handoff, p.purpose === 'link' ? 'link' : undefined, p.userId),
     payload: sealed.payload,
   });
   return `${PHANTOM_UL}/signMessage?${q}`;
@@ -186,13 +209,14 @@ export function signLink(p: Pending, loc: { origin: string; pathname: string }):
 
 // ---------- Storage ----------
 
-export function savePending(store: Store, p: Pending): void { store.setItem(PENDING_KEY, JSON.stringify(p)); }
-export function clearPending(store: Store): void { try { store.removeItem(PENDING_KEY); } catch { /* nothing to clear */ } }
+const pendingKey = (key?: string) => key ?? PENDING_KEY;
+export function savePending(store: Store, p: Pending, key?: string): void { store.setItem(pendingKey(key), JSON.stringify(p)); }
+export function clearPending(store: Store, key?: string): void { try { store.removeItem(pendingKey(key)); } catch { /* nothing to clear */ } }
 
 /** The sign-in in progress in this tab. An expired one is wiped, and reported so the page can say so. */
-export function loadPending(store: Store, now: number): { pending: Pending | null; expired: boolean } {
+export function loadPending(store: Store, now: number, key?: string): { pending: Pending | null; expired: boolean } {
   let raw: string | null = null;
-  try { raw = store.getItem(PENDING_KEY); } catch { return { pending: null, expired: false }; }
+  try { raw = store.getItem(pendingKey(key)); } catch { return { pending: null, expired: false }; }
   if (!raw) return { pending: null, expired: false };
   try {
     // A record left by an older build may have other fields missing or shaped differently: only accept what this build can use.
@@ -201,14 +225,15 @@ export function loadPending(store: Store, now: number): { pending: Pending | nul
       if (p.expiresAt > now) {
         const h = p.handoff;
         const handoff = h && typeof h.id === 'string' && typeof h.pub === 'string' && typeof h.secret === 'string' ? h : undefined;
-        const { handoff: _drop, ...rest } = p;
-        return { pending: { ...rest, app: p.app === true, opened: p.opened === true, returnTo: p.returnTo === 'profile' ? 'profile' : 'ranked', ...(handoff ? { handoff } : {}) }, expired: false };
+        const purpose = p.purpose === 'link' && typeof p.userId === 'string' ? 'link' as const : undefined;
+        const { handoff: _drop, purpose: _purpose, userId: _userId, ...rest } = p;
+        return { pending: { ...rest, app: p.app === true, opened: p.opened === true, returnTo: p.returnTo === 'profile' ? 'profile' : 'ranked', ...(handoff ? { handoff } : {}), ...(purpose ? { purpose, userId: p.userId } : {}) }, expired: false };
       }
-      clearPending(store);
+      clearPending(store, key);
       return { pending: null, expired: true };
     }
   } catch { /* corrupt: wiped below */ }
-  clearPending(store);
+  clearPending(store, key);
   return { pending: null, expired: false };
 }
 
@@ -254,8 +279,9 @@ export type Advance =
  * Applies Phantom's answer to the trip in progress. The id is used up first, so the same callback can't be applied twice; any
  * failure wipes the key and session. Throws PhantomLinkError.
  */
-export function advance(store: Store, p: Pending, r: PhantomResponse, o: { host: string; uri: string; now: number }): Advance {
-  clearPending(store);
+export function advance(store: Store, p: Pending, r: PhantomResponse, o: { host: string; uri: string; now: number; storageKey?: string }): Advance {
+  const key = o.storageKey ?? (p.purpose === 'link' ? LINK_PENDING_KEY : PENDING_KEY);
+  clearPending(store, key);
   if (p.expiresAt <= o.now) throw stepError('EXP');
   if (r.e !== undefined) {
     throw phantomErrorFor(r.e, p.step);
@@ -268,11 +294,14 @@ export function advance(store: Store, p: Pending, r: PhantomResponse, o: { host:
     if (!isAddress(wallet) || typeof session !== 'string' || !session) throw stepError('CN-READ');
     const expiresAt = o.now + FLOW_TTL_MS;
     const nonce = base58Encode(randomBytes(16));
+    if (p.purpose === 'link' && !p.userId) throw stepError('STATE');
     const next: Pending = {
       ...p, id: newId(), step: 'sign', opened: false, expiresAt, phantomPub: r.k, session, wallet, nonce,
-      message: buildSiwsMessage({ host: o.host, uri: o.uri, address: wallet, nonce, issuedAt: o.now, expiresAt }),
+      message: p.purpose === 'link'
+        ? buildLinkMessage({ host: o.host, uri: o.uri, address: wallet, userId: p.userId ?? '', nonce, issuedAt: o.now, expiresAt })
+        : buildSiwsMessage({ host: o.host, uri: o.uri, address: wallet, nonce, issuedAt: o.now, expiresAt }),
     };
-    savePending(store, next);
+    savePending(store, next, key);
     return { kind: 'need-sign', pending: next };
   }
   if (!p.phantomPub || !p.message || !p.wallet || !p.nonce) throw stepError('STATE');
@@ -280,7 +309,14 @@ export function advance(store: Store, p: Pending, r: PhantomResponse, o: { host:
   let signature: Uint8Array | null = null;
   try { signature = typeof sig === 'string' ? base58Decode(sig) : null; } catch { /* reported below */ }
   if (!signature || signature.length !== 64) throw stepError('SG-READ');
-  checkSiwsMessage(p.message, { address: p.wallet, nonce: p.nonce, now: o.now });
+  if (p.purpose === 'link') {
+    const c = checkLinkMessage(p.message, { address: p.wallet, userId: p.userId ?? '', nonce: p.nonce, now: o.now });
+    if (c === 'expired') throw stepError('EXP');
+    if (c === 'mismatch') throw stepError('MIS');
+    if (c !== 'ok') throw stepError('STATE');
+  } else {
+    checkSiwsMessage(p.message, { address: p.wallet, nonce: p.nonce, now: o.now });
+  }
   return { kind: 'signed', message: p.message, signature };
 }
 

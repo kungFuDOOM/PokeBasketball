@@ -32,7 +32,7 @@ function preload(m: ModeCard): Promise<OpenMode> {
   return p;
 }
 
-/** `autoOpen`: a mode id to open straight away (coming back from a Google sign-in lands on Ranked, not the hub). */
+/** `autoOpen`: a mode id to open straight away (coming back from a Discord sign-in lands on Ranked, not the hub). */
 export function multiplayerHub(ctx: Omit<ModeContext, 'back'>, onExit: () => void, autoOpen?: string) {
   const { root } = ctx;
   const show = () => {

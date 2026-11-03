@@ -3,42 +3,72 @@
 Ranked needs a real account. Guests (Supabase anonymous users) can still play Social and offline; the Ranked screen shows a
 sign-in panel instead of Find match, and the server refuses guests (migration `20261113_pokejam_ranked_signin.sql`).
 
-Two ways to sign in:
+Two ways to sign in. Both can play Ranked. The public name is the username picked in the game. The Discord email and the Discord
+username are never shown.
 
-- **Google** (OAuth). A guest who taps it is *linked* (`linkIdentity`), so their name and stats carry over. If linking is off
-  or that Google account already has a PokeJam account, it falls back to a normal Google sign-in (that account opens instead).
-- **Phantom** (Sign in with Solana, `signInWithWeb3`). Supabase cannot link a wallet to a guest account, so this is a fresh
-  account. No transaction, no payment: the wallet only signs the login message.
-  Phones without an injected wallet hand off to the Phantom app: see [`phantom-mobile-signin.md`](phantom-mobile-signin.md).
+- **Continue with Discord** (`signInWithOAuth`, provider `discord`, scopes `identify email`). A plain sign-in. It does not link the guest account.
+  Set `VITE_SIGNIN_DISCORD=false` to hide the button. It is on otherwise.
+- **Continue with Phantom** (Sign in with Solana, `signInWithWeb3`). Unchanged. No transaction, no payment: the wallet only
+  signs the login message. Phones without an injected wallet hand off to the Phantom app: see
+  [`phantom-mobile-signin.md`](phantom-mobile-signin.md).
 
-**Launch flag:** Google is hidden unless the build sets `VITE_SIGNIN_GOOGLE=true` (`SIGNIN_GOOGLE` in `src/config/features.ts`);
-by default Ranked sign-in is Phantom-only, so the Google setup in section 1 can wait until the flag is turned on.
+Buying Rank Shields with USDC needs a Phantom wallet on that same account. A Discord player taps **Link Phantom to buy**.
+`supabase-js` `linkIdentity` accepts OAuth and ID-token credentials only, not `signInWithWeb3`, so the wallet is not a second
+Supabase identity. The player signs a one-time message, `pokejam-link-wallet` checks the signature, and
+`pokejam_link_wallet` stores the address on that user id. Rank, history and shields stay, because they are already stored
+under that id. One wallet, one account. Payments with no wallet are refused (`no_wallet`) and the shop shows the link step.
 
-Nothing below has been done for you. Do these by hand in the dashboards, **before** turning Ranked on.
+Nothing below has been done for you. Do the Discord steps by hand before this ships. The migration and the `pokejam-link-wallet` deploy (see "Linking Phantom") are still to do. Do not change anything else in Auth.
 
-## 1. Google Cloud (OAuth client)
+## 1. Discord Developer Portal (OAuth app)
 
-1. Google Cloud console → pick or create a project → **APIs & Services → OAuth consent screen**: External, app name
-   "PokeJam", support email, authorised domain `pokejam.xyz` and `supabase.co`. Scopes: `openid`, `email`, `profile` only.
-   Publish the app (Testing mode limits sign-in to listed test users).
-2. **APIs & Services → Credentials → Create credentials → OAuth client ID**, type **Web application**.
-   - Authorised JavaScript origins: `https://pokejam.xyz`
-   - **Authorised redirect URI: `https://ksvfgxodbwfntqnahukn.supabase.co/auth/v1/callback`**
-3. Copy the Client ID and Client secret.
+1. [Discord Developer Portal](https://discord.com/developers/applications) → the application **PokeJam** (client ID
+   `1567235435678408704`).
+2. **OAuth2 → Redirects**: add **`https://ksvfgxodbwfntqnahukn.supabase.co/auth/v1/callback`** and save.
+3. Scopes requested by the game: `identify` and `email` (the game asks for exactly these). Nothing else is needed.
+4. **OAuth2 → Client Secret**: copy it (reset it if you no longer have it).
 
 ## 2. Supabase dashboard
 
 Project `ksvfgxodbwfntqnahukn` (the shared gauntlet-legends project):
 
-1. **Authentication → Sign In / Providers → Google**: enable, paste the Client ID and Client secret, save.
-2. **Authentication → Sign In / Providers → Web3 Wallet**: enable **Solana**. (Wallet sign-in needs the Web3 provider on;
-   with Auth CAPTCHA on, `signInWithWeb3` passes no token, so check wallet sign-in works on a preview first.)
-3. **Authentication → URL Configuration**:
-   - Site URL: `https://pokejam.xyz`
-   - Redirect URLs: add `https://pokejam.xyz` and `https://pokejam.xyz/**` (add `http://localhost:5173/**` for local testing if wanted).
-4. **Authentication → Sign In / Providers → Allow manual linking: ON.** `linkIdentity` (guest → Google, keeping stats)
-   needs it. Without it the client falls back to a plain Google sign-in and a guest's stats stay on the guest account.
-5. Keep **Anonymous sign-ins** on (guests still play Social).
+1. **Authentication → Sign In / Providers → Discord**: enable, paste the Client ID (`1567235435678408704`) and the Client
+   Secret, save.
+2. **Web3 Wallet / Solana** stays on. Do not change it.
+3. **Authentication → URL Configuration** already allows `https://pokejam.xyz/**` and `https://www.pokejam.xyz/**`. Leave it.
+   That covers the Discord return, including the `?pj_discord=` handoff query. (Add `http://localhost:5173/**` for local
+   testing if wanted.)
+4. Manual linking is not used and stays as it is. This flow does not use `linkIdentity`.
+5. Keep **Anonymous sign-ins** on (guests still play Social). Web3 Solana stays on (Phantom sign-in).
+
+## iPhone home screen and Safari
+
+Discord's redirect always opens Safari, never the installed home-screen app, and the two do not share storage. The PKCE code
+verifier has to be created in the browser that comes back, so the app does not start OAuth itself.
+
+1. The app makes a handoff key, shows a 4-character check code, and opens Safari on `/?pj_discord=…&pj_gk=…`.
+2. Safari starts `signInWithOAuth` and Discord returns to Safari. `public/discord-return.js` takes the code out of the address
+   bar before analytics. A throwaway client (`pokejam.discord.oauth`, not `pokejam.auth`) exchanges it.
+3. Safari seals the refresh token to the app's key and puts it in the existing Phantom relay. It does not sign out: that
+   would revoke the session.
+4. The player switches back to the app. The app calls `refreshSession` and reloads into Ranked.
+
+A normal Safari or desktop tab just redirects in place. The check code is the same idea as Phantom sign-in: the Safari page
+and the app show the same code, so a link the player did not start does not match. Phantom sign-in is a separate path and
+is not changed.
+
+## Linking Phantom, and abuse
+
+Apply `supabase/migrations/20261209_pokejam_discord_signin.sql` (it is not applied by the repo), then deploy the
+`pokejam-link-wallet` Edge Function. Without the function the link button cannot store a wallet. USDC payments read the
+linked address with `pokejam_linked_wallet` after the identity check, and still refuse a player with neither.
+
+Discord accounts are cheap. What already applied still applies, per user id: 5 placement matches before a rank is shown,
+bans, the human check when it is on, the judge, and the matchmaking rate limit. On top of that, an account created in the
+last 24 hours can start at most 10 ranked matches that day (enough to place and play a few). Every match that got an
+opponent counts, so leaving does not reset it. After a day the cap is gone. A new Discord account is a new user id; the cap
+slows a pile of new accounts, and a ban does not follow them. The email is not stored in our tables and is not on the
+leaderboard.
 
 ## 3. Database
 
@@ -53,7 +83,7 @@ It is additive (`create or replace` only). It:
 ## 4. Turning Ranked on
 
 Ranked stays "Coming soon" until the build has `VITE_MODE_RANKED=true`. On the dev server only, `?ranked=1` shows it for
-screenshots and work; a production build ignores that parameter. Order: Google + Supabase settings, migrations
+screenshots and work; a production build ignores that parameter. Order: Discord + Supabase settings, migrations
 `20261111` → `20261113`, then flip the flag.
 
 ## The late dodge (migration 20261113)

@@ -61,7 +61,7 @@ async function gate(req: Request, cfg: UsdcConfig, deps: UsdcDeps, fn: string): 
   const user = jwt ? await deps.userOf(jwt).catch(() => null) : null;
   if (!user) return json({ error: 'Sign in to buy' }, 401);
   if (user.anonymous) return json({ error: 'Sign in with Phantom to pay with USDC', code: 'guest' }, 403);
-  if (!user.wallet) return json({ error: 'Sign in with Phantom to pay with USDC', code: 'no_wallet' }, 403);
+  if (!user.wallet) return json({ error: 'Link Phantom to buy', code: 'no_wallet' }, 403);
   return { user: user as UsdcUser & { wallet: string }, json };
 }
 

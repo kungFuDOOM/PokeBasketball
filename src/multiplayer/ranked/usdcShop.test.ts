@@ -7,7 +7,7 @@ import { USDC_NOTICES, shopBodyHtml, usdcOption, usdcText, type ShopModel } from
 import { UsdcPayError, clearPending, isFinalRefusal, loadPending, parseIntent, pollConfirm, prepareTransfer, savePending, sendAndRemember, signAndSend, type PayProvider, type PendingPayment } from './usdcPay';
 
 const PHANTOM_USER = { app_metadata: { provider: 'web3' }, identities: [{ provider: 'web3', identity_data: { custom_claims: { address: '5njibWvkiFg4LSyzq4ySFhyCsFEF4YhTqRLJo8Z9q16p', chain: 'solana' } } }] };
-const GOOGLE_USER = { app_metadata: { provider: 'google' }, identities: [{ provider: 'google', identity_data: { email: 'a@b.c' } }] };
+const DISCORD_USER = { app_metadata: { provider: 'discord' }, identities: [{ provider: 'discord', identity_data: { email: 'a@b.c' } }] };
 const GUEST_USER = { app_metadata: { provider: 'anonymous' }, identities: [] };
 
 const info = (o: Record<string, unknown> = {}) => parseShopInfo({
@@ -20,10 +20,10 @@ describe('who sees the USDC option', () => {
   it('only a player signed in with Phantom, and only with the flag on', () => {
     expect(usdcOption(PHANTOM_USER, true, 'devnet')).toEqual({ wallet: '5njibWvkiFg4LSyzq4ySFhyCsFEF4YhTqRLJo8Z9q16p', cluster: 'devnet' });
     expect(usdcOption(PHANTOM_USER, false, 'devnet')).toBeNull();
-    expect(usdcOption(GOOGLE_USER, true, 'devnet')).toBeNull();
+    expect(usdcOption(DISCORD_USER, true, 'devnet')).toBeNull();
     expect(usdcOption(GUEST_USER, true, 'devnet')).toBeNull();
     expect(usdcOption(null, true, 'devnet')).toBeNull();
-    expect(usdcOption({ app_metadata: { provider: 'google' }, user_metadata: { address: '5njibWvkiFg4LSyzq4ySFhyCsFEF4YhTqRLJo8Z9q16p' } }, true, 'devnet')).toBeNull();
+    expect(usdcOption({ app_metadata: { provider: 'discord' }, user_metadata: { address: '5njibWvkiFg4LSyzq4ySFhyCsFEF4YhTqRLJo8Z9q16p' } }, true, 'devnet')).toBeNull();
   });
   it('the build flags: USDC needs only Ranked + VITE_SHIELD_USDC, Stripe only Ranked + VITE_SHIELD_SHOP, shop is either', async () => {
     const flags = async (env: Record<string, string>) => {
@@ -287,10 +287,18 @@ describe('shop sheet by payment flags', () => {
     expect(hasCard(h)).toBe(true);
     expect(hasUsdc(h)).toBe(true);
   });
+  it('a signed-in player with no wallet gets a link step and no USDC button', () => {
+    const h = shopBodyHtml(model({ card: true, linkWallet: true }));
+    expect(h).toContain('data-a="link-wallet"');
+    expect(h).toContain('>Link Phantom to buy</a>');
+    expect(h).not.toContain('data-a="buy-usdc"');
+    expect(h).toContain('Your rank stays here');
+  });
   it('USDC only for a non-Phantom player: no buy buttons at all, a hint instead', () => {
     const h = shopBodyHtml(model({ card: false, usdc: null }));
     expect(hasCard(h) || hasUsdc(h)).toBe(false);
-    expect(h).toContain('Sign in with Phantom');
+    expect(h).toContain('Link Phantom to buy');
+    expect(h).not.toContain('data-a="buy-usdc"');
   });
   it('both off: no shop button on the hub', async () => {
     const { shieldItemHtml } = await import('./view');

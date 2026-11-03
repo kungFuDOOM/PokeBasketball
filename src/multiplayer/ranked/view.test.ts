@@ -127,34 +127,36 @@ describe('judge notes', () => {
 });
 
 describe('sign-in panel', () => {
-  it('offers Google and, depending on the device, Phantom sign-in, the phone deep link or the download page', () => {
-    const base = signInPanelHtml({ kind: 'sign-in' }, { google: true });
-    expect(base).toContain('data-a="google"');
+  it('offers Discord and, depending on the device, Phantom sign-in, the phone deep link or the download page', () => {
+    const base = signInPanelHtml({ kind: 'sign-in' }, { discord: true });
+    expect(base).toContain('data-a="discord"');
+    expect(base).toContain('Continue with Discord');
     expect(base).toContain('data-a="phantom"');
-    expect(base).toContain('Signing in with Google keeps your guest stats');
+    expect(base).toContain('Continue with Phantom');
+    expect(base).toContain('Buying shields needs a linked Phantom wallet');
     const phone = signInPanelHtml({ kind: 'deeplink', browseHref: 'https://phantom.app/ul/browse/x?ref=y' });
     expect(phone).toContain('data-a="phantom-link"');
-    expect(phone).toContain('>Sign in with Phantom</a>');
+    expect(phone).toContain('>Continue with Phantom</a>');
     expect(phone).toContain('href="https://phantom.app/ul/browse/x?ref=y"'); // the fallback: PokeJam in Phantom's browser
     const install = signInPanelHtml({ kind: 'install', href: 'https://phantom.app/download' });
     expect(install).toContain('https://phantom.app/download');
     expect(install).toContain('rel="noopener"');
   });
-  it('Phantom-only (Google flag off): no Google button, copy or gap, and Phantom is the primary button', () => {
+  it('Phantom-only (Discord flag off): no Discord button, copy or gap, and Phantom is the primary button', () => {
     for (const a of [{ kind: 'sign-in' as const }, { kind: 'deeplink' as const, browseHref: 'https://phantom.app/ul/x' }, { kind: 'install' as const, href: 'https://phantom.app/download' }]) {
-      const h = signInPanelHtml(a, { google: false });
-      expect(h).not.toMatch(/google/i);
+      const h = signInPanelHtml(a, { discord: false });
+      expect(h).not.toMatch(/discord/i);
       expect(h).toMatch(/class="btn primary big" data-a="phantom/);
       expect(h).toMatch(/rk-signin-btns">\s*<(button|a) /); // the Phantom button is the first child: no empty slot before it
     }
-    expect(signInPanelHtml({ kind: 'sign-in' }, { google: false })).toContain('A wallet is a fresh account');
+    expect(signInPanelHtml({ kind: 'sign-in' }, { discord: false })).toContain('A wallet is a fresh account');
   });
   it('escapes the error and disables the buttons while busy', () => {
-    const h = signInPanelHtml({ kind: 'sign-in' }, { busy: true, error: '<b>x</b>', google: true });
+    const h = signInPanelHtml({ kind: 'sign-in' }, { busy: true, error: '<b>x</b>', discord: true });
     expect(h).toContain('&lt;b&gt;');
     expect(h).not.toContain('<b>x</b>');
     expect(h.match(/ disabled/g)?.length).toBe(2);
-    expect(signInPanelHtml({ kind: 'sign-in' }, { busy: true, google: false }).match(/ disabled/g)?.length).toBe(1);
+    expect(signInPanelHtml({ kind: 'sign-in' }, { busy: true, discord: false }).match(/ disabled/g)?.length).toBe(1);
   });
   it('reads a quit ban from pokejam_ranked_me', () => {
     expect(parseMe({ status: 'ranked', div_idx: 7, points: 40, placements_played: 5, quit_offences: 2, ban_until: '2026-11-03T02:00:00Z', quit_at: '2026-11-03T01:45:00Z', quit_recent: true, cooldown_until: '2026-11-03T02:00:00Z' }))
