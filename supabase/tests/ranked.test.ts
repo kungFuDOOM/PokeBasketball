@@ -417,7 +417,7 @@ describe('SQL equals the TS rank module', () => {
   it('a full match through report_result lands where the TS module says', async () => {
     const t = await testDb();
     const [a, b] = [await t.user('A'), await t.user('B')];
-    await setRank(t, a, { div: 22, points: 90 }); // Pokémon Master 2
+    await setRank(t, a, { div: 22, points: 90 }); // PokeJam Master 2
     await setRank(t, b, { div: 23, points: 10 });
     const p = await rankedPair(t, a, b);
     await finish(p, 55, 40);

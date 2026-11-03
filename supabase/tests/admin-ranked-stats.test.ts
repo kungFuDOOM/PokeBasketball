@@ -54,7 +54,7 @@ describe('pokejam_admin_ranked_stats', () => {
     expect(empty.shields_held).toBe(0);
     expect(empty.d1).toMatchObject({ matches: 0, players: 0, new_profiles: 0, shields_used: 0, shield_packs: 0 });
     expect((empty.days as unknown[])).toHaveLength(30);
-    expect((empty.ranks as { tier: string }[]).map((r) => r.tier)).toEqual([...ALL_TIER_NAMES]);
+    expect((empty.ranks as { tier: string }[]).map((r) => r.tier)).toEqual(ALL_TIER_NAMES.map((n) => (n === 'PokeJam Master' ? 'Pokémon Master' : n))); // SQL returns the stored wire id
     expect(await mod.call('pokejam_admin_ranked_players')).toEqual({ season_number: null, season_status: null, players: [] });
     // Reading stats must not open a season.
     expect(Number((await t.sql('select count(*)::int as n from public.pokejam_seasons'))[0].n)).toBe(0);
@@ -137,7 +137,7 @@ describe('pokejam_admin_ranked_stats', () => {
     expect(s.d7).toMatchObject({ matches: 3, players: 3, new_profiles: 1, forfeits: 1, leaves: 1, voids: 0, shields_used: 1, shield_packs: 1, shield_units: 3 });
     expect(s.d30).toMatchObject({ matches: 4, players: 3, new_profiles: 3, forfeits: 1, leaves: 1, voids: 0, shields_used: 2, shield_packs: 2, shield_units: 17 });
     expect(s.shields_held).toBe(7);
-    expect(s.ranks.map((r) => r.tier)).toEqual([...ALL_TIER_NAMES]);
+    expect(s.ranks.map((r) => r.tier)).toEqual(ALL_TIER_NAMES.map((n) => (n === 'PokeJam Master' ? 'Pokémon Master' : n))); // SQL returns the stored wire id
     expect(Object.fromEntries(s.ranks.map((r) => [r.tier, r.players]))).toMatchObject({ Bronze: 0, Gold: 1, Prism: 1, 'Pokémon Master': 0, Zenith: 1 });
     expect(s.season).toMatchObject({ number: 1, status: 'active', length_weeks: 6, ranked: 3, placing: 1 });
     expect(s.previous_season).toBeNull();

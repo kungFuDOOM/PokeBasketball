@@ -34,9 +34,10 @@ describe('tier boundaries', () => {
     const v = view(placed(ladder));
     expect(`${v.tier} ${v.division}`).toBe(label);
   });
-  it('Pokémon Master has no divisions', () => {
+  it('PokeJam Master has no divisions', () => {
     const v = view(placed(TIER_START['Pokémon Master'] + 40));
     expect(v.tier).toBe('Pokémon Master');
+    expect(v.label).toBe('PokeJam Master · 40 RP');
     expect(v.division).toBeNull();
     expect(v.rp).toBe(40);
   });
@@ -48,9 +49,10 @@ describe('promotion and demotion', () => {
     expect(o.after.label.startsWith('Silver II')).toBe(true);
     expect(o.event).toBe('promoted');
   });
-  it('promotes into Pokémon Master', () => {
+  it('promotes into PokeJam Master', () => {
     const o = applyResult(placed(2195), 2195, true);
     expect(o.after.tier).toBe('Pokémon Master');
+    expect(o.after.label.startsWith('PokeJam Master')).toBe(true);
     expect(o.event).toBe('promoted');
   });
   it('shields at a division floor, then demotes', () => {
@@ -69,7 +71,7 @@ describe('promotion and demotion', () => {
     const s = applyResult(placed(1302), 1300, false).state;
     expect(applyResult(s, 1300, true).state.shield).toBe(0);
   });
-  it('Pokémon Master drops back to Diamond when losing below 2200', () => {
+  it('PokeJam Master drops back to Diamond when losing below 2200', () => {
     const o = applyResult(placed(2205), 2205, false);
     expect(o.after.tier).toBe('Diamond');
     expect(o.event).toBe('demoted');

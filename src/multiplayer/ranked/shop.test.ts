@@ -34,6 +34,8 @@ describe('shop sheet', () => {
     expect(html).toContain('$0.57 each');
     expect(html).toContain('$0.50 each');
     expect(html).toContain('Held <strong>3 / 14</strong>');
+    expect(html).toContain('class="rk-shield-ico"');
+    expect(html).not.toMatch(/🛡|🛡️/);
     expect(html).toContain('Secure checkout by Stripe');
     expect(html).toContain("I'm 18+ or have a parent's permission");
     expect(html).toMatch(/terms\.html#sale[^>]*>Terms of sale/);

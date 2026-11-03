@@ -1629,10 +1629,12 @@ body:has(.pause-btn) .music-btn:not(.docked) {
 .rk-pips i.on { background: var(--accent); border-color: var(--accent); }
 .rk-shield { font-size: 0.9rem; color: var(--muted); }
 .rk-shield.on, .rk-shield.used { color: var(--accent); }
+/* Rank Shield emblem (shieldEmblem.ts): same box as the emoji it replaced, so counts and labels do not shift. */
+.rk-shield-ico { display: inline-block; width: 1em; height: 1em; vertical-align: -0.125em; flex: none; pointer-events: none; }
 /* Rank Shield item (menus only): chip with count + ARM toggle, weekly challenge card, queue tag. */
 .rk-item { width: 100%; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 2px 10px; padding: 6px 10px; border: 2px solid var(--line); border-radius: 10px; background: rgba(0, 0, 0, 0.25); }
 .rk-item.armed { border-color: var(--accent); }
-.rk-item-ico { font-size: 1.5rem; line-height: 1; }
+.rk-item-ico { display: grid; place-items: center; width: 1em; height: 1em; font-size: 1.5rem; line-height: 1; }
 .rk-item-name { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
 .rk-item-name strong { font: 700 1.05rem var(--sport); letter-spacing: 0.04em; text-transform: uppercase; }
 .rk-item-count { font: 0.7rem var(--pixel); color: var(--accent); }
@@ -1647,6 +1649,7 @@ body:has(.pause-btn) .music-btn:not(.docked) {
 .rk-reward { font: 0.55rem var(--pixel); padding: 4px 8px; border-radius: 5px; background: var(--panel-2); border: 2px solid var(--line); color: var(--accent); }
 .rk-weekly.done .rk-reward { color: var(--good); }
 .rk-queue-tag { margin: 0 auto 8px; width: fit-content; font: 0.6rem var(--pixel); padding: 5px 10px; border-radius: 6px; border: 2px solid var(--accent); color: var(--accent); background: rgba(0, 0, 0, 0.25); }
+.rk-queue-tag .rk-shield-ico { width: 14px; height: 14px; vertical-align: -3px; }
 /* Ranked quit warning and ban. In the menu column, never over the court or the HUD. */
 .rk-ban, .rk-warn { width: 100%; margin: 0; padding: 8px 10px; border-radius: 10px; text-align: center; overflow-wrap: anywhere; box-sizing: border-box; }
 .rk-ban { border: 2px solid #ff8a7a; background: rgba(0, 0, 0, 0.25); color: #ff8a7a; }

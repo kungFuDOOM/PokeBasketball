@@ -1,13 +1,14 @@
 // Season 1 Ranked points system (docs/ranked-plan.md). Pure: no DOM, no network.
-// The SQL in supabase/migrations/20261111_pokejam_ranked.sql (pokejam_ranked_step & co) mirrors this file exactly;
-// keep the constants and the integer arithmetic in sync (supabase/tests/ranked.test.ts compares them).
+// The SQL in supabase/migrations/20261111_pokejam_ranked.sql (pokejam_ranked_step & co) mirrors the constants and
+// the integer arithmetic here (supabase/tests/ranked.test.ts compares them). The name players read is "PokeJam Master".
+// pokejam_ranked_tier_name still returns the stored label "Pokémon Master"; that wire value is not renamed. NET_VERSION stays 3.
 //
 // All performance maths is done in integers (m = diff / total as a fraction), so TS and SQL round identically.
 
 export const DIV_POINTS = 100;
-/** Highest ordinary division (Pokémon Master 1). */
+/** Highest ordinary division (PokeJam Master 1). */
 export const TOP_DIV = 23;
-/** Zenith: points-only tier above Pokémon Master 1. Stored as div_idx 24, `points` = Zenith points. */
+/** Zenith: points-only tier above PokeJam Master 1. Stored as div_idx 24, `points` = Zenith points. */
 export const ZENITH_IDX = 24;
 export const ZENITH_ENTRY_POINTS = 100;
 export const ZENITH_FLOOR_POINTS = 50;
@@ -16,15 +17,15 @@ export const ZENITH_DECAY_POINTS = 25;
 /** Points you land on after dropping into the division below. */
 export const DEMOTE_POINTS = 75;
 
-export const TIERS = ['Bronze', 'Silver', 'Gold', 'Platinum', 'Diamond', 'Prism', 'Eclipse', 'Pokémon Master'] as const;
+export const TIERS = ['Bronze', 'Silver', 'Gold', 'Platinum', 'Diamond', 'Prism', 'Eclipse', 'PokeJam Master'] as const;
 /** Every rank tier in climbing order, Zenith last. Source for user-facing rank lists. */
 export const ALL_TIER_NAMES: readonly string[] = [...TIERS, 'Zenith'];
-/** "Bronze, Silver, ..., Eclipse, Pokémon Master, then Zenith" (all 9 tiers, in order). */
+/** "Bronze, Silver, ..., Eclipse, PokeJam Master, then Zenith" (all 9 tiers, in order). */
 export const TIER_LIST_TEXT = `${ALL_TIER_NAMES.slice(0, -1).join(', ')}, then ${ALL_TIER_NAMES[ALL_TIER_NAMES.length - 1]}`;
 /** "Bronze to Zenith". */
 export const TIER_RANGE_TEXT = `${ALL_TIER_NAMES[0]} to ${ALL_TIER_NAMES[ALL_TIER_NAMES.length - 1]}`;
 
-/** Base win / full-cost loss per tier (Zenith uses Pokémon Master's). */
+/** Base win / full-cost loss per tier (Zenith uses PokeJam Master's). */
 export const TIER_WIN = [30, 27, 25, 24, 23, 22, 21, 20] as const;
 export const TIER_LOSS = [19, 19, 19, 20, 20, 21, 21, 22] as const;
 
@@ -57,7 +58,7 @@ export function tierName(divIdx: number): string {
 export function divisionOf(divIdx: number): number | null {
   return divIdx >= ZENITH_IDX ? null : 3 - (divIdx % 3);
 }
-/** "Gold 2", "Pokémon Master 1", "Zenith". */
+/** "Gold 2", "PokeJam Master 1", "Zenith". */
 export function rankName(divIdx: number): string {
   const d = divisionOf(divIdx);
   return d === null ? 'Zenith' : `${tierName(divIdx)} ${d}`;

@@ -59,7 +59,7 @@ export function shortWallet(wallet: string | null | undefined): string {
 }
 
 export function rankedStatsHtml(s: RankedStats): string {
-  const counts = new Map((s.ranks ?? []).map((r) => [r.tier, r.players]));
+  const counts = new Map((s.ranks ?? []).map((r) => [r.tier === 'Pokémon Master' ? 'PokeJam Master' : r.tier, r.players])) // wire id -> display name;
   const season = s.season
     ? `Season ${s.season.number} (${esc(s.season.status)}), ${s.season.length_weeks} weeks, ${esc(pt(s.season.starts_at))} – ${esc(pt(s.season.ends_at))} PT. ${s.season.ranked} ranked, ${s.season.placing} still placing.`
     : 'No season is open.';

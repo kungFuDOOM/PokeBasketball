@@ -1,6 +1,7 @@
 // Rank Shield shop sheet as an HTML string, plus the "wait for the payment to land" poll. Pure (no DOM, no network), so it
 // unit-tests in node. Menus only: nothing here is drawn over the court or the in-game HUD. shop.ts wires the buttons.
 import { SIGNIN_GOOGLE } from '../../config/features';
+import { shieldEmblemHtml } from '../../ranked/shieldEmblem';
 import { esc } from '../../util';
 import { getSolanaAddress, type WalletUser } from '../../wallet/phantom';
 import type { ShopInfo, ShopProduct } from './serverRank';
@@ -73,7 +74,7 @@ function packHtml(p: ShopProduct, m: ShopModel, best: boolean): string {
     : `<button class="btn shop-buy shop-usdc" type="button" data-a="buy-usdc" data-sku="${esc(p.sku)}"${can && !m.usdcUnconfirmed ? '' : ' disabled'}>${usdcLabel}</button>`;
   const buttons = (card ? `<button class="btn primary shop-buy" type="button" data-a="buy" data-sku="${esc(p.sku)}"${can ? '' : ' disabled'}>${cardLabel}</button>` : '') + usdcBtn;
   return `<div class="shop-card${best ? ' best' : ''}${usdc ? ' has-usdc' : ''}" data-sku="${esc(p.sku)}">
-    <span class="shop-units" aria-hidden="true">🛡<b>${p.units}</b></span>
+    <span class="shop-units" aria-hidden="true">${shieldEmblemHtml()}<b>${p.units}</b></span>
     <span class="shop-name"><strong>${p.units} Rank Shields</strong><em>${esc(perShield(p))}${best ? ' · best value' : ''}</em>${block ? `<small>${esc(block)}</small>` : ''}</span>
     <span class="shop-pay">${buttons || '<small>Sign in with Phantom to pay with USDC</small>'}</span></div>`;
 }

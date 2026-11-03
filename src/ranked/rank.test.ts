@@ -17,8 +17,8 @@ describe('names and ladder score', () => {
     expect(rankName(7)).toBe('Gold 2');
     expect(rankName(15)).toBe('Prism 3');
     expect(rankName(18)).toBe('Eclipse 3');
-    expect(rankName(21)).toBe('Pokémon Master 3');
-    expect(rankName(23)).toBe('Pokémon Master 1');
+    expect(rankName(21)).toBe('PokeJam Master 3');
+    expect(rankName(23)).toBe('PokeJam Master 1');
     expect(rankName(24)).toBe('Zenith');
     expect(tierName(14)).toBe('Diamond');
     expect(rankLabel(7, 40)).toBe('Gold 2 - 40 pts');
@@ -202,12 +202,12 @@ describe('Bronze 3 floor', () => {
 });
 
 describe('Zenith', () => {
-  it('enters at exactly 100 points on promotion from Pokémon Master 1', () => {
+  it('enters at exactly 100 points on promotion from PokeJam Master 1', () => {
     const r = applyResult(at(23, 95), { won: true, margin: NO_MARGIN, oppIdx: 23 });
     expect(r.state).toMatchObject({ divIdx: 24, points: 100 });
     expect(r.event).toBe('zenith');
   });
-  it('has no cap and uses Pokémon Master values', () => {
+  it('has no cap and uses PokeJam Master values', () => {
     const r = applyResult(at(24, 1000), { won: true, margin: m(70, 20), oppIdx: 24 });
     expect(r.delta).toBe(30);
     expect(r.state.points).toBe(1030);
@@ -216,7 +216,7 @@ describe('Zenith', () => {
     const r = applyResult(at(24, 100), { won: false, margin: m(70, 20), oppIdx: 24 });
     expect(r.state).toMatchObject({ divIdx: 24, points: 78 });
   });
-  it('drops to Pokémon Master 1 at 75 points when a loss takes points below 0 (no shield)', () => {
+  it('drops to PokeJam Master 1 at 75 points when a loss takes points below 0 (no shield)', () => {
     const r = applyResult(at(24, 10), { won: false, margin: m(70, 20), oppIdx: 24 });
     expect(r.state).toMatchObject({ divIdx: 23, points: 75 });
     expect(r.event).toBe('demoted');
@@ -321,8 +321,8 @@ describe('leavers', () => {
 describe('rank list copy', () => {
   it('lists all 9 tiers in order, Zenith last', async () => {
     const { ALL_TIER_NAMES, TIER_LIST_TEXT, TIER_RANGE_TEXT } = await import('./rank');
-    expect(ALL_TIER_NAMES).toEqual(['Bronze', 'Silver', 'Gold', 'Platinum', 'Diamond', 'Prism', 'Eclipse', 'Pokémon Master', 'Zenith']);
-    expect(TIER_LIST_TEXT).toBe('Bronze, Silver, Gold, Platinum, Diamond, Prism, Eclipse, Pokémon Master, then Zenith');
+    expect(ALL_TIER_NAMES).toEqual(['Bronze', 'Silver', 'Gold', 'Platinum', 'Diamond', 'Prism', 'Eclipse', 'PokeJam Master', 'Zenith']);
+    expect(TIER_LIST_TEXT).toBe('Bronze, Silver, Gold, Platinum, Diamond, Prism, Eclipse, PokeJam Master, then Zenith');
     expect(TIER_RANGE_TEXT).toBe('Bronze to Zenith');
   });
 });

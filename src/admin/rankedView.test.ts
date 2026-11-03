@@ -53,9 +53,9 @@ describe('ranked admin views', () => {
     const ranks = html.slice(html.indexOf('class="ranks"'), html.indexOf('Matches per day'));
     expect([...ranks.matchAll(/<td>([^<]+)<\/td><td>(\d+)<\/td>/g)].map((m) => [m[1], m[2]])).toEqual([
       ['Bronze', '0'], ['Silver', '0'], ['Gold', '4'], ['Platinum', '0'], ['Diamond', '0'],
-      ['Prism', '2'], ['Eclipse', '0'], ['Pokémon Master', '1'], ['Zenith', '1'],
+      ['Prism', '2'], ['Eclipse', '0'], ['PokeJam Master', '1'], ['Zenith', '1'],
     ]);
-    expect([...ALL_TIER_NAMES]).toEqual(['Bronze', 'Silver', 'Gold', 'Platinum', 'Diamond', 'Prism', 'Eclipse', 'Pokémon Master', 'Zenith']);
+    expect([...ALL_TIER_NAMES]).toEqual(['Bronze', 'Silver', 'Gold', 'Platinum', 'Diamond', 'Prism', 'Eclipse', 'PokeJam Master', 'Zenith']);
     expect(html).toContain('<th>Day (PT)</th>');
     expect(html).toContain('<td>2026-11-02</td><td>2</td>');
     expect(html).toContain('Season 1 (active)');

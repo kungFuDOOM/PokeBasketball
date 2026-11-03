@@ -7,10 +7,11 @@ export const DIVISIONS = ['III', 'II', 'I'] as const;
 
 /**
  * MMR thresholds. Everyone starts at 1000 (low Silver). Each of Bronze..Diamond spans 300 MMR,
- * split into three 100-MMR divisions (III, II, I). Pokémon Master starts at 2200 and has no divisions.
+ * split into three 100-MMR divisions (III, II, I). PokeJam Master starts at 2200 and has no divisions.
+ * The tier id stays `Pokémon Master`: that is the value stored on pokejam_profiles and sent on the wire.
  *   Bronze   <1000 (III <800, II 800-899, I 900-999; floor of the ladder is 700 for display)
  *   Silver   1000-1299   Gold 1300-1599   Platinum 1600-1899   Diamond 1900-2199
- *   Pokémon Master 2200+
+ *   PokeJam Master 2200+ (stored id: Pokémon Master)
  */
 export const START_MMR = 1000;
 export const TIER_START: Record<Tier, number> = {
@@ -40,12 +41,30 @@ export interface RankView {
   placed: boolean;
   tier: Tier | null;
   division: (typeof DIVISIONS)[number] | null;
-  /** Rank points 0-99 within the division (Pokémon Master: points above 2200). */
+  /** Rank points 0-99 within the division (PokeJam Master: points above 2200). */
   rp: number;
   label: string;
 }
 
 export const newRank = (): RankState => ({ mmr: START_MMR, placements: 0, ladder: START_MMR, shield: 0, wins: 0, losses: 0 });
+
+/** What players read. The tier id on the wire and in pokejam_profiles.tier stays `Pokémon Master`. */
+export function tierLabel(tier: Tier): string {
+  switch (tier) {
+    case 'Bronze':
+    case 'Silver':
+    case 'Gold':
+    case 'Platinum':
+    case 'Diamond':
+      return tier;
+    case 'Pokémon Master':
+      return 'PokeJam Master';
+    default: {
+      const unseen: never = tier;
+      return unseen;
+    }
+  }
+}
 
 export function expected(mmr: number, opp: number): number {
   return 1 / (1 + 10 ** ((opp - mmr) / 400));
@@ -63,12 +82,12 @@ export function view(s: RankState): RankView {
   const tier = tierOf(s.ladder);
   if (tier === 'Pokémon Master') {
     const rp = Math.round(s.ladder - TIER_START[tier]);
-    return { placed: true, tier, division: null, rp, label: `Pokémon Master · ${rp} RP` };
+    return { placed: true, tier, division: null, rp, label: `${tierLabel(tier)} · ${rp} RP` };
   }
   const base = Math.max(s.ladder, TIER_START.Bronze) - TIER_START[tier];
   const d = Math.min(2, Math.floor(base / DIVISION_SIZE));
   const rp = Math.floor(base - d * DIVISION_SIZE);
-  return { placed: true, tier, division: DIVISIONS[d], rp, label: `${tier} ${DIVISIONS[d]} · ${rp} RP` };
+  return { placed: true, tier, division: DIVISIONS[d], rp, label: `${tierLabel(tier)} ${DIVISIONS[d]} · ${rp} RP` };
 }
 
 const rankIndex = (v: RankView) => (v.tier ? TIERS.indexOf(v.tier) * 3 + (v.division ? DIVISIONS.indexOf(v.division) : 0) : -1);

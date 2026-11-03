@@ -16,10 +16,10 @@
     | Gold | 1300 |
     | Platinum | 1600 |
     | Diamond | 1900 |
-    | Pokémon Master | 2200+ |
+    | PokeJam Master | 2200+ |
 
   - Bronze through Diamond have divisions III/II/I, 100 MMR each. RP is 0–99 within a division.
-  - Pokémon Master has no divisions; its RP is the points above 2200.
+  - PokeJam Master has no divisions; its RP is the points above 2200.
   - Demotion shield: 2 losses held at 0 RP, the 3rd demotes, and a win resets it.
   - `TIER_COLORS` holds placeholder text/colour badges. Final art will come from the image generator.
 - `src/multiplayer/matchService.ts`:
