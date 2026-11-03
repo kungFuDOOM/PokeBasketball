@@ -79,6 +79,8 @@ STYLES['watch'] = STYLES['vertical']
 STYLES['training'] = STYLES['franchise']
 # Ranked: the driving minor-key online anthem.
 STYLES['ranked'] = STYLES['online']
+# Challenges: the upbeat franchise anthem.
+STYLES['challenges'] = STYLES['franchise']
 rng = np.random.default_rng(7)
 
 

@@ -28,8 +28,8 @@ export const FPS = 30;
  * (an 18-second spot for the Training drills and the new Alley-Oop drill, filmed on real practice games with
  * their floor markers) or 'ranked' (a 20-second Season 1 launch spot: placements, the real tier badges up to Zenith).
  */
-type Cut = 'main' | 'vertical' | 'franchise' | 'top5' | 'online' | 'watch' | 'training' | 'ranked';
-const CUT: Cut = (['vertical', 'franchise', 'top5', 'online', 'watch', 'training', 'ranked'] as const).find((c) => c === new URLSearchParams(location.search).get('cut')) ?? 'main';
+type Cut = 'main' | 'vertical' | 'franchise' | 'top5' | 'online' | 'watch' | 'training' | 'ranked' | 'challenges';
+const CUT: Cut = (['vertical', 'franchise', 'top5', 'online', 'watch', 'training', 'ranked', 'challenges'] as const).find((c) => c === new URLSearchParams(location.search).get('cut')) ?? 'main';
 const VERTICAL = CUT === 'vertical';
 /** The top 5 cut is dressed as a 90s sports highlight show ("POKé CENTER"). */
 const RETRO = CUT === 'top5';
@@ -110,6 +110,11 @@ const MATCHUPS: Record<Cut, { home: TeamDef; away: TeamDef; court: CourtStyle }>
     away: { name: 'Rival', abbr: 'RVL', color: '#e3350d', color2: '#4a0d04', human: false, roster: mons(ONLINE_PICKS.rival) },
     court: COURTS['Indigo Elite'],
   },
+  challenges: {
+    home: { name: 'You', abbr: 'YOU', color: '#3b6fd8', color2: '#16224a', human: false, roster: mons(ONLINE_PICKS.you) },
+    away: { name: 'Rival', abbr: 'RVL', color: '#e3350d', color2: '#4a0d04', human: false, roster: mons(ONLINE_PICKS.rival) },
+    court: COURTS['Pallet Town'],
+  },
   training: { home: gym('Pewter Boulders', [74, 95, 111, 76, 142]), away: pallet([25, 448, 6, 445, 143]), court: COURTS['Pewter Boulders'] },
 };
 const { home: HOME, away: AWAY, court: COURT } = MATCHUPS[CUT];
@@ -189,7 +194,8 @@ type Scene = 'tipoff' | 'logo' | 'wall' | 'clock' | 'legends' | 'badges' | 'evol
   | 'o-live' | 'o-match' | 'o-draft' | 'o-ranked' | 'o-packs'
   | 'w-hook' | 'w-choice' | 'w-speed' | 'w-sim'
   | 'tr-hook' | 'tr-menu' | 'tr-stars'
-  | 'rk-hook' | 'rk-place' | 'rk-climb' | 'rk-season';
+  | 'rk-hook' | 'rk-place' | 'rk-climb' | 'rk-season'
+  | 'c-hook' | 'c-list' | 'c-bonus';
 type Segment =
   | { kind: Scene; t0: number; t1: number }
   | { kind: 'tr-drill'; t0: number; t1: number; drill: TrainingDrill; seed: number; start: number; events: number[] }
@@ -631,6 +637,7 @@ function renderClip(seg: Segment & { kind: 'clip' }, t: number, first: boolean) 
   if (CUT === 'online') onlineTag(t);
   if (CUT === 'watch') spectatorBar(1);
   if (CUT === 'ranked') rankedTag();
+  if (CUT === 'challenges') weeklyTag();
   if (RETRO) {
     retroBug();
     ticker(t);
@@ -899,11 +906,11 @@ function renderOutro(seg: Segment, t: number, a: number) {
   renderBackground(t, 0.66);
   const k = clamp01(a / 0.25);
   once('outro-hit', t, seg.t0 + 0.25, () => { flash = 0.3; cue(t, 'slam'); cue(t, 'crowd_big'); });
-  const pjAt = CUT === 'online' || CUT === 'watch' || CUT === 'training' || CUT === 'ranked' ? 1.6 : 2.2;
+  const pjAt = CUT === 'online' || CUT === 'watch' || CUT === 'training' || CUT === 'ranked' || CUT === 'challenges' ? 1.6 : 2.2;
   const pj = a - pjAt;
   if (pj < 0) {
     logo(W / 2, H / 2 - 150, 170, a < 0.25 ? 3 - 2 * k * k : 1);
-    if (a > 0.6) jamText(CUT === 'online' ? 'PLAY ONLINE NOW. FREE.' : CUT === 'watch' ? 'PLAY IT. WATCH IT. SIM IT.' : CUT === 'training' ? 'TRAIN UP. THEN JAM.' : CUT === 'ranked' ? 'RANKED IS LIVE. CLIMB NOW.' : 'PLAY FREE IN YOUR BROWSER', W / 2, H / 2 + 40, 64, { fill: '#f8f8f0' });
+    if (a > 0.6) jamText(CUT === 'online' ? 'PLAY ONLINE NOW. FREE.' : CUT === 'watch' ? 'PLAY IT. WATCH IT. SIM IT.' : CUT === 'training' ? 'TRAIN UP. THEN JAM.' : CUT === 'ranked' ? 'RANKED IS LIVE. CLIMB NOW.' : CUT === 'challenges' ? 'PLAY. CLIMB. ENTER.' : 'PLAY FREE IN YOUR BROWSER', W / 2, H / 2 + 40, 64, { fill: '#f8f8f0' });
     if (a > 1.0) plainText('pokejam.xyz', W / 2, H / 2 + 170, 80, '#ffcb05');
   } else {
     // $PJAM: gold, glinting, center stage.
@@ -2391,6 +2398,115 @@ function renderRkSeason(seg: Segment, t: number, a: number) {
   if (a > 1.0) plainText("DON'T RAGE QUIT. QUITTERS GET BANNED.", W / 2, 700, 64, '#ff7a59');
 }
 
+// ---------- cut: challenges ----------
+
+/** "WEEKLY CHALLENGES" chip over the filmed games. */
+function weeklyTag() {
+  ctx.save();
+  roundRect(W - 420, 38, 370, 58, 29, 'rgba(5,6,15,0.85)', '#21d07a', 4);
+  ctx.font = `800 36px ${SPORT}`;
+  ctx.fillStyle = '#21d07a';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('WEEKLY CHALLENGES', W - 235, 68);
+  ctx.restore();
+}
+
+/** WEEKLY CHALLENGES, then the four goals from the game's challenges screen. */
+function renderCHook(seg: Segment, t: number, a: number) {
+  renderBackground(t, 0.72);
+  const pop = (at: number) => 0.3 + 0.7 * easeOutBack(clamp01((a - at) / 0.22));
+  once('ch1', t, seg.t0 + 0.05, () => { flash = 0.15; cue(t, 'slam'); cue(t, 'crowd_low'); });
+  jamText('WEEKLY', W / 2, 300, 170, { scale: pop(0.05) });
+  if (a > 0.5) {
+    once('ch2', t, seg.t0 + 0.5, () => { flash = 0.2; cue(t, 'slam'); cue(t, 'crowd_big'); });
+    jamText('CHALLENGES', W / 2, 520, 150, { fill: '#21d07a', scale: pop(0.5), maxW: W - 120 });
+  }
+  if (a > 1.1) plainText('EVERY WEEK. NEW GOALS. CARD RAFFLE.', W / 2, 730, 60, '#ffcb05');
+}
+
+/** The four goals, each ticking to done as the list goes down. */
+function renderCList(seg: Segment, t: number, a: number) {
+  renderBackground(t, 0.88);
+  jamText('THIS WEEK', W / 2, 120, 110, { scale: a < 0.2 ? easeOutBack(a / 0.2) : 1 });
+  const goals: [string, string, number, number][] = [
+    ['PLAY OFFLINE', 'Quick Play or Franchise, played by you', 3, 3],
+    ['PLAY ONLINE', 'Finished matches', 3, 3],
+    ['SOCIAL', 'Share a result or finish a social match', 1, 1],
+    ['CLIMB A RANK', 'One step up the ladder', 1, 1],
+  ];
+  goals.forEach(([label, detail, need, total], i) => {
+    const at = 0.25 + i * 0.5;
+    if (a < at) return;
+    const k = easeOutBack(clamp01((a - at) / 0.25));
+    const y = 260 + i * 170;
+    const x = W / 2 - 560;
+    once(`cl${i}`, t, seg.t0 + at + 0.35, () => cue(t, 'card'));
+    ctx.save();
+    ctx.translate((1 - k) * 260, 0);
+    roundRect(x, y, 1120, 140, 22, 'rgba(10,13,31,0.94)', '#21d07a', 5);
+    // Checkbox: fills in once the step is reached.
+    const done = a > at + 0.35;
+    roundRect(x + 30, y + 35, 70, 70, 14, done ? '#21d07a' : 'rgba(255,255,255,0.1)', done ? '#fff' : 'rgba(255,255,255,0.4)', 4);
+    if (done) {
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = 12;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(x + 46, y + 70);
+      ctx.lineTo(x + 60, y + 86);
+      ctx.lineTo(x + 86, y + 52);
+      ctx.stroke();
+    }
+    ctx.font = `800 62px ${SPORT}`;
+    ctx.fillStyle = '#f2f0e6';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(label, x + 130, y + 56);
+    ctx.font = `700 36px ${SPORT}`;
+    ctx.fillStyle = '#aab0d8';
+    ctx.fillText(detail, x + 130, y + 104);
+    ctx.font = `800 60px ${SPORT}`;
+    ctx.fillStyle = done ? '#21d07a' : '#f2f0e6';
+    ctx.textAlign = 'right';
+    ctx.fillText(done ? 'DONE' : `0/${need}`, x + 1090, y + 70);
+    ctx.restore();
+    void total;
+  });
+}
+
+/** Bonus raffle entries: no purchase needed, hold PJAM or play for them. */
+function renderCBonus(seg: Segment, t: number, a: number) {
+  renderBackground(t, 0.86);
+  const pop = (at: number) => 0.3 + 0.7 * easeOutBack(clamp01((a - at) / 0.22));
+  once('cb1', t, seg.t0 + 0.05, () => { flash = 0.12; cue(t, 'slam'); });
+  jamText('NO PURCHASE NEEDED', W / 2, 200, 100, { fill: '#f8f8f0', scale: pop(0.05), maxW: W - 120 });
+  if (a > 0.5) {
+    once('cb2', t, seg.t0 + 0.5, () => { flash = 0.2; cue(t, 'card'); cue(t, 'crowd'); });
+    // Five bonus-entry tickets, filling in one by one.
+    for (let i = 0; i < 5; i++) {
+      const at = 0.6 + i * 0.22;
+      if (a < at) continue;
+      const x = W / 2 + (i - 2) * 200;
+      const k = easeOutBack(clamp01((a - at) / 0.2));
+      ctx.save();
+      ctx.translate(x, 500);
+      ctx.scale(k, k);
+      roundRect(-90, -130, 180, 260, 18, '#ffcb05', '#fff', 6);
+      ctx.font = `800 36px ${SPORT}`;
+      ctx.fillStyle = '#14122a';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('ENTRY', 0, -60);
+      ctx.font = `120px ${PIXEL}`;
+      ctx.fillText(String(i + 1), 6, 30);
+      ctx.restore();
+    }
+  }
+  if (a > 1.8) plainText('HOLD 1M PJAM OR PLAY. UP TO 5 BONUS ENTRIES.', W / 2, 760, 58, '#ffcb05');
+  if (a > 2.4) plainText('RAFFLE RULES AT POKEJAM.XYZ', W / 2, 880, 54, '#f8f8f0');
+}
+
 // ---------- shared ----------
 
 function pjam(x: number, y: number, size: number, pj: number) {
@@ -2458,6 +2574,9 @@ function renderSegment(seg: Segment, t: number, first: boolean) {
     case 'rk-place': renderRkPlace(seg, t, a); break;
     case 'rk-climb': renderRkClimb(seg, t, a); break;
     case 'rk-season': renderRkSeason(seg, t, a); break;
+    case 'c-hook': renderCHook(seg, t, a); break;
+    case 'c-list': renderCList(seg, t, a); break;
+    case 'c-bonus': renderCBonus(seg, t, a); break;
     case 'clip': renderClip(seg, t, first); break;
   }
 }
@@ -2593,6 +2712,15 @@ export async function prepare(): Promise<{ frames: number; fps: number }> {
     add({ kind: 'o-packs', t0: t, t1: t + 3.4 });
     for (let i = 0; i < 2; i++) clip([['dunk']], 0.9, 0.6, false, 'montage');
     add({ kind: 'outro', t0: t, t1: t + 4.2 });
+    musicEnd = s[s.length - 1].t0 + 1.6;
+  } else if (CUT === 'challenges') {
+    add({ kind: 'c-hook', t0: t, t1: t + 2.2 });
+    musicStart = 0.1;
+    add({ kind: 'c-list', t0: t, t1: t + 3.8 });
+    clip([['dunk']], 3.0, 1.9);
+    add({ kind: 'c-bonus', t0: t, t1: t + 3.2 });
+    clip([['fire'], ['three']], 2.6, 1.4);
+    add({ kind: 'outro', t0: t, t1: t + 3.6 });
     musicEnd = s[s.length - 1].t0 + 1.6;
   } else if (CUT === 'ranked') {
     add({ kind: 'rk-hook', t0: t, t1: t + 2.2 });
