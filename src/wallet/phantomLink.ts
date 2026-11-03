@@ -7,6 +7,7 @@
 import { base58Decode, base58Encode, isAddress, randomBytes } from '../../supabase/functions/_shared/pack/bytes.ts';
 import { boxBefore, boxOpen, boxPublicKey, boxSeal } from './nacl';
 import { SIGN_IN_STATEMENT } from './phantom';
+import { authKey, classifyAuthError, diagMessage, keyFromRelay } from './phantomDiag';
 
 export const PHANTOM_UL = 'https://phantom.com/ul/v1';
 /** The whole sign-in, and the lifetime of the signed message. */
@@ -54,20 +55,46 @@ export interface Callback { id: string; app: boolean; response: PhantomResponse;
 
 export class PhantomLinkError extends Error {
   name = 'PhantomLinkError';
-  constructor(message: string, public cancelled = false) { super(message); }
+  /** `diag` is the step key behind the on-screen code (phantomDiag.ts), e.g. 'CN-READ' or 'W3-400-CHAIN'. */
+  constructor(message: string, public cancelled = false, public diag?: string) { super(message); }
 }
+
+/** An error for one step: the plain-words message and the key for the diagnostic code. 'CXL' is the cancelled one. */
+export const stepError = (key: string): PhantomLinkError => new PhantomLinkError(diagMessage(key), key === 'CXL', key);
+/** A failed signInWithWeb3 (step 'W3') or refreshSession (step 'RF'): keeps the HTTP status and a reason token, never the raw text. */
+export const authError = (step: 'W3' | 'RF', err: unknown): PhantomLinkError => {
+  const { status, reason } = classifyAuthError(err);
+  return stepError(authKey(step, status, reason));
+};
+/** What Phantom (or Safari, through the relay) reported as an error code. 4001 is the player saying no. */
+export const phantomErrorFor = (code: string, step: 'connect' | 'sign'): PhantomLinkError => {
+  const key = keyFromRelay(code);
+  return stepError(key === 'PH-UNK' && code !== '1' ? (step === 'connect' ? 'CN-PH' : 'SG-PH') : key);
+};
 
 const ID_RE = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 const B58_RE = /^[1-9A-HJ-NP-Za-km-z]{1,3500}$/;
 const CODE_RE = /^-?\d{1,6}$/;
 
-/** A home-screen web app, where Phantom's redirect opens in the browser rather than back in this app. */
-export function isStandalone(w: { navigator?: { standalone?: boolean }; matchMedia?: (q: string) => { matches: boolean } }): boolean {
-  if (w.navigator?.standalone === true) return true;
-  try { return !!w.matchMedia?.('(display-mode: standalone)').matches; } catch { return false; }
+type StandaloneHost = { navigator?: { standalone?: boolean }; matchMedia?: (q: string) => { matches: boolean } };
+export type StandaloneSignal = 'nav' | 'standalone' | 'fullscreen' | 'minimal-ui';
+
+/** Which signal says this is an installed web app: iOS's navigator.standalone first, then the display-mode media queries. Null when none does. */
+export function standaloneSignal(w: StandaloneHost): StandaloneSignal | null {
+  if (w.navigator?.standalone === true) return 'nav';
+  for (const mode of ['standalone', 'fullscreen', 'minimal-ui'] as const) {
+    try { if (w.matchMedia?.(`(display-mode: ${mode})`).matches) return mode; } catch { /* try the next */ }
+  }
+  return null;
 }
 
+/** A home-screen web app, where Phantom's redirect opens in the browser rather than back in this app. */
+export const isStandalone = (w: StandaloneHost): boolean => standaloneSignal(w) !== null;
+
 // ---------- Sign in with Solana message ----------
+
+/** Supabase Auth only accepts a Chain ID of the form solana:(main|dev|test|local)net, or none at all. Plain "mainnet" is a 400. */
+export const SIWS_CHAIN_ID = 'solana:mainnet';
 
 /** Builds the message the way supabase-js does for a wallet with signMessage, so Supabase verifies it the same way. */
 export function buildSiwsMessage(o: { host: string; uri: string; address: string; nonce: string; issuedAt: number; expiresAt: number }): string {
@@ -81,7 +108,7 @@ export function buildSiwsMessage(o: { host: string; uri: string; address: string
     `URI: ${o.uri}`,
     `Issued At: ${new Date(o.issuedAt).toISOString()}`,
     `Expiration Time: ${new Date(o.expiresAt).toISOString()}`,
-    'Chain ID: mainnet',
+    `Chain ID: ${SIWS_CHAIN_ID}`,
     `Nonce: ${o.nonce}`,
   ].join('\n');
 }
@@ -91,8 +118,8 @@ export function checkSiwsMessage(message: string, want: { address: string; nonce
   const lines = message.split('\n');
   const field = (name: string) => lines.find((l) => l.startsWith(`${name}: `))?.slice(name.length + 2);
   const exp = Date.parse(field('Expiration Time') ?? '');
-  if (lines[1] !== want.address || field('Nonce') !== want.nonce) throw new PhantomLinkError('That sign-in did not match. Try again.');
-  if (!Number.isFinite(exp) || exp <= want.now) throw new PhantomLinkError('That sign-in expired. Try again.');
+  if (lines[1] !== want.address || field('Nonce') !== want.nonce) throw stepError('MIS');
+  if (!Number.isFinite(exp) || exp <= want.now) throw stepError('EXP');
 }
 
 // ---------- Encryption ----------
@@ -102,13 +129,13 @@ function seal(payload: unknown, shared: Uint8Array): { nonce: string; payload: s
   return { nonce: base58Encode(nonce), payload: base58Encode(boxSeal(new TextEncoder().encode(JSON.stringify(payload)), nonce, shared)) };
 }
 
-function open(r: PhantomResponse, phantomPub: string, secret: string): Record<string, unknown> {
+function open(r: PhantomResponse, phantomPub: string, secret: string, onFail: string): Record<string, unknown> {
   try {
     const plain = boxOpen(base58Decode(r.d ?? ''), base58Decode(r.n ?? ''), boxBefore(base58Decode(phantomPub), base58Decode(secret)));
     const parsed: unknown = plain && JSON.parse(new TextDecoder().decode(plain));
     if (parsed && typeof parsed === 'object') return parsed as Record<string, unknown>;
   } catch { /* the same answer as a bad tag */ }
-  throw new PhantomLinkError('Could not read the answer from Phantom. Try again.');
+  throw stepError(onFail);
 }
 
 // ---------- Links ----------
@@ -135,7 +162,7 @@ export function beginConnect(store: Store, o: { loc: { origin: string; pathname:
 
 /** The signMessage link for a pending 'sign' step. */
 export function signLink(p: Pending, loc: { origin: string; pathname: string }): string {
-  if (p.step !== 'sign' || !p.message || !p.session || !p.phantomPub) throw new PhantomLinkError('Start the sign-in again.');
+  if (p.step !== 'sign' || !p.message || !p.session || !p.phantomPub) throw stepError('STATE');
   const sealed = seal({ message: base58Encode(new TextEncoder().encode(p.message)), session: p.session, display: 'utf8' }, boxBefore(base58Decode(p.phantomPub), base58Decode(p.secret)));
   const q = new URLSearchParams({
     dapp_encryption_public_key: base58Encode(boxPublicKey(base58Decode(p.secret))),
@@ -157,9 +184,15 @@ export function loadPending(store: Store, now: number): { pending: Pending | nul
   try { raw = store.getItem(PENDING_KEY); } catch { return { pending: null, expired: false }; }
   if (!raw) return { pending: null, expired: false };
   try {
+    // A record left by an older build may have other fields missing or shaped differently: only accept what this build can use.
     const p = JSON.parse(raw) as Pending;
-    if (p?.v === 1 && typeof p.id === 'string' && typeof p.secret === 'string' && (p.step === 'connect' || p.step === 'sign')) {
-      if (p.expiresAt > now) return { pending: p, expired: false };
+    if (p && p.v === 1 && typeof p.id === 'string' && typeof p.secret === 'string' && (p.step === 'connect' || p.step === 'sign') && typeof p.expiresAt === 'number') {
+      if (p.expiresAt > now) {
+        const h = p.handoff;
+        const handoff = h && typeof h.id === 'string' && typeof h.pub === 'string' && typeof h.secret === 'string' ? h : undefined;
+        const { handoff: _drop, ...rest } = p;
+        return { pending: { ...rest, app: p.app === true, opened: p.opened === true, returnTo: p.returnTo === 'profile' ? 'profile' : 'ranked', ...(handoff ? { handoff } : {}) }, expired: false };
+      }
       clearPending(store);
       return { pending: null, expired: true };
     }
@@ -212,17 +245,16 @@ export type Advance =
  */
 export function advance(store: Store, p: Pending, r: PhantomResponse, o: { host: string; uri: string; now: number }): Advance {
   clearPending(store);
-  if (p.expiresAt <= o.now) throw new PhantomLinkError('That sign-in expired. Try again.');
+  if (p.expiresAt <= o.now) throw stepError('EXP');
   if (r.e !== undefined) {
-    if (r.e === '4001') throw new PhantomLinkError('Sign-in cancelled in Phantom.', true);
-    throw new PhantomLinkError('Phantom could not finish that. Try again.');
+    throw phantomErrorFor(r.e, p.step);
   }
   if (p.step === 'connect') {
-    if (!r.k) throw new PhantomLinkError('Could not read the answer from Phantom. Try again.');
-    const body = open(r, r.k, p.secret);
+    if (!r.k) throw stepError('CN-READ');
+    const body = open(r, r.k, p.secret, 'CN-READ');
     const wallet = body.public_key;
     const session = body.session;
-    if (!isAddress(wallet) || typeof session !== 'string' || !session) throw new PhantomLinkError('Could not read the answer from Phantom. Try again.');
+    if (!isAddress(wallet) || typeof session !== 'string' || !session) throw stepError('CN-READ');
     const expiresAt = o.now + FLOW_TTL_MS;
     const nonce = base58Encode(randomBytes(16));
     const next: Pending = {
@@ -232,11 +264,11 @@ export function advance(store: Store, p: Pending, r: PhantomResponse, o: { host:
     savePending(store, next);
     return { kind: 'need-sign', pending: next };
   }
-  if (!p.phantomPub || !p.message || !p.wallet || !p.nonce) throw new PhantomLinkError('Start the sign-in again.');
-  const sig = open(r, p.phantomPub, p.secret).signature;
+  if (!p.phantomPub || !p.message || !p.wallet || !p.nonce) throw stepError('STATE');
+  const sig = open(r, p.phantomPub, p.secret, 'SG-READ').signature;
   let signature: Uint8Array | null = null;
   try { signature = typeof sig === 'string' ? base58Decode(sig) : null; } catch { /* reported below */ }
-  if (!signature || signature.length !== 64) throw new PhantomLinkError('Could not read the answer from Phantom. Try again.');
+  if (!signature || signature.length !== 64) throw stepError('SG-READ');
   checkSiwsMessage(p.message, { address: p.wallet, nonce: p.nonce, now: o.now });
   return { kind: 'signed', message: p.message, signature };
 }

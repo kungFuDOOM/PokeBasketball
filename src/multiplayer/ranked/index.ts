@@ -14,6 +14,7 @@ import { ONLINE_CONFIGURED, ensureSignedIn, supabase } from '../shared/supabase'
 import type { ModeContext } from '../shared/types';
 import { phantomAction, signInWithPhantom, WalletError } from '../../wallet/phantom';
 import { startPhantomLink } from '../../wallet/phantomSheet';
+import { guardStaleBuild } from '../../wallet/staleBuild';
 import { isGuest, signInWithGoogle } from './account';
 import { badgeImgForTier } from '../../ranked/badge';
 import { TIER_COLORS, view, type MatchOutcome, type RankView } from './rank';
@@ -194,6 +195,7 @@ export async function rankedAccount(): Promise<SupabaseMatchService> {
  */
 export function mountSignIn(slot: HTMLElement, o: { returnTo: 'ranked' | 'profile'; onSignedIn(): void; error?: string | null; busy?: boolean }) {
   slot.innerHTML = signInPanelHtml(phantomAction(), { busy: o.busy, error: o.error ?? null });
+  guardStaleBuild(); // an old bundle resumed from memory would run old sign-in code: reload first if a newer build is live
   const sb = supabase();
   const again = (error: string | null = null, busy = false) => mountSignIn(slot, { ...o, error, busy });
   const fail = (e: unknown) => again(e instanceof Error ? e.message : 'Could not sign in.');

@@ -9,7 +9,7 @@ export type SheetState =
   | { kind: 'wait-safari'; code: string }
   | { kind: 'safari-done'; code: string }
   | { kind: 'working'; text: string }
-  | { kind: 'failed'; text: string; tone: 'warn' | 'bad' }
+  | { kind: 'failed'; text: string; tone: 'warn' | 'bad'; diag?: string }
   | { kind: 'go-back'; app: boolean };
 
 const CANCEL = '<button class="btn ghost" type="button" data-a="phantom-cancel">Cancel</button>';
@@ -29,7 +29,7 @@ function inner(s: SheetState): string {
     case 'safari-done': return `<p class="ph-msg">Signed in — go back to the PokeJam app on your home screen.</p>
       <p class="note center ph-code">Check code <b>${esc(s.code)}</b></p>${CLOSE}`;
     case 'working': return `<p class="ph-msg">${esc(s.text)}</p>`;
-    case 'failed': return `<p class="ph-msg" data-tone="${s.tone}" role="alert">${esc(s.text)}</p>${CLOSE}`;
+    case 'failed': return `<p class="ph-msg" data-tone="${s.tone}" role="alert">${esc(s.text)}</p>${s.diag ? `<p class="ph-diag" data-diag>${esc(s.diag)}</p>` : ''}${CLOSE}`;
     case 'go-back': return `<p class="ph-msg">Phantom answered.</p><p class="note center">${s.app
       ? 'Go back to the PokeJam app on your home screen to continue.'
       : 'Go back to the PokeJam tab you started from to continue.'}</p>${CLOSE}`;
