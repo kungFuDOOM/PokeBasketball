@@ -3,7 +3,7 @@
 import { ALL_TIER_NAMES, rankName } from '../ranked/rank';
 import { isNameBlocked } from '../nameFilter';
 import { esc } from '../util';
-import { actions, forever, when } from './reportsView';
+import { actions, clearRankedBanButton, forever, rankedQuitHtml, when } from './reportsView';
 
 export interface RankWindow {
   matches: number; players: number; new_profiles: number;
@@ -32,6 +32,10 @@ export interface RankedPlayer {
   status: string; div_idx: number; points: number; placements_played: number;
   rating: number; wins: number; losses: number; matches: number;
   last_game_at: string | null; shields: number; flags: number; banned_until: string | null;
+  /** Quit offences still on the record. Absent until the quit-ban migration is applied. */
+  quit_offences?: number | null;
+  /** Ranked matchmaking ban, when it is still running. */
+  ranked_ban_until?: string | null;
 }
 export interface RankedPlayers { season_number: number | null; season_status: string | null; players: RankedPlayer[] }
 
@@ -115,8 +119,8 @@ export function rankedPlayersHtml(data: RankedPlayers): string {
         <td>${p.last_game_at ? esc(when(p.last_game_at)) : '—'}</td>
         <td>${p.shields}</td>
         <td>${p.flags}</td>
-        <td>${suspended(p.banned_until)}</td>
-        <td class="acts">${actions({ user_id: p.user_id, name: p.name }, !!p.banned_until, 'ranked')}</td>
+        <td>${suspended(p.banned_until)}${rankedQuitHtml(p.quit_offences, p.ranked_ban_until)}</td>
+        <td class="acts">${actions({ user_id: p.user_id, name: p.name }, !!p.banned_until, 'ranked')}${clearRankedBanButton(p, 'ranked')}</td>
       </tr>`;
     }).join('')}
   </tbody></table></div>`;

@@ -25,6 +25,64 @@ function pips(played: number): string {
   return `<span class="rk-pips" aria-hidden="true">${Array.from({ length: PLACEMENT_GAMES }, (_, i) => `<i${i < played ? ' class="on"' : ''}></i>`).join('')}</span>`;
 }
 
+/** Shown after the first Ranked quit. The next offence is a 15-minute matchmaking ban. */
+export const QUIT_WARNING = 'Leaving Ranked games early gets you banned from Ranked. Next time: 15 minutes.';
+
+const banLengthText = (offences: number) => (offences <= 2 ? '15 minutes' : offences === 3 ? '1 day' : offences === 4 ? '7 days' : '14 days');
+
+/** When a ban ends, in UTC so the sentence does not depend on the device clock's zone. */
+export function banEndText(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return `${d.toLocaleString('en-US', { timeZone: 'UTC', dateStyle: 'medium', timeStyle: 'short' })} UTC`;
+}
+
+/** Time left on a Ranked ban: "14 minutes left", "1 day left". */
+export function banLeftText(ms: number): string {
+  if (!Number.isFinite(ms) || ms <= 0) return 'Ban ended';
+  const s = Math.ceil(ms / 1000);
+  if (s < 90) return `${s} ${s === 1 ? 'second' : 'seconds'} left`;
+  const m = Math.ceil(ms / 60_000);
+  if (m < 60) return `${m} ${m === 1 ? 'minute' : 'minutes'} left`;
+  if (m < 24 * 60) {
+    const h = Math.ceil(m / 60);
+    return `${h} ${h === 1 ? 'hour' : 'hours'} left`;
+  }
+  const d = Math.floor(m / (60 * 24));
+  const h = Math.round((m % (60 * 24)) / 60);
+  const days = `${d} ${d === 1 ? 'day' : 'days'}`;
+  return h > 0 ? `${days} ${h} ${h === 1 ? 'hour' : 'hours'} left` : `${days} left`;
+}
+
+/** The instant Ranked matchmaking opens again, or null. */
+export function activeBanUntil(me: RankedMe | null | undefined, now = Date.now()): string | null {
+  const until = me?.banUntil ?? me?.cooldownUntil ?? null;
+  if (!until) return null;
+  const t = Date.parse(until);
+  return Number.isFinite(t) && t > now ? until : null;
+}
+
+/**
+ * The sentence after a quit that just counted. Null when this visit is not that quit
+ * (a void, the player who stayed, or an older offence).
+ */
+export function quitNoticeText(me: RankedMe | null | undefined, now = Date.now()): string | null {
+  if (!me?.quitRecent) return null;
+  const until = activeBanUntil(me, now);
+  if (!until) return QUIT_WARNING;
+  return `You left a Ranked game early. Ranked is banned for ${banLengthText(me.quitOffences ?? 2)}, until ${banEndText(until)}.`;
+}
+
+/** Replaces the Find button while a ban is running. Menu only: never drawn over the court. */
+export function rankedBanHtml(until: string, now = Date.now()): string {
+  return `<p class="rk-ban" data-rk="ban" role="status"><strong>Ranked banned</strong><span data-rk-ban-left>${esc(banLeftText(Date.parse(until) - now))}</span><small>until ${esc(banEndText(until))}</small></p>`;
+}
+
+/** The first-offence warning on the Ranked screen. */
+export function rankedWarnHtml(): string {
+  return `<p class="rk-warn" data-rk="quit-warn" role="status">${esc(QUIT_WARNING)}</p>`;
+}
+
 const HOUR = 3_600_000;
 /** "5 h 12 m" / "12 m": a wait, rounded up to the minute. */
 export function waitText(ms: number): string {

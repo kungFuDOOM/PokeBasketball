@@ -109,6 +109,14 @@ describe('ranked admin views', () => {
     const alpha = html.slice(html.indexOf('aaaaaaaa'), html.indexOf('bbbbbbbb'));
     expect(alpha.match(/data-act="([^"]+)"/g)!.map((s) => s.match(/"([^"]+)"/)![1])).toEqual(['24', '168', '0', 'name']);
     expect(html).toContain('data-act="unban"');
+    const banned = rankedPlayersHtml({
+      season_number: 1, season_status: 'active',
+      players: [player({ quit_offences: 4, ranked_ban_until: '2099-06-01T00:00:00Z' })],
+    });
+    expect(banned).toContain('Ranked quits: 4');
+    expect(banned).toContain('Ranked banned until');
+    expect(banned).toContain('data-act="clear-ranked"');
+    expect(banned).toContain('data-role="ranked"');
     expect(html).toContain('data-user="bbbbbbbb-2222"');
     expect(personLabel('Fvcker', 'ranked')).toBe('Fvcker (ranked)');
   });

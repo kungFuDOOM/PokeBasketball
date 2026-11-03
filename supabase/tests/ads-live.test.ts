@@ -16,6 +16,7 @@ const LIVE_FILE = '20261204_pokejam_ads_live.sql';
 const CREDIT_FILE = '20261205_pokejam_ads_burn_credit.sql';
 const RANKED_ADMIN_FILE = '20261206_pokejam_admin_ranked_stats.sql';
 const MIGRATION_TAIL = ['20261203_pokejam_ads.sql', LIVE_FILE, CREDIT_FILE, RANKED_ADMIN_FILE];
+const QUIT_BAN_FILE = '20261207_pokejam_ranked_quit_bans.sql';
 const LIVE_SQL = readFileSync(new URL(LIVE_FILE, DIR), 'utf8');
 // sha256 of pokejam-test's 20261104_pokejam_ads.sql, renamed since and now 20261203_pokejam_ads.sql, already applied on the shared project.
 const DEVNET_SHA256 = 'adf6c2b432673feb800146593f6eeb87567c6a051678521d47a5d3c6a3c04cd0';
@@ -118,7 +119,7 @@ describe('the migration is additive', () => {
   });
 
   it('sorts after every other migration, keeping the devnet file first', () => {
-    expect(FILES.slice(-4)).toEqual(MIGRATION_TAIL);
+    expect(FILES.slice(-5)).toEqual([...MIGRATION_TAIL, QUIT_BAN_FILE]);
     expect(FILES).toContain('20261201_pokejam_judge_decides.sql');
     expect(new Set(FILES.map((f) => f.slice(0, 8))).size).toBe(FILES.length);
   });
@@ -139,7 +140,7 @@ describe('the migration is additive', () => {
     const list = readFileSync(new URL('./testDb.ts', import.meta.url), 'utf8').match(/const MIGRATIONS = \[[^\]]*\]/)![0];
     const listed = [...list.matchAll(/'([^']+\.sql)'/g)].map((m) => m[1]);
     expect(listed).toEqual([...listed].sort());
-    expect(listed.slice(-4)).toEqual(MIGRATION_TAIL);
+    expect(listed.slice(-5)).toEqual([...MIGRATION_TAIL, QUIT_BAN_FILE]);
   });
 });
 

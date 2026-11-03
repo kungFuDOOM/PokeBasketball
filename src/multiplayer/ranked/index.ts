@@ -9,8 +9,9 @@ import { runMatch, panel } from '../shared/matchFlow';
 import { LocalMockMatchService, type ReportOutcome } from '../shared/matchService';
 import { playOnline } from '../shared/onlineGame';
 import { ensureHuman, humanDeps } from '../shared/human';
-import { OnlineError, SupabaseMatchService } from '../shared/onlineMatchService';
+import { OnlineError, RankedCooldownError, SupabaseMatchService } from '../shared/onlineMatchService';
 import { ONLINE_CONFIGURED, ensureSignedIn, supabase } from '../shared/supabase';
+import type { RankedMe } from './serverRank';
 import type { ModeContext } from '../shared/types';
 import { phantomAction, signInWithPhantom, WalletError } from '../../wallet/phantom';
 import { startPhantomLink } from '../../wallet/phantomSheet';
@@ -19,7 +20,7 @@ import { isGuest, signInWithGoogle } from './account';
 import { badgeImgForTier } from '../../ranked/badge';
 import { TIER_COLORS, view, type MatchOutcome, type RankView } from './rank';
 import { LocalRankStore } from './rankStore';
-import { judgeNoteHtml, rankChipHtml, postMatchHtml, shieldItemHtml, shieldTagHtml, signInPanelHtml, weeklyCardHtml } from './view';
+import { activeBanUntil, banLeftText, judgeNoteHtml, rankChipHtml, postMatchHtml, rankedBanHtml, rankedWarnHtml, shieldItemHtml, shieldTagHtml, signInPanelHtml, weeklyCardHtml } from './view';
 import { mountUsernamePicker } from './picker';
 import { MODE_SHIELD_SHOP, MODE_SHIELD_STRIPE } from '../../config/features';
 import { shopReturnOf } from './shopView';
@@ -136,8 +137,9 @@ async function renderHome(ctx: ModeContext) {
     const shield = await svc.shieldStatus().catch(() => null); // an older server has no Rank Shield: the hub just doesn't show it
     if (!slot.isConnected) return;
     slot.innerHTML = rankChipHtml(me) + weeklyCardHtml(shield?.weekly);
-    actions.insertAdjacentHTML('afterbegin', `<button class="btn primary big" data-a="find">Find ranked match</button>${chipHtml(shield)}`);
-    actions.querySelector('[data-a="find"]')!.addEventListener('click', () => void quickMatch(ctx));
+    mountQueue(actions, me, () => void quickMatch(ctx));
+    const queue = actions.querySelector('[data-a="find"]') ?? actions.querySelector('[data-rk="ban"]');
+    queue?.insertAdjacentHTML('afterend', chipHtml(shield));
     actions.addEventListener('click', (e) => {
       const btn = (e.target as Element).closest<HTMLButtonElement>('[data-a="arm"]');
       if (btn && !btn.disabled) void toggleShield(svc, actions, btn.getAttribute('aria-pressed') !== 'true');
@@ -288,6 +290,32 @@ async function quickMatch(ctx: ModeContext) {
     void playOnline(home, { sb: supabase(), service: svc, match, playAgain: () => void quickMatch(ctx), outcomeHtml });
   } catch (e) {
     clearTimeout(offer);
+    if (e instanceof RankedCooldownError) return openRanked(ctx);
     if ((e as Error).name !== 'AbortError') failed(ctx, e);
   }
+}
+
+const FIND_BTN = '<button class="btn primary big" data-a="find">Find ranked match</button>';
+
+/** Find, or the time left on a Ranked ban. A fresh first offence keeps the button and shows the warning. */
+function mountQueue(actions: HTMLElement, me: RankedMe | null, onFind: () => void) {
+  const until = activeBanUntil(me);
+  const warn = me?.quitRecent && (me.quitOffences ?? 0) <= 1 && !until ? rankedWarnHtml() : '';
+  actions.insertAdjacentHTML('afterbegin', until ? rankedBanHtml(until) : `${warn}${FIND_BTN}`);
+  const wire = () => actions.querySelector<HTMLButtonElement>('[data-a="find"]')?.addEventListener('click', onFind);
+  wire();
+  if (!until) return;
+  const ban = actions.querySelector<HTMLElement>('[data-rk="ban"]');
+  const tick = window.setInterval(() => {
+    if (!ban?.isConnected) { window.clearInterval(tick); return; }
+    const left = Date.parse(until) - Date.now();
+    if (left <= 0) {
+      window.clearInterval(tick);
+      ban.outerHTML = FIND_BTN;
+      wire();
+      return;
+    }
+    const span = ban.querySelector('[data-rk-ban-left]');
+    if (span) span.textContent = banLeftText(left);
+  }, 1000);
 }
