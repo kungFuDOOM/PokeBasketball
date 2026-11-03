@@ -16,10 +16,12 @@ import { esc } from '../util';
 import { ADS_CONFIGURED, AdsError, adsApi, exactTokens, explorer, replaceMessage, shortTokens, type Board, type Booking, type Quote } from './api';
 import { applyBoard } from './board';
 import { BurnGuardError, burnNeeded, checkBurnTransaction } from './burnGuard';
-import { DM_CONTACTS, DM_ONLY, isPlan, offers, pickPlan, savePercent, type PayMethod, type Plan } from './plans';
+import { DM_CONTACTS, DM_ONLY, isPlan, offers, pickPlan, planBadges, savePercent, type PayMethod, type Plan } from './plans';
 import { heldBy, readPending, relaying, settleBurn, settleUsdc, type PendingPay, type PollOptions, type Settled } from './settle';
 import { UsdcPayError, checkTransfer, parseUsdcIntent, usd } from './usdcPay';
 import { connect, mobileWalletLinks, shortAddress, stopWatching, wallets, type Connected } from './wallet';
+import { armPay, beginPayConnect, clearPay, clearSession, loadPay, markPayOpened, payCode, payFresh, sessionFor, signAndSendLink, type PayKind, type PhantomSession } from '../wallet/phantomPay';
+import { onPay, onPayError, payAsApp, savedContinue, tripStore, watchPay, type PayOutcome } from '../wallet/phantomPayUi';
 
 const PENDING_KEY = 'pokejam.adPending';
 /** USDC intents signed but not yet confirmed (by signature, or the server finds the payment by the intent's reference key). */
@@ -63,6 +65,10 @@ interface State {
   quote: Quote | null;
   court: string;
   wallet: Connected | null;
+  /** Address from a Phantom deeplink session, when no wallet is injected in this browser. */
+  phantomWallet: string | null;
+  /** The "Approve in Phantom" link, once the server has built the transaction. */
+  approve: { href: string; code: string; blank: boolean; action: 'burn' | 'usdc' } | null;
   balance: bigint | null;
   /** Burn credit: short burns this wallet made, counted toward its next full slot (null while unknown). */
   credit: bigint | null;
@@ -101,7 +107,7 @@ export function openAdvertise(root: HTMLElement, back: () => void) {
     board: null, text: typeof draft.text === 'string' ? cleanAdText(draft.text) : '', theme: draft.theme && draft.theme in AD_THEMES ? draft.theme : 'gold',
     plan: isPlan(draft.plan) ? draft.plan : 'day',
     pay: draft.pay === 'usdc' ? 'usdc' : 'burn', usdcPlan: isPlan(draft.usdcPlan) ? draft.usdcPlan : 'week', start: null, quote: null, court: PREVIEW_COURTS[0],
-    wallet: null, balance: null, credit: null, lamports: null, busy: false, step: 0, error: '', done: null, verdict: null, mine: null,
+    wallet: null, phantomWallet: null, approve: null, balance: null, credit: null, lamports: null, busy: false, step: 0, error: '', done: null, verdict: null, mine: null,
   };
   let alive = true;
   let raf = 0;
@@ -192,11 +198,15 @@ export function openAdvertise(root: HTMLElement, back: () => void) {
   const $ = <T extends HTMLElement = HTMLElement>(sel: string) => root.querySelector<T>(sel)!;
   $('[data-a="back"]').addEventListener('click', () => { leave(); back(); });
 
+  let offPay = () => {};
+  let offPayError = () => {};
   function leave() {
     alive = false;
     clearTimeout(recheckTimer);
     cancelAnimationFrame(raf);
     stopWatching(onWallets);
+    offPay();
+    offPayError();
   }
 
   // ---------- preview ----------
@@ -294,6 +304,7 @@ export function openAdvertise(root: HTMLElement, back: () => void) {
     checkText();
     renderCount();
     saveDraft();
+    dropUnopenedPay();
     renderCheckout();
   });
   renderCount();
@@ -305,6 +316,7 @@ export function openAdvertise(root: HTMLElement, back: () => void) {
     s.theme = b.dataset.theme as AdTheme;
     root.querySelectorAll('[data-theme]').forEach((x) => x.classList.toggle('on', x === b));
     saveDraft();
+    dropUnopenedPay();
   });
 
   root.querySelector('[data-plans]')!.addEventListener('click', (e) => {
@@ -312,6 +324,7 @@ export function openAdvertise(root: HTMLElement, back: () => void) {
     if (!b) return;
     if (payWith() === 'usdc') s.usdcPlan = b.dataset.plan as Plan;
     else s.plan = b.dataset.plan as Plan;
+    dropUnopenedPay();
     saveDraft();
     renderPlans();
     requote();
@@ -321,6 +334,7 @@ export function openAdvertise(root: HTMLElement, back: () => void) {
     const b = (e.target as HTMLElement).closest<HTMLButtonElement>('[data-v]');
     if (!b || s.busy) return;
     s.pay = b.dataset.v === 'usdc' ? 'usdc' : 'burn';
+    dropUnopenedPay();
     s.error = '';
     s.quote = null;
     saveDraft();
@@ -331,6 +345,7 @@ export function openAdvertise(root: HTMLElement, back: () => void) {
 
   const dateInput = $<HTMLInputElement>('[data-date]');
   const setStart = (iso: string | null) => {
+    if (iso !== s.start) dropUnopenedPay();
     s.start = iso;
     root.querySelectorAll<HTMLButtonElement>('[data-when] button').forEach((x) => x.classList.toggle('on', x.dataset.v === (iso ? 'pick' : 'now')));
     dateInput.hidden = !iso;
@@ -369,7 +384,7 @@ export function openAdvertise(root: HTMLElement, back: () => void) {
       const perHour = method === 'burn' && o.amount !== null && o.hours > 1 ? `${shortTokens(o.amount / BigInt(o.hours), dec)} an hour · ` : '';
       const best = save >= 5 && o.hours === list[list.length - 1].hours;
       return `<button class="ad-plan ${o.plan === picked ? 'on' : ''}" data-plan="${o.plan}">
-        ${save >= 5 ? `<span class="ad-save">${best ? 'Best value · ' : ''}Save ${save}%</span>` : ''}
+        ${planBadges(save, best)}
         <strong>${PLAN_LABEL[o.plan].name}</strong>
         <span class="ad-price">${o.amount === null ? '…' : method === 'usdc' ? usd(o.amount, dec) : exactTokens(o.amount, dec)}<small>${method === 'usdc' ? 'USDC' : '$PJAM'}</small></span>
         <small>${perHour}${PLAN_LABEL[o.plan].per}</small>
@@ -410,17 +425,57 @@ export function openAdvertise(root: HTMLElement, back: () => void) {
     renderCheckout();
   }
 
-  async function refreshBalance() {
-    if (!s.wallet) return;
+  const here = () => ({ origin: location.origin, pathname: location.pathname });
+  const asApp = () => payAsApp();
+  const payer = (): string | null => s.wallet?.address ?? s.phantomWallet;
+  const deeplink = () => !s.wallet && wallets(onWallets).length === 0;
+  function usableSession(): PhantomSession | null {
+    const cluster = s.board?.cluster;
+    if (!cluster) return null;
     try {
-      const w = await adsApi.wallet(s.wallet.address);
+      const session = sessionFor(localStorage, cluster);
+      s.phantomWallet = s.wallet ? null : (session?.wallet ?? null);
+      return session;
+    } catch { return null; }
+  }
+  /** A plan change makes an unopened approve link stale. A trip already in Phantom is left to finish. */
+  function dropUnopenedPay() {
+    s.approve = null;
+    try {
+      const t = loadPay(tripStore(), Date.now()).trip;
+      if (t && !t.opened && (t.kind === 'ad-burn' || t.kind === 'ad-usdc')) clearPay(tripStore());
+    } catch { /* storage unavailable */ }
+  }
+  function showApprove(action: 'burn' | 'usdc', session: PhantomSession, intentId: string, tx: string) {
+    const trip = armPay(tripStore(), {
+      session, kind: action === 'usdc' ? 'ad-usdc' : 'ad-burn', intentId, txBase64: tx, app: asApp(), now: Date.now(),
+    });
+    s.approve = { href: signAndSendLink(trip, here(), '#advertise'), code: payCode(trip), blank: asApp(), action };
+    s.step = 2;
+  }
+  function payControl(action: 'burn' | 'usdc', label: string, can: boolean): string {
+    if (s.approve?.action === action) {
+      return `<a class="btn primary big ad-go" data-a="phantom-approve" data-for="${action}" href="${esc(s.approve.href)}"${s.approve.blank ? ' target="_blank" rel="noopener"' : ''}>Approve in Phantom</a>
+        <p class="ad-note">Check code <b>${esc(s.approve.code)}</b>. It must match the page Phantom opens. Then come back here.</p>`;
+    }
+    if (deeplink() && !s.phantomWallet) {
+      return `<a class="btn primary big ad-go" data-a="phantom-connect" data-kind="${action}" href="#"${can ? '' : ' aria-disabled="true"'}>${esc(label)}</a>`;
+    }
+    return `<button class="btn primary big ad-go" data-a="${action}"${can ? '' : ' disabled'}>${esc(label)}</button>`;
+  }
+
+  async function refreshBalance() {
+    const addr = payer();
+    if (!addr) return;
+    try {
+      const w = await adsApi.wallet(addr);
       s.balance = BigInt(w.balance);
       s.lamports = w.lamports;
     } catch {
       s.balance = null;
     }
     try {
-      s.credit = BigInt((await adsApi.credit(s.wallet.address)).credit);
+      s.credit = BigInt((await adsApi.credit(addr)).credit);
     } catch {
       s.credit = null;
     }
@@ -439,12 +494,18 @@ export function openAdvertise(root: HTMLElement, back: () => void) {
       </div>
 `;
     }
+    if (s.phantomWallet) {
+      const bal = s.balance !== null && b ? `${exactTokens(s.balance, b.decimals)} $PJAM` : '…';
+      return `<div class="ad-wallet">
+        <div><strong>Phantom ${esc(shortAddress(s.phantomWallet))}</strong><small>${esc(bal)}</small></div>
+        <button class="link-btn" data-a="disconnect">Disconnect</button>
+      </div>`;
+    }
     const list = wallets(onWallets);
     if (!list.length) {
-      const links = mobileWalletLinks(location.href);
-      return `<div class="ad-nowallet"><p>No Solana wallet found in this browser.</p>
-        <p class="ad-hint">On a computer, install Phantom, Solflare or Backpack. On a phone, open this page in your wallet app:</p>
-        <div class="ad-mlinks">${links.map((l) => `<a class="btn ghost" href="${esc(l.href)}">Open in ${esc(l.name)}</a>`).join('')}</div></div>`;
+      const solflare = mobileWalletLinks(location.href).find((l) => l.name === 'Solflare');
+      return `<div class="ad-nowallet"><p>Pay with the Phantom app. The button below opens it.</p>
+        <p class="ad-hint">On a computer, install Phantom, Solflare or Backpack. ${solflare ? `<a href="${esc(solflare.href)}">Open this page in Solflare</a>.` : ''}</p></div>`;
     }
     return `<div class="ad-connect">${list.map((w) => `<button class="btn ad-wbtn" data-wallet="${esc(w.name)}"><img src="${esc(w.icon)}" alt="" width="22" height="22">${esc(w.name)}</button>`).join('')}</div>`;
   }
@@ -463,9 +524,10 @@ export function openAdvertise(root: HTMLElement, back: () => void) {
     const credit = s.credit ?? 0n;
     const need = price !== null ? burnNeeded(price, credit) : null;
     const covered = price !== null && credit >= price;
-    const short = s.wallet && s.balance !== null && need !== null && s.balance < need;
-    const noSol = s.wallet && s.lamports !== null && s.lamports < 20_000;
-    const can = !!(b && !b.paused && qp?.price && textOk && s.verdict?.ok && s.wallet && !short && !noSol && !s.busy && !held().length);
+    const addr = payer();
+    const short = !!addr && s.balance !== null && need !== null && s.balance < need;
+    const noSol = !!addr && s.lamports !== null && s.lamports < 20_000;
+    const can = !!(b && !b.paused && qp?.price && textOk && s.verdict?.ok && (s.wallet || s.phantomWallet || deeplink()) && !short && !noSol && !s.busy && !held().length);
     const steps = ['Booking', `Approve in ${s.wallet?.name ?? 'your wallet'}`, 'Burning on Solana', 'On the board'];
     el.innerHTML = `
       <h2>Checkout</h2>
@@ -484,7 +546,7 @@ export function openAdvertise(root: HTMLElement, back: () => void) {
       ${short ? `<p class="ad-err">This wallet has ${exactTokens(s.balance!, dec)} $PJAM; this ad burns ${exactTokens(need!, dec)}.${covered ? ' Your credit covers the price and stays yours, but a burn is what books it.' : ''}</p>` : ''}
       ${noSol ? '<p class="ad-err">This wallet needs a little SOL for the network fee.</p>' : ''}
       ${s.text && (!textOk || s.verdict?.ok === false) ? '<p class="ad-err">Fix your message first (see above).</p>' : ''}
-      <button class="btn primary big ad-go" data-a="burn"${can ? '' : ' disabled'}>${s.busy ? 'Working…' : need !== null ? `Burn ${exactTokens(need, dec)} $PJAM` : 'Burn $PJAM'}</button>
+      ${payControl('burn', s.busy ? 'Working…' : need !== null ? `Burn ${exactTokens(need, dec)} $PJAM` : 'Burn $PJAM', can)}
       ${s.step ? `<ol class="ad-steps">${steps.map((x, i) => `<li class="${i + 1 < s.step ? 'done' : i + 1 === s.step ? 'on' : ''}">${esc(x)}</li>`).join('')}</ol>` : ''}
       ${s.error ? `<p class="ad-err">${esc(s.error)}</p>` : ''}
       ${heldHtml()}
@@ -506,8 +568,9 @@ export function openAdvertise(root: HTMLElement, back: () => void) {
     const dec = b?.usdcPay?.decimals ?? 6;
     const price = q?.usdc ? BigInt(q.usdc) : boardPrice('usdc', s.usdcPlan);
     const textOk = adTextOk(s.text);
-    const noSol = s.wallet && s.lamports !== null && s.lamports < 20_000;
-    const can = !!(b && !b.paused && q?.usdc && textOk && s.verdict?.ok && s.wallet && !noSol && !s.busy && !held().length);
+    const addr = payer();
+    const noSol = !!addr && s.lamports !== null && s.lamports < 20_000;
+    const can = !!(b && !b.paused && q?.usdc && textOk && s.verdict?.ok && (s.wallet || s.phantomWallet || deeplink()) && !noSol && !s.busy && !held().length);
     const steps = ['Booking', `Approve in ${s.wallet?.name ?? 'your wallet'}`, 'Confirming on Solana', 'On the board'];
     const to = b?.usdcPay ? shortAddress(b.usdcPay.receiver) : 'us';
     el.innerHTML = `
@@ -525,7 +588,7 @@ export function openAdvertise(root: HTMLElement, back: () => void) {
       ${b?.paused ? '<p class="ad-err">Ad sales are paused right now.</p>' : ''}
       ${noSol ? '<p class="ad-err">This wallet needs a little SOL for the network fee.</p>' : ''}
       ${s.text && (!textOk || s.verdict?.ok === false) ? '<p class="ad-err">Fix your message first (see above).</p>' : ''}
-      <button class="btn primary big ad-go" data-a="usdc"${can ? '' : ' disabled'}>${s.busy ? 'Working…' : price !== null ? `Pay ${usd(price, dec)} USDC` : 'Pay in USDC'}</button>
+      ${payControl('usdc', s.busy ? 'Working…' : price !== null ? `Pay ${usd(price, dec)} USDC` : 'Pay in USDC', can)}
       ${s.step ? `<ol class="ad-steps">${steps.map((x, i) => `<li class="${i + 1 < s.step ? 'done' : i + 1 === s.step ? 'on' : ''}">${esc(x)}</li>`).join('')}</ol>` : ''}
       ${s.error ? `<p class="ad-err">${esc(s.error)}</p>` : ''}
       ${heldHtml()}
@@ -539,6 +602,9 @@ export function openAdvertise(root: HTMLElement, back: () => void) {
     el.querySelector('[data-a="disconnect"]')?.addEventListener('click', async () => {
       await s.wallet?.disconnect();
       s.wallet = null;
+      s.phantomWallet = null;
+      s.approve = null;
+      try { clearSession(localStorage); clearPay(tripStore()); } catch { /* storage unavailable */ }
       s.balance = null;
       s.credit = null;
       s.mine = null;
@@ -548,6 +614,31 @@ export function openAdvertise(root: HTMLElement, back: () => void) {
     });
     el.querySelector('[data-a="burn"]')?.addEventListener('click', () => void burn());
     el.querySelector('[data-a="usdc"]')?.addEventListener('click', () => void payUsdc());
+    el.querySelector<HTMLAnchorElement>('[data-a="phantom-connect"]')?.addEventListener('click', (e) => {
+      const a = e.currentTarget as HTMLAnchorElement;
+      if (a.getAttribute('aria-disabled') === 'true' || !s.board) { e.preventDefault(); return; }
+      saveDraft();
+      const kind: PayKind = a.dataset.kind === 'usdc' ? 'ad-usdc' : 'ad-burn';
+      a.href = beginPayConnect(tripStore(), { loc: here(), app: asApp(), cluster: s.board.cluster, kind, now: Date.now(), hash: '#advertise' });
+      if (asApp()) { a.target = '_blank'; a.rel = 'noopener'; }
+      watchPay();
+    });
+    el.querySelector<HTMLAnchorElement>('[data-a="phantom-approve"]')?.addEventListener('click', (e) => {
+      const a = e.currentTarget as HTMLAnchorElement;
+      const trip = loadPay(tripStore(), Date.now()).trip;
+      if (!trip || !payFresh(trip, Date.now())) {
+        e.preventDefault();
+        s.approve = null;
+        if (a.dataset.for === 'usdc') void payUsdc();
+        else void burn();
+        return;
+      }
+      markPayOpened(tripStore(), Date.now());
+      if (asApp()) { a.target = '_blank'; a.rel = 'noopener'; }
+      s.busy = true;
+      s.step = 2;
+      watchPay();
+    });
     el.querySelector('[data-a="recheck"]')?.addEventListener('click', () => void recheck());
     el.querySelector('[data-a="another"]')?.addEventListener('click', () => { s.done = null; s.step = 0; renderCheckout(); requote(); });
   }
@@ -556,7 +647,7 @@ export function openAdvertise(root: HTMLElement, back: () => void) {
   const setPending = (list: PendingPay[]) => store.set(PENDING_KEY, JSON.stringify(list.slice(-10)));
   const dropPending = (id: string) => setPending(pending().filter((p) => p.id !== id));
   /** Signed payments this wallet is still waiting on. */
-  const held = () => [...pending(), ...usdcPending()].filter((p) => heldBy(p, s.wallet?.address));
+  const held = () => [...pending(), ...usdcPending()].filter((p) => heldBy(p, payer()));
 
   /** What the page says about a payment that isn't settled. */
   const NOT_YET = (what: string) => `Your ${what} isn't confirmed yet. It's saved, so don't pay again: your ad goes up as soon as it lands, even if you close this page.`;
@@ -635,7 +726,8 @@ export function openAdvertise(root: HTMLElement, back: () => void) {
   }
 
   async function burn() {
-    if (!s.wallet || s.busy || !s.board) return;
+    if (s.busy || !s.board) return;
+    if (!s.wallet && !usableSession() && !deeplink()) return;
     if (held().length) return recheck(); // sent from another tab since this page drew: never pay twice
     s.busy = true;
     s.error = '';
@@ -646,9 +738,11 @@ export function openAdvertise(root: HTMLElement, back: () => void) {
       // The price the page shows: if the server's has changed since, nothing is signed and the page shows the new one.
       const expect = (s.quote?.plan === s.plan ? s.quote.price : null) ?? boardPrice('burn', s.plan)?.toString();
       if (!expect) throw new AdsError("That plan isn't on sale right now.");
+      const who = s.wallet?.address ?? usableSession()?.wallet;
+      if (!who) throw new AdsError('Connect Phantom to burn $PJAM.');
       let prep;
       try {
-        prep = await adsApi.prepare({ wallet: s.wallet.address, text: s.text.trim(), theme: s.theme, plan: s.plan, start: s.start, expect });
+        prep = await adsApi.prepare({ wallet: who, text: s.text.trim(), theme: s.theme, plan: s.plan, start: s.start, expect });
       } catch (e) {
         if (e instanceof AdsError && e.info.price) void loadBoard();
         throw e;
@@ -658,7 +752,7 @@ export function openAdvertise(root: HTMLElement, back: () => void) {
       const shown = s.credit ?? 0n;
       try {
         if ((prep.credit ?? '0') !== shown.toString()) throw new BurnGuardError('Your burn credit just changed, so nothing was burned. Check the new amount and try again.');
-        checkBurnTransaction(prep.tx, { owner: s.wallet.address, mint: s.board.mint, code: prep.booking.code, price: BigInt(prep.booking.price), credit: shown });
+        checkBurnTransaction(prep.tx, { owner: who, mint: s.board.mint, code: prep.booking.code, price: BigInt(prep.booking.price), credit: shown });
         if (BigInt(prep.booking.price) !== BigInt(expect)) throw new BurnGuardError('The price just changed, so nothing was burned. Check the new price and try again.');
       } catch (e) {
         if (e instanceof BurnGuardError) void refreshBalance().then(() => alive && renderCheckout());
@@ -666,6 +760,14 @@ export function openAdvertise(root: HTMLElement, back: () => void) {
       }
       s.step = 2;
       renderCheckout();
+      if (!s.wallet) {
+        const session = usableSession();
+        if (!session || session.wallet !== who) throw new AdsError('Connect Phantom to burn $PJAM.');
+        showApprove('burn', session, id, prep.tx);
+        s.busy = false;
+        if (alive) renderCheckout();
+        return;
+      }
       // Nothing is burned unless the wallet signs: a refusal here costs nothing.
       const wallet = s.wallet.address;
       const proof = await s.wallet.sign(prep.tx, prep.cluster);
@@ -691,7 +793,8 @@ export function openAdvertise(root: HTMLElement, back: () => void) {
   const dropUsdcPending = (id: string) => setUsdcPending(usdcPending().filter((p) => p.id !== id));
 
   async function payUsdc() {
-    if (!s.wallet || s.busy || !s.board) return;
+    if (s.busy || !s.board) return;
+    if (!s.wallet && !usableSession() && !deeplink()) return;
     if (held().length) return recheck(); // sent from another tab since this page drew: never pay twice
     const plan = s.usdcPlan;
     s.busy = true;
@@ -702,19 +805,29 @@ export function openAdvertise(root: HTMLElement, back: () => void) {
     try {
       const expect = (s.quote?.plan === plan ? s.quote.usdc : null) ?? boardPrice('usdc', plan)?.toString();
       if (!expect) throw new AdsError("That plan isn't on sale right now.");
+      const who = s.wallet?.address ?? usableSession()?.wallet;
+      if (!who) throw new UsdcPayError('Connect Phantom to pay in USDC.');
       let raw;
       try {
-        raw = await adsApi.usdcIntent({ wallet: s.wallet.address, text: s.text.trim(), theme: s.theme, plan, start: s.start, expect });
+        raw = await adsApi.usdcIntent({ wallet: who, text: s.text.trim(), theme: s.theme, plan, start: s.start, expect });
       } catch (e) {
         if (e instanceof AdsError && e.info.price) void loadBoard();
         throw e;
       }
       const intent = parseUsdcIntent(raw);
       // The page rebuilds the transfer itself: the wallet is asked to sign only the exact payment for this ad.
-      await checkTransfer(intent, { payer: s.wallet.address, expectAmount: expect });
+      await checkTransfer(intent, { payer: who, expectAmount: expect });
       id = intent.id;
       s.step = 2;
       renderCheckout();
+      if (!s.wallet) {
+        const session = usableSession();
+        if (!session || session.wallet !== who) throw new UsdcPayError('Connect Phantom to pay in USDC.');
+        showApprove('usdc', session, id, intent.tx);
+        s.busy = false;
+        if (alive) renderCheckout();
+        return;
+      }
       // Nothing moves unless the wallet signs: a refusal here costs nothing.
       const wallet = s.wallet.address;
       const proof = await s.wallet.sign(intent.tx, intent.cluster);
@@ -737,11 +850,11 @@ export function openAdvertise(root: HTMLElement, back: () => void) {
   // ---------- your ads ----------
   async function loadMine() {
     clearTimeout(mineTimer);
-    if (!s.wallet) return;
-    const w = s.wallet.address;
+    const w = payer();
+    if (!w) return;
     try {
       const { ads } = await adsApi.mine(w);
-      if (!alive || s.wallet?.address !== w) return;
+      if (!alive || payer() !== w) return;
       s.mine = ads;
     } catch { /* keep what we had */ }
     renderMine();
@@ -773,7 +886,7 @@ export function openAdvertise(root: HTMLElement, back: () => void) {
   function renderMine() {
     const box = $('[data-mine-box]');
     const list = (s.mine ?? []).filter((a) => a.state !== 'pending' || pending().some((p) => p.id === a.id));
-    box.hidden = !s.wallet || !list.length;
+    box.hidden = !payer() || !list.length;
     $('[data-mine]').innerHTML = `<ul class="ad-livelist">${list.map((a) => `<li>
       <div class="ad-chip" style="${chipStyle(a.theme as AdTheme)}"><i>AD</i><span>${esc(a.text)}</span></div>
       ${mineStatus(a)}${s.board ? txLink(a, s.board) : ''}
@@ -782,9 +895,14 @@ export function openAdvertise(root: HTMLElement, back: () => void) {
 
   root.querySelector('[data-mine]')!.addEventListener('click', async (e) => {
     const btn = (e.target as HTMLElement).closest<HTMLButtonElement>('[data-replace]');
-    if (!btn || !s.wallet) return;
+    if (!btn || !payer()) return;
     const err = $('[data-mine-err]');
     err.hidden = true;
+    if (!s.wallet) {
+      err.hidden = false;
+      err.textContent = 'Changing the text needs Phantom in this browser. Booking a new ad from the checkout still works.';
+      return;
+    }
     const text = s.text.trim();
     if (!text || !s.verdict?.ok) {
       err.hidden = false;
@@ -900,13 +1018,81 @@ export function openAdvertise(root: HTMLElement, back: () => void) {
     $('[data-checkout]').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   });
 
+  async function onPhantom(o: PayOutcome) {
+    if (!alive) return;
+    if (o.kind === 'connected' && (o.payKind === 'ad-burn' || o.payKind === 'ad-usdc')) {
+      if (!s.board) return; // the flag stays; opening the page finishes it
+      savedContinue();
+      s.phantomWallet = o.session.wallet;
+      s.pay = o.payKind === 'ad-usdc' ? 'usdc' : 'burn';
+      await refreshBalance();
+      renderPlans();
+      if (o.payKind === 'ad-usdc') await payUsdc();
+      else await burn();
+      return;
+    }
+    if (o.kind !== 'signed' || (o.payKind !== 'ad-burn' && o.payKind !== 'ad-usdc')) return;
+    const rec: PendingPay = { id: o.intentId, at: Date.now(), wallet: o.wallet, signature: o.signature };
+    s.approve = null;
+    s.busy = true;
+    s.step = 3;
+    s.error = '';
+    if (o.payKind === 'ad-usdc') {
+      if (!usdcPending().some((p) => p.id === rec.id && p.signature === rec.signature)) setUsdcPending([...usdcPending(), rec]);
+      renderCheckout();
+      const r = await settleUsdc(relaying({ signature: rec.signature }, (p) => adsApi.usdcConfirm(rec.id, p)), { stop: () => !alive });
+      if (apply(r, () => dropUsdcPending(rec.id), USDC) && r.kind === 'paid') afterPaid();
+    } else {
+      if (!pending().some((p) => p.id === rec.id && p.signature === rec.signature)) setPending([...pending(), rec]);
+      renderCheckout();
+      const r = await settleBurn(relaying({ signature: rec.signature }, (p) => adsApi.confirm(rec.id, p)), { stop: () => !alive });
+      if (apply(r, () => dropPending(rec.id), BURN) && r.kind === 'paid') afterPaid();
+    }
+    s.busy = false;
+    if (alive) renderCheckout();
+    scheduleRecheck();
+  }
+
+  function restoreApprove() {
+    try {
+      const t = loadPay(tripStore(), Date.now()).trip;
+      if (!t || t.opened || !payFresh(t, Date.now()) || (t.kind !== 'ad-burn' && t.kind !== 'ad-usdc')) return;
+      s.pay = t.kind === 'ad-usdc' ? 'usdc' : 'burn';
+      s.phantomWallet = t.wallet ?? s.phantomWallet;
+      s.approve = { href: signAndSendLink(t, here(), '#advertise'), code: payCode(t), blank: t.app, action: t.kind === 'ad-usdc' ? 'usdc' : 'burn' };
+      s.step = 2;
+    } catch { /* storage unavailable */ }
+  }
+
   // ---------- start ----------
   renderCheckout();
   if (!ADS_CONFIGURED) {
     $('[data-checkout]').innerHTML = '<p class="ad-err">Ads aren\'t set up in this build.</p>';
     return;
   }
-  void loadBoard().then(resume);
+  offPay = onPay((o) => void onPhantom(o));
+  offPayError = onPayError((e) => {
+    if (!alive) return;
+    s.busy = false;
+    s.approve = null;
+    s.step = 0;
+    s.error = friendly(e);
+    renderCheckout();
+  });
+  void loadBoard().then(async () => {
+    usableSession();
+    if (s.phantomWallet) await refreshBalance().catch(() => {});
+    restoreApprove();
+    await resume();
+    if (!alive) return;
+    if (s.approve) { renderCheckout(); return; }
+    const c = savedContinue();
+    if (!c || (c.payKind !== 'ad-burn' && c.payKind !== 'ad-usdc') || !usableSession()) return;
+    s.pay = c.payKind === 'ad-usdc' ? 'usdc' : 'burn';
+    renderPlans();
+    if (c.payKind === 'ad-usdc') await payUsdc();
+    else await burn();
+  });
   const last = store.get(WALLET_KEY);
   if (last) {
     // Wallets register a moment after the page loads.

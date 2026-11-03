@@ -547,7 +547,8 @@ if (ANY_MULTIPLAYER) {
   const phantomPending = (() => {
     try {
       // sessionStorage: an in-tab sign-in. localStorage: a home-screen app waiting for Safari, or Safari between its two Phantom trips.
-      return !!(sessionStorage.getItem('pokejam.phantom.pending') || localStorage.getItem('pokejam.phantom.handoff') || localStorage.getItem('pokejam.phantom.landing'));
+      return !!(sessionStorage.getItem('pokejam.phantom.pending') || localStorage.getItem('pokejam.phantom.handoff') || localStorage.getItem('pokejam.phantom.landing')
+        || sessionStorage.getItem('pokejam.phantom.pay') || localStorage.getItem('pokejam.phantom.pay'));
     } catch { return false; }
   })();
   if (phantomCb || phantomPending) void import('./wallet/phantomSheet').then((m) => m.resumePhantom(phantomCb));
