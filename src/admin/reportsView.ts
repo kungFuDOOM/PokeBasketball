@@ -7,12 +7,33 @@ export interface ReportEntry { reason: string; note: string | null; at: string; 
 export interface Reported {
   user_id: string; name: string | null; reporters: number; reports: number; reasons: Record<string, number> | null;
   latest: ReportEntry[] | null; last_at: string; banned_until: string | null;
+  /** Quit offences still on the record. Absent on a server without the quit-ban migration. */
+  quit_offences?: number | null;
+  /** Ranked matchmaking ban, when it is still running. */
+  ranked_ban_until?: string | null;
   /** One entry per reported match: present once migration 20261123 is applied. Without it the row shows "No check". */
   checks?: Check[] | null;
 }
 /** A match check; `notes` (the judge's reason) is used for the tooltip when the server sends it. */
 export type Check = MatchCheck & { notes?: string | null };
-export interface Ban { user_id: string; name: string | null; until: string; reason: string | null; auto: boolean; since: string }
+export interface Ban {
+  user_id: string; name: string | null; until: string; reason: string | null; auto: boolean; since: string;
+  quit_offences?: number | null; ranked_ban_until?: string | null;
+}
+
+/** Offence count and a live Ranked ban, for the player row. Empty when the server did not send them. */
+export function rankedQuitHtml(offences: number | null | undefined, until: string | null | undefined): string {
+  if (typeof offences !== 'number' && !until) return '';
+  const n = typeof offences === 'number' ? offences : 0;
+  const live = !!until && new Date(until).getTime() > Date.now();
+  return `<small>Ranked quits: ${n}</small>${live ? ` <span class="tag bad">Ranked banned until ${esc(when(until!))}</span>` : ''}`;
+}
+
+/** Lifts the Ranked queue ban. Shown only while one is running. */
+export function clearRankedBanButton(r: { user_id: string; name: string | null; ranked_ban_until?: string | null }): string {
+  if (!r.ranked_ban_until || new Date(r.ranked_ban_until).getTime() <= Date.now()) return '';
+  return `<button class="btn small" data-act="clear-ranked" data-user="${esc(r.user_id)}" data-name="${esc(r.name ?? 'Trainer')}" data-role="reported">Clear Ranked ban</button>`;
+}
 
 export const when = (iso: string) => new Date(iso).toLocaleString();
 export const forever = (iso: string) => new Date(iso).getFullYear() > new Date().getFullYear() + 50;
@@ -68,8 +89,8 @@ export function reportsHtml(rows: Reported[]): string {
       <td>${Object.entries(r.reasons ?? {}).map(([k, n]) => `<span class="tag">${esc(k)} ${n}</span>`).join(' ')}</td>
       <td><ul class="latest">${(r.latest ?? []).slice(0, 4).map((l) => `<li>Reported by <b>${esc(l.from ?? '?')}</b>${badName(l.from)} · ${esc(l.reason)}${l.note ? ` · “${esc(l.note)}”` : ''} · <small>${esc(when(l.at))}</small>${
         l.from_id ? `<span class="rep-acts"><i>Reporter:</i> ${actions({ user_id: l.from_id, name: l.from }, false, 'reporter', true)}</span>` : ''}</li>`).join('')}</ul></td>
-      <td>${r.banned_until ? `<span class="tag bad">suspended ${forever(r.banned_until) ? 'permanently' : `until ${esc(when(r.banned_until))}`}</span>` : '—'}</td>
-      <td class="acts">${actions(r, !!r.banned_until)}${dismissButton(r)}</td></tr>`).join('')}
+      <td>${r.banned_until ? `<span class="tag bad">suspended ${forever(r.banned_until) ? 'permanently' : `until ${esc(when(r.banned_until))}`}</span>` : '—'}${rankedQuitHtml(r.quit_offences, r.ranked_ban_until)}</td>
+      <td class="acts">${actions(r, !!r.banned_until)}${dismissButton(r)}${clearRankedBanButton(r)}</td></tr>`).join('')}
   </tbody></table></div>`;
 }
 
@@ -77,9 +98,9 @@ export function bansHtml(rows: Ban[]): string {
   if (!rows.length) return '<p class="note">Nobody is suspended.</p>';
   return `<div class="scroll"><table><thead><tr><th>Player</th><th>Until</th><th>Why</th><th>Since</th><th></th></tr></thead><tbody>
     ${rows.map((b) => `<tr><td><strong>${esc(b.name ?? '?')}</strong>${badName(b.name)}<small>${esc(b.user_id.slice(0, 8))}</small></td>
-      <td>${forever(b.until) ? 'permanent' : esc(when(b.until))}</td>
+      <td>${forever(b.until) ? 'permanent' : esc(when(b.until))}${rankedQuitHtml(b.quit_offences, b.ranked_ban_until)}</td>
       <td>${b.auto ? '<span class="tag">automatic</span> ' : ''}${esc(b.reason ?? '')}</td><td>${esc(when(b.since))}</td>
-      <td class="acts">${actions(b, true)}</td></tr>`).join('')}
+      <td class="acts">${actions(b, true)}${clearRankedBanButton(b)}</td></tr>`).join('')}
   </tbody></table></div>`;
 }
 

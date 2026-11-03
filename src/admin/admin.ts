@@ -142,13 +142,15 @@ function dashboard(sb: SupabaseClient, email: string) {
     const name = personLabel(b.dataset.name ?? 'this player', b.dataset.role);
     const act = b.dataset.act!;
     const n = Number(b.dataset.reports ?? 0);
-    const ask = act === 'unban' ? `Lift the suspension on ${name}?` : act === 'name' ? `Reset ${name}'s name to "Trainer"?`
+    const ask = act === 'clear-ranked' ? `Clear the Ranked quit ban on ${name}? The offence count stays, so the next quit is the next ban.`
+      : act === 'unban' ? `Lift the suspension on ${name}?` : act === 'name' ? `Reset ${name}'s name to "Trainer"?`
       : act === 'dismiss' ? `Clear ${n} open report${n === 1 ? '' : 's'} on ${name}?`
       : `Suspend ${name} ${act === '0' ? 'permanently' : `for ${Number(act) >= 168 ? `${Number(act) / 24} days` : `${act} hours`}`}?`;
     if (!confirm(ask)) return;
     b.disabled = true;
     try {
       if (act === 'unban') await call('pokejam_admin_unban', { p_user: user });
+      else if (act === 'clear-ranked') await call('pokejam_admin_clear_ranked_ban', { p_user: user });
       else if (act === 'name') await call('pokejam_admin_reset_name', { p_user: user });
       else if (act === 'dismiss') await call('pokejam_admin_dismiss', { p_user: user });
       else await call('pokejam_admin_ban', { p_user: user, p_hours: Number(act), p_reason: prompt('Reason (kept in the log):', 'reports reviewed') ?? 'reports reviewed' });
