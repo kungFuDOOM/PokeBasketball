@@ -114,12 +114,12 @@ describe('USDC config and the mainnet gate', () => {
     expect(solanaAddressOf({ identities: [{ provider: 'web3', identity_data: { custom_claims: { address: a, chain: 'solana' } } }] })).toBe(a);
     expect(solanaAddressOf({ identities: [{ provider: 'web3', identity_data: { sub: `web3:solana:${a}` } }] })).toBe(a);
     expect(solanaAddressOf({ app_metadata: { provider: 'web3' }, user_metadata: { wallet_address: a } })).toBe(a);
-    expect(solanaAddressOf({ identities: [{ provider: 'google', identity_data: { address: a } }] })).toBeNull();
-    expect(solanaAddressOf({ app_metadata: { provider: 'google' }, user_metadata: { address: a } })).toBeNull();
+    expect(solanaAddressOf({ identities: [{ provider: 'discord', identity_data: { address: a } }] })).toBeNull();
+    expect(solanaAddressOf({ app_metadata: { provider: 'discord' }, user_metadata: { address: a } })).toBeNull();
     expect(solanaAddressOf({ identities: [{ provider: 'web3', identity_data: { address: a, chain: 'ethereum' } }] })).toBeNull();
     expect(solanaAddressOf(null)).toBeNull();
-    expect(paymentWallet({ app_metadata: { provider: 'google' } }, a)).toBe(a);
-    expect(paymentWallet({ app_metadata: { provider: 'google' } }, 'not-a-wallet')).toBeNull();
+    expect(paymentWallet({ app_metadata: { provider: 'discord' } }, a)).toBe(a);
+    expect(paymentWallet({ app_metadata: { provider: 'discord' } }, 'not-a-wallet')).toBeNull();
     expect(paymentWallet({ identities: [{ provider: 'web3', identity_data: { custom_claims: { address: a, chain: 'solana' } } }] }, 'not-a-wallet')).toBe(a);
   });
 });
@@ -354,11 +354,11 @@ describe('shield-usdc-intent', () => {
   it('is for signed-in Phantom users only, with a checked sku, the age box, a known origin, and POST', async () => {
     const s = await setup();
     const guest = await s.player('G', { anonymous: true, wallet: null });
-    const google = await s.player('Go', { wallet: null });
+    const discord = await s.player('Go', { wallet: null });
     const a = await s.player('A');
     expect((await s.intent(guest)).body).toMatchObject({ code: 'guest' });
-    expect((await s.intent(google)).status).toBe(403);
-    expect((await s.intent(google)).body).toMatchObject({ code: 'no_wallet', error: 'Link Phantom to buy' });
+    expect((await s.intent(discord)).status).toBe(403);
+    expect((await s.intent(discord)).body).toMatchObject({ code: 'no_wallet', error: 'Link Phantom to buy' });
     expect((await s.post(usdcIntentHandler, { sku: 'shield_3', ageConfirmed: true }, null)).status).toBe(401);
     expect((await s.post(usdcIntentHandler, { sku: 'shield_3', ageConfirmed: true }, 'bad-jwt')).status).toBe(401);
     expect((await s.post(usdcIntentHandler, { sku: 'shield_3' }, a.jwt)).body).toMatchObject({ code: 'age' });

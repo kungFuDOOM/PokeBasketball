@@ -1,12 +1,12 @@
--- PokeJam Ranked: Google sign-in abuse limit, and linking a Phantom wallet to an existing account.
+-- PokeJam Ranked: Discord sign-in abuse limit, and linking a Phantom wallet to an existing account.
 -- Shared gauntlet-legends project: pokejam_* only. Additive. Safe to run again (create or replace, create if not exists).
 -- Nothing dropped, no existing policy widened, no column removed. NOT applied by the repo; the owner runs it by hand.
 --
--- Google accounts are cheap to make. Ranked already hides the rank for the first 5 placement matches, refuses guests,
+-- Discord accounts are cheap to make. Ranked already hides the rank for the first 5 placement matches, refuses guests,
 -- applies bans per user id (pokejam_banned), runs the human check and the judge, and rate-limits matchmaking polls.
 -- This adds one more limit: an account created in the last 24 hours may start at most 10 ranked matches in that day.
 -- It applies to every new account (a fresh wallet is cheap too). After a day the limit is gone. Leaving a match does
--- not reset it: every ranked match that got a guest counts. Bans stay on the user id; a new Google account is a new
+-- not reset it: every ranked match that got a guest counts. Bans stay on the user id; a new Discord account is a new
 -- user id, which this cap only slows down.
 --
 -- supabase-js linkIdentity is OAuth and ID-token only. It cannot attach a Solana wallet. pokejam_link_wallet stores

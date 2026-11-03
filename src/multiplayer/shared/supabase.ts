@@ -31,16 +31,16 @@ export function supabase(): SupabaseClient {
  * (Safari's own guest session). Nothing is left behind once the page goes, so it is never signed out (that would revoke the session).
  */
 /**
- * The Supabase client Safari uses to finish a home-screen Google sign-in. The code verifier has to survive the
- * redirect to Google, so this uses localStorage under its own key and never touches pokejam.auth. It does not
+ * The Supabase client Safari uses to finish a home-screen Discord sign-in. The code verifier has to survive the
+ * redirect to Discord, so this uses localStorage under its own key and never touches pokejam.auth. It does not
  * refresh the session (that would rotate the token handed to the app) and it does not read the URL by itself:
  * the page passes the code in, after stripping it from the address bar. Drop the storage when done. Do not sign out.
  */
-export function googleHandoffAuthClient(): SupabaseClient['auth'] {
+export function discordHandoffAuthClient(): SupabaseClient['auth'] {
   if (!ONLINE_CONFIGURED) throw new Error('Online play is not configured for this build.');
   return createClient(URL!, KEY!, {
     auth: {
-      persistSession: true, autoRefreshToken: false, detectSessionInUrl: false, flowType: 'pkce', storageKey: 'pokejam.google.oauth',
+      persistSession: true, autoRefreshToken: false, detectSessionInUrl: false, flowType: 'pkce', storageKey: 'pokejam.discord.oauth',
     },
   }).auth;
 }

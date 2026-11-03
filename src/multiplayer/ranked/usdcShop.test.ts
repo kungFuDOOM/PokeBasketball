@@ -7,7 +7,7 @@ import { USDC_NOTICES, shopBodyHtml, usdcOption, usdcText, type ShopModel } from
 import { UsdcPayError, clearPending, isFinalRefusal, loadPending, parseIntent, pollConfirm, prepareTransfer, savePending, sendAndRemember, signAndSend, type PayProvider, type PendingPayment } from './usdcPay';
 
 const PHANTOM_USER = { app_metadata: { provider: 'web3' }, identities: [{ provider: 'web3', identity_data: { custom_claims: { address: '5njibWvkiFg4LSyzq4ySFhyCsFEF4YhTqRLJo8Z9q16p', chain: 'solana' } } }] };
-const GOOGLE_USER = { app_metadata: { provider: 'google' }, identities: [{ provider: 'google', identity_data: { email: 'a@b.c' } }] };
+const DISCORD_USER = { app_metadata: { provider: 'discord' }, identities: [{ provider: 'discord', identity_data: { email: 'a@b.c' } }] };
 const GUEST_USER = { app_metadata: { provider: 'anonymous' }, identities: [] };
 
 const info = (o: Record<string, unknown> = {}) => parseShopInfo({
@@ -20,10 +20,10 @@ describe('who sees the USDC option', () => {
   it('only a player signed in with Phantom, and only with the flag on', () => {
     expect(usdcOption(PHANTOM_USER, true, 'devnet')).toEqual({ wallet: '5njibWvkiFg4LSyzq4ySFhyCsFEF4YhTqRLJo8Z9q16p', cluster: 'devnet' });
     expect(usdcOption(PHANTOM_USER, false, 'devnet')).toBeNull();
-    expect(usdcOption(GOOGLE_USER, true, 'devnet')).toBeNull();
+    expect(usdcOption(DISCORD_USER, true, 'devnet')).toBeNull();
     expect(usdcOption(GUEST_USER, true, 'devnet')).toBeNull();
     expect(usdcOption(null, true, 'devnet')).toBeNull();
-    expect(usdcOption({ app_metadata: { provider: 'google' }, user_metadata: { address: '5njibWvkiFg4LSyzq4ySFhyCsFEF4YhTqRLJo8Z9q16p' } }, true, 'devnet')).toBeNull();
+    expect(usdcOption({ app_metadata: { provider: 'discord' }, user_metadata: { address: '5njibWvkiFg4LSyzq4ySFhyCsFEF4YhTqRLJo8Z9q16p' } }, true, 'devnet')).toBeNull();
   });
   it('the build flags: USDC needs only Ranked + VITE_SHIELD_USDC, Stripe only Ranked + VITE_SHIELD_SHOP, shop is either', async () => {
     const flags = async (env: Record<string, string>) => {

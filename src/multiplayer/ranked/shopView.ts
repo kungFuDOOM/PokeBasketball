@@ -1,6 +1,6 @@
 // Rank Shield shop sheet as an HTML string, plus the "wait for the payment to land" poll. Pure (no DOM, no network), so it
 // unit-tests in node. Menus only: nothing here is drawn over the court or the in-game HUD. shop.ts wires the buttons.
-import { SIGNIN_GOOGLE } from '../../config/features';
+import { SIGNIN_DISCORD } from '../../config/features';
 import { shieldEmblemHtml } from '../../ranked/shieldEmblem';
 import { esc } from '../../util';
 import { isAddress } from '../../../supabase/functions/_shared/pack/bytes.ts';
@@ -42,7 +42,7 @@ export interface ShopModel {
 
 /**
  * The USDC option for this player: the flag is on, and they have a Solana wallet. That is the Phantom they signed in with,
- * or a wallet linked afterwards onto a Google account. The server re-reads it and trusts nothing sent from here.
+ * or a wallet linked afterwards onto a Discord account. The server re-reads it and trusts nothing sent from here.
  */
 export function usdcOption(user: WalletUser | null | undefined, enabled: boolean, cluster: 'devnet' | 'mainnet-beta', linked?: string | null): { wallet: string; cluster: 'devnet' | 'mainnet-beta' } | null {
   if (!enabled) return null;
@@ -93,8 +93,8 @@ const USDC_FINE = (c: 'devnet' | 'mainnet-beta') => `<p class="shop-fine shop-us
 const LINKS = `<span class="shop-links"><a href="terms.html#sale" target="_blank" rel="noopener">Terms of sale</a><a href="terms.html#refunds" target="_blank" rel="noopener">Refunds</a><a href="privacy.html" target="_blank" rel="noopener">Privacy</a></span>`;
 
 export interface ShopViewOpts {
-  /** Offer Google in the guest sign-in hint (default: the SIGNIN_GOOGLE build flag). */
-  google?: boolean;
+  /** Offer Discord in the guest sign-in hint (default: the SIGNIN_DISCORD build flag). */
+  discord?: boolean;
 }
 
 /** The sheet's contents (the part that re-renders): packs on the left, held / consent / links on the right. */
@@ -104,7 +104,7 @@ export function shopBodyHtml(m: ShopModel, o: ShopViewOpts = {}): string {
     ? `<a class="btn primary" data-a="phantom-approve" href="${esc(m.phantomApprove.href)}"${m.phantomApprove.blank ? ' target="_blank" rel="noopener"' : ''}>Approve in Phantom</a><p class="note">Check code <b>${esc(m.phantomApprove.code)}</b>. It must match the page Phantom opens. Then come back here.</p>`
     : '';
   if (!m.signedIn) {
-    return `<div class="shop-solo"><p class="shop-msg">Sign in to buy</p><p class="note">Rank Shields belong to your account. Sign in with ${(o.google ?? SIGNIN_GOOGLE) ? 'Google or Phantom' : 'Phantom'} from the Ranked screen.</p>${notice}</div>`;
+    return `<div class="shop-solo"><p class="shop-msg">Sign in to buy</p><p class="note">Rank Shields belong to your account. Sign in with ${(o.discord ?? SIGNIN_DISCORD) ? 'Discord or Phantom' : 'Phantom'} from the Ranked screen.</p>${notice}</div>`;
   }
   const retry = m.usdcUnconfirmed ? `<button class="btn primary" type="button" data-a="retry-usdc"${m.busy ? ' disabled' : ''}>Check my payment again</button>` : '';
   if (!m.info) return `<div class="shop-solo">${notice || '<p class="note">Loading the shop…</p>'}${retry}</div>`;

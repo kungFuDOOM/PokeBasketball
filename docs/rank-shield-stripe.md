@@ -6,7 +6,7 @@ Players can buy Rank Shields (3, 7 or 14) with Stripe Checkout. **Nothing here i
 
 ## How it works
 
-1. The player (signed in with Google or Phantom, never a guest) opens **Ranked → Rank Shield → Shop**, ticks "I'm 18+ or have a parent's permission", and taps a pack.
+1. The player (signed in with Discord or Phantom, never a guest) opens **Ranked → Rank Shield → Shop**, ticks "I'm 18+ or have a parent's permission", and taps a pack.
 2. The browser calls the Edge Function **`shield-create-checkout`** with only `{ sku, ageConfirmed }`. The function verifies the Supabase JWT, runs `pokejam_shield_checkout_check` (held + pack <= 14, at most 42 bought per season including pending checkouts, 5 sessions per user per hour, no open dispute), reads the Stripe price id from `pokejam_shield_products`, and creates a Checkout Session (`mode=payment`, `client_reference_id` = the user id, metadata `{sku, user_id, units}`). It returns `{ url }` and the browser goes there.
 3. **The success page never credits.** Back on the site (`/?shop=success`) the game only waits ("Waiting for payment confirmation") and polls `pokejam_shield_me` until the count rises.
 4. Stripe calls **`shield-stripe-webhook`**. It verifies the `Stripe-Signature` (HMAC-SHA256 over the raw body, 300 s tolerance, constant-time compare), then calls the database:
@@ -52,7 +52,7 @@ No Stripe key or price id is in the repo. Keys are Supabase secrets; price ids l
 
 Use Stripe's test cards: https://docs.stripe.com/testing
 
-- **Buy:** sign in with Google, open the shop, tick the box, buy a pack, pay with `4242 4242 4242 4242` (any future date, any CVC, any ZIP). You land on `/?shop=success`, see "Waiting for payment confirmation", and then "+N Rank Shields". Check `select * from pokejam_shield_purchases order by created_at desc limit 5;`.
+- **Buy:** sign in with Discord, open the shop, tick the box, buy a pack, pay with `4242 4242 4242 4242` (any future date, any CVC, any ZIP). You land on `/?shop=success`, see "Waiting for payment confirmation", and then "+N Rank Shields". Check `select * from pokejam_shield_purchases order by created_at desc limit 5;`.
 - **Replay:** Stripe dashboard → Developers → Webhooks → your endpoint → the event → **Resend**. The count must not change (`duplicate_event`).
 - **Declined / failed:** `4000 0000 0000 0002` (declined). Nothing is credited.
 - **Refund:** Payments → the payment → **Refund** (full). The shields it paid for disappear; if some were used, `clawback_short` on the purchase shows how many couldn't be taken back. A partial refund does nothing automatically.

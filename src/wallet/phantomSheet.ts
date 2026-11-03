@@ -26,7 +26,7 @@ const here = () => ({ origin: location.origin, pathname: location.pathname });
 
 let stop: (() => void) | null = null;
 
-/** Reopens where the player started once the page reloads signed in, through the same path as coming back from Google. */
+/** Reopens where the player started once the page reloads signed in, through the same path as coming back from Discord. */
 function markReturn(rt: ReturnTo) {
   try { localStorage.setItem(RETURN_KEY, rt); } catch { /* they land on the menu, signed in */ }
 }
@@ -105,7 +105,7 @@ async function apply(p: Pending, r: PhantomResponse) {
       failure = error;
     } catch (e) { failure = e; }
     if (failure) throw authError('W3', failure);
-    // Reopen where the player started, through the same path as coming back from Google, with a clean client.
+    // Reopen where the player started, through the same path as coming back from Discord, with a clean client.
     markReturn(p.returnTo);
     location.reload();
   } catch (e) {
@@ -190,7 +190,7 @@ function watchHandoff() {
       if (r.kind === 'done') {
         stop?.();
         draw({ kind: 'working', text: 'Signed in…' });
-        // Reopen where the player started, through the same path as coming back from Google, with a clean client.
+        // Reopen where the player started, through the same path as coming back from Discord, with a clean client.
         markReturn(r.returnTo);
         location.reload();
       } else if (r.kind === 'none') {

@@ -19,7 +19,7 @@ export function usdcRuntime(): { cfg: UsdcConfig; deps: UsdcDeps } {
     async userOf(jwt) {
       const { data, error } = await admin.auth.getUser(jwt);
       if (error || !data.user) return null;
-      // A linked wallet lives on the profile, not on the Google identity. A missing function (migration not applied yet) leaves Phantom sign-in working.
+      // A linked wallet lives on the profile, not on the Discord identity. A missing function (migration not applied yet) leaves Phantom sign-in working.
       const linked = await call<string | null>('pokejam_linked_wallet', { p_user: data.user.id }).catch(() => null);
       return { id: data.user.id, anonymous: data.user.is_anonymous === true, wallet: paymentWallet(data.user, linked) };
     },

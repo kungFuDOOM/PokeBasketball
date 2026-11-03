@@ -478,7 +478,7 @@ const shared = shareFromHash(location.hash);
 const clearHash = () => history.replaceState(null, '', location.pathname + location.search);
 const devFinal = import.meta.env.DEV ? await import('./screens/devResults').then((m) => m.devResultsKind()) : null;
 const devRanked = import.meta.env.DEV ? await import('./multiplayer/ranked/devDemo').then((m) => m.devRankedScreen()) : null;
-// Back from a Google sign-in started on the Ranked screen: reopen Ranked instead of the title.
+// Back from a Discord sign-in started on the Ranked screen: reopen Ranked instead of the title.
 const returnTo = ANY_MULTIPLAYER ? (() => {
   try {
     const v = localStorage.getItem('pokejam.signin.return');
@@ -519,7 +519,7 @@ if (introShot === 'offline' || introShot === 'online') {
   app.className = 'screen-menu';
   void import('./multiplayer/hub').then((h) => h.multiplayerHub({ root: app, settings, audio }, menu, 'ranked'));
 } else if (returnTo === 'profile') {
-  // Back from a Google sign-in started on the profile: reopen the profile.
+  // Back from a Discord sign-in started on the profile: reopen the profile.
   menu();
   app.querySelector<HTMLButtonElement>('[data-go="profile"]')?.click();
 } else if (import.meta.env.DEV && new URLSearchParams(location.search).get('tutorial') === '1') {
@@ -552,14 +552,14 @@ if (ANY_MULTIPLAYER) {
     } catch { return false; }
   })();
   if (phantomCb || phantomPending) void import('./wallet/phantomSheet').then((m) => m.resumePhantom(phantomCb));
-  const googleCb = (window as unknown as { __googleCb?: string }).__googleCb;
+  const discordCb = (window as unknown as { __discordCb?: string }).__discordCb;
   const linkCb = (window as unknown as { __linkCb?: string }).__linkCb;
-  const googlePending = (() => {
-    try { return !!(localStorage.getItem('pokejam.google.handoff') || localStorage.getItem('pokejam.google.landing')); } catch { return false; }
+  const discordPending = (() => {
+    try { return !!(localStorage.getItem('pokejam.discord.handoff') || localStorage.getItem('pokejam.discord.landing')); } catch { return false; }
   })();
   const linkPending = (() => {
     try { return !!(localStorage.getItem('pokejam.link.handoff') || localStorage.getItem('pokejam.link.pending') || localStorage.getItem('pokejam.link.landing')); } catch { return false; }
   })();
-  if (googleCb || googlePending) void import('./wallet/googleSheet').then((m) => m.resumeGoogle(googleCb));
+  if (discordCb || discordPending) void import('./wallet/discordSheet').then((m) => m.resumeDiscord(discordCb));
   if (linkCb || linkPending) void import('./wallet/linkSheet').then((m) => m.resumeLink(linkCb));
 }

@@ -1,4 +1,4 @@
-// Google sign-in: a young account can only start a few ranked matches, and linking a wallet keeps the same user and rank.
+// Discord sign-in: a young account can only start a few ranked matches, and linking a wallet keeps the same user and rank.
 import { readFileSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
 import { testDb, type Db } from './testDb';
@@ -77,7 +77,7 @@ describe('linking a wallet keeps the account', () => {
     expect(blocked.code).toBe('no_wallet');
   });
   it('the migration is additive: security definer, search_path, and no client policy', () => {
-    const sql = readFileSync(new URL('../migrations/20261209_pokejam_google_signin.sql', import.meta.url), 'utf8');
+    const sql = readFileSync(new URL('../migrations/20261209_pokejam_discord_signin.sql', import.meta.url), 'utf8');
     expect(sql).toMatch(/security definer/i);
     expect(sql).toMatch(/set search_path = public/);
     expect(sql).not.toMatch(/create policy/i);

@@ -1,7 +1,7 @@
 // Season 1 Ranked screens as HTML strings: the rank chip, placement progress, the sign-in panel and the post-match points
 // block. Pure (no DOM, no network) so they unit-test in node. Menu and results screens only: nothing here is ever drawn
 // over the court or the in-game HUD. Text, the Rank Shield emblem and CSS (index.ts wires the buttons; style.css has the look).
-import { SIGNIN_GOOGLE } from '../../config/features';
+import { SIGNIN_DISCORD } from '../../config/features';
 import { esc } from '../../util';
 import { PHANTOM_DOWNLOAD_URL, type PhantomAction } from '../../wallet/phantom';
 import { badgeImgHtml, badgeRankOf, renderRankBadge, type BadgeRank } from '../../ranked/badge';
@@ -159,29 +159,31 @@ export function rankChipHtml(me: RankedMe | null, o: { badge?: boolean } = {}): 
     <span class="rk-pts">${d >= ZENITH_IDX ? `${pts} pts` : `${pts} / ${DIV_POINTS}`}</span></div>${bar}${shieldNote(me)}${left}</div>`;
 }
 
+const DISCORD_ICON = '<svg class="dc-ico" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" focusable="false"><rect width="24" height="24" rx="5" fill="#5865F2"/><path fill="#fff" d="M17.9 6.9a11.3 11.3 0 0 0-2.8-.9l-.4.8a10.4 10.4 0 0 0-3.1 0l-.4-.8c-1 .2-1.9.5-2.8.9-1.8 2.7-2.3 5.3-2 7.9a11.4 11.4 0 0 0 3.5 1.8l.7-1.2c-.4-.1-.8-.3-1.1-.5l.3-.2a8.1 8.1 0 0 0 6.9 0l.3.2c-.4.2-.7.4-1.1.5l.7 1.2a11.4 11.4 0 0 0 3.5-1.8c.3-3-.5-5.600-2.200-7.900ZM9.700 13.400c-.7 0-1.300-.7-1.300-1.500s.6-1.500 1.300-1.500 1.300.7 1.300 1.500-.6 1.500-1.300 1.500Zm4.600 0c-.7 0-1.300-.7-1.300-1.500s.6-1.500 1.300-1.500 1.300.7 1.300 1.500-.6 1.500-1.300 1.500Z"/></svg>';
+
 /**
- * The sign-in panel shown to guests before Ranked. `error` is plain text. `google` (default: the SIGNIN_GOOGLE build flag)
- * offers Google next to Phantom; off, the panel is Phantom-only and Phantom becomes the primary button.
+ * The sign-in panel shown to guests before Ranked. `error` is plain text. `discord` (default: the SIGNIN_DISCORD build flag)
+ * offers Discord next to Phantom; off, the panel is Phantom-only and Phantom becomes the primary button.
  */
-export function signInPanelHtml(phantom: PhantomAction, o: { busy?: boolean; error?: string | null; why?: string; google?: boolean } = {}): string {
-  const google = o.google ?? SIGNIN_GOOGLE;
+export function signInPanelHtml(phantom: PhantomAction, o: { busy?: boolean; error?: string | null; why?: string; discord?: boolean } = {}): string {
+  const discord = o.discord ?? SIGNIN_DISCORD;
   const dis = o.busy ? ' disabled' : '';
-  const cls = google ? 'btn big' : 'btn primary big';
+  const cls = discord ? 'btn big' : 'btn primary big';
   const phantomBtn = phantom.kind === 'sign-in'
     ? `<button class="${cls}" data-a="phantom"${dis}>Continue with Phantom</button>`
     : phantom.kind === 'deeplink'
       // mountSignIn points this at Phantom during the tap. Until then it goes where a missing wallet would.
       ? `<a class="${cls}" data-a="phantom-link" href="${esc(PHANTOM_DOWNLOAD_URL)}">Continue with Phantom</a>`
       : `<a class="${cls}" data-a="phantom-install" href="${esc(phantom.href)}" target="_blank" rel="noopener">Get Phantom</a>`;
-  const googleBtn = google ? `<button class="btn primary big" data-a="google"${dis}>Continue with Google</button>` : '';
-  const how = google
-    ? 'Google or Phantom. You can play Ranked with either. Buying shields needs a linked Phantom wallet. Signing never moves funds.'
+  const discordBtn = discord ? `<button class="btn primary big dc-btn" data-a="discord"${dis}>${DISCORD_ICON}<span>Continue with Discord</span></button>` : '';
+  const how = discord
+    ? 'Discord or Phantom. You can play Ranked with either. Buying shields needs a linked Phantom wallet. Signing never moves funds.'
     : 'A wallet is a fresh account. Signing only proves you own it. It costs nothing and never moves funds.';
   const phantomNote = phantom.kind === 'install' ? 'Phantom was not found in this browser. Install it, then come back and tap Continue with Phantom.' : '';
   return `<div class="rk-signin" data-rk="signin">
     <p class="rk-why">${esc(o.why ?? 'Ranked needs a signed-in account so your rank is yours. Guests can still play Social and offline.')}</p>
     <div class="actions center rk-signin-btns">
-      ${googleBtn}${phantomBtn}
+      ${discordBtn}${phantomBtn}
     </div>
     ${phantomNote ? `<p class="note center">${esc(phantomNote)}</p>` : ''}
     ${phantom.kind === 'deeplink' ? `<p class="note center">Approve in the Phantom app, then come back. Stuck? <a data-a="phantom-browse" href="${esc(phantom.browseHref)}">Open PokeJam in Phantom</a></p>` : ''}

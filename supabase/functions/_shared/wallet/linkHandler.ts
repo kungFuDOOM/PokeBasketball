@@ -38,7 +38,7 @@ export async function linkWalletHandler(req: Request, origins: string[], deps: L
   const jwt = req.headers.get('authorization')?.replace(/^Bearer\s+/i, '') ?? '';
   const user = jwt ? await deps.userOf(jwt).catch(() => null) : null;
   if (!user || !USER_ID_RE.test(user.id)) return json({ error: 'Sign in to link a wallet' }, 401);
-  if (user.anonymous) return json({ error: 'Sign in with Google or Phantom first', code: 'guest' }, 403);
+  if (user.anonymous) return json({ error: 'Sign in with Discord or Phantom first', code: 'guest' }, 403);
   let body: { message?: unknown; signature?: unknown } | null = null;
   try { body = (await req.json()) as { message?: unknown; signature?: unknown }; } catch { /* handled below */ }
   const message = body?.message;

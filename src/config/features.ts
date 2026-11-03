@@ -32,5 +32,5 @@ export const MODE_PACK_BATTLES = import.meta.env.VITE_MODE_PACK_BATTLES === 'tru
 /** Billboard ads: book the courtside LED board by burning $PJAM (the Advertise page, and booked ads in every game). */
 export const MODE_ADS = import.meta.env.VITE_MODE_ADS === 'true';
 export const ANY_MULTIPLAYER = MODE_SOCIAL || MODE_RANKED || MODE_PACK_BATTLES;
-// Ranked sign-in offers Google unless the build sets VITE_SIGNIN_GOOGLE=false. Phantom stays either way.
-export const SIGNIN_GOOGLE = import.meta.env.VITE_SIGNIN_GOOGLE !== 'false';
+// Ranked sign-in offers Discord unless the build sets VITE_SIGNIN_DISCORD=false. Phantom stays either way.
+export const SIGNIN_DISCORD = import.meta.env.VITE_SIGNIN_DISCORD !== 'false';
