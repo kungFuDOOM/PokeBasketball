@@ -95,12 +95,12 @@ export function compactTokenAmount(n: number): string {
  * fetch). The challenges screen still shows the live row if an operator changes it.
  */
 export function weeklyChallengesTickerText(cfg: RaffleConfig = RAFFLE_DEFAULTS): string {
-  return `Weekly Challenges are live — finish them all to win a free Pokémon card! Hold ${compactTokenAmount(cfg.pjamPerEntry)} PJAM for bonus entries`;
+  return `Weekly Challenges are live — finish them all for a chance to win a Pokémon card! Hold ${compactTokenAmount(cfg.pjamPerEntry)} PJAM for bonus entries`;
 }
 
-/** Same line, with "free" marked so the ticker's existing accent on <b> picks it out. */
+/** The ticker line as HTML. The words are the text above; the PJAM amount stays the config value. */
 export function weeklyChallengesTickerHtml(cfg: RaffleConfig = RAFFLE_DEFAULTS): string {
-  return weeklyChallengesTickerText(cfg).replace('free Pokémon', '<b>free</b> Pokémon');
+  return weeklyChallengesTickerText(cfg);
 }
 
 /** The screen body. Every string from the server is escaped. */
