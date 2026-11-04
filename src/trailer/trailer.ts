@@ -2436,7 +2436,7 @@ function renderCList(seg: Segment, t: number, a: number) {
     ['CLIMB A RANK', 'One step up the ladder', 1, 1],
   ];
   goals.forEach(([label, detail, need, total], i) => {
-    const at = 0.25 + i * 0.5;
+    const at = 0.25 + i * 0.6;
     if (a < at) return;
     const k = easeOutBack(clamp01((a - at) / 0.25));
     const y = 260 + i * 170;
@@ -2556,8 +2556,8 @@ function renderCBonus(seg: Segment, t: number, a: number) {
       ctx.restore();
     }
   }
-  if (a > 1.8) plainText('HOLD 1M PJAM OR PLAY. UP TO 5 BONUS ENTRIES.', W / 2, 760, 58, '#ffcb05');
-  if (a > 2.4) plainText('RAFFLE RULES AT POKEJAM.XYZ', W / 2, 880, 54, '#f8f8f0');
+  if (a > 1.5) plainText('HOLD 1M PJAM OR PLAY. UP TO 5 BONUS ENTRIES.', W / 2, 760, 58, '#ffcb05');
+  if (a > 2.0) plainText('RAFFLE RULES AT POKEJAM.XYZ', W / 2, 880, 54, '#f8f8f0');
 }
 
 // ---------- shared ----------
@@ -2768,13 +2768,14 @@ export async function prepare(): Promise<{ frames: number; fps: number }> {
     add({ kind: 'outro', t0: t, t1: t + 4.2 });
     musicEnd = s[s.length - 1].t0 + 1.6;
   } else if (CUT === 'challenges') {
-    add({ kind: 'c-hook', t0: t, t1: t + 2.2 });
+    add({ kind: 'c-hook', t0: t, t1: t + 2.0 });
     musicStart = 0.1;
-    add({ kind: 'c-list', t0: t, t1: t + 3.6 });
-    clip([['dunk']], 3.0, 1.9);
+    // The how-to-qualify list holds long enough to read; the highlights are quick cuts.
+    add({ kind: 'c-list', t0: t, t1: t + 5.4 });
+    clip([['dunk']], 1.8, 1.2, false);
     add({ kind: 'c-prize', t0: t, t1: t + 2.6 });
-    add({ kind: 'c-bonus', t0: t, t1: t + 3.0 });
-    clip([['fire'], ['three']], 2.4, 1.3);
+    add({ kind: 'c-bonus', t0: t, t1: t + 3.6 });
+    clip([['fire'], ['three']], 1.4, 0.9, false);
     add({ kind: 'outro', t0: t, t1: t + 3.4 });
     musicEnd = s[s.length - 1].t0 + 1.6;
   } else if (CUT === 'ranked') {
