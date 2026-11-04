@@ -61,10 +61,11 @@ describe('challenges screen', () => {
     expect(compactTokenAmount(2_000_000)).toBe('2M');
     expect(compactTokenAmount(2_500_000)).toBe('2,500,000');
     const text = weeklyChallengesTickerText();
-    expect(text).toBe(`Weekly Challenges are live — finish them all to win a free Pokémon card! Hold ${compactTokenAmount(RAFFLE_DEFAULTS.pjamPerEntry)} PJAM for bonus entries`);
+    expect(text).toBe(`Weekly Challenges are live — finish them all for a chance to win a Pokémon card! Hold ${compactTokenAmount(RAFFLE_DEFAULTS.pjamPerEntry)} PJAM for bonus entries`);
     expect(text).toContain('1M PJAM');
     expect(text).not.toMatch(/Pokémon Master/);
-    expect(weeklyChallengesTickerHtml()).toContain('<b>free</b> Pokémon');
+    expect(text).not.toContain('to win a free');
+    expect(weeklyChallengesTickerHtml()).toBe(text);
     expect(weeklyChallengesTickerText({ ...RAFFLE_DEFAULTS, pjamPerEntry: 3_000_000 })).toContain('Hold 3M PJAM');
     const css = readFileSync(new URL('../style.css', import.meta.url), 'utf8');
     const rule = css.match(/\.ticker \{[^}]+\}/)?.[0] ?? '';
