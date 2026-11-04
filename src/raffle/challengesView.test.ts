@@ -1,7 +1,8 @@
 // @ts-ignore Node's fs has no type declarations in this project.
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { challengesHtml, modelFromDefaults, modelFromServer, resetLabel } from './challengesView';
+import { challengesHtml, compactTokenAmount, modelFromDefaults, modelFromServer, resetLabel, weeklyChallengesTickerHtml, weeklyChallengesTickerText } from './challengesView';
+import { RAFFLE_DEFAULTS } from './entries';
 import type { RaffleMe } from './client';
 
 const me = (over: Partial<RaffleMe> = {}): RaffleMe => ({
@@ -53,6 +54,25 @@ describe('challenges screen', () => {
   it('formats the reset in Pacific time', () => {
     expect(resetLabel('2026-11-09T08:00:00.000Z')).toMatch(/Nov/);
     expect(resetLabel('nope')).toBe('Monday 00:00 PT');
+  });
+
+  it('the menu ticker line follows the raffle defaults and does not hardcode a stale amount', () => {
+    expect(compactTokenAmount(1_000_000)).toBe('1M');
+    expect(compactTokenAmount(2_000_000)).toBe('2M');
+    expect(compactTokenAmount(2_500_000)).toBe('2,500,000');
+    const text = weeklyChallengesTickerText();
+    expect(text).toBe(`Weekly Challenges are live — finish them all to win a free Pokémon card! Hold ${compactTokenAmount(RAFFLE_DEFAULTS.pjamPerEntry)} PJAM for bonus entries`);
+    expect(text).toContain('1M PJAM');
+    expect(text).not.toMatch(/Pokémon Master/);
+    expect(weeklyChallengesTickerHtml()).toContain('<b>free</b> Pokémon');
+    expect(weeklyChallengesTickerText({ ...RAFFLE_DEFAULTS, pjamPerEntry: 3_000_000 })).toContain('Hold 3M PJAM');
+    const css = readFileSync(new URL('../style.css', import.meta.url), 'utf8');
+    const rule = css.match(/\.ticker \{[^}]+\}/)?.[0] ?? '';
+    expect(rule).toContain('safe-area-inset-left');
+    expect(rule).toContain('safe-area-inset-right');
+    expect(rule).toContain('safe-area-inset-bottom');
+    expect(css).toContain('.tk-clip');
+    expect(css).toMatch(/\.ticker\.static \.tk-clip \{[^}]*safe center/);
   });
 
   it('the layout keeps clear of the notch and fits a short landscape phone', () => {

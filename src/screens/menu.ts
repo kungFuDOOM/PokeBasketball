@@ -4,6 +4,7 @@ import type { TeamSource } from '../season/team';
 import { isNameBlocked } from '../nameFilter';
 import { isTutorialDone } from '../tutorial/store';
 import { esc, lettersName, showNameError } from '../util';
+import { weeklyChallengesTickerHtml } from '../raffle/challengesView';
 import { prefersStatic, startAttract, type Attract, type AttractState } from './attract';
 import { isIntroMode, type IntroMode } from './intro.logic';
 
@@ -144,12 +145,23 @@ const OPEN_AD = 'Your ad here';
 // The loop took 80s for the original 11 items; keep that pace per item as the run grows.
 const TICKER_SECONDS_PER_ITEM = 80 / 11;
 
-/** Bottom ticker: live score, tips and mode teasers. A static single line when motion is off. */
-function tickerHtml(isStatic: boolean): string {
-  if (isStatic) return `<div class="ticker static" aria-label="Game modes"><span class="tk-item">Season Draft</span><span class="tk-item">Franchise</span><span class="tk-item">Quick Play</span></div>`;
+/** The weekly-challenges promo. A button when the panel can open; the duplicate run is not a second tab stop. */
+function challengesTickerItem(clickable: boolean, text: string, tabIndex: number | null): string {
+  if (!clickable) return `<span class="tk-item tk-challenges">${text}</span>`;
+  const tab = tabIndex === -1 ? ' tabindex="-1"' : '';
+  return `<button type="button" class="tk-item tk-challenges" data-go="ticker-challenges"${tab}>${text}</button>`;
+}
+
+/** Bottom ticker: live score, tips, mode teasers, and one weekly-challenges line. A static single line when motion is off. */
+export function tickerHtml(isStatic: boolean, clickable = false): string {
+  const promo = (tab: number | null, text: string) => challengesTickerItem(clickable, text, tab);
+  if (isStatic) {
+    return `<div class="ticker static" aria-label="Game modes and weekly challenges"><div class="tk-clip"><span class="tk-item">Season Draft</span>${promo(null, 'Weekly Challenges')}<span class="tk-item">Franchise</span><span class="tk-item">Quick Play</span></div></div>`;
+  }
   const item = (cls: string, html: string) => `<span class="tk-item ${cls}">${html}</span>`;
   const ad = (html: string) => item('tk-ad', `<b class="tk-tag">AD</b>${html}`);
-  const content = [
+  const content = (tab: number | null) => [
+    promo(tab, weeklyChallengesTickerHtml()),
     item('tk-live-item', '<b class="tk-tag">LIVE</b><span class="tk-live">warming up…</span>'),
     item('', `<b class="tk-tag">TIP</b>${TIPS[0]}`),
     item('', TEASERS[0]),
@@ -162,15 +174,20 @@ function tickerHtml(isStatic: boolean): string {
     item('', `<b class="tk-tag">TIP</b>${TIPS[5]}`),
   ];
   // $PJAM first, then an open ad slot after every two content items.
-  const items = [ad(PJAM_AD)];
-  content.forEach((c, i) => {
-    items.push(c);
-    if (i % 2 === 1) items.push(ad(OPEN_AD));
-  });
+  const runOf = (tab: number | null) => {
+    const items = [ad(PJAM_AD)];
+    content(tab).forEach((c, i) => {
+      items.push(c);
+      if (i % 2 === 1) items.push(ad(OPEN_AD));
+    });
+    return items;
+  };
+  const items = runOf(null);
   const run = items.join('');
+  const hidden = runOf(-1).join('');
   const seconds = Math.round(items.length * TICKER_SECONDS_PER_ITEM);
   // Two copies, so the loop has no seam; the second is hidden from screen readers.
-  return `<div class="ticker" role="marquee" aria-label="Live score, tips and game modes"><div class="tk-track" style="animation-duration:${seconds}s"><div class="tk-run">${run}</div><div class="tk-run" aria-hidden="true">${run}</div></div></div>`;
+  return `<div class="ticker" role="marquee" aria-label="Live score, tips, weekly challenges and game modes"><div class="tk-clip"><div class="tk-track" style="animation-duration:${seconds}s"><div class="tk-run">${run}</div><div class="tk-run" aria-hidden="true">${hidden}</div></div></div></div>`;
 }
 
 /** Title screen: a silent CPU game behind the menu, Season Draft as the big call to action, then the other modes. */
@@ -286,7 +303,7 @@ export function menuScreen(root: HTMLElement, settings: Settings, onChange: () =
           <p class="foot-status" role="status"></p>
         </footer>
       </div>
-      ${tickerHtml(isStatic)}
+      ${tickerHtml(isStatic, !!opts.onChallenges)}
     </div>`;
 
   const $ = <T extends HTMLElement>(sel: string) => root.querySelector<T>(sel);
@@ -337,7 +354,12 @@ export function menuScreen(root: HTMLElement, settings: Settings, onChange: () =
   if (opts.onMultiplayer) $('[data-go="multiplayer"]')!.addEventListener('click', leave(opts.onMultiplayer));
   if (opts.onAdvertise) $('[data-go="advertise"]')!.addEventListener('click', leave(opts.onAdvertise));
   if (opts.onProfile) $('[data-go="profile"]')!.addEventListener('click', leave(opts.onProfile));
-  if (opts.onChallenges) $('[data-go="challenges"]')!.addEventListener('click', leave(opts.onChallenges));
+  if (opts.onChallenges) {
+    const openChallenges = leave(opts.onChallenges);
+    $('[data-go="challenges"]')!.addEventListener('click', openChallenges);
+    // Both copies of the scrolling run carry the promo; either tap opens the panel.
+    root.querySelectorAll<HTMLButtonElement>('[data-go="ticker-challenges"]').forEach((btn) => btn.addEventListener('click', openChallenges));
+  }
   startNew.addEventListener('click', tryNew);
   $('[data-go="continue"]')?.addEventListener('click', leave(opts.onContinue));
   $('[data-go="resume-draft"]')?.addEventListener('click', leave(opts.onResumeDraft));

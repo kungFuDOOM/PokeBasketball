@@ -84,6 +84,25 @@ const shortWallet = (w: string) => (w.length <= 12 ? w : `${w.slice(0, 4)}…${w
 
 const amount = (n: number) => n.toLocaleString('en-US');
 
+/** Compact whole-token count for the menu ticker: 1,000,000 -> "1M". Anything else stays grouped digits. */
+export function compactTokenAmount(n: number): string {
+  if (Number.isInteger(n) && n >= 1_000_000 && n % 1_000_000 === 0) return `${n / 1_000_000}M`;
+  return amount(n);
+}
+
+/**
+ * One menu-ticker line. The PJAM amount is the raffle config (the defaults, on the menu: the menu does not
+ * fetch). The challenges screen still shows the live row if an operator changes it.
+ */
+export function weeklyChallengesTickerText(cfg: RaffleConfig = RAFFLE_DEFAULTS): string {
+  return `Weekly Challenges are live — finish them all to win a free Pokémon card! Hold ${compactTokenAmount(cfg.pjamPerEntry)} PJAM for bonus entries`;
+}
+
+/** Same line, with "free" marked so the ticker's existing accent on <b> picks it out. */
+export function weeklyChallengesTickerHtml(cfg: RaffleConfig = RAFFLE_DEFAULTS): string {
+  return weeklyChallengesTickerText(cfg).replace('free Pokémon', '<b>free</b> Pokémon');
+}
+
 /** The screen body. Every string from the server is escaped. */
 export function challengesHtml(m: ChallengeModel, error?: string | null): string {
   const rows = m.rows.map((r) => `<li class="${r.done ? 'done' : ''}"><span><b>${esc(r.label)}</b><small>${esc(r.detail ?? '')}</small></span><strong>${r.done ? 'Done' : `${r.have}/${r.need}`}</strong></li>`).join('');
