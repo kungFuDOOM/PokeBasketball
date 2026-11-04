@@ -1090,16 +1090,24 @@ button.gl-row:hover { border-color: var(--muted); }
 .controls-fold .controls { padding-bottom: 12px; }
 .controls-fold .controls h3 { display: none; }
 .menu-in .foot { text-shadow: 0 1px 4px #000; }
-.ticker { position: fixed; z-index: 3; left: 0; right: 0; bottom: 0; height: 36px; display: flex; align-items: center; overflow: hidden; background: rgba(10, 13, 31, 0.95); border-top: 2px solid var(--accent); padding-bottom: env(safe-area-inset-bottom, 0px); box-sizing: content-box; font: 700 0.95rem var(--sport); letter-spacing: 0.06em; text-transform: uppercase; }
+.ticker { position: fixed; z-index: 3; left: 0; right: 0; bottom: 0; height: 36px; display: flex; align-items: stretch; overflow: hidden; background: rgba(10, 13, 31, 0.95); border-top: 2px solid var(--accent); padding-bottom: env(safe-area-inset-bottom, 0px); padding-left: env(safe-area-inset-left, 0px); padding-right: env(safe-area-inset-right, 0px); box-sizing: content-box; font: 700 0.95rem var(--sport); letter-spacing: 0.06em; text-transform: uppercase; }
+/* Clips the marquee to the content box, so a line never runs under the side safe area (the Dynamic Island in landscape). */
+.tk-clip { flex: 1; min-width: 0; display: flex; align-items: center; overflow: hidden; }
 .tk-track { display: flex; width: max-content; animation: tk-scroll 80s linear infinite; }
 .tk-run { display: flex; flex: none; }
 .tk-item { display: inline-flex; align-items: center; gap: 8px; white-space: nowrap; padding: 0 28px; border-right: 1px solid var(--line); color: var(--fg); }
+button.tk-item { appearance: none; -webkit-appearance: none; background: transparent; border: 0; border-right: 1px solid var(--line); border-radius: 0; letter-spacing: inherit; text-transform: inherit; line-height: 1; min-height: 0; margin: 0; }
+.tk-track:has(button.tk-challenges:hover),
+.tk-track:has(button.tk-challenges:focus-visible),
+.tk-track:has(button.tk-challenges:active) { animation-play-state: paused; }
 .tk-item b { color: var(--accent); }
 .tk-tag { font: 0.6rem var(--pixel); background: var(--red); color: #fff !important; padding: 3px 5px; border-radius: 3px; }
 .tk-ad { text-transform: uppercase; }
 .tk-ad a { color: inherit; }
 .tk-live-item .tk-live { color: #fff; }
-.ticker.static { justify-content: center; gap: 0; }
+/* Center the labels when they fit. On a narrow phone they start at the safe edge and can be swiped; no auto-motion. */
+.ticker.static .tk-clip { justify-content: flex-start; justify-content: safe center; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
+.ticker.static .tk-clip::-webkit-scrollbar { display: none; }
 @keyframes tk-scroll { to { transform: translateX(-50%); } }
 @media (prefers-reduced-motion: reduce) { .tk-track { animation: none; } }
 
