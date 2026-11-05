@@ -81,6 +81,8 @@ STYLES['training'] = STYLES['franchise']
 STYLES['ranked'] = STYLES['online']
 # Challenges: the upbeat franchise anthem.
 STYLES['challenges'] = STYLES['franchise']
+# Packs: short and punchy.
+STYLES['packs'] = STYLES['vertical']
 rng = np.random.default_rng(7)
 
 

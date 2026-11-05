@@ -28,8 +28,8 @@ export const FPS = 30;
  * (an 18-second spot for the Training drills and the new Alley-Oop drill, filmed on real practice games with
  * their floor markers) or 'ranked' (a 20-second Season 1 launch spot: placements, the real tier badges up to Zenith).
  */
-type Cut = 'main' | 'vertical' | 'franchise' | 'top5' | 'online' | 'watch' | 'training' | 'ranked' | 'challenges';
-const CUT: Cut = (['vertical', 'franchise', 'top5', 'online', 'watch', 'training', 'ranked', 'challenges'] as const).find((c) => c === new URLSearchParams(location.search).get('cut')) ?? 'main';
+type Cut = 'main' | 'vertical' | 'franchise' | 'top5' | 'online' | 'watch' | 'training' | 'ranked' | 'challenges' | 'packs';
+const CUT: Cut = (['vertical', 'franchise', 'top5', 'online', 'watch', 'training', 'ranked', 'challenges', 'packs'] as const).find((c) => c === new URLSearchParams(location.search).get('cut')) ?? 'main';
 const VERTICAL = CUT === 'vertical';
 /** The top 5 cut is dressed as a 90s sports highlight show ("POKé CENTER"). */
 const RETRO = CUT === 'top5';
@@ -110,6 +110,7 @@ const MATCHUPS: Record<Cut, { home: TeamDef; away: TeamDef; court: CourtStyle }>
     away: { name: 'Rival', abbr: 'RVL', color: '#e3350d', color2: '#4a0d04', human: false, roster: mons(ONLINE_PICKS.rival) },
     court: COURTS['Indigo Elite'],
   },
+  packs: { home: pallet([254, 448, 6, 445, 248]), away: gym('Saffron Psychics', [65, 257, 212, 9, 149]), court: COURTS['Saffron Psychics'] },
   challenges: {
     home: { name: 'You', abbr: 'YOU', color: '#3b6fd8', color2: '#16224a', human: false, roster: mons(ONLINE_PICKS.you) },
     away: { name: 'Rival', abbr: 'RVL', color: '#e3350d', color2: '#4a0d04', human: false, roster: mons(ONLINE_PICKS.rival) },
@@ -195,7 +196,8 @@ type Scene = 'tipoff' | 'logo' | 'wall' | 'clock' | 'legends' | 'badges' | 'evol
   | 'w-hook' | 'w-choice' | 'w-speed' | 'w-sim'
   | 'tr-hook' | 'tr-menu' | 'tr-stars'
   | 'rk-hook' | 'rk-place' | 'rk-climb' | 'rk-season'
-  | 'c-hook' | 'c-list' | 'c-bonus' | 'c-prize';
+  | 'c-hook' | 'c-list' | 'c-bonus' | 'c-prize'
+  | 'p-hook';
 type Segment =
   | { kind: Scene; t0: number; t1: number }
   | { kind: 'tr-drill'; t0: number; t1: number; drill: TrainingDrill; seed: number; start: number; events: number[] }
@@ -906,11 +908,11 @@ function renderOutro(seg: Segment, t: number, a: number) {
   renderBackground(t, 0.66);
   const k = clamp01(a / 0.25);
   once('outro-hit', t, seg.t0 + 0.25, () => { flash = 0.3; cue(t, 'slam'); cue(t, 'crowd_big'); });
-  const pjAt = CUT === 'online' || CUT === 'watch' || CUT === 'training' || CUT === 'ranked' || CUT === 'challenges' ? 1.6 : 2.2;
+  const pjAt = CUT === 'online' || CUT === 'watch' || CUT === 'training' || CUT === 'ranked' || CUT === 'challenges' ? 1.6 : CUT === 'packs' ? 1.7 : 2.2;
   const pj = a - pjAt;
   if (pj < 0) {
     logo(W / 2, H / 2 - 150, 170, a < 0.25 ? 3 - 2 * k * k : 1);
-    if (a > 0.6) jamText(CUT === 'online' ? 'PLAY ONLINE NOW. FREE.' : CUT === 'watch' ? 'PLAY IT. WATCH IT. SIM IT.' : CUT === 'training' ? 'TRAIN UP. THEN JAM.' : CUT === 'ranked' ? 'RANKED IS LIVE. CLIMB NOW.' : CUT === 'challenges' ? 'PLAY. CLIMB. ENTER.' : 'PLAY FREE IN YOUR BROWSER', W / 2, H / 2 + 40, 64, { fill: '#f8f8f0' });
+    if (a > 0.6) jamText(CUT === 'online' ? 'PLAY ONLINE NOW. FREE.' : CUT === 'watch' ? 'PLAY IT. WATCH IT. SIM IT.' : CUT === 'training' ? 'TRAIN UP. THEN JAM.' : CUT === 'ranked' ? 'RANKED IS LIVE. CLIMB NOW.' : CUT === 'challenges' ? 'PLAY. CLIMB. ENTER.' : CUT === 'packs' ? 'PACK BATTLES. COMING SOON.' : 'PLAY FREE IN YOUR BROWSER', W / 2, H / 2 + 40, 64, { fill: '#f8f8f0' });
     if (a > 1.0) plainText('pokejam.xyz', W / 2, H / 2 + 170, 80, '#ffcb05');
   } else {
     // $PJAM: gold, glinting, center stage.
@@ -2398,6 +2400,24 @@ function renderRkSeason(seg: Segment, t: number, a: number) {
   if (a > 1.0) plainText("DON'T RAGE QUIT. QUITTERS GET BANNED.", W / 2, 700, 64, '#ff7a59');
 }
 
+// ---------- cut: packs ----------
+
+/** A sealed pack shaking harder and harder in the dark: "SOMETHING'S COMING". */
+function renderPHook(seg: Segment, t: number, a: number) {
+  ctx.fillStyle = '#05060f';
+  ctx.fillRect(0, 0, W, H);
+  const glow = ctx.createRadialGradient(W / 2, 500, 40, W / 2, 500, 700);
+  glow.addColorStop(0, `rgba(255,203,5,${0.08 + 0.25 * clamp01(a / 2)})`);
+  glow.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = glow;
+  ctx.fillRect(0, 0, W, H);
+  once('ph0', t, seg.t0 + 0.05, () => cue(t, 'crowd_low'));
+  for (let i = 0; i < 4; i++) once(`ph${i}`, t, seg.t0 + 0.3 + i * 0.35, () => cue(t, 'tick'));
+  const shake = Math.pow(clamp01(a / 2), 2) * 26;
+  boosterPack(W / 2 + (Math.random() - 0.5) * shake, 500 + (Math.random() - 0.5) * shake, 1.2, (Math.random() - 0.5) * shake * 0.004, t, clamp01(a / 2));
+  if (a > 0.3) plainText("SOMETHING'S COMING...", W / 2, 900, 64, '#f2f0e6');
+}
+
 // ---------- cut: challenges ----------
 
 /** "WEEKLY CHALLENGES" chip over the filmed games. */
@@ -2631,6 +2651,7 @@ function renderSegment(seg: Segment, t: number, first: boolean) {
     case 'c-list': renderCList(seg, t, a); break;
     case 'c-bonus': renderCBonus(seg, t, a); break;
     case 'c-prize': renderCPrize(seg, t, a); break;
+    case 'p-hook': renderPHook(seg, t, a); break;
     case 'clip': renderClip(seg, t, first); break;
   }
 }
@@ -2767,6 +2788,14 @@ export async function prepare(): Promise<{ frames: number; fps: number }> {
     for (let i = 0; i < 2; i++) clip([['dunk']], 0.9, 0.6, false, 'montage');
     add({ kind: 'outro', t0: t, t1: t + 4.2 });
     musicEnd = s[s.length - 1].t0 + 1.6;
+  } else if (CUT === 'packs') {
+    // Under 10 seconds: a mystery pack, the even-teams face-off, one dunk, the end card.
+    add({ kind: 'p-hook', t0: t, t1: t + 2.2 });
+    musicStart = 0.1;
+    add({ kind: 'o-packs', t0: t, t1: t + 3.0 });
+    clip([['dunk']], 1.2, 0.8, false, 'montage');
+    add({ kind: 'outro', t0: t, t1: t + 3.2 });
+    musicEnd = s[s.length - 1].t0 + 1.7;
   } else if (CUT === 'challenges') {
     add({ kind: 'c-hook', t0: t, t1: t + 2.0 });
     musicStart = 0.1;
