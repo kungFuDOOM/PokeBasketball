@@ -9,8 +9,9 @@
     <script src="./ga.js"></script>
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
     <meta name="theme-color" content="#0a0d1f" />
-    <title>Poké Jam</title>
-    <meta name="description" content="Draft Pokémon and play 5-on-5 arcade basketball: NBA Jam dunks, type matchups and a full franchise mode. Free in your browser." />
+    <title>Poké Jam – Free Pokémon Basketball Game in Your Browser</title>
+    <meta name="description" content="Poké Jam is a free Pokémon basketball game in your browser: draft Pokémon and play 5-on-5 arcade hoops with NBA Jam-style dunks. Play Ranked online or run a full Franchise season. 寶可夢籃球." />
+    <link rel="canonical" href="https://pokejam.xyz/" />
     <link rel="icon" href="/icon.svg" type="image/svg+xml" />
     <link rel="icon" href="/favicon-32.png" sizes="32x32" type="image/png" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
@@ -18,18 +19,69 @@
     <!-- Link previews (iMessage, X, Discord…). Image URLs must be absolute; update them if the site moves to a custom domain. -->
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="Poké Jam" />
-    <meta property="og:title" content="Poké Jam" />
-    <meta property="og:description" content="Draft Pokémon. Play arcade hoops. 5-on-5 dunks, type matchups and a full franchise mode. Free in your browser." />
+    <meta property="og:title" content="Poké Jam – Free Pokémon Basketball Game in Your Browser" />
+    <meta property="og:description" content="Poké Jam is a free Pokémon basketball game in your browser: draft Pokémon and play 5-on-5 arcade hoops with NBA Jam-style dunks. Play Ranked online or run a full Franchise season. 寶可夢籃球." />
     <meta property="og:url" content="https://pokejam.xyz/" />
     <meta property="og:image" content="https://pokejam.xyz/og.png" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
     <meta property="og:image:alt" content="Poké Jam: Pokémon playing arcade basketball" />
     <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Poké Jam – Free Pokémon Basketball Game in Your Browser" />
+    <meta name="twitter:description" content="Poké Jam is a free Pokémon basketball game in your browser: draft Pokémon and play 5-on-5 arcade hoops with NBA Jam-style dunks. Play Ranked online or run a full Franchise season. 寶可夢籃球." />
     <meta name="twitter:image" content="https://pokejam.xyz/og.png" />
+    <script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "VideoGame",
+  "name": "Poké Jam",
+  "alternateName": [
+    "PokéJam",
+    "PokeJam",
+    "寶可夢籃球"
+  ],
+  "url": "https://pokejam.xyz/",
+  "genre": [
+    "Sports",
+    "Basketball"
+  ],
+  "gamePlatform": "Web browser",
+  "applicationCategory": "Game",
+  "inLanguage": "en",
+  "description": "Poké Jam is a free, fan-made Pokémon basketball game that runs in your browser: 5-on-5 arcade hoops with Ranked online play, a Franchise mode and Quick Play.",
+  "image": "https://pokejam.xyz/og.png",
+  "offers": {
+    "@type": "Offer",
+    "price": "0",
+    "priceCurrency": "USD"
+  }
+}
+    </script>
   </head>
   <body>
     <main id="app"></main>
+    <style>
+      #seo-landing { max-width: 720px; margin: 0 auto; padding: 32px 16px 48px; background: #0a0d1f; color: #f2f0e6; font: 17px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+      #seo-landing h1 { font-size: 2rem; line-height: 1.2; margin: 0 0 12px; text-wrap: balance; }
+      #seo-landing h2 { font-size: 1.2rem; margin: 24px 0 4px; }
+      #seo-landing p { margin: 0 0 8px; }
+      #seo-landing a { color: #ffcb05; }
+      #seo-landing nav { margin-top: 20px; }
+      #seo-landing .fine { color: #a9aed3; font-size: 0.9rem; }
+    </style>
+    <section id="seo-landing">
+      <h1>Poké Jam — free Pokémon basketball in your browser</h1>
+      <p>Poké Jam is a fan-made Pokémon basketball game. Draft a team of Pokémon and play fast 5-on-5 arcade hoops with NBA Jam-style dunks and type matchups. It runs in your browser on desktop or phone, with nothing to install.</p>
+      <p><a href="./">Play Poké Jam</a></p>
+      <h2>Ranked</h2>
+      <p>Play online against other players in Ranked and climb the ranks.</p>
+      <h2>Franchise</h2>
+      <p>Build a roster, draft rookies and play a full season in Franchise mode, with the option to sim or watch games.</p>
+      <h2>Quick Play</h2>
+      <p>Jump into a single game against the CPU or a friend without setting up a season.</p>
+      <nav><a href="/how-to-play/">How to play</a> · <a href="/ranked/">Ranked</a> · <a href="/press/">Press</a> · <a href="/patch-notes.html">Patch notes</a></nav>
+      <p class="fine">Fan-made game. Pokémon and its characters are trademarks of Nintendo, Game Freak and The Pokémon Company.</p>
+    </section>
     <script src="./boot.js"></script>
     <script nomodule src="./nomodule.js"></script>
     <script type="module" src="/src/main.ts"></script>
