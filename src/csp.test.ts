@@ -83,6 +83,7 @@ describe('site CSP with live ads', () => {
     for (const f of ['index.html', 'admin.html']) {
       const html = readFileSync(f, 'utf8');
       for (const tag of html.match(/<script\b[^>]*>[\s\S]*?<\/script>/gi) ?? []) {
+        if (/^<script\s+type="application\/ld\+json">/i.test(tag)) continue; // data block, not executable
         expect(tag, `${f}: ${tag}`).toMatch(/^<script\b[^>]*\bsrc=/i);
         expect(tag.replace(/^<script\b[^>]*>/i, '').replace(/<\/script>$/i, '').trim()).toBe('');
       }

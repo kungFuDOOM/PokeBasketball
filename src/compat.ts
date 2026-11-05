@@ -5,6 +5,8 @@ declare global {
 }
 /** Tells public/boot.js the bundle started, so its 'couldn't load' message never shows over a working game. */
 if (typeof window !== 'undefined') window.__bootOk = true;
+/** Crawlable SEO copy (index.html #seo-landing) is for first paint without JS only: hide it once the app starts. */
+if (typeof document !== 'undefined') document.getElementById('seo-landing')?.setAttribute('hidden', '');
 
 /** CanvasRenderingContext2D.roundRect is missing before Safari 16 / Chrome 99 and throws there: draw the same path with arcTo. */
 export function ensureRoundRect(proto: { roundRect?: unknown } = CanvasRenderingContext2D.prototype) {
