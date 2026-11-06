@@ -4,7 +4,7 @@
 
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { CollectorCrypt } from '../_shared/pack/collector-crypt.ts';
-import { authorized, json, packConfig } from '../_shared/pack/config.ts';
+import { authorized, json, packConfig, realMoneyRefusal } from '../_shared/pack/config.ts';
 import { keypairFromSecret } from '../_shared/pack/ed25519.ts';
 import { machineRows } from '../_shared/pack/machines.ts';
 import { MAX_ATTEMPTS, healthAlerts, runPayouts } from '../_shared/pack/payouts.ts';
@@ -27,6 +27,12 @@ Deno.serve(async (req) => {
     return data;
   };
   const store = sqlStore(call);
+  // Real money only with the database's switches set for it, and test money only on devnet.
+  const refusal = realMoneyRefusal(cfg.cluster, await store.health(MAX_ATTEMPTS));
+  if (refusal) {
+    console.error(`payouts: refusing to run: ${refusal}`);
+    return json({ error: `refusing to run: ${refusal}` }, 500);
+  }
   const rpc = new Rpc(cfg.rpcUrl);
   const cc = new CollectorCrypt({
     house: await keypairFromSecret(cfg.houseSecret), rpc, baseUrl: cfg.ccBaseUrl, apiKey: cfg.ccApiKey, openTimeoutMs: 60_000,

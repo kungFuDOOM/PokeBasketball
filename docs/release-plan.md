@@ -45,7 +45,7 @@ Status (kfd/social): done except the boxes below.
 
 ## Stage 3: Pack Battles
 - Follows the plan in pokejam-test issue 4 (thepaypay420), and needs an OK from both kungFuDOOM and thepaypay420.
-- Devnet only until both humans decide on real money and regions.
+- thepaypay420 OKed real money on 2026-11-05, in the same regions as Collector Crypt (2026-11-06). Devnet only until kungFuDOOM agrees.
 - The deterministic engine and the replay-based winner check are in and tested.
 - The pull, pot and delivery logic is reviewed. Nothing real is bought.
 - kungFuDOOM OKs it, then says "Merge" for Pack Battles.
@@ -57,7 +57,11 @@ Status (`pp/pack-battles-test`, on the test site behind `VITE_MODE_PACK_BATTLES`
 - [x] Devnet test credits, so the test site needs no wallet funding.
 - [ ] Apply the migrations, deploy the three functions, schedule them, and set the devnet secrets (`supabase/functions/README.md`).
 - [x] The forfeit rule for a game that stops early (kungFuDOOM's call): the player who quits forfeits. A disconnect with both players still there is held for a person, with both players' connection logs.
-- [ ] Deposits and withdrawals (the escrow checklist in `supabase/functions/README.md`), counsel on the prize, and regions, before any real money.
+- [x] Deposits and withdrawals (`pp/pack-wallet`): a wallet proven by a signed message, finalized deposits credited once, withdrawals debited first with limits, review and a cooldown after a wallet change, fee revenue, and a real-money switch the workers check against the cluster. Rehearsed on devnet with two real wallets.
+- [x] thepaypay420's OK on real money (2026-11-05).
+- [x] Regions (thepaypay420, 2026-11-06): wherever Collector Crypt serves, blocking the same places it blocks.
+- [ ] Block those regions in the game, matching Collector Crypt's restricted list, before any real money.
+- [ ] Real money: Collector Crypt's mainnet `CC_SIGNER`, a paid RPC, a funded mainnet house wallet (float only, the rest in a multisig), `pack_real_money` on and `pack_test_credits` off, then a mainnet two-wallet match. Only on kungFuDOOM's "Merge".
 
 ## Existing work to build on
 - **`kfd/online` branch** (handoff, not merged) has `docs/multiplayer-handoff.md` and the Supabase migration.

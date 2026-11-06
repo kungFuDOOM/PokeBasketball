@@ -44,6 +44,13 @@ export interface Health {
   cards_in_house_over_48h: number;
   oldest_unsettled_minutes: number;
   paused: boolean;
+  /** Withdrawals debited from balances but not sent yet: still owed (20261105). */
+  unsent_withdrawals?: number;
+  withdrawals_in_review?: number;
+  held_deposits?: number;
+  fee_revenue?: number;
+  real_money?: boolean;
+  test_credits?: boolean;
 }
 
 /** Calls one SQL function by name with named arguments and returns its rows (empty for void). */
@@ -135,6 +142,8 @@ export function sqlStore(call: RpcCall): PrizeStore {
       return {
         balances: Number(o.balances), unbought_pots: Number(o.unbought_pots), parked: Number(o.parked), held: Number(o.held),
         cards_in_house_over_48h: Number(o.cards_in_house_over_48h), oldest_unsettled_minutes: Number(o.oldest_unsettled_minutes), paused: !!o.paused,
+        unsent_withdrawals: Number(o.unsent_withdrawals ?? 0), withdrawals_in_review: Number(o.withdrawals_in_review ?? 0),
+        held_deposits: Number(o.held_deposits ?? 0), fee_revenue: Number(o.fee_revenue ?? 0), real_money: !!o.real_money, test_credits: !!o.test_credits,
       };
     },
     alertDue: async (key, minutes) => scalar(await call('pokejam_pack_alert_due', { p_key: key, p_minutes: minutes }), 'pokejam_pack_alert_due') === true,

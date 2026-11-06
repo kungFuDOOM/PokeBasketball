@@ -50,6 +50,36 @@ describe('PackService', () => {
     await expect(new PackService(g.db, g.match).find('pokemon_25', WALLET, false)).rejects.toThrow(/insufficient balance/);
   });
 
+  it("links a wallet by signing the server's own message, and refuses a wallet that can't sign one", async () => {
+    const f = fake([]);
+    f.db.rpc = async (fn, args) => { f.calls.push({ fn, args }); return { data: fn === 'pokejam_pack_wallet_challenge' ? 'Poké Jam Pack Battles\nCode: abc' : null, error: null }; };
+    const sent: Record<string, unknown>[] = [];
+    const svc = new PackService(f.db, f.match, undefined, undefined, async (body) => { sent.push(body); return {}; });
+    const signed: string[] = [];
+    await svc.linkWallet(WALLET, async (m) => { signed.push(m); return 'sig58'; });
+    expect(f.calls[0]).toEqual({ fn: 'pokejam_pack_wallet_challenge', args: { p_wallet: WALLET } });
+    expect(signed).toEqual(['Poké Jam Pack Battles\nCode: abc']);
+    expect(sent).toEqual([{ action: 'prove', wallet: WALLET, signature: 'sig58' }]);
+    await expect(svc.linkWallet(WALLET, async () => null)).rejects.toThrow(/can't sign a message/);
+    expect(sent).toHaveLength(1);
+  });
+
+  it('asks the wallet service for deposits and claims, and withdraws through the server', async () => {
+    const f = fake([]);
+    const sent: Record<string, unknown>[] = [];
+    const svc = new PackService(f.db, f.match, undefined, undefined, async (body) => {
+      sent.push(body);
+      return body.action === 'deposit' ? { tx: 'base64tx' } : { signature: 'S', state: 'recorded', credited: 25_000_000 };
+    });
+    expect(await svc.depositTx(25_000_000.4)).toBe('base64tx');
+    expect(await svc.claim({ tx: 'signed' })).toEqual({ signature: 'S', state: 'recorded', credited: 25_000_000 });
+    expect(sent).toEqual([{ action: 'deposit', amount: '25000000' }, { action: 'claim', tx: 'signed' }]);
+    await svc.withdraw(10_000_000);
+    expect(f.calls[f.calls.length - 1]).toEqual({ fn: 'pokejam_pack_withdraw', args: { p_amount: 10_000_000 } });
+    // A build without the wallet service says so rather than failing silently.
+    await expect(new PackService(f.db, f.match).depositTx(1)).rejects.toThrow(/not set up/);
+  });
+
   it('formats USDC and checks wallet addresses like the server', () => {
     expect(usd(25_000_000)).toBe('$25');
     expect(usd(13_125_000)).toBe('$13.13');

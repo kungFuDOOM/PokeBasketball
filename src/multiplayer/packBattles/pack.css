@@ -111,3 +111,31 @@
   .pk-won { padding: 10px; }
   .pk-won .prize-steps { display: none; }
 }
+
+/* The linked wallet, adding funds and withdrawing (20261105). */
+.pk-acts { display: flex; gap: 8px; flex-wrap: wrap; }
+.pk-devnet { margin: 0 0 10px; }
+.pk-wallet { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; margin-bottom: 12px; display: grid; gap: 8px; }
+.pk-wal { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.pk-wal .lbl { font: 0.55rem var(--pixel); color: var(--accent); }
+.pk-wal strong { font: 800 1.05rem/1 var(--sport); }
+.pk-wal small { color: var(--muted); font-weight: 600; flex: 1 1 260px; }
+.pk-wbtns { display: flex; gap: 8px; flex-wrap: wrap; }
+.pk-wbtn { display: flex; align-items: center; gap: 10px; }
+.pk-wbtn img { border-radius: 5px; }
+.pk-nowallet p { margin: 0 0 6px; font-weight: 700; }
+.pk-mlinks { display: flex; gap: 8px; flex-wrap: wrap; }
+.pk-mlinks .btn { text-decoration: none; font-size: 0.85rem; padding: 8px 12px; }
+.pk-money { background: var(--panel); border: 1px solid color-mix(in srgb, var(--accent) 40%, var(--line)); border-radius: 10px; padding: 4px 12px 10px; margin-bottom: 12px; }
+.pk-money .pk-h { margin-top: 8px; }
+.pk-row { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; }
+.pk-row .field { flex: 0 1 200px; }
+.pk-row input { font: 1rem var(--sport); }
+.pk-status { min-height: 1.2em; margin: 8px 0 4px; font-weight: 700; }
+.pk-moves { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.pk-moves li { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; }
+.pk-moves li span:first-child { font-weight: 800; }
+.pk-moves small { color: var(--muted); margin-left: auto; }
+.pk-mstate { font-weight: 700; color: var(--muted); }
+.pk-mstate.s-credited, .pk-mstate.s-sent { color: var(--good); }
+.pk-mstate.s-held, .pk-mstate.s-review, .pk-mstate.s-refunded { color: var(--accent); }

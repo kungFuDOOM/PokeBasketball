@@ -43,14 +43,47 @@ export interface PrizeView {
   prefer_cash?: boolean;
 }
 
+export interface WalletMove {
+  amount: number;
+  state: string;
+  created_at: string;
+  /** A deposit's transaction. */
+  signature?: string;
+  /** A withdrawal's transaction, once sent. */
+  txid?: string | null;
+  id?: string;
+}
+
+export interface Limits {
+  min_deposit: number;
+  min_withdrawal: number;
+  daily_withdrawal: number;
+  withdrawn_today: number;
+  cooldown_hours: number;
+  withdrawals_paused: boolean;
+}
+
 export interface Lobby {
   balance: number;
+  /** Real USDC on mainnet (pack_real_money); otherwise devnet test USDC. */
+  real_money: boolean;
   test_credits: boolean;
   paused: boolean;
   tiers: TierView[];
   searching: { tier: PackTier; since: string } | null;
   prizes: PrizeView[];
+  /** The wallet I proved is mine: deposits come from it, withdrawals and cards go to it. */
+  wallet: { address: string; withdraw_after: string } | null;
+  deposits: WalletMove[];
+  withdrawals: WalletMove[];
+  limits: Limits;
 }
+
+/** What claiming a deposit found: 'pending' until Solana finalizes it. */
+export interface Claim { signature: string; state: 'pending' | 'none' | 'recorded'; credited: number }
+
+/** Calls the pokejam-pack-wallet Edge Function with my session; throws its error message. */
+export type WalletFn = (body: Record<string, unknown>) => Promise<Record<string, unknown>>;
 
 export interface BattleView {
   state: 'playing' | 'won' | 'void' | 'review';
@@ -82,7 +115,8 @@ export class PackService {
     /** Runs the human check when the server asks for one; `force` after a refusal. */
     private human: (force: boolean) => Promise<void> = async () => {},
     /** Asks the judge to look now rather than on its next minute (best effort). */
-    private nudgeJudge: () => Promise<void> = async () => {}) {}
+    private nudgeJudge: () => Promise<void> = async () => {},
+    private wallet: WalletFn = async () => { throw new OnlineError('Deposits are not set up in this build.'); }) {}
 
   private async call<T>(fn: string, args?: Record<string, unknown>): Promise<T> {
     const { data, error } = await this.db.rpc(fn, args);
@@ -92,7 +126,33 @@ export class PackService {
 
   async lobby(): Promise<Lobby> {
     const l = await this.call<Lobby>('pokejam_pack_lobby');
-    return { ...l, balance: Number(l.balance), tiers: l.tiers ?? [], prizes: l.prizes ?? [] };
+    return { ...l, balance: Number(l.balance), real_money: !!l.real_money, tiers: l.tiers ?? [], prizes: l.prizes ?? [], wallet: l.wallet ?? null,
+      deposits: l.deposits ?? [], withdrawals: l.withdrawals ?? [],
+      limits: l.limits ?? { min_deposit: 1e6, min_withdrawal: 5e6, daily_withdrawal: 5e8, withdrawn_today: 0, cooldown_hours: 48, withdrawals_paused: false } };
+  }
+
+  /** Link a wallet: the server's one-time message, signed by the wallet (base58), checked by the Edge Function. */
+  async linkWallet(address: string, sign: (message: string) => Promise<string | null>): Promise<void> {
+    const message = await this.call<string>('pokejam_pack_wallet_challenge', { p_wallet: address });
+    const signature = await sign(message);
+    if (!signature) throw new OnlineError("This wallet can't sign a message, so it can't be linked. Try Phantom, Solflare or Backpack.");
+    await this.wallet({ action: 'prove', wallet: address, signature });
+  }
+
+  /** A deposit of `amount` (USDC base units) from my linked wallet, unsigned, for the wallet to sign. */
+  async depositTx(amount: number): Promise<string> {
+    return String((await this.wallet({ action: 'deposit', amount: String(Math.round(amount)) })).tx);
+  }
+
+  /** Credit my deposit once Solana finalizes it: by its signature, or send a signed one first (devnet wallets only sign). */
+  async claim(sent: { signature?: string; tx?: string }): Promise<Claim> {
+    const r = await this.wallet({ action: 'claim', ...sent });
+    return { signature: String(r.signature), state: r.state as Claim['state'], credited: Number(r.credited ?? 0) };
+  }
+
+  /** Withdraw to my linked wallet: off my balance now, sent within a minute (or after a review, for large ones). */
+  withdraw(amount: number): Promise<{ id: string; state: 'pending' | 'review' }> {
+    return this.call('pokejam_pack_withdraw', { p_amount: Math.round(amount) });
   }
 
   /** Devnet test site: $100 of test USDC into my balance (once a day). Returns the new balance. */

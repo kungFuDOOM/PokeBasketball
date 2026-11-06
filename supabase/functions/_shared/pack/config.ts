@@ -27,6 +27,8 @@ export interface PackConfig {
   fallbackAfter: number;
   /** Seconds the winner has, once their card is revealed, to keep it or sell it back. Then their saved preference applies. 0 = no wait. */
   choiceSeconds: number;
+  /** Priority fee on the house's own transactions (withdrawals), in micro-lamports per compute unit. */
+  priorityMicroLamports: number;
   /** Where alerts go (a Slack or Discord incoming webhook), at most hourly for the same alert. Optional. */
   alertWebhookUrl: string | undefined;
   supabaseUrl: string;
@@ -50,6 +52,10 @@ export function packConfig(get: (k: string) => string | undefined, opts: { needH
   if (cluster === 'mainnet-beta' && (!val('HOUSE_USDC_ACCOUNT') || !(val('CC_SIGNER') ?? CC_SIGNER[cluster]))) {
     throw new Error("Mainnet needs HOUSE_USDC_ACCOUNT and CC_SIGNER (Collector Crypt's gacha wallet, confirmed with them)");
   }
+  // The public mainnet RPC rate-limits history lookups (deposits) and drops sends under load: use a paid one.
+  if (cluster === 'mainnet-beta' && (!val('RPC_URL') || val('RPC_URL') === RPC['mainnet-beta'])) {
+    throw new Error('Mainnet needs RPC_URL set to a paid RPC (Helius, Triton or QuickNode), not the public endpoint');
+  }
   const fallback = Number(val('PRIZE_FALLBACK_ATTEMPTS') ?? 3);
   const choice = Number(val('PRIZE_CHOICE_SECONDS') ?? 120);
   return {
@@ -63,10 +69,26 @@ export function packConfig(get: (k: string) => string | undefined, opts: { needH
     ccSigner: val('CC_SIGNER') ?? CC_SIGNER[cluster],
     fallbackAfter: Number.isInteger(fallback) && fallback >= 1 ? fallback : 3,
     choiceSeconds: Number.isFinite(choice) && choice >= 0 ? Math.min(Math.round(choice), 86_400) : 120,
+    priorityMicroLamports: Math.max(0, Math.min(Number(val('PRIORITY_MICROLAMPORTS') ?? (cluster === 'devnet' ? 0 : 20_000)) || 0, 5_000_000)),
     alertWebhookUrl: val('ALERT_WEBHOOK_URL'),
     supabaseUrl: need('SUPABASE_URL'),
     serviceKey: need('SUPABASE_SERVICE_ROLE_KEY'),
   };
+}
+
+/**
+ * Why a worker must not run on this cluster with the database's switches as they are, or null. On mainnet the
+ * database must say real money is on (pack_real_money) and test credits are off, so a test balance can never buy a
+ * real pull or be withdrawn as real USDC. On devnet, real money must be off.
+ */
+export function realMoneyRefusal(cluster: Cluster, h: { real_money?: boolean; test_credits?: boolean }): string | null {
+  if (cluster === 'mainnet-beta') {
+    if (!h.real_money) return 'mainnet, but pack_real_money is off in the database';
+    if (h.test_credits) return 'mainnet, but pack_test_credits is on in the database: turn it off before launch';
+  } else if (h.real_money) {
+    return 'pack_real_money is on, but the workers are on devnet';
+  }
+  return null;
 }
 
 /** Only callers holding the service key (cron, an admin) may run the workers. */

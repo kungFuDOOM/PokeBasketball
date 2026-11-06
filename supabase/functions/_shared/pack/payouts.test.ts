@@ -328,7 +328,14 @@ describe('machines and config', () => {
     // With real money, the house must be able to check where every payment goes.
     expect(() => packConfig(env(mainnet))).toThrow(/HOUSE_USDC_ACCOUNT and CC_SIGNER/);
     expect(() => packConfig(env({ ...mainnet, HOUSE_USDC_ACCOUNT: 'acct' }))).toThrow(/CC_SIGNER/);
-    expect(packConfig(env({ ...mainnet, HOUSE_USDC_ACCOUNT: 'acct', CC_SIGNER: 'cc' })).ccBaseUrl).toBe('https://gacha.collectorcrypt.com');
+    // And a paid RPC: the public endpoint rate-limits the deposit scan's history lookups.
+    const checkable = { ...mainnet, HOUSE_USDC_ACCOUNT: 'acct', CC_SIGNER: 'cc' };
+    expect(() => packConfig(env(checkable))).toThrow(/paid RPC/);
+    expect(() => packConfig(env({ ...checkable, RPC_URL: 'https://api.mainnet-beta.solana.com' }))).toThrow(/paid RPC/);
+    const live = packConfig(env({ ...checkable, RPC_URL: 'https://mainnet.helius-rpc.com/?api-key=k' }));
+    expect(live.ccBaseUrl).toBe('https://gacha.collectorcrypt.com');
+    expect(live.priorityMicroLamports).toBe(20_000);
+    expect(packConfig(env(base)).priorityMicroLamports).toBe(0);
     expect(() => packConfig(env({ SUPABASE_URL: 'u', SUPABASE_SERVICE_ROLE_KEY: 's' }))).toThrow(/HOUSE_SECRET_KEY/);
     const cfg = packConfig(env(base));
     expect(authorized(new Request('https://f', { headers: { authorization: 'Bearer svc' } }), cfg)).toBe(true);

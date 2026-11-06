@@ -1,6 +1,6 @@
 # Pack Battles Edge Functions
 
-Step 3 of the plan on issue #4: after a battle has a winner, buy the winner's Collector Crypt pull, then send the card, sell it back for cash, or credit the pot if CC won't sell. **Devnet only** until kungFuDOOM approves real money; the code refuses any other cluster (see `_shared/pack/config.ts`).
+Step 3 of the plan on issue #4: after a battle has a winner, buy the winner's Collector Crypt pull, then send the card, sell it back for cash, or credit the pot if CC won't sell. **Devnet only** until kungFuDOOM approves real money: the code refuses any other cluster without the approval phrase, a paid RPC and the database's real-money switch (see `_shared/pack/config.ts` and **Real money** below).
 
 **Nothing here has been applied or deployed.** The shared gauntlet-legends project (`ruxbufynuzmversxmptw`) changes only when kungFuDOOM says so.
 
@@ -17,6 +17,8 @@ Step 3 of the plan on issue #4: after a battle has a winner, buy the winner's Co
 | `pokejam-raffle-draw/` | Draws one closed week's card raffle. Reads PJAM balances; the database picks the winner. See `docs/weekly-challenges.md`. No cron. |
 | `../migrations/20261103_pokejam_pack_battles.sql` | Pack Battles on the test site: entries paid from the ledger, the `pack` queue, battles, settling, test credits (below). |
 | `pokejam-pack-judge/` | Judges finished battles from both players' signed inputs and settles them (below). |
+| `../migrations/20261105_pokejam_pack_wallet.sql` | Money in and out: proven wallets, deposits credited once, withdrawals with limits and review, fee revenue, the real-money switch (below). |
+| `pokejam-pack-wallet/` | Proves a wallet, builds and claims deposits; its every-minute run scans the house account for deposits and sends withdrawals (below). |
 | `pokejam-pack-machines/` | Refreshes `pokejam_pack_machines` from CC's live prices, odds and stock, for the lobby. |
 | `_shared/pack/` | Ported from the devnet-verified Bun prototype: CC client, Solana RPC, Core transfer, signing, machines and the worker. Imports use explicit `.ts` extensions, so the same files run in Deno and in vitest. |
 
@@ -226,31 +228,68 @@ The house wallet holds everyone's money, so every way a payout can go wrong ends
 
 On mainnet the worker won't start without `HOUSE_USDC_ACCOUNT` and `CC_SIGNER` (CC's gacha wallet, confirmed with Collector Crypt), because without them it can't check where a payment goes.
 
-### What the escrow step (entries, deposits, withdrawals) must handle
+## Money in and out (`../migrations/20261105_pokejam_pack_wallet.sql`, `pokejam-pack-wallet/`)
 
-Not built yet. Each of these is an edge case the escrow PR has to close, using `pokejam_pack_post` for every balance change:
+The escrow checklist, built. Every balance change goes through `pokejam_pack_post`. The chain side is `_shared/pack/wallet.ts`, and the books are the migration.
 
-**Deposits**
-- Credit each on-chain transfer once: ref = transaction signature + instruction index (one transaction can carry two transfers).
-- Only `finalized` transactions, only the USDC mint, only into the house's USDC account.
-- Attribute a deposit by a wallet the player proved they own (a signed message), not just the sender: exchanges send from shared wallets. Hold unknown senders for a manual credit.
-- Page through the account's history from the last processed signature, so an outage or a backlog never skips one. Set a minimum deposit.
+**Proving a wallet.** The player asks for a one-time message (`pokejam_pack_wallet_challenge`, good for 10 minutes) and signs it with their wallet. That costs nothing and sends no transaction. `pokejam-pack-wallet` (`prove`) checks the Ed25519 signature and links the wallet (`pokejam_pack_wallet_link`). Each player has one wallet, and each wallet belongs to one player. Every change is logged in `pokejam_pack_wallet_log`, and a change starts a cooldown (`pack_wallet_cooldown_hours`, default 48) before any withdrawal, so an account takeover can't link a new wallet and cash out.
 
-**Entries**
-- Debit both players' entries and fees in one database transaction, both or neither. One entry per player per battle (ref = battle + player).
-- Record the fee to a house account in the ledger, so the books balance.
-- Every way a battle can end without a winner refunds both entries and fees exactly once: cancelled before accept, no-show, both players leave, a server restart mid-game, a tie at the hard stop, or a winner check that fails.
-- A battle can't be both voided and won: one locked state change in SQL. Stale battles auto-void on a database-clock cron.
+**Deposits.**
+- `deposit` builds an unsigned transfer from the player's USDC account to the house's, with a memo. The wallet signs it.
+- `claim` sends it, for a wallet that only signs, but only if it's the proven wallet paying the house. Once Solana finalizes it, `claim` credits it.
+- A deposit is credited once per transfer: ref = signature + instruction index, or `outer.inner` for one sent through a program.
+- Only finalized transactions count, only TransferChecked or Transfer of the USDC mint, and only into the house's USDC account. Before reading anything, the worker checks that this account is the house's and holds USDC.
+- A transaction the house signed (a purchase, a buyback, a withdrawal) is never a deposit.
+- A transfer from a wallet nobody has proven is **held** for a person (`pokejam_pack_credit_deposit`). An exchange sends from a shared wallet, so the sender alone proves nothing. A transfer under `pack_min_deposit` (default $1) is recorded as dust.
+- The cron's scan pages through the house account's finalized history from the last signature it finished (`pack_deposit_cursor`), oldest first. The cursor only moves past a signature once it's recorded, so an outage or a backlog never skips one. If the backlog is more than 20,000 signatures, the scan stops and alerts instead of guessing.
 
-**Withdrawals**
-- Debit first, then send. Save the transaction id and blockhash before submitting, and settle a lost reply from the chain (the same pattern as purchases). A failed or rejected withdrawal is credited back once.
-- Only to the player's proven wallet. Changing it starts a cooldown (account takeover).
-- Daily limits, a review over a threshold, and the kill switch.
+**Entries** (from 20261103): both players' entry and fee are debited from their balances as they join, one per player per battle. Every way a battle ends without a winner refunds both exactly once. A won battle's fee is booked as house revenue (`pokejam_pack_revenue`), so the books balance. A voided battle refunds it, and one under review holds it.
 
-**Operations**
-- Keep only working float in the hot wallet and the rest in a multisig (Squads), topped up by hand.
-- Reconcile daily: the house's USDC against the ledger plus fee revenue (`health` does this live).
-- Watch the house's SOL for fees.
+**Withdrawals.**
+- `pokejam_pack_withdraw(amount)` debits the balance first and sends only to the proven wallet.
+- There are limits: from `pack_min_withdrawal` (default $5), up to `pack_withdraw_daily_limit` per player in 24 hours (default $500), and nothing during a wallet cooldown.
+- A withdrawal over `pack_withdraw_review_over` (default $250) waits for a person: `pokejam_pack_review_withdrawal(id, approve, note)`.
+- The worker creates the wallet's USDC account if it has none, then sends a TransferChecked from the house with the memo `pokejam-withdrawal:<id>`. The house signs nothing else.
+- Each transaction's id and blockhash are recorded before it's submitted. A lost reply is settled from the chain: landed means sent; failed, or expired unseen, means try again; still landing means wait.
+- The node refusing a send, or a transaction failing on-chain, uses up an attempt. After 3, the withdrawal is credited back once.
+- A house short of USDC or SOL, or over `pack_withdraw_house_daily_cap` (default $5,000 a day across all players), holds the withdrawal without using up an attempt.
+- Kill switches: `pack_withdrawals_paused`, or `pack_payouts_paused` for everything.
+
+**Health** adds withdrawals not sent yet to what the house owes. It alerts on deposits held for a person and withdrawals waiting for review, and reports fee revenue.
+
+| What goes wrong | What happens |
+| --- | --- |
+| The page closes before the deposit finalizes | The scan finds it within a minute. |
+| A player deposits from an exchange or another wallet | Held for a person, who checks it and credits it once. |
+| The same deposit is claimed twice, or the scan sees it again | Credited once (ref = signature + instruction). |
+| Someone relays another player's signed deposit | Refused: only the proven wallet's own deposit is relayed. |
+| The RPC lists a signature it can't serve yet | The scan stops there and resumes on the next run. |
+| A withdrawal's reply is lost | Settled from the chain on the next run. Never sent twice. |
+| A withdrawal fails 3 times | Credited back once. |
+| The account is taken over and the wallet changed | Withdrawals wait for the cooldown. Every change is logged. |
+| A large withdrawal | Waits for a person. |
+| The house runs short | Withdrawals wait, and the alert fires. |
+
+**Operations** (people, not code): keep only working float in the hot wallet and the rest in a multisig (Squads), topped up by hand. Reconcile daily: `health` compares the house's USDC with every balance, unbought pot, entry and unsent withdrawal, live. Watch the house's SOL for fees and token-account rent (each first withdrawal to a wallet with no USDC account costs the house about 0.002 SOL).
+
+### Real money (only on kungFuDOOM's "Merge")
+
+Two switches, which must agree. The workers (`pokejam-pack-payouts`, `pokejam-pack-wallet`) refuse to run unless they do.
+
+1. **The database:** `update public.pokejam_config set value = 'true' where key = 'pack_real_money';` and `update public.pokejam_config set value = 'false' where key = 'pack_test_credits';`. With real money on, test credits are refused whatever `pack_test_credits` says, and a battle's card goes only to the player's proven wallet.
+2. **The functions:**
+   ```sh
+   supabase secrets set CLUSTER=mainnet-beta PACK_ALLOW_MAINNET=approved-by-kungfudoom \
+     RPC_URL=<a paid RPC: Helius, Triton or QuickNode> HOUSE_SECRET_KEY='[...]' HOUSE_USDC_ACCOUNT=<the house's mainnet USDC account> \
+     CC_SIGNER=<Collector Crypt's mainnet gacha wallet, confirmed with them>
+   ```
+   The functions refuse to start on mainnet without `HOUSE_USDC_ACCOUNT`, `CC_SIGNER` and a paid `RPC_URL`. The public endpoint is refused because it rate-limits the deposit scan's history lookups. `PRIORITY_MICROLAMPORTS` (default 20,000 on mainnet) is the priority fee on withdrawals.
+
+A mainnet worker refuses to run while `pack_real_money` is off or `pack_test_credits` is on. A devnet worker refuses to run while `pack_real_money` is on. So a test balance can never buy a real pull or be withdrawn as real USDC.
+
+**Deploy** `pokejam-pack-wallet` (players call it with their session, so keep JWT verification on): `supabase functions deploy pokejam-pack-wallet`, set `WALLET_ALLOWED_ORIGINS=<the game's sites>`, and schedule `{"action":"run"}` with the service key every minute (pg_cron + pg_net), like the payouts worker.
+
+**Rehearsed on devnet** with two real wallets, money in and out (`test/devnet-wallet.ts`, below).
 
 ## Pack Battles on the test site (`../migrations/20261103_pokejam_pack_battles.sql`, `pokejam-pack-judge/`)
 
@@ -268,19 +307,20 @@ Devnet only. A player enters a tier and pays half the pot plus half the fee from
 
 The early-end rule is kungFuDOOM's: the player who quits forfeits, with no automatic refund, and a player who says it was a real disconnect contacts support, who look at it case by case. For that, each upload carries its player's connection log (`Evidence.log`: tip-off, stalls and how long they lasted, the page hiding, the device going offline, why the game stopped, and the netcode's stats), and Pack Battles uploads are kept 90 days, or for as long as a battle is unsettled or held for a person. The judge's note on the battle says who forfeited and why. In the game, the Leave button reads "Leave and forfeit", and the waiting banner tells players to stay.
 
-Leaving the queue refunds the entry, and so does an entry nobody has polled for 30 seconds. There are no deposits or withdrawals yet: with `pack_test_credits` on, a player can take $100 of test USDC a day into their balance.
+Leaving the queue refunds the entry, and so does an entry nobody has polled for 30 seconds. With `pack_test_credits` on (devnet only), a player can take $100 of test USDC a day into their balance. Deposits and withdrawals are in **Money in and out**, above.
 
 **The judge** (`pokejam-pack-judge/`) runs `src/multiplayer/shared/judgeMatch.ts`, bundled with the game engine into `judge.bundle.js` by `npm run build:judge`. A test fails if the committed bundle is stale. It builds the game from the match row (seed, quarter length, names), never from an upload. Each run refunds dead searches, then judges up to 5 due battles: both players uploaded, or one did 3 minutes ago, or an hour has passed. Players call it right after their game, and a one-minute cron covers the rest.
 
 ### What the `pokejam` project (`ksvfgxodbwfntqnahukn`) needs, on kungFuDOOM's "Merge"
 
-1. **Migrations, in order:** `20261023_pokejam_pack_payouts`, `20261024_pokejam_pack_keep_or_sell`, `20261102_pokejam_pack_fail_safe` (#42), `20261103_pokejam_pack_battles`.
-2. **Edge Functions:** `supabase functions deploy pokejam-pack-machines pokejam-pack-payouts pokejam-pack-judge`.
-3. **Schedules (pg_cron + pg_net, service key):** `pokejam-pack-machines` every 10 minutes, and `pokejam-pack-payouts` and `pokejam-pack-judge` every minute.
+1. **Migrations, in order:** `20261023_pokejam_pack_payouts`, `20261024_pokejam_pack_keep_or_sell`, `20261102_pokejam_pack_fail_safe` (#42), `20261103_pokejam_pack_battles`, `20261105_pokejam_pack_wallet`.
+2. **Edge Functions:** `supabase functions deploy pokejam-pack-machines pokejam-pack-payouts pokejam-pack-judge pokejam-pack-wallet`.
+3. **Schedules (pg_cron + pg_net, service key):** `pokejam-pack-machines` every 10 minutes, and `pokejam-pack-payouts`, `pokejam-pack-judge` and `pokejam-pack-wallet` (body `{"action":"run"}`) every minute.
 4. **Secrets (`supabase secrets set …`):**
    - `CLUSTER=devnet`
    - `HOUSE_SECRET_KEY`: a devnet house wallet made for the test site. Never reuse a key from anywhere else, and keep it out of the repo.
    - `HOUSE_USDC_ACCOUNT`: its USDC-Dev token account.
+   - `WALLET_ALLOWED_ORIGINS`: the test site, for `pokejam-pack-wallet`.
    - Optional: `ALERT_WEBHOOK_URL`, `PRIZE_CHOICE_SECONDS` (default 120).
 5. **Fund the house:** a little devnet SOL (`solana airdrop`) and USDC-Dev for the pulls. Collector Crypt's devnet gacha charges USDC-Dev (mint `Gh9ZwEmdLJ8DscKNTkTqPbNwLNNBjuSzaG9Vp2KGtKJr`), which comes from spl-token-faucet.com.
 6. **Config:** `update public.pokejam_config set value = 'true' where key = 'pack_test_credits';` The fee is `pack_fee_bps` (default 500, so 5% of the pot).
@@ -390,6 +430,22 @@ bun supabase/functions/_shared/pack/test/devnet-failsafe.ts <house keypair.json>
 ```
 
 Run on 2026-10-29: all 32 checks passed, and the house's USDC-Dev moved by exactly seven pulls less the two buybacks.
+
+Money in and out, with two real devnet wallets: link both by signing, deposit $30 from each (built by the server, signed by the wallet, credited once finalized), pair them in a Starter battle, buy and sell back the winner's real pull, then withdraw both whole balances to their wallets. It checks that nothing is credited twice, both wallets end with exactly what the ledger says, and the house's USDC moved by exactly the fee:
+
+```sh
+bun --use-system-ca supabase/functions/_shared/pack/test/devnet-wallet.ts <house keypair.json> <house USDC-Dev token account> <player 1 keypair.json> <player 2 keypair.json>
+```
+
+The house sends each player a little test SOL and $40 of USDC-Dev first. The game itself and its judge aren't replayed here: the battle is settled for player 1 directly, and #43 tested the judge on real played games.
+
+Run on 2026-11-05: all 26 checks passed.
+- Both wallets linked, and a signature from another key was refused for each.
+- Both $30 deposits finalized within about 5 s and were credited once. Claiming again and the scan credited nothing more.
+- The winner's pull was a Mew PSA 7 (insured at $18), sold back for $15.30.
+- Withdrawals of $32.17 and $16.88 landed in the two wallets, which ended at $42.17 and $26.88.
+- The scan read the pull, the buyback and both withdrawals, and found no deposit in them.
+- The house went from $424.25 to $425.50: exactly the $1.25 fee.
 
 Passed on 2026-10-23:
 - **Sell it back:** a Zubat PSA 9 was sold back for $29.75, matching its estimate.

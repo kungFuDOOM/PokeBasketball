@@ -66,4 +66,23 @@ export class Rpc {
     const r = await this.call<{ value: { amount: string } }>('getTokenAccountBalance', [account, { commitment: 'confirmed' }]);
     return Number(r.value.amount);
   }
+
+  /** SOL balance in lamports. */
+  async balance(address: string): Promise<number> {
+    const r = await this.call<{ value: number }>('getBalance', [address, { commitment: 'confirmed' }]);
+    return r.value;
+  }
+
+  /** A landed transaction in the RPC's jsonParsed form, or null when it isn't at this commitment (yet). */
+  parsedTransaction<T>(signature: string, commitment: 'confirmed' | 'finalized' = 'finalized'): Promise<T | null> {
+    return this.call<T | null>('getTransaction', [signature, { encoding: 'jsonParsed', commitment, maxSupportedTransactionVersion: 0 }]);
+  }
+
+  /** An address's transaction signatures, newest first: up to `limit`, older than `before`, newer than `until`. */
+  signaturesFor(address: string, opts: { before?: string; until?: string; limit?: number; commitment?: 'confirmed' | 'finalized' }) {
+    const o: Record<string, unknown> = { limit: opts.limit ?? 1000, commitment: opts.commitment ?? 'finalized' };
+    if (opts.before) o.before = opts.before;
+    if (opts.until) o.until = opts.until;
+    return this.call<{ signature: string; err: unknown; slot: number }[]>('getSignaturesForAddress', [address, o]);
+  }
 }

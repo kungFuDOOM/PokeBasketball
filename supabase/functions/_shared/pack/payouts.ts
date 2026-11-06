@@ -248,12 +248,14 @@ async function payOne(d: PayoutDeps, p: PrizeRow): Promise<Outcome> {
 /** What needs a person, from the prize table and the house's USDC (when known). */
 export async function healthAlerts(store: Pick<PrizeStore, 'health'>, houseUsdc: number | null): Promise<{ health: Health; owed: number; alerts: { key: string; text: string }[] }> {
   const h = await store.health(MAX_ATTEMPTS);
-  const owed = h.balances + h.unbought_pots;
+  const owed = h.balances + h.unbought_pots + Number(h.unsent_withdrawals ?? 0);
   const alerts: { key: string; text: string }[] = [];
   if (h.paused) alerts.push({ key: 'paused', text: 'Pack payouts are paused (pack_payouts_paused)' });
   if (houseUsdc !== null && houseUsdc < owed) {
-    alerts.push({ key: 'insolvent', text: `House wallet holds ${usd(houseUsdc)} but owes players ${usd(owed)} (${usd(h.balances)} in balances, ${usd(h.unbought_pots)} in unbought pots)` });
+    alerts.push({ key: 'insolvent', text: `House wallet holds ${usd(houseUsdc)} but owes players ${usd(owed)} (${usd(h.balances)} in balances, ${usd(h.unbought_pots)} in unbought pots, ${usd(Number(h.unsent_withdrawals ?? 0))} in withdrawals not sent yet)` });
   }
+  if (Number(h.withdrawals_in_review ?? 0) > 0) alerts.push({ key: 'withdrawal-review', text: `${h.withdrawals_in_review} withdrawal${h.withdrawals_in_review === 1 ? ' is' : 's are'} waiting for a person to review (pokejam_pack_review_withdrawal)` });
+  if (Number(h.held_deposits ?? 0) > 0) alerts.push({ key: 'held-deposits', text: `${h.held_deposits} deposit${h.held_deposits === 1 ? ' is' : 's are'} held: sent from a wallet no player has proven (pokejam_pack_credit_deposit)` });
   if (h.parked > 0) alerts.push({ key: 'parked', text: `${h.parked} prize${h.parked === 1 ? ' is' : 's are'} parked for a person (state failed, attempts at the limit)` });
   if (h.cards_in_house_over_48h > 0) {
     alerts.push({ key: 'buyback-window', text: `${h.cards_in_house_over_48h} card${h.cards_in_house_over_48h === 1 ? '' : 's'} still in the house wallet after 48 hours: Collector Crypt's 72-hour buyback window is closing` });

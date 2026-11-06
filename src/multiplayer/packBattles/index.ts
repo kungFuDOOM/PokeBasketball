@@ -1,9 +1,12 @@
-// Pack Battles (devnet test build): beat another player online to win a Collector Crypt pack.
+// Pack Battles: beat another player online to win a Collector Crypt pack. Devnet test USDC, or real USDC once the
+// server's pack_real_money is on. Link a wallet by signing a message; deposit USDC from it, withdraw to it, and a card
+// you keep is sent to it (migration 20261105, the pokejam-pack-wallet Edge Function).
 // Enter a tier and your half of the pot (plus your half of the fee) is held from your balance. The game is the same
 // online lockstep game as Ranked, with balanced teams and signed inputs. The pokejam-pack-judge Edge Function
 // replays both players' inputs to decide the winner, whose pack the payout worker buys and opens; they keep the card
 // or sell it back at the reveal. A player who leaves early forfeits; a tie refunds both entries. See migration 20261103.
 import './pack.css';
+import { connect, mobileWalletLinks, shortAddress, wallets, type Connected } from '../../ads/wallet';
 import { esc } from '../../util';
 import { ensureHuman, humanDeps } from '../shared/human';
 import { panel } from '../shared/matchFlow';
@@ -12,7 +15,7 @@ import { OnlineError, SupabaseMatchService, type OnlineMatch } from '../shared/o
 import { ONLINE_CONFIGURED, ensureSignedIn, supabase } from '../shared/supabase';
 import type { ModeContext } from '../shared/types';
 import { bindChoice, cardHtml, choiceHtml, oddsBarHtml, packArt, prizeStepsHtml, revealHtml } from './art';
-import { PackService, TIERS, TIER_ORDER, usd, validWallet, type BattleView, type Lobby, type PackTier, type PrizeView } from './service';
+import { PackService, TIERS, TIER_ORDER, usd, validWallet, type BattleView, type Lobby, type PackTier, type PrizeView, type WalletMove } from './service';
 
 const WALLET_KEY = 'pokejam.packWallet';
 const PREFER_KEY = 'pokejam.packPrefer';
@@ -22,6 +25,9 @@ const store = {
 };
 
 let service: PackService | null = null;
+/** The wallet connected on this page (for signing deposits), and which network the lobby said we're on. */
+let signer: Connected | null = null;
+let cluster: 'devnet' | 'mainnet-beta' = 'devnet';
 
 async function online(ctx: ModeContext): Promise<PackService> {
   const sb = supabase();
@@ -29,7 +35,14 @@ async function online(ctx: ModeContext): Promise<PackService> {
   if (!service) {
     const human = (force: boolean) => ensureHuman(humanDeps(sb), force);
     service = new PackService(sb, new SupabaseMatchService(sb, uid, ['pack'], human), human,
-      async () => { await sb.functions.invoke('pokejam-pack-judge', { body: {} }); });
+      async () => { await sb.functions.invoke('pokejam-pack-judge', { body: {} }); },
+      async (body) => {
+        const { data, error } = await sb.functions.invoke('pokejam-pack-wallet', { body });
+        if (!error) return data as Record<string, unknown>;
+        const res = (error as { context?: unknown }).context;
+        const why = res instanceof Response ? ((await res.clone().json().catch(() => null)) as { error?: string } | null)?.error : null;
+        throw new OnlineError(why ?? "Couldn't reach the wallet service. Check your connection.");
+      });
   }
   await service.match.setName(ctx.settings.teamName || 'Trainer');
   return service;
@@ -45,7 +58,39 @@ function friendly(e: unknown): string {
 }
 
 const entryCost = (t: { cost: { stake: number; fee: number } }) => Number(t.cost.stake) + Number(t.cost.fee);
-const explorer = (kind: 'address' | 'tx', id: string) => `https://explorer.solana.com/${kind}/${encodeURIComponent(id)}?cluster=devnet`;
+const explorer = (kind: 'address' | 'tx', id: string) =>
+  `https://explorer.solana.com/${kind}/${encodeURIComponent(id)}${cluster === 'devnet' ? '?cluster=devnet' : ''}`;
+
+/** "25" or "12.50" dollars → USDC base units, or null. */
+const micro = (dollars: string) => /^\d{1,9}(\.\d{1,6})?$/.test(dollars.trim()) ? Math.round(Number(dollars.trim()) * 1e6) : null;
+const when = (iso: string) => new Date(iso).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+
+/** The wallets this browser has, as buttons; on a phone with none, links that open the page in a wallet app. */
+function walletButtons(): string {
+  const list = wallets();
+  if (!list.length) {
+    return `<div class="pk-nowallet"><p>No Solana wallet found in this browser.</p>
+      <p class="note">On a computer, install Phantom, Solflare or Backpack. On a phone, open this page in your wallet app:</p>
+      <div class="pk-mlinks">${mobileWalletLinks(location.href).map((l) => `<a class="btn ghost" href="${esc(l.href)}">Open in ${esc(l.name)}</a>`).join('')}</div></div>`;
+  }
+  return `<div class="pk-wbtns">${list.map((w) => `<button class="btn pk-wbtn" data-wallet="${esc(w.name)}"><img src="${esc(w.icon)}" alt="" width="22" height="22">${esc(w.name)}</button>`).join('')}</div>`;
+}
+
+const DEPOSIT_STATE: Record<string, string> = { credited: 'credited', held: 'held for a person', dust: 'under the minimum' };
+const WITHDRAWAL_STATE: Record<string, string> = { pending: 'on its way', sending: 'on its way', review: 'being reviewed', sent: 'sent', refunded: 'credited back' };
+
+const moveHtml = (what: string, m: WalletMove, state: string, tx?: string) =>
+  `<li><span>${what} ${usd(Number(m.amount))}</span><span class="pk-mstate s-${esc(m.state)}">${esc(state)}</span>
+    <small>${esc(when(m.created_at))}${tx ? ` · <a href="${explorer('tx', tx)}" target="_blank" rel="noopener">transaction</a>` : ''}</small></li>`;
+
+/** My latest deposits and withdrawals, newest first. */
+function movesHtml(lobby: Lobby): string {
+  const rows = [
+    ...lobby.deposits.map((d) => ({ at: d.created_at, html: moveHtml('Deposit', d, DEPOSIT_STATE[d.state] ?? d.state, d.signature) })),
+    ...lobby.withdrawals.map((w) => ({ at: w.created_at, html: moveHtml('Withdrawal', w, WITHDRAWAL_STATE[w.state] ?? w.state, w.txid ?? undefined) })),
+  ].sort((a, b) => b.at.localeCompare(a.at)).slice(0, 6);
+  return rows.length ? `<h3 class="pk-h">Wallet activity</h3><ul class="pk-moves">${rows.map((r) => r.html).join('')}</ul>` : '';
+}
 
 /** One prize, wherever it is: opening, waiting on keep-or-sell, sent, sold back, refunded or delayed. */
 function prizeHtml(p: PrizeView, compact: boolean): string {
@@ -64,7 +109,7 @@ function prizeHtml(p: PrizeView, compact: boolean): string {
         ${choiceHtml({ id: p.id, chooseBy: p.choose_by ? new Date(p.choose_by).getTime() : null, ifNoChoice: p.prefer_cash ? 'sell' : 'keep', sellEstimate: p.sell_estimate }, compact)}</div>`;
     case 'sent':
       return `<div class="pk-prize" style="--tc:${TIERS[p.tier].color}">${card ? cardHtml(card, compact ? 'small' : 'big') : ''}
-        <p class="pk-done">In your wallet${p.nft_address ? ` · <a href="${explorer('address', p.nft_address)}" target="_blank" rel="noopener">see it on devnet</a>` : ''}</p></div>`;
+        <p class="pk-done">In your wallet${p.nft_address ? ` · <a href="${explorer('address', p.nft_address)}" target="_blank" rel="noopener">see it on ${cluster === 'devnet' ? 'devnet' : 'Solana Explorer'}</a>` : ''}</p></div>`;
     case 'cashed':
       return `<div class="pk-prize" style="--tc:${TIERS[p.tier].color}">${card ? cardHtml(card, 'small') : ''}
         <p class="pk-done">Sold back for ${usd(Number(p.cash_amount))}, added to your balance</p></div>`;
@@ -98,7 +143,7 @@ export function openPackBattles(ctx: ModeContext) {
     root.querySelector('[data-a="back"]')!.addEventListener('click', ctx.back);
     return;
   }
-  root.innerHTML = panel('PACK BATTLES', `${intro} Devnet test: nothing real is bought or paid.`,
+  root.innerHTML = panel('PACK BATTLES', intro,
     `<div data-lobby><p class="note center">Loading…</p></div>
      <div class="actions center"><button class="btn ghost" data-a="back">Back</button></div>`);
   root.querySelector('[data-a="back"]')!.addEventListener('click', ctx.back);
@@ -120,18 +165,33 @@ async function loadLobby(ctx: ModeContext, flash?: string) {
     return;
   }
   if (!slot.isConnected) return;
+  cluster = lobby.real_money ? 'mainnet-beta' : 'devnet';
   const prefer = store.get(PREFER_KEY) === 'sell' ? 'sell' : 'keep';
+  const linked = lobby.wallet;
+  const cooldown = linked && new Date(linked.withdraw_after).getTime() > Date.now() ? linked.withdraw_after : null;
   slot.innerHTML = `
+    ${lobby.real_money ? '' : '<p class="note center pk-devnet">Devnet test: nothing real is bought or paid.</p>'}
     <div class="pk-bar">
-      <div class="pk-bal"><span class="lbl">BALANCE</span><strong>${usd(lobby.balance)}</strong><small>test USDC</small></div>
-      ${lobby.test_credits ? '<button class="btn" data-a="credit">Get $100 test USDC</button>' : ''}
+      <div class="pk-bal"><span class="lbl">BALANCE</span><strong>${usd(lobby.balance)}</strong><small>${lobby.real_money ? 'USDC' : 'test USDC'}</small></div>
+      <div class="pk-acts">
+        ${lobby.test_credits ? '<button class="btn" data-a="credit">Get $100 test USDC</button>' : ''}
+        ${linked ? `<button class="btn" data-a="deposit">Add funds</button><button class="btn ghost" data-a="withdraw" ${lobby.balance > 0 ? '' : 'disabled'}>Withdraw</button>` : ''}
+      </div>
     </div>
     ${flash ? `<p class="pk-flash">${esc(flash)}</p>` : ''}
     ${lobby.paused ? '<p class="pk-gate">Pack Battles are paused right now.</p>' : ''}
+    <div class="pk-wallet" data-wallet-box>${linked
+      ? `<div class="pk-wal"><span class="lbl">YOUR WALLET</span><strong>${esc(shortAddress(linked.address))}</strong>
+          <small>Deposits come from it. Withdrawals, and any card you keep, go to it.${cooldown ? ` Withdrawals open ${esc(when(cooldown))}, after a wallet change.` : ''}</small>
+          <button class="link-btn" data-a="relink">Change</button></div>`
+      : `<div class="pk-wal"><span class="lbl">LINK YOUR WALLET</span>
+          <small>Sign a message to prove it's yours: free, and no transaction. ${lobby.real_money ? 'You need one to play.' : 'You need one to deposit or withdraw.'}</small></div>
+          ${walletButtons()}`}</div>
+    <div data-money></div>
     <div class="pk-setup">
-      <label class="field">Your Solana wallet (devnet), where a card you keep is sent
+      ${linked || lobby.real_money ? '' : `<label class="field">Or just a Solana wallet (devnet) for a card you keep
         <input id="pk-wallet" autocomplete="off" spellcheck="false" placeholder="Wallet address" value="${esc(store.get(WALLET_KEY))}">
-      </label>
+      </label>`}
       <div class="field">If you don't pick at the reveal
         <div class="seg" id="pk-pref">
           <button data-v="keep" class="${prefer === 'keep' ? 'on' : ''}">Keep the card</button>
@@ -157,10 +217,11 @@ async function loadLobby(ctx: ModeContext, flash?: string) {
       </li>`;
     }).join('')}</ul>
     ${lobby.prizes.some((p) => p.state !== 'revealed') ? `<h3 class="pk-h">Your prizes</h3><ul class="pk-prizes">${lobby.prizes.filter((p) => p.state !== 'revealed').map((p) => `<li>${prizeHtml(p, true)}</li>`).join('')}</ul>` : ''}
+    ${movesHtml(lobby)}
     <p class="note center pk-rules">You play a full online game with evenly matched teams. Both players' inputs are signed, and the winner is decided by replaying them, not by either player's word. Leave before the buzzer and you forfeit. A tie refunds both entries, fee included.</p>`;
 
-  const wallet = slot.querySelector<HTMLInputElement>('#pk-wallet')!;
-  wallet.addEventListener('change', () => store.set(WALLET_KEY, wallet.value.trim()));
+  const typed = slot.querySelector<HTMLInputElement>('#pk-wallet');
+  typed?.addEventListener('change', () => store.set(WALLET_KEY, typed.value.trim()));
   slot.querySelectorAll<HTMLButtonElement>('#pk-pref button').forEach((b) => b.addEventListener('click', () => {
     store.set(PREFER_KEY, b.dataset.v!);
     slot.querySelectorAll('#pk-pref button').forEach((x) => x.classList.toggle('on', x === b));
@@ -174,15 +235,126 @@ async function loadLobby(ctx: ModeContext, flash?: string) {
       void loadLobby(ctx, friendly(x));
     }
   });
+  bindLink(ctx, slot, svc, lobby);
+  slot.querySelector('[data-a="relink"]')?.addEventListener('click', () => {
+    const box = slot.querySelector<HTMLElement>('[data-wallet-box]')!;
+    box.innerHTML = `<div class="pk-wal"><span class="lbl">CHANGE WALLET</span>
+      <small>Pick the wallet to link instead. After a change, withdrawals wait ${lobby.limits.cooldown_hours} hours, in case someone else got into your account.</small></div>
+      ${walletButtons()}<button class="link-btn" data-a="keep-wallet">Keep ${esc(shortAddress(linked!.address))}</button>`;
+    box.querySelector('[data-a="keep-wallet"]')!.addEventListener('click', () => void loadLobby(ctx));
+    bindLink(ctx, slot, svc, lobby);
+  });
+  slot.querySelector('[data-a="deposit"]')?.addEventListener('click', () => depositForm(ctx, slot, svc, lobby));
+  slot.querySelector('[data-a="withdraw"]')?.addEventListener('click', () => withdrawForm(ctx, slot, svc, lobby));
   slot.querySelectorAll<HTMLButtonElement>('[data-tier]').forEach((b) => b.addEventListener('click', () => {
-    const w = wallet.value.trim();
-    if (!validWallet(w)) { void loadLobby(ctx, 'Enter your Solana wallet address first: a card you keep is sent there.'); return; }
-    store.set(WALLET_KEY, w);
+    const w = linked?.address ?? typed?.value.trim() ?? '';
+    if (!validWallet(w)) {
+      void loadLobby(ctx, lobby.real_money ? 'Link your wallet first: a card you win is sent to it.' : 'Link your wallet, or enter a Solana wallet address: a card you keep is sent there.');
+      return;
+    }
+    if (!linked) store.set(WALLET_KEY, w);
     const tier = b.dataset.tier as PackTier;
     const t = lobby.tiers.find((x) => x.code === tier)!;
     void search(ctx, svc, tier, entryCost(t), w, store.get(PREFER_KEY) === 'sell');
   }));
   bindPrizes(slot, svc, () => void loadLobby(ctx));
+}
+
+/** Wallet buttons in the wallet box link that wallet: connect, sign the server's message, and the server checks it. */
+function bindLink(ctx: ModeContext, slot: HTMLElement, svc: PackService, lobby: Lobby) {
+  slot.querySelectorAll<HTMLButtonElement>('[data-wallet-box] [data-wallet]').forEach((b) => b.addEventListener('click', async () => {
+    slot.querySelectorAll<HTMLButtonElement>('[data-wallet-box] [data-wallet]').forEach((x) => { x.disabled = true; });
+    try {
+      const w = await connect(b.dataset.wallet!);
+      signer = w;
+      if (lobby.wallet?.address === w.address) { void loadLobby(ctx, `${shortAddress(w.address)} is already your wallet.`); return; }
+      await svc.linkWallet(w.address, (m) => w.signMessage(m));
+      void loadLobby(ctx, `Linked ${shortAddress(w.address)}.${lobby.wallet ? ` Withdrawals open again in ${lobby.limits.cooldown_hours} hours.` : ''}`);
+    } catch (e) {
+      void loadLobby(ctx, friendly(e));
+    }
+  }));
+}
+
+/** Add funds: the server builds the transfer, the linked wallet signs it, and it's credited once Solana finalizes it. */
+function depositForm(ctx: ModeContext, slot: HTMLElement, svc: PackService, lobby: Lobby) {
+  const box = slot.querySelector<HTMLElement>('[data-money]')!;
+  const linked = lobby.wallet!;
+  const ready = signer?.address === linked.address;
+  box.innerHTML = `<div class="pk-money">
+    <h3 class="pk-h">Add funds</h3>
+    <p class="note">Send ${lobby.real_money ? 'USDC' : 'devnet USDC'} from ${esc(shortAddress(linked.address))}. It's in your balance once Solana finalizes it, usually within a minute. The smallest deposit is ${usd(lobby.limits.min_deposit)}.</p>
+    ${ready ? `<div class="pk-row"><label class="field">Amount in USDC<input id="pk-amt" inputmode="decimal" autocomplete="off" placeholder="25"></label>
+      <button class="btn primary" data-a="send">Deposit</button></div>`
+      : `<p class="note">Connect ${esc(shortAddress(linked.address))} to sign:</p>${walletButtons()}`}
+    <p class="pk-status" data-status></p>
+    <button class="link-btn" data-a="close">Close</button></div>`;
+  box.querySelector('[data-a="close"]')!.addEventListener('click', () => { box.innerHTML = ''; });
+  const status = (t: string) => { box.querySelector<HTMLElement>('[data-status]')!.textContent = t; };
+  box.querySelectorAll<HTMLButtonElement>('[data-wallet]').forEach((b) => b.addEventListener('click', async () => {
+    try {
+      const w = await connect(b.dataset.wallet!);
+      if (w.address !== linked.address) { status(`That wallet is ${shortAddress(w.address)}. Switch it to ${shortAddress(linked.address)}, the one you linked.`); return; }
+      signer = w;
+      depositForm(ctx, slot, svc, lobby);
+    } catch (e) {
+      status(friendly(e));
+    }
+  }));
+  box.querySelector('[data-a="send"]')?.addEventListener('click', async (e) => {
+    const btn = e.currentTarget as HTMLButtonElement;
+    const amount = micro(box.querySelector<HTMLInputElement>('#pk-amt')!.value);
+    if (!amount || amount < lobby.limits.min_deposit) { status(`Enter at least ${usd(lobby.limits.min_deposit)}.`); return; }
+    btn.disabled = true;
+    try {
+      status('Confirm the deposit in your wallet…');
+      const sent = await signer!.sign(await svc.depositTx(amount), cluster);
+      status('Sent. Waiting for Solana to finalize it…');
+      let r = await svc.claim(sent);
+      const until = Date.now() + 120_000;
+      while (r.state === 'pending' && Date.now() < until && box.isConnected) {
+        await new Promise((res) => setTimeout(res, 4000));
+        r = await svc.claim({ signature: r.signature });
+      }
+      if (r.state === 'recorded' && r.credited > 0) void loadLobby(ctx, `Added ${usd(r.credited)} to your balance.`);
+      else if (r.state === 'pending') void loadLobby(ctx, 'Your deposit is still finalizing. It shows up in your balance within a few minutes.');
+      else void loadLobby(ctx, "That transaction didn't send USDC from your linked wallet, so nothing was credited. Contact support if you think it should have been.");
+    } catch (x) {
+      btn.disabled = false;
+      status(friendly(x));
+    }
+  });
+}
+
+/** Withdraw: off the balance at once, then sent to the linked wallet within a minute. */
+function withdrawForm(ctx: ModeContext, slot: HTMLElement, svc: PackService, lobby: Lobby) {
+  const box = slot.querySelector<HTMLElement>('[data-money]')!;
+  const linked = lobby.wallet!;
+  const left = Math.max(0, lobby.limits.daily_withdrawal - lobby.limits.withdrawn_today);
+  box.innerHTML = `<div class="pk-money">
+    <h3 class="pk-h">Withdraw</h3>
+    <p class="note">${lobby.real_money ? 'USDC' : 'Devnet USDC'} goes to ${esc(shortAddress(linked.address))}, the wallet you linked, and nowhere else. From ${usd(lobby.limits.min_withdrawal)}, up to ${usd(left)} more today.</p>
+    <div class="pk-row"><label class="field">Amount in USDC<input id="pk-amt" inputmode="decimal" autocomplete="off" placeholder="${usd(lobby.balance).slice(1)}"></label>
+      <button class="btn primary" data-a="send">Withdraw</button></div>
+    <p class="pk-status" data-status></p>
+    <button class="link-btn" data-a="close">Close</button></div>`;
+  box.querySelector('[data-a="close"]')!.addEventListener('click', () => { box.innerHTML = ''; });
+  const status = (t: string) => { box.querySelector<HTMLElement>('[data-status]')!.textContent = t; };
+  box.querySelector('[data-a="send"]')!.addEventListener('click', async (e) => {
+    const btn = e.currentTarget as HTMLButtonElement;
+    const amount = micro(box.querySelector<HTMLInputElement>('#pk-amt')!.value);
+    if (!amount) { status('Enter an amount.'); return; }
+    btn.disabled = true;
+    try {
+      const r = await svc.withdraw(amount);
+      void loadLobby(ctx, r.state === 'review'
+        ? `Your ${usd(amount)} withdrawal is over the review limit, so a person checks it first. It's off your balance and safe meanwhile.`
+        : `${usd(amount)} is on its way to ${shortAddress(linked.address)}. It usually lands within a minute.`);
+    } catch (x) {
+      btn.disabled = false;
+      status(friendly(x));
+    }
+  });
 }
 
 async function search(ctx: ModeContext, svc: PackService, tier: PackTier, cost: number, wallet: string, preferCash: boolean) {
