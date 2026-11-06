@@ -132,7 +132,7 @@ describe('region data', () => {
     expect(JOHTO.finale.ace).toBe(149);
   });
 
-  it('Johto rosters: ten real, unique Pokémon, ace first, in range, no starters, five natural positions, on-type players', () => {
+  it('Johto rosters: ten real, unique Pokémon, ace first, no starters, five natural positions, on-type players', () => {
     const starters = ['Chikorita', 'Bayleef', 'Meganium', 'Cyndaquil', 'Quilava', 'Typhlosion', 'Totodile', 'Croconaw', 'Feraligatr'];
     for (const t of regionTeams(JOHTO)) {
       const roster = t.roster!;
@@ -144,25 +144,65 @@ describe('region data', () => {
       for (const m of mons) {
         expect(isRetired(m.dex)).toBe(false);
         expect(starters.some((s) => m.name.startsWith(s))).toBe(false);
-        if (!t.elite) expect(gen2(m.dex), `${t.name}: ${m.name}`).toBe(true);
+        // Never a later generation (no Mamoswine, no Magnezone).
+        expect(m.dex, `${t.name}: ${m.name}`).toBeLessThanOrEqual(251);
       }
-      // The one exception outside #152-251 is Lance's Dragonite.
-      if (t.elite) expect(roster.filter((d) => !gen2(d))).toEqual([149]);
+      // Star rule: up to two earlier-generation (Gen 1) Pokémon per team, each of one of the team's types.
+      const earlier = mons.filter((m) => !gen2(m.dex));
+      expect(earlier.length, t.name).toBeLessThanOrEqual(2);
+      for (const m of earlier) expect(m.types.some((ty) => t.types.indexOf(ty) >= 0), `${t.name}: ${m.name}`).toBe(true);
+      if (t.elite) expect(earlier.map((m) => m.dex)).toEqual([149]);
       const { starters: five } = bestLineup(mons);
       expect(five.map((m) => m.pos).sort()).toEqual(['C', 'PF', 'PG', 'SF', 'SG']);
+      expect(five.map((m) => m.dex), `${t.name}: the ace starts`).toContain(t.ace);
       expect(mons.some((m) => m.types.some((ty) => t.types.indexOf(ty) >= 0)), t.name).toBe(true);
     }
     const typed = (dex: number[], type: string) => dex.filter((d) => monByDex(d).types.indexOf(type as never) >= 0).length;
-    const [falkner, bugsy, , morty, chuck, jasmine, pryce, clair] = JOHTO.gyms.map((g) => g.roster!);
+    const stars = (dex: number[]) => dex.filter((d) => !gen2(d));
+    const [falkner, bugsy, whitney, morty, chuck, jasmine, pryce, clair] = JOHTO.gyms.map((g) => g.roster!);
+    expect(stars(falkner)).toEqual([18]); // Pidgeot, Falkner's Pidgeotto line, is the ace
     expect(typed(falkner, 'Flying')).toBe(10);
+    expect(stars(bugsy)).toEqual([123, 127]); // Scyther, Pinsir
     expect(typed(bugsy, 'Bug')).toBe(10);
-    expect(morty[0]).toBe(200); // Misdreavus, the only Gen 2 Ghost
-    expect(typed(chuck, 'Fighting')).toBe(3);
-    expect(typed(jasmine, 'Steel')).toBe(4);
-    expect(typed(pryce, 'Ice')).toBe(5);
-    expect(clair[0]).toBe(230); // Kingdra, the only Gen 2 Dragon
+    expect(stars(whitney)).toEqual([143, 128]); // Snorlax, Tauros
+    expect(whitney[0]).toBe(241); // Miltank stays the ace
+    expect(stars(morty)).toEqual([94, 93]); // Gengar (the ace) and Haunter
+    expect(typed(morty, 'Ghost')).toBe(3);
+    expect(stars(chuck)).toEqual([62, 106]); // Poliwrath (the ace) and Hitmonlee
+    expect(typed(chuck, 'Fighting')).toBe(4);
+    expect(stars(jasmine)).toEqual([82]); // Magneton
+    expect(typed(jasmine, 'Steel')).toBe(5);
+    expect(stars(pryce)).toEqual([131, 87]); // Lapras, Dewgong; Piloswine stays the ace
+    expect(pryce[0]).toBe(221);
+    expect(typed(pryce, 'Ice')).toBe(7);
+    expect(stars(clair)).toEqual([149, 148]); // Dragonite, Dragonair; Kingdra stays the ace
+    expect(clair[0]).toBe(230);
+    expect(typed(clair, 'Dragon')).toBe(3);
     const e4 = JOHTO.finale.roster!;
     for (const d of [149, 178, 169, 214, 248, 230, 196, 197, 237, 205]) expect(e4).toContain(d);
+  });
+
+  it("a Johto gym's players never evolve past Gen 2 in the league; the user's still do", () => {
+    const f = kanto();
+    finish(f, gymIds(f), 0);
+    awardRegion(f);
+    rookieDraft(f);
+    expect(enterRegion(f, 'johto')).toBe(true);
+    const pryce = f.teams.find((t) => t.leader === 'Pryce')!;
+    const pilo = pryce.roster.find((u) => f.players[u].dex === 221)!;
+    // The user's own Piloswine, for comparison.
+    const mine = f.teams[0].roster[0];
+    f.players[mine].dex = 221;
+    for (const u of [pilo, mine]) Object.assign(f.players[u], { level: 9, xp: 0 });
+    const g = f.games.find((x) => !x.score)!;
+    const box = { score: [80, 70], cfg: { quarterLen: 60 }, quarter: 4,
+      rosterOf: (side: number) => side === 0 ? [{ mon: monByDex(221), team: 0, stats: { pts: 0, reb: 0, ast: 0, stl: 0, blk: 0, sec: 60, fgm: 0, fga: 0, tpm: 0, tpa: 0, dnk: 0, gs: 1 } }]
+        : [{ mon: { ...monByDex(221) }, team: 1, stats: { pts: 0, reb: 0, ast: 0, stl: 0, blk: 0, sec: 60, fgm: 0, fga: 0, tpm: 0, tpa: 0, dnk: 0, gs: 1 } }] } as unknown as Game;
+    const sides: [number, number] = [0, pryce.id];
+    const uidOf = new Map(([0, 1] as const).flatMap((sd) => box.rosterOf(sd).map((gp) => [gp.mon, sd === 0 ? mine : pilo] as const)));
+    for (let i = 0; i < 40; i++) recordGame(f, { ...g, score: null }, box, sides, uidOf);
+    expect(f.players[pilo].dex).toBe(221);
+    expect(f.players[mine].dex).toBe(473);
   });
 
   it('draws a badge for every Johto badge, and a neutral medal (not the Elite emblem) for unknown ones', () => {

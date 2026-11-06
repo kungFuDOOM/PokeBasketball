@@ -649,6 +649,16 @@ function levelUp(p: FPlayer, rng = Math.random): string[] {
   return gains;
 }
 
+/**
+ * Where a player on `team` may evolve to. A later region's gyms and final opponent never field a Pokémon from a later
+ * generation than the region's own (Pryce's Piloswine stays a Piloswine in Johto); everyone else evolves freely.
+ */
+function evolutionsFor(f: Franchise, team: number, to: number[]): number[] {
+  const t = f.teams[team];
+  const r = regionOf(f);
+  return t && !t.human && r.index > 0 ? to.filter((d) => d <= r.dex[1]) : to;
+}
+
 /** Applies a finished engine game to the league: score, standings, stats, XP, level-ups and evolutions. */
 export function recordGame(f: Franchise, fg: FGame, g: Game, sides: [number, number], uidOf: Map<Mon, string>): Progress[] {
   const pts: Record<number, number> = { [sides[0]]: g.score[0], [sides[1]]: g.score[1] };
@@ -696,9 +706,10 @@ export function recordGame(f: Franchise, fg: FGame, g: Game, sides: [number, num
       const name = monByDex(p.dex).name;
       const entry: Progress = { uid, team, name, level: p.level, gains: levelUp(p) };
       const evo = EVOLUTIONS[p.dex];
-      if (evo && p.level >= evo.level) {
+      const to = evo ? evolutionsFor(f, team, evo.to) : [];
+      if (evo && to.length && p.level >= evo.level) {
         entry.evolvedFrom = p.dex;
-        p.dex = evo.to[Math.floor(Math.random() * evo.to.length)];
+        p.dex = to[Math.floor(Math.random() * to.length)];
         entry.evolvedTo = p.dex;
         const owner = f.teams[team];
         f.news.unshift(`${owner.name}'s ${name} evolved into ${monByDex(p.dex).name}!`);

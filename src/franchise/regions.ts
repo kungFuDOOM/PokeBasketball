@@ -64,8 +64,13 @@ export const KANTO: RegionDef = {
 };
 
 /**
- * Johto's teams have fixed rosters (no Johto starters in any gym), so their starting fives (73-86 OVR) sit below
- * Kanto's drafted teams; the boosts, higher than Kanto's, make up part of that for a team that has already won Kanto.
+ * Johto's teams have fixed rosters (no Johto starters in any gym), so their starting fives sit below Kanto's drafted
+ * teams; the boosts, higher than Kanto's, make up part of that for a team that has already won Kanto.
+ *
+ * Star rule (every region after the first): a gym's roster is its own generation's Pokémon plus at most two on-type
+ * stars from earlier generations, never a later one. Johto's stars are the leaders' Kanto signatures: Falkner's
+ * Pidgeot, Bugsy's Scyther and Pinsir, Whitney's Snorlax and Tauros, Morty's Gengar and Haunter, Chuck's Poliwrath
+ * and Hitmonlee, Jasmine's Magneton, Pryce's Lapras and Dewgong, Clair's Dragonite and Dragonair.
  */
 export const JOHTO: RegionDef = {
   id: 'johto',
@@ -75,27 +80,28 @@ export const JOHTO: RegionDef = {
   dex: [152, 251],
   gyms: [
     { name: 'Violet Soar', abbr: 'VIO', city: 'Violet City', color: '#8f7fd9', color2: '#1e1838', leader: 'Falkner', types: ['Flying'], boost: 3, gym: 1, badge: 'Zephyr',
-      ace: 164, roster: [164, 163, 177, 178, 207, 226, 176, 193, 227, 198] },
+      ace: 18, roster: [18, 164, 163, 177, 178, 226, 176, 193, 227, 198] },
     { name: 'Azalea Swarm', abbr: 'AZA', city: 'Azalea Town', color: '#8fb83a', color2: '#223010', leader: 'Bugsy', types: ['Bug'], boost: 4, gym: 2, badge: 'Hive',
-      ace: 212, roster: [212, 213, 205, 214, 168, 193, 204, 167, 166, 165] },
+      ace: 212, roster: [212, 123, 213, 205, 214, 168, 127, 167, 166, 165] },
     { name: 'Goldenrod Pride', abbr: 'GOL', city: 'Goldenrod City', color: '#e8b923', color2: '#3a2c06', leader: 'Whitney', types: ['Normal'], boost: 4, gym: 3, badge: 'Plain',
-      ace: 241, roster: [241, 242, 217, 233, 162, 203, 234, 206, 235, 190] },
-    // Data tweak: Ariados (PF) replaces Girafarig so the roster has a natural power forward.
+      ace: 241, roster: [241, 143, 128, 242, 233, 162, 203, 234, 235, 190] },
+    // Gengar is Morty's ace, as in the games. Ariados (PF) and Tyranitar (C) fill the frontcourt: the only Ghosts up to
+    // Gen 2 are the Gastly line and Misdreavus.
     { name: 'Ecruteak Specters', abbr: 'ECR', city: 'Ecruteak City', color: '#6c4fa3', color2: '#1b1230', leader: 'Morty', types: ['Ghost'], boost: 5, gym: 4, badge: 'Fog',
-      ace: 200, roster: [200, 197, 229, 198, 215, 202, 199, 248, 168, 196] },
-    // Data tweak: Stantler (SF) replaces Miltank so the roster has a natural small forward.
+      ace: 94, roster: [94, 200, 93, 248, 168, 198, 202, 199, 197, 177] },
+    // Poliwrath, Chuck's ace in the games, and Hitmonlee lead; Hitmontop and Tyrogue are the Gen 2 Fighting types.
     { name: 'Cianwood Crushers', abbr: 'CIA', city: 'Cianwood City', color: '#c0603a', color2: '#33170c', leader: 'Chuck', types: ['Fighting'], boost: 5, gym: 5, badge: 'Storm',
-      ace: 237, roster: [237, 236, 214, 217, 232, 234, 195, 210, 215, 229] },
-    // Data tweak: Chinchou (PG, Water/Electric) replaces Magcargo so the roster has a natural point guard.
+      ace: 62, roster: [62, 106, 237, 236, 232, 234, 195, 210, 215, 229] },
+    // Magneton, from Jasmine's Magnemite. Chinchou (PG, Water/Electric) is the natural point guard.
     { name: 'Olivine Irons', abbr: 'OLI', city: 'Olivine City', color: '#9aa6b2', color2: '#22282e', leader: 'Jasmine', types: ['Steel'], boost: 6, gym: 6, badge: 'Mineral',
-      ace: 208, roster: [208, 212, 227, 205, 181, 171, 170, 222, 195, 224] },
-    // Data tweak: Octillery (SF) replaces Corsola so the roster has a natural small forward.
+      ace: 208, roster: [208, 82, 212, 227, 205, 181, 171, 170, 195, 224] },
+    // Lapras and Pryce's Dewgong are the Ice stars (Piloswine stays Piloswine: no later-generation evolutions here).
     { name: 'Mahogany Frost', abbr: 'MAH', city: 'Mahogany Town', color: '#7fd0e8', color2: '#0e2a33', leader: 'Pryce', types: ['Ice'], boost: 6, gym: 7, badge: 'Glacier',
-      ace: 221, roster: [221, 225, 215, 238, 220, 195, 226, 224, 186, 199] },
+      ace: 221, roster: [221, 131, 87, 225, 215, 238, 220, 226, 224, 186] },
     { name: 'Blackthorn Dragons', abbr: 'BLK', city: 'Blackthorn City', color: '#3d6fd8', color2: '#0f1a3a', leader: 'Clair', types: ['Dragon'], boost: 7, gym: 8, badge: 'Rising',
-      ace: 230, roster: [230, 248, 247, 246, 229, 169, 207, 195, 227, 240] },
+      ace: 230, roster: [230, 149, 148, 248, 247, 169, 207, 195, 227, 240] },
   ],
-  // Lance's Dragonite (#149) is the one Pokémon from outside the region's dex range.
+  // Lance's Dragonite (#149) is the finale's one earlier-generation star.
   finale: { name: 'Johto Elite', abbr: 'JOH', city: 'Indigo Plateau', title: 'Johto Elite Four & Champion Lance', color: '#b8323c', color2: '#2a0b0e',
     leader: 'Will · Koga · Bruno · Karen · Champion Lance', types: ['Psychic', 'Poison', 'Fighting', 'Dark', 'Dragon'], boost: 8, elite: true,
     ace: 149, roster: [149, 178, 169, 214, 248, 230, 196, 197, 237, 205] },
