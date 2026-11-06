@@ -412,9 +412,22 @@ const addRecord = (list: RegionRecord[], regionId: string, season: number) => {
   if (!list.some((r) => r.regionId === regionId && r.season === season)) list.push({ regionId, season });
 };
 
-/** Regions unlocked by this franchise's own completions: each one needs the region before it fully beaten. */
-export const earnedUnlocks = (f: Franchise): string[] =>
-  REGIONS.filter((r) => r.index > 0 && (f.completedRegions ?? []).some((c) => regionById(c.regionId)?.index === r.index - 1)).map((r) => r.id);
+/**
+ * Regions unlocked by this franchise's own completions: each one needs the region before it fully beaten, and that
+ * region open when it was (the first region, the league's own, one in `known`, or one unlocked earlier in the chain),
+ * so a Johto record can only unlock Hoenn for a franchise that could play in Johto.
+ */
+export function earnedUnlocks(f: Franchise, known: readonly string[] = f.unlockedRegions ?? []): string[] {
+  const open = new Set([KANTO.id, regionOf(f).id, ...known]);
+  const out: string[] = [];
+  for (const r of REGIONS) {
+    const prev = REGIONS.find((x) => x.index === r.index - 1);
+    if (r.index === 0 || !prev || !open.has(prev.id) || !(f.completedRegions ?? []).some((c) => c.regionId === prev.id)) continue;
+    out.push(r.id);
+    open.add(r.id);
+  }
+  return out;
+}
 
 /**
  * Called when the final crowns a champion: a user title goes in the record book for the region, and a title with
@@ -463,7 +476,7 @@ export function reconcileRegions(f: Franchise, device: string[]) {
     addRecord(f.completedRegions, KANTO.id, pm!);
   }
   awardRegion(f);
-  f.unlockedRegions = laterRegionIds([...earnedUnlocks(f), ...device]);
+  f.unlockedRegions = laterRegionIds([...earnedUnlocks(f, device), ...device]);
 }
 
 /** Every region the user has won a title in, with the seasons: the hub's champion banners. */
