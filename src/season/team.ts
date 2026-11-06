@@ -96,14 +96,16 @@ export function cpuRoster(pool: Mon[], size: number, types: DraftTeam['types'] =
 
 /**
  * Drafts a whole league without the draft screen: snake order, CPU picks. When `fixed` is given, team 0
- * (the user) keeps exactly those Pokémon and every other team drafts from the rest.
+ * (the user) keeps exactly those Pokémon and every other team drafts from the rest. `from` is the pool
+ * (a franchise's open regions); `leftovers` is what is left of it.
  */
-export function autoDraft(teams: DraftTeam[], size: number, fixed?: Mon[]): { rosters: Mon[][]; leftovers: Mon[] } {
-  const pool = [...POKEMON].sort((a, b) => b.ovr - a.ovr);
+export function autoDraft(teams: DraftTeam[], size: number, fixed?: Mon[], from: Mon[] = POKEMON): { rosters: Mon[][]; leftovers: Mon[] } {
+  const pool = [...from].sort((a, b) => b.ovr - a.ovr);
   const rosters: Mon[][] = teams.map(() => []);
   if (fixed) {
     rosters[0] = [...fixed];
-    for (const m of fixed) pool.splice(pool.indexOf(m), 1);
+    // The user's own team may hold Pokémon from outside `from`: they are kept, and simply aren't in the pool.
+    for (const m of fixed) if (pool.indexOf(m) >= 0) pool.splice(pool.indexOf(m), 1);
   }
   const order = shuffle(teams.map((_, i) => i));
   for (let round = 0; round < size; round++) {

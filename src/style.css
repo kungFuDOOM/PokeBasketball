@@ -501,6 +501,18 @@ li.empty { color: var(--muted); }
 .badge-case li { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px 2px; border-radius: 8px; background: var(--bg); font-size: 0.78rem; font-weight: 700; color: var(--muted); }
 .badge-case li.got { color: var(--fg); background: color-mix(in srgb, var(--accent) 12%, var(--bg)); }
 .badge-case h3 b { color: var(--accent); }
+.champ-banners { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px; }
+.champ-banner { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; min-width: 0; padding: 8px 14px; border: 2px solid #8a5a00; border-radius: 8px; background: linear-gradient(#ffe27a, #ffcb05); color: #1a1400; }
+.champ-banner strong { font: 0.7rem var(--pixel); letter-spacing: 0.05em; text-transform: uppercase; }
+.champ-banner span { font-size: 0.85rem; font-weight: 700; }
+.region-card { border-left: 6px solid var(--tc); }
+.region-card h3 { margin: 0 0 8px; overflow-wrap: anywhere; }
+.region-reqs { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.region-reqs li { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 8px 12px; border-radius: 8px; background: var(--bg); }
+.region-reqs li b { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.region-reqs .val { font-weight: 800; white-space: nowrap; }
+.region-reqs .mark { width: 1.2em; text-align: center; font-weight: 800; color: var(--muted); }
+.region-reqs li.ok .mark, .region-reqs li.ok .val { color: var(--accent); }
 .badge-svg.locked { filter: grayscale(1) brightness(0.45); opacity: 0.6; }
 .leader { color: var(--fg) !important; font-weight: 700; margin: 0 0 4px !important; }
 .standings tbody th span { display: flex; flex-direction: column; line-height: 1.1; }

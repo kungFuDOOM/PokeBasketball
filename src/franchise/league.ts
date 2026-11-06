@@ -6,38 +6,15 @@ import type { DraftState } from '../screens/draft';
 import { safeName } from '../nameFilter';
 import { fixAbbr } from '../util';
 import { USER_STYLE, contrastAway } from '../multiplayer/shared/matchSetup';
+import { KANTO, REGIONS, inPool, nextRegion, openRegionIds, regionById, regionTeams, type LeagueTeam, type RegionDef } from './regions';
 
 const SAVE_KEY = 'pokejam.franchise.v1';
 /** XP needed to go from `level` to the next one; each level costs a bit more. */
 export const xpToNext = (level: number) => 60 + 25 * (level - 1);
 
-/** The rest of the league: the eight Kanto gyms in badge order, then the Elite Four. */
-export interface LeagueTeam {
-  name: string;
-  abbr: string;
-  color: string;
-  color2: string;
-  leader: string;
-  /** Types this team's GM favors in the draft. */
-  types: PokeType[];
-  /** Added to every rating in games: gyms get tougher in badge order and the Elite Four is the final boss. */
-  boost: number;
-  gym?: number;
-  badge?: string;
-  elite?: boolean;
-}
-
-export const LEAGUE: LeagueTeam[] = [
-  { name: 'Pewter Boulders', abbr: 'PEW', color: '#a38c63', color2: '#2e271b', leader: 'Brock', types: ['Rock'], boost: -3, gym: 1, badge: 'Boulder' },
-  { name: 'Cerulean Cascades', abbr: 'CER', color: '#2bb3d6', color2: '#0b2c38', leader: 'Misty', types: ['Water'], boost: -2, gym: 2, badge: 'Cascade' },
-  { name: 'Vermilion Thunder', abbr: 'VER', color: '#f2c522', color2: '#3a2f06', leader: 'Lt. Surge', types: ['Electric'], boost: -1, gym: 3, badge: 'Thunder' },
-  { name: 'Celadon Rainbows', abbr: 'CEL', color: '#5cb85c', color2: '#13301a', leader: 'Erika', types: ['Grass'], boost: 0, gym: 4, badge: 'Rainbow' },
-  { name: 'Fuchsia Ninjas', abbr: 'FCH', color: '#b04fc4', color2: '#2d1236', leader: 'Koga', types: ['Poison'], boost: 1, gym: 5, badge: 'Soul' },
-  { name: 'Saffron Psychics', abbr: 'SAF', color: '#f2668b', color2: '#3a1220', leader: 'Sabrina', types: ['Psychic'], boost: 2, gym: 6, badge: 'Marsh' },
-  { name: 'Cinnabar Volcanoes', abbr: 'CIN', color: '#e8622c', color2: '#3d160b', leader: 'Blaine', types: ['Fire'], boost: 2, gym: 7, badge: 'Volcano' },
-  { name: 'Viridian Quakes', abbr: 'VIR', color: '#7c9a3a', color2: '#1e2a0e', leader: 'Giovanni', types: ['Ground'], boost: 3, gym: 8, badge: 'Earth' },
-  { name: 'Indigo Elite', abbr: 'E4', color: '#d4a017', color2: '#2a2106', leader: 'The Elite Four', types: ['Ice', 'Fighting', 'Ghost', 'Dragon'], boost: 4, elite: true },
-];
+/** The rest of the league in Kanto: the eight gyms in badge order, then the Elite Four (see `regions.ts`). */
+export const LEAGUE: LeagueTeam[] = regionTeams(KANTO);
+export type { LeagueTeam };
 export { USER_STYLE, contrastAway };
 
 export interface SeasonStats extends PStats { gp: number }
@@ -125,7 +102,7 @@ export interface Franchise {
   mvp?: string;
   /** This season's awards, set when the final ends. */
   awards?: Award[];
-  history: { season: number; champion: string; mvp: string }[];
+  history: { season: number; champion: string; mvp: string; region?: string }[];
   /** Offseason rookie draft, between the final and the next season. */
   rookies?: RookieDraft;
   /** Seeds the rookie classes, so the same save gets the same class. Missing in older saves; made on first use. */
@@ -140,7 +117,17 @@ export interface Franchise {
   introShown?: number;
   /** The user's pick in the last rookie draft, for the new-season preview. */
   draftedRookie?: string;
+  /** Region the league plays in (an id from `regions.ts`). Missing in older saves: Kanto. */
+  region?: string;
+  /** Every title the user's team has won, by region. Permanent. */
+  titles?: RegionRecord[];
+  /** Seasons the user won a region's title with all eight of its gym badges. Permanent. */
+  completedRegions?: RegionRecord[];
+  /** Regions after the first that this franchise may enter (earned here or on this device). */
+  unlockedRegions?: string[];
 }
+
+export interface RegionRecord { regionId: string; season: number }
 
 /**
  * One-round rookie draft from the unevolved free agents, worst record first and the champion last.
@@ -278,6 +265,9 @@ export function saveFranchise(f: Franchise) {
   try {
     localStorage.setItem(SAVE_KEY, JSON.stringify(f));
   } catch { /* storage unavailable: the franchise lives for this visit only */ }
+  // Regions this franchise earned stay unlocked on the device, even if the franchise is replaced.
+  const earned = earnedUnlocks(f);
+  if (earned.some((id) => loadRegionProfile().indexOf(id) < 0)) saveRegionProfile(earned);
 }
 
 /**
@@ -291,7 +281,7 @@ function retireLegacy(f: Franchise) {
   for (const t of f.teams) {
     for (const u of t.roster.filter(gone)) {
       const old = monOf(f, u);
-      const fas = [...f.freeAgents].sort((a, b) => monOf(f, b).ovr - monOf(f, a).ovr);
+      const fas = f.freeAgents.filter((x) => canAcquire(f, x)).sort((a, b) => monOf(f, b).ovr - monOf(f, a).ovr);
       const add = fas.find((x) => monOf(f, x).pos === old.pos) ?? fas[0];
       if (!add) continue;
       t.roster = t.roster.map((x) => (x === u ? add : x));
@@ -309,12 +299,12 @@ const HEX = /^#[0-9a-f]{3,8}$/i;
  * Saves come back from browser storage, where they could have been edited by hand: keep team names plain
  * and short, abbreviations exactly three letters and colors real hex colors before any of it reaches the page.
  */
-function cleanTeams(teams: unknown): boolean {
+function cleanTeams(teams: unknown, cpu: LeagueTeam[] = LEAGUE): boolean {
   if (!Array.isArray(teams) || !teams.length) return false;
   for (const [i, t] of (teams as { name: unknown; abbr: unknown; color: unknown; color2: unknown; human?: unknown }[]).entries()) {
     if (!t || typeof t !== 'object') return false;
     // A blocked name (a hand-edited save) becomes the team's default: the league's name for it, or Pallet Town for the player's.
-    t.name = safeName(String(t.name ?? '').slice(0, 24) || 'Team', t.human ? 'Pallet Town' : LEAGUE[i - 1]?.name ?? 'Team');
+    t.name = safeName(String(t.name ?? '').slice(0, 24) || 'Team', t.human ? 'Pallet Town' : cpu[i - 1]?.name ?? 'Team');
     t.abbr = fixAbbr(t.abbr, t.name as string);
     if (typeof t.color !== 'string' || !HEX.test(t.color)) t.color = USER_STYLE.color;
     if (typeof t.color2 !== 'string' || !HEX.test(t.color2)) t.color2 = USER_STYLE.color2;
@@ -327,8 +317,12 @@ export function loadFranchise(): Franchise | null {
     const raw = localStorage.getItem(SAVE_KEY);
     if (!raw) return null;
     const f = JSON.parse(raw) as Franchise;
-    if (f?.version !== 1 || !cleanTeams(f.teams) || typeof f.players !== 'object' || !Array.isArray(f.games)) return null;
+    if (f?.version !== 1 || typeof f.players !== 'object' || !f.players || !Array.isArray(f.games)) return null;
+    if (!cleanTeams(f.teams, regionTeams(regionById(f.region) ?? KANTO))) return null;
+    reconcileRegions(f, loadRegionProfile());
     retireLegacy(f);
+    const earned = earnedUnlocks(f);
+    if (earned.some((id) => loadRegionProfile().indexOf(id) < 0)) saveRegionProfile(earned);
     return f;
   } catch {
     return null;
@@ -350,7 +344,10 @@ export function loadDraft(): DraftState | null {
     const raw = localStorage.getItem(DRAFT_KEY);
     if (!raw) return null;
     const d = JSON.parse(raw) as DraftState;
-    return cleanTeams(d?.teams) && Array.isArray(d.order) && Array.isArray(d.taken) ? d : null;
+    if (!cleanTeams(d?.teams) || !Array.isArray(d.order) || !Array.isArray(d.taken)) return null;
+    // A franchise draft's pool boundary: only known regions count; anything else drafts from the first region alone.
+    if (d.regions !== undefined) d.regions = openRegionIds(Array.isArray(d.regions) ? d.regions : []);
+    return d;
   } catch {
     return null;
   }
@@ -360,6 +357,182 @@ export function clearFranchise() {
   try {
     localStorage.removeItem(SAVE_KEY);
   } catch { /* storage unavailable */ }
+}
+
+// ---------- regions ----------
+
+const REGION_KEY = 'pokejam.regions.v1';
+
+/** Known regions past the first, once each. */
+const laterRegionIds = (ids: unknown): string[] =>
+  Array.isArray(ids) ? REGIONS.filter((r) => r.index > 0 && ids.indexOf(r.id) >= 0).map((r) => r.id) : [];
+
+/**
+ * Regions unlocked on this device, apart from any one franchise: a new or replacement franchise keeps them.
+ * A small versioned record; anything malformed counts as nothing unlocked.
+ */
+export function loadRegionProfile(): string[] {
+  try {
+    const raw = localStorage.getItem(REGION_KEY);
+    if (!raw) return [];
+    const p = JSON.parse(raw) as { v?: unknown; unlocked?: unknown } | null;
+    return p && p.v === 1 ? laterRegionIds(p.unlocked) : [];
+  } catch {
+    return [];
+  }
+}
+
+/** Adds `ids` to the device's unlocked regions (never removes any). */
+export function saveRegionProfile(ids: string[]) {
+  const unlocked = laterRegionIds([...loadRegionProfile(), ...ids]);
+  try {
+    localStorage.setItem(REGION_KEY, JSON.stringify({ v: 1, unlocked }));
+  } catch { /* storage unavailable */ }
+}
+
+/** The region the league plays in. */
+export const regionOf = (f: Franchise): RegionDef => regionById(f.region) ?? KANTO;
+
+/** Region ids whose Pokémon this franchise may draft, sign, trade for and see as rookies. */
+export const openRegions = (f: Franchise): string[] => openRegionIds([...(f.unlockedRegions ?? []), regionOf(f).id]);
+
+/** Whether the user may pick up this player now (free agency, trades, rookie classes). Owned players are never touched. */
+export const canAcquire = (f: Franchise, uid: string) => !!f.players[uid] && inPool(f.players[uid].dex, openRegions(f));
+
+/** Gym badges of the league's region the user has won this season (the final opponent's emblem is not one). */
+export function gymBadgeCount(f: Franchise): number {
+  const won = badgesEarned(f);
+  return regionOf(f).gyms.filter((g) => f.teams.some((t) => !t.human && t.gym === g.gym && t.name === g.name && won.has(t.id))).length;
+}
+
+/** The user's team won this season's title (the final is over). */
+export const wonTitle = (f: Franchise) => f.phase === 'done' && f.champion === 0 && !!f.teams[0]?.human;
+
+const addRecord = (list: RegionRecord[], regionId: string, season: number) => {
+  if (!list.some((r) => r.regionId === regionId && r.season === season)) list.push({ regionId, season });
+};
+
+/** Regions unlocked by this franchise's own completions: each one needs the region before it fully beaten. */
+export const earnedUnlocks = (f: Franchise): string[] =>
+  REGIONS.filter((r) => r.index > 0 && (f.completedRegions ?? []).some((c) => regionById(c.regionId)?.index === r.index - 1)).map((r) => r.id);
+
+/**
+ * Called when the final crowns a champion: a user title goes in the record book for the region, and a title with
+ * all eight of the region's gym badges in the same season completes it, which unlocks the next region. Returns the
+ * region newly unlocked, if any. Safe to call again.
+ */
+export function awardRegion(f: Franchise): RegionDef | undefined {
+  if (!wonTitle(f)) return undefined;
+  const r = regionOf(f);
+  addRecord(f.titles ??= [], r.id, f.season);
+  if (gymBadgeCount(f) < 8) return undefined;
+  addRecord(f.completedRegions ??= [], r.id, f.season);
+  const next = nextRegion(r);
+  if (!next || (f.unlockedRegions ?? []).indexOf(next.id) >= 0) return undefined;
+  (f.unlockedRegions ??= []).push(next.id);
+  return next;
+}
+
+const cleanRecords = (list: unknown, season: number): RegionRecord[] => {
+  const out: RegionRecord[] = [];
+  if (!Array.isArray(list)) return out;
+  for (const r of list as Partial<RegionRecord>[]) {
+    if (r && regionById(r.regionId) && Number.isInteger(r.season) && r.season! >= 1 && r.season! <= season) addRecord(out, r.regionId!, r.season!);
+  }
+  return out;
+};
+
+/**
+ * Region fields of a loaded save: the region is the one whose teams the league actually has (Kanto otherwise),
+ * records are checked, and only proven evidence counts. An old save's finished season won by the user is a title,
+ * and with all eight gym badges a full completion; so is the season it became PokeJam Master (title + every badge,
+ * Kanto only). Unlocks are those earned here plus the device's.
+ */
+export function reconcileRegions(f: Franchise, device: string[]) {
+  const cpu = f.teams.filter((t) => !t.human);
+  const match = REGIONS.find((r) => {
+    const teams = regionTeams(r);
+    return teams.length === cpu.length && teams.every((t, i) => f.teams[i + 1]?.name === t.name);
+  });
+  f.region = match ? match.id : KANTO.id;
+  f.titles = cleanRecords(f.titles, f.season);
+  f.completedRegions = cleanRecords(f.completedRegions, f.season);
+  const pm = f.pokejamMaster;
+  if (f.region === KANTO.id && Number.isInteger(pm) && pm! >= 1 && pm! <= f.season) {
+    addRecord(f.titles, KANTO.id, pm!);
+    addRecord(f.completedRegions, KANTO.id, pm!);
+  }
+  awardRegion(f);
+  f.unlockedRegions = laterRegionIds([...earnedUnlocks(f), ...device]);
+}
+
+/** Every region the user has won a title in, with the seasons: the hub's champion banners. */
+export function regionTitles(f: Franchise): { region: RegionDef; seasons: number[] }[] {
+  return REGIONS.map((region) => ({ region, seasons: (f.titles ?? []).filter((t) => t.regionId === region.id).map((t) => t.season).sort((a, b) => a - b) }))
+    .filter((x) => x.seasons.length > 0);
+}
+
+/** A new season is set and nobody has played: the moment to move to another region. */
+export const atSeasonStart = (f: Franchise) => f.phase === 'season' && f.week === 1 && !f.rookies && !f.games.some((g) => g.score);
+
+export interface RegionStatus {
+  /** The region after this one, if there is one. */
+  next?: RegionDef;
+  unlocked: boolean;
+  /** This season's gym badges in the current region, out of 8. */
+  badges: number;
+  /** The user's team won this season's title. */
+  title: boolean;
+  /** The user can enter `next` right now. */
+  canEnter: boolean;
+}
+
+export function regionStatus(f: Franchise): RegionStatus {
+  const next = nextRegion(regionOf(f));
+  const unlocked = !!next && (f.unlockedRegions ?? []).indexOf(next.id) >= 0;
+  return { next, unlocked, badges: gymBadgeCount(f), title: wonTitle(f), canEnter: unlocked && atSeasonStart(f) && f.teams[0]?.human === true };
+}
+
+/**
+ * Moves the league to an unlocked region at the start of a season. The user's team keeps everything (id, players,
+ * levels, lineup, name and colors). The old CPU players join free agency; the region's teams come in with new
+ * players from its data. Schedule and records start over; history, titles and awards stay.
+ */
+export function enterRegion(f: Franchise, id: string): boolean {
+  const st = regionStatus(f);
+  const r = st.next;
+  if (!r || r.id !== id || !st.canEnter) return false;
+  const from = regionOf(f);
+  const cpu = regionTeams(r);
+  if (cpu.some((t) => !t.roster || t.roster.length < 5)) return false;
+  const fa = new Set(f.freeAgents);
+  for (const t of f.teams) {
+    if (t.human) continue;
+    for (const u of t.roster) if (!fa.has(u) && f.players[u]) { f.freeAgents.push(u); fa.add(u); }
+  }
+  let n = Object.keys(f.players).reduce((a, k) => Math.max(a, /^p\d+$/.test(k) ? Number(k.slice(1)) + 1 : a), 0);
+  const add = (dex: number) => {
+    while (f.players[`p${n}`]) n++;
+    const uid = `p${n++}`;
+    f.players[uid] = { uid, dex, level: 1, xp: 0, bonus: {}, stats: emptyStats(), ovrStart: monByDex(dex).ovr };
+    return uid;
+  };
+  const me = f.teams[0];
+  f.teams = [me, ...cpu.map((t, i): FTeam => ({
+    id: i + 1, name: t.name, abbr: t.abbr, color: t.color, color2: t.color2, human: false, leader: t.leader, types: [...t.types], boost: t.boost,
+    ...(t.gym ? { gym: t.gym, badge: t.badge } : {}), ...(t.elite ? { elite: true } : {}),
+    roster: t.roster!.map(add), w: 0, l: 0, pf: 0, pa: 0, streak: 0,
+  }))];
+  Object.assign(me, { w: 0, l: 0, pf: 0, pa: 0, streak: 0 });
+  f.region = r.id;
+  f.weeks = f.teams.length - 1;
+  f.week = 1;
+  f.games = schedule(f.teams.length, false);
+  f.signedWeek = 0;
+  // The new-season preview plays again, with the new region's teams.
+  delete f.introShown;
+  f.news = [`Welcome to the ${r.name} League! ${cpu[0].leader} and the ${cpu[0].name} are first.`, `The ${from.name} teams' players are now free agents.`];
+  return true;
 }
 
 /** Win %, then point differential, then points scored. */
@@ -409,7 +582,17 @@ export function teamDef(f: Franchise, id: number, human: boolean): { def: TeamDe
 /** The home team's floor. */
 export function venueOf(f: Franchise, teamId: number) {
   const t = f.teams[teamId];
-  return t.human ? userCourt(t.name) : courtFor(t);
+  if (t.human) return userCourt(t.name);
+  const region = REGIONS.find((r) => r.index > 0 && regionTeams(r).some((x) => x.name === t.name));
+  const rt = region && regionTeams(region).find((x) => x.name === t.name);
+  if (!region || !rt) return courtFor(t);
+  // Later regions' floors: the classic floor in the team's colors, with its badge at center court.
+  const city = rt.city ?? t.name;
+  const up = city.toUpperCase();
+  return {
+    ...courtFor(t), venue: rt.elite ? city : `${city} Gym`, logo: rt.elite ? 'Elite' : rt.badge ?? 'pokeball', floorText: up,
+    board: `${up} ★ ${region.name.toUpperCase()} LEAGUE ★ ${rt.elite ? (rt.title ?? 'THE FINAL BOSS').toUpperCase() : `THE ${(rt.badge ?? '').toUpperCase()} BADGE`}`,
+  };
 }
 
 /** Teams as seen by the engine: the user's team is always engine team 0 so the controls stay the same. */
@@ -562,8 +745,10 @@ export function advance(f: Franchise) {
     f.mvp = f.awards.find((a) => a.key === 'mvp')?.uid;
     for (const a of [...f.awards].reverse()) f.news.unshift(`${a.label}: ${monOf(f, a.uid).name} (${f.teams[a.team].abbr}), ${a.line}`);
     const champ = f.teams[f.champion];
-    f.history.push({ season: f.season, champion: champ.name, mvp: f.mvp ? monByDex(f.players[f.mvp].dex).name : '—' });
+    f.history.push({ season: f.season, champion: champ.name, mvp: f.mvp ? monByDex(f.players[f.mvp].dex).name : '—', region: regionOf(f).id });
     f.news.unshift(`${champ.name} win the Season ${f.season} championship!`);
+    const opened = awardRegion(f);
+    if (opened) f.news.unshift(`Every ${regionOf(f).name} badge and the title: the ${opened.name} League is unlocked!`);
   }
   f.news = f.news.slice(0, 8);
 }
@@ -648,6 +833,11 @@ export function judgeTrade(f: Franchise, teamId: number, give: string[], get: st
   if (!canTrade(f)) return { ok: false, lean: 0, reason: 'The trade deadline has passed. Trading reopens in the offseason.' };
   if (!give.length || give.length !== get.length) return { ok: false, lean: 0, reason: 'Pick the same number of players on each side (1 or 2).' };
   const them = f.teams[teamId];
+  const locked = get.find((u) => !canAcquire(f, u));
+  if (locked) {
+    const r = REGIONS.find((x) => f.players[locked].dex >= x.dex[0] && f.players[locked].dex <= x.dex[1]);
+    return { ok: false, lean: 0, reason: `${monOf(f, locked).name} is a ${r?.name ?? 'locked'} Pokémon: unlock ${r?.name ?? 'its region'} to trade for it.` };
+  }
   const incoming = give.reduce((a, u) => a + tradeValue(f, u, them), 0);
   const outgoing = get.reduce((a, u) => a + tradeValue(f, u, them), 0);
   // They want to come out a little ahead.
@@ -678,7 +868,7 @@ export function sign(f: Franchise, release: string, add: string) {
   const team = f.teams[0];
   const i = team.roster.indexOf(release);
   const j = f.freeAgents.indexOf(add);
-  if (i < 0 || j < 0 || !canSign(f)) return;
+  if (i < 0 || j < 0 || !canSign(f) || !canAcquire(f, add)) return;
   team.roster[i] = add;
   if (team.lineup) team.lineup = team.lineup.map((u) => (u === release ? add : u));
   f.freeAgents[j] = release;
@@ -795,7 +985,7 @@ export function startRookieDraft(f: Franchise) {
   if (f.phase !== 'done' || f.rookies) return;
   const rng = mulberry32(draftSeed(f) ^ Math.imul(f.season, 0x9e3779b1));
   const classes = f.classes ?? [];
-  const fresh = f.freeAgents.filter((u) => f.players[u].level === 1 && BASICS(f.players[u].dex) && inRange(potentialOf(f.players[u].dex).ovr)).sort((a, b) => f.players[a].dex - f.players[b].dex);
+  const fresh = f.freeAgents.filter((u) => canAcquire(f, u) && f.players[u].level === 1 && BASICS(f.players[u].dex) && inRange(potentialOf(f.players[u].dex).ovr)).sort((a, b) => f.players[a].dex - f.players[b].dex);
   const byDex = new Map<number, string>();
   for (const u of fresh) if (!byDex.has(f.players[u].dex)) byDex.set(f.players[u].dex, u);
   // Skip the last few classes; if that leaves too few, bring back the oldest ones first.
@@ -805,7 +995,7 @@ export function startRookieDraft(f: Franchise) {
   let cands = dexes();
   if (cands.length < CLASS_SIZE) {
     // Still short: any free agent will do, but never a duplicate Pokémon.
-    for (const u of f.freeAgents.filter((x) => !byDex.has(f.players[x].dex)).sort((a, b) => f.players[a].dex - f.players[b].dex)) {
+    for (const u of f.freeAgents.filter((x) => canAcquire(f, x) && !byDex.has(f.players[x].dex)).sort((a, b) => f.players[a].dex - f.players[b].dex)) {
       if (!byDex.has(f.players[u].dex)) byDex.set(f.players[u].dex, u);
     }
     cands = [...byDex.keys()].filter((d) => !recent.some((c) => c.dexes.includes(d)));
