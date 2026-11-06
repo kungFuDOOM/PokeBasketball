@@ -1026,7 +1026,14 @@ function rookieScore(f: Franchise, uid: string, t: FTeam): number {
   const have = t.roster.filter((u) => monOf(f, u).pos === m.pos).length;
   return pot.ovr * 1.2 + m.ovr * 0.3 - pot.level * 1.5 + (have === 0 ? 6 : have === 1 ? 2 : 0)
     + (t.types?.length && m.types.some((ty) => t.types!.includes(ty))
-      && !t.roster.some((u) => monOf(f, u).types.some((ty) => t.types!.includes(ty))) ? 5 : 0) + Math.random() * 3;
+      && !t.roster.some((u) => monOf(f, u).types.some((ty) => t.types!.includes(ty))) ? 5 : 0) + rookieJitter(f, uid, t) * 3;
+}
+
+/** A little noise in CPU rookie picks, fixed by the save's seed: the same save drafts the same way. */
+function rookieJitter(f: Franchise, uid: string, t: FTeam): number {
+  let h = draftSeed(f) ^ Math.imul(f.season, 0x9e3779b1) ^ Math.imul(t.id + 1, 0x85ebca6b);
+  for (let i = 0; i < uid.length; i++) h = Math.imul(h ^ uid.charCodeAt(i), 0x01000193);
+  return mulberry32(h >>> 0)();
 }
 
 /** Makes the current pick: `uid` for the team on the clock, or the CPU's choice when omitted. */
