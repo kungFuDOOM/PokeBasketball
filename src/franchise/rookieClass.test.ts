@@ -13,8 +13,9 @@ function league(): Franchise {
   let i = 0;
   for (let r = 0; r < 10; r++) for (let j = 0; j < teams.length; j++) rosters[r % 2 ? teams.length - 1 - j : j].push(pool[i++]);
   const f = createFranchise(teams, rosters, pool.slice(i));
-  // The full pool: Johto unlocked, so Gen 2 prospects are in the classes too (a locked franchise is tested in regions.test.ts).
-  f.unlockedRegions = ['johto'];
+  // The full pool: Johto and Hoenn unlocked, so Gen 2 and Gen 3 prospects are in the classes too (a locked franchise is
+  // tested in regions.test.ts).
+  f.unlockedRegions = ['johto', 'hoenn'];
   return f;
 }
 

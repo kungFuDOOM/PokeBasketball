@@ -9,7 +9,7 @@ import {
   seasonWeeks, sign, simulate, startRookieDraft, venueOf, weekGames, type Franchise,
 } from './league';
 import { shouldPlayMasterCutscene } from './moments';
-import { JOHTO, KANTO, REGIONS, inPool, nextRegion, openRegionIds, poolMons, regionTeams } from './regions';
+import { HOENN, JOHTO, KANTO, REGIONS, inPool, nextRegion, openRegionIds, poolMons, regionTeams } from './regions';
 
 const store = new Map<string, string>();
 vi.stubGlobal('localStorage', {
@@ -111,8 +111,9 @@ describe('region data', () => {
       for (const t of regionTeams(r)) expect(Number.isInteger(t.boost) && t.boost >= -5 && t.boost <= 8).toBe(true);
     });
     expect(nextRegion(KANTO)).toBe(JOHTO);
-    expect(nextRegion(JOHTO)).toBeUndefined();
-    expect(REGIONS.map((r) => r.id)).toEqual(['kanto', 'johto']);
+    expect(nextRegion(JOHTO)).toBe(HOENN);
+    expect(nextRegion(HOENN)).toBeUndefined();
+    expect(REGIONS.map((r) => r.id)).toEqual(['kanto', 'johto', 'hoenn']);
   });
 
   it('Johto: Falkner to Clair with the canonical badges, then the Johto Elite Four & Champion Lance', () => {
@@ -452,8 +453,10 @@ describe('entering Johto', () => {
     expect(regionStatus(f).canEnter).toBe(true);
     expect(enterRegion(f, 'hoenn')).toBe(false);
     expect(enterRegion(f, 'johto')).toBe(true);
-    expect(regionStatus(f).next).toBeUndefined();
+    // Next up is Hoenn, still locked.
+    expect(regionStatus(f)).toMatchObject({ next: HOENN, unlocked: false, canEnter: false });
     expect(enterRegion(f, 'johto')).toBe(false);
+    expect(enterRegion(f, 'hoenn')).toBe(false);
   });
 
   it('keeps the user team whole, frees the Kanto players and brings in the Johto teams with new ids', () => {
