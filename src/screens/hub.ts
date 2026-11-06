@@ -172,11 +172,11 @@ export function regionCardHtml(f: Franchise): string {
     </section>`;
 }
 
-function standingsHtml(f: Franchise): string {
+export function standingsHtml(f: Franchise): string {
   const rows = standings(f).map((t, i) => `
     <tr class="${t.human ? 'me' : ''} ${i === 3 ? 'cut' : ''}" style="--tc:${t.color}">
       <td>${i + 1}</td>
-      <th><div><i></i><span>${esc(t.name)}${t.leader ? `<small>${esc(t.leader)}</small>` : ''}</span></div></th>
+      <th><div><i></i><span>${esc(t.name)}${t.leader ? `<small title="${esc(t.leader)}">${esc(t.leader)}</small>` : ''}</span></div></th>
       <td>${t.w}</td><td>${t.l}</td>
       <td>${t.pf - t.pa > 0 ? '+' : ''}${t.pf - t.pa}</td>
       <td>${t.streak ? (t.streak > 0 ? `W${t.streak}` : `L${-t.streak}`) : '–'}</td>

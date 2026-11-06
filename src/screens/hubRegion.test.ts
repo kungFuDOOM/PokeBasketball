@@ -3,7 +3,7 @@ import { POKEMON } from '../data/pokemon';
 import { LEAGUE, awardRegion, createFranchise, enterRegion, finishRookieDraft, rookieOnClock, rookiePick, seasonWeeks, startRookieDraft, type Franchise } from '../franchise/league';
 import { openRegionIds, poolMons } from '../franchise/regions';
 import { autoDraft } from '../season/team';
-import { championBannerHtml, nextCard, regionCardHtml } from './hub';
+import { championBannerHtml, nextCard, regionCardHtml, standingsHtml } from './hub';
 import type { Settings } from './menu';
 
 vi.stubGlobal('window', {});
@@ -85,6 +85,8 @@ describe('hub: the next region', () => {
     expect(card).toContain('Violet Soar');
     expect(card).toContain('Gym Leader Falkner · Zephyr Badge on the line');
     expect(card).toMatch(/\d+ OVR/);
+    // The standings keep the Johto Elite's full coach label, as text and as a title (the line wraps on phones).
+    expect(standingsHtml(f)).toContain('<small title="Will · Koga · Bruno · Karen · Champion Lance">Will · Koga · Bruno · Karen · Champion Lance</small>');
   });
 
   it('shows the Kanto Champion banner after any Kanto title, and nothing for anyone else', () => {
