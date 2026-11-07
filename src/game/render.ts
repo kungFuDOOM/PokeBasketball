@@ -40,6 +40,12 @@ export class Renderer {
   private camX = 47;
   /** The yellow ring and "P1" tag on the user's player (off in replays: nobody is playing). */
   showUser = true;
+  /** Fixed camera x in court feet (the 3-Point Contest); null follows the ball like a normal game. */
+  camTarget: number | null = null;
+  /** Extra floor-level drawing after the court and markers, before the players (the contest's racks). */
+  underlay: ((ctx: CanvasRenderingContext2D) => void) | null = null;
+  /** Extra drawing on top of everything (the contest's floating text). */
+  overlay: ((ctx: CanvasRenderingContext2D) => void) | null = null;
   /** What the courtside LED board runs: the booked ads (the Advertise page's preview shows a draft instead). */
   ads: () => BoardAd[] = boardAds;
   private crowd: HTMLCanvasElement[] = [];
@@ -132,7 +138,7 @@ export class Renderer {
 
   /** Jumps the camera straight to the action instead of easing toward it. */
   snap(g: Game) {
-    this.camX = clamp(g.focusX(), 21, COURT_L - 21);
+    this.camX = this.camTarget ?? clamp(g.focusX(), 21, COURT_L - 21);
   }
 
   handle(events: GameEvent[], g: Game) {
@@ -178,7 +184,7 @@ export class Renderer {
     this.flash = Math.max(0, this.flash - dt);
     this.hype = Math.max(0, this.hype - dt);
 
-    const target = clamp(g.focusX(), 21, COURT_L - 21);
+    const target = this.camTarget ?? clamp(g.focusX(), 21, COURT_L - 21);
     this.camX += (target - this.camX) * Math.min(1, dt * 3.5);
 
     ctx.save();
@@ -188,6 +194,7 @@ export class Renderer {
     this.drawArena(ctx);
     this.drawFloor(ctx);
     this.drawMarkers(ctx, g);
+    this.underlay?.(ctx);
 
     // Shadows first, then depth-sorted players, ball and hoops.
     for (const p of g.players) this.shadow(ctx, p.x, p.y, p.z, 1.1 * p.size);
@@ -206,6 +213,7 @@ export class Renderer {
     this.drawMeter(ctx, g, dt);
     this.drawJumpMeter(ctx, g, dt);
     this.drawUserMarker(ctx, g);
+    this.overlay?.(ctx);
     ctx.restore();
 
     if (this.flash > 0) {

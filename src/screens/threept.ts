@@ -7,7 +7,6 @@ import { Input } from '../game/input';
 import { preload } from '../game/sprites';
 import { featuredShooter, rackPreview, rackSpots, summarize } from '../threept/contest';
 import { pickerRows } from '../threept/picker';
-import { IDEAL_RELEASE, contestGreenWindow } from '../threept/shot';
 import { ContestRun, type RunEvent } from '../threept/run';
 import { loadBest, saveIfBest } from '../threept/save';
 import { BALLS_PER_RACK, MAX_SCORE, RACKS, TOTAL_BALLS, type RackId } from '../threept/types';
@@ -31,7 +30,7 @@ const DT_MAX = 0.05;
 const RESULTS_DELAY = 0.9;
 
 export function threePtContest(root: HTMLElement, settings: Settings, audio: Audio, act: ThreePtActions): void {
-  void settings; // the contest meter is fixed and friendly: the menu difficulty does not apply
+  void settings; // the contest plays on the game's default difficulty: the menu difficulty does not apply
   let step: ThreePtStep = 'pick';
   let shooter: Mon | null = lastDex !== null ? monByDex(lastDex) : null;
   let moneyRack: RackId = lastRack;
@@ -265,7 +264,6 @@ export function threePtContest(root: HTMLElement, settings: Settings, audio: Aud
           <canvas class="tp-court" aria-label="3-point contest court"></canvas>
           <p class="tp-tip">Hold <b>SHOOT</b>, release on green. Clock starts on your first shot.</p>
         </div>
-        <div class="tp-meter" aria-hidden="true"><i class="tp-mgreen"></i><i class="tp-mfill"></i><i class="tp-mmark"></i></div>
         <p class="tp-rackline"><b class="tp-rackname"></b><small class="tp-ballno"></small></p>
         <div class="tp-dots" aria-hidden="true">${Array.from({ length: RACKS }, (_, r) => `<span class="tp-dgroup${r === moneyRack ? ' money-rack' : ''}">${
           Array.from({ length: BALLS_PER_RACK }, (_, i) => `<i data-b="${r * BALLS_PER_RACK + i}" class="${r === moneyRack || i === BALLS_PER_RACK - 1 ? 'money' : ''}"></i>`).join('')}</span>`).join('')}</div>
@@ -296,10 +294,6 @@ export function threePtContest(root: HTMLElement, settings: Settings, audio: Aud
     const ballNos = [...root.querySelectorAll<HTMLElement>('.tp-ballno')];
     const tip = root.querySelector<HTMLElement>('.tp-tip')!;
     const dots = [...root.querySelectorAll<HTMLElement>('.tp-dots i')];
-    const meterEl = root.querySelector<HTMLElement>('.tp-meter')!;
-    const gw = contestGreenWindow(m.r);
-    meterEl.style.setProperty('--lo', `${(IDEAL_RELEASE - gw) * 100}%`);
-    meterEl.style.setProperty('--hi', `${(IDEAL_RELEASE + gw) * 100}%`);
     const pauseMenu = root.querySelector<HTMLElement>('.tp-pause')!;
     const mainActions = pauseMenu.querySelector<HTMLElement>('.tp-main')!;
     const confirmEl = pauseMenu.querySelector<HTMLElement>('.tp-confirm')!;
@@ -307,7 +301,7 @@ export function threePtContest(root: HTMLElement, settings: Settings, audio: Aud
     const muteBtn = pauseMenu.querySelector<HTMLButtonElement>('[data-a="mute"]')!;
     const pauseBtn = root.querySelector<HTMLButtonElement>('.tp-pausebtn')!;
 
-    const view = new CourtView(canvas, m.dex);
+    const view = new CourtView(canvas, run);
     void preload([m]);
     const input = new Input();
     const touch = matchMedia('(pointer: coarse)').matches || navigator.maxTouchPoints > 0;
@@ -391,10 +385,6 @@ export function threePtContest(root: HTMLElement, settings: Settings, audio: Aud
       clockEl.textContent = t >= 10 ? String(Math.ceil(t - 1e-9)) : t.toFixed(1);
       clockEl.classList.toggle('low', t < 10);
       scoreEl.textContent = String(s.results.reduce((n, b) => n + b.points, 0));
-      const v = run.stage === 'hold' ? run.meter : run.stage === 'flight' && run.shot ? run.shot.meter : 0;
-      meterEl.style.setProperty('--v', `${Math.min(1, v) * 100}%`);
-      meterEl.classList.toggle('active', v > 0);
-      meterEl.classList.toggle('green', v >= IDEAL_RELEASE - gw && v <= IDEAL_RELEASE + gw);
       const done = s.ballIndex >= TOTAL_BALLS;
       const shown = done ? TOTAL_BALLS - 1 : s.ballIndex;
       const rackText = `${SPOTS[run.rack].label}${run.rack === s.moneyRack ? ' · Money' : ''}`;
@@ -412,11 +402,8 @@ export function threePtContest(root: HTMLElement, settings: Settings, audio: Aud
     const handle = (ev: RunEvent) => {
       switch (ev.kind) {
         case 'start': tip.hidden = true; break;
-        case 'release': view.release(run, ev.grade, ev.result); sfx('shot'); break;
-        case 'result':
-          view.landed(ev.ball.points, ev.ball.money, ev.ball.result);
-          sfx(ev.ball.result === 'make' ? 'swish' : 'rim');
-          break;
+        case 'release': view.released(ev.grade); break;
+        case 'result': view.landed(ev.ball.points, ev.ball.money, ev.ball.result === 'make'); break;
         case 'rack': sfx('bounce'); break;
         case 'buzzer': sfx('buzzer'); break;
         case 'over':
@@ -454,6 +441,9 @@ export function threePtContest(root: HTMLElement, settings: Settings, audio: Aud
       const pressed = held && !prevHeld;
       prevHeld = held;
       for (const ev of run.step(dt, { pressed, held })) handle(ev);
+      // The real game's own effects and sounds (shot, swish, rim, bounce, dribble).
+      view.handle(run.game.events.splice(0), run);
+      for (const x of run.game.sfx.splice(0)) sfx(x);
       view.draw(run, dt);
       hud();
       if (overT >= 0) {

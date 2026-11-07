@@ -1,12 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { POKEMON, type Mon } from '../data/pokemon';
+import { DIFFICULTIES } from '../game/types';
 import { ballPoints } from './contest';
-import { FLIGHT_TIME, ContestRun, type RunEvent } from './run';
-import { IDEAL_RELEASE, METER_TIME } from './shot';
+import { ContestRun, type RunEvent } from './run';
+import { CONTEST_DIFFICULTY, IDEAL_RELEASE, METER_TIME } from './shot';
 
 const sharp: Mon = { ...POKEMON[0], r: { ...POKEMON[0].r, sht: 100 } };
 
-/** Hold for exactly the perfect fill, release, and wait for the next ball. Returns every event. */
+/** Hold until the main game's meter reaches the perfect fill, release, and wait for the next ball. Returns every event. */
 function scripted(run: ContestRun, fps: number, maxSeconds = 120) {
   const dt = 1 / fps;
   const events: RunEvent[] = [];
@@ -21,8 +22,15 @@ function scripted(run: ContestRun, fps: number, maxSeconds = 120) {
   return events;
 }
 
-describe('ContestRun (play loop)', () => {
-  it('a perfect 100-Sht shooter with an always-make rng takes all 25 and scores the sum of ballPoints', () => {
+describe('ContestRun (play loop on the real game)', () => {
+  it('plays inside a real Game: one player, the game default green window, no defenders', () => {
+    const run = new ContestRun(sharp, 2, () => 0);
+    expect(CONTEST_DIFFICULTY).toBe('pro');
+    expect(run.game.players).toEqual([run.player]);
+    expect(run.game.greenWindow(run.player)).toBeCloseTo((0.022 + (run.player.r.sht / 100) * 0.034) * DIFFICULTIES.pro.green, 10);
+    expect(run.game.contest(run.player)).toBe(1);
+  });
+  it('a perfect 100-Sht shooter takes all 25 and scores the sum of ballPoints', () => {
     const run = new ContestRun(sharp, 2, () => 0);
     const ev = scripted(run, 60);
     expect(run.stage).toBe('over');
@@ -36,6 +44,12 @@ describe('ContestRun (play loop)', () => {
     expect(ev.filter((e) => e.kind === 'start')).toHaveLength(1);
     expect(run.s.timeLeft).toBeGreaterThan(0);
   });
+  it('the shooter really shoots from each rack spot: the real game counts a three-point attempt every ball', () => {
+    const run = new ContestRun(sharp, 2, () => 0);
+    scripted(run, 60);
+    expect(run.player.stats.fga).toBe(25);
+    expect(run.player.stats.tpa).toBe(25);
+  });
   it('the clock waits for the first hold', () => {
     const run = new ContestRun(sharp, 2, () => 0);
     for (let i = 0; i < 100; i++) run.step(0.05, { pressed: false, held: false });
@@ -48,20 +62,31 @@ describe('ContestRun (play loop)', () => {
     const run = new ContestRun(sharp, 2, () => 0);
     run.step(0.016, { pressed: false, held: true });
     expect(run.stage).toBe('aim');
-    run.step(0.016, { pressed: true, held: true });
+    run.step(0.05, { pressed: true, held: true });
     run.step(0.3, { pressed: false, held: false });
     expect(run.stage).toBe('flight');
     // Holding through the flight and settle does not carry over into the next ball.
-    for (let i = 0; i < 20; i++) run.step(0.05, { pressed: false, held: true });
+    for (let i = 0; i < 60; i++) run.step(0.05, { pressed: false, held: true });
     expect(run.stage).toBe('aim');
     expect(run.s.results).toHaveLength(1);
   });
-  it('the meter auto-releases very late at 1.2', () => {
+  it('a press shorter than one game step still fires a shot', () => {
+    const run = new ContestRun(sharp, 2, () => 0);
+    run.step(0.004, { pressed: true, held: true });
+    run.step(0.004, { pressed: false, held: false });
+    for (let i = 0; i < 400 && run.stage !== 'flight'; i++) run.step(0.004, { pressed: false, held: false });
+    expect(run.stage).toBe('flight');
+  });
+  it('the game auto-releases a hold that runs on (the shooter lands): a late miss', () => {
     const run = new ContestRun(sharp, 2, () => 0.999);
     run.step(0.016, { pressed: true, held: true });
     let ev: RunEvent[] = [];
     for (let i = 0; i < 100 && run.stage === 'hold'; i++) ev = run.step(0.02, { pressed: false, held: true });
-    expect(ev).toContainEqual({ kind: 'release', grade: 'very-late', result: 'miss' });
+    const rel = ev.find((e) => e.kind === 'release');
+    expect(rel).toBeDefined();
+    expect(rel!.kind === 'release' && rel!.result).toBe('miss');
+    expect(run.shot!.meter).toBeGreaterThan(1);
+    expect(rel!.kind === 'release' && /late/.test(rel!.grade)).toBe(true);
   });
   it('pause freezes clock, meter and flight; pausing mid-hold cancels the hold', () => {
     const run = new ContestRun(sharp, 2, () => 0);
@@ -77,23 +102,24 @@ describe('ContestRun (play loop)', () => {
     run.step(0.016, { pressed: false, held: true }); // still held from before: no shot
     expect(run.stage).toBe('aim');
     run.step(0.016, { pressed: true, held: true });
-    run.step(0.016, { pressed: false, held: false });
+    run.step(0.05, { pressed: false, held: false });
     expect(run.stage).toBe('flight');
-    run.step(FLIGHT_TIME / 2, { pressed: false, held: false });
+    run.step(0.3, { pressed: false, held: false });
     run.pause();
-    const ft = run.t;
+    const b = { x: run.game.ball.x, z: run.game.ball.z };
     run.step(1, { pressed: false, held: false });
-    expect(run.t).toBe(ft);
+    expect(run.game.ball.x).toBe(b.x);
+    expect(run.game.ball.z).toBe(b.z);
     expect(run.stage).toBe('flight');
   });
   it('a ball in the air at the buzzer still scores, then the run is over', () => {
     const run = new ContestRun(sharp, 2, () => 0);
     run.step(0.016, { pressed: true, held: true });
     run.s.timeLeft = 0.1;
-    run.step(0.016, { pressed: false, held: false });
+    run.step(0.05, { pressed: false, held: false });
     expect(run.stage).toBe('flight');
     const ev: RunEvent[] = [];
-    for (let i = 0; i < 40 && run.stage !== 'over'; i++) ev.push(...run.step(0.05, { pressed: false, held: false }));
+    for (let i = 0; i < 100 && run.stage !== 'over'; i++) ev.push(...run.step(0.05, { pressed: false, held: false }));
     expect(ev.map((e) => e.kind)).toEqual(['buzzer', 'result', 'over']);
     expect(run.s.results).toHaveLength(1);
     expect(run.s.results[0].points).toBe(1);
@@ -106,14 +132,13 @@ describe('ContestRun (play loop)', () => {
     expect(ev.map((e) => e.kind)).toEqual(['buzzer', 'over']);
     expect(run.s.results).toHaveLength(0);
   });
-  it('30 fps and 144 fps scripted runs end within 0.1 s of each other', () => {
+  it('30 fps and 144 fps scripted runs both take all 25 balls', () => {
     const a = new ContestRun(sharp, 2, () => 0);
     const b = new ContestRun(sharp, 2, () => 0);
     scripted(a, 30);
     scripted(b, 144);
     expect(a.s.results).toHaveLength(25);
     expect(b.s.results).toHaveLength(25);
-    // Stage timers carry their remainder; only the press/release frames quantize (about one frame per ball at 30 fps).
     expect(Math.abs(a.s.timeLeft - b.s.timeLeft)).toBeLessThan(25 * 2 / 30);
   });
 });
