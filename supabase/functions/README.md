@@ -9,15 +9,15 @@ Step 3 of the plan on issue #4: after a battle has a winner, buy the winner's Co
 | Path | What it does |
 | --- | --- |
 | `../migrations/20261023_pokejam_pack_payouts.sql` | `pokejam_pack_machines`, `pokejam_pack_ledger`, `pokejam_pack_prizes`, and their functions. RLS is on: players read only their own prizes and ledger rows. Every write goes through service-role functions. |
-| `../migrations/20261102_pokejam_pack_fail_safe.sql` | Fail-safes: every purchase and buyback recorded before it's submitted, the kill switch and hourly cap, the append-only ledger and `pokejam_pack_post`, health for alerts (below). |
+| `../migrations/20261211_pokejam_pack_fail_safe.sql` | Fail-safes: every purchase and buyback recorded before it's submitted, the kill switch and hourly cap, the append-only ledger and `pokejam_pack_post`, health for alerts (below). |
 | `../migrations/20261024_pokejam_pack_keep_or_sell.sql` | Keep it or sell it back at the reveal: the `revealed` state, `choice` / `choose_by` / `sell_estimate`, and `pokejam_pack_choose_prize`, the one prize write a player makes. |
 | `pokejam-pack-payouts/` | The prize worker. Each run recovers stuck prizes, then settles up to 5. |
 | `pokejam-ads/` | Billboard ads: book the courtside LED board by burning $PJAM (below). |
 | `pokejam-judge-worker/` | Judges the next Ranked match in the queue, one per run, and decides it if it's disputed and `judge_authoritative` is on. See "The judge queue" below. |
 | `pokejam-raffle-draw/` | Draws one closed week's card raffle. Reads PJAM balances; the database picks the winner. See `docs/weekly-challenges.md`. No cron. |
-| `../migrations/20261103_pokejam_pack_battles.sql` | Pack Battles on the test site: entries paid from the ledger, the `pack` queue, battles, settling, test credits (below). |
+| `../migrations/20261212_pokejam_pack_battles.sql` | Pack Battles on the test site: entries paid from the ledger, the `pack` queue, battles, settling, test credits (below). |
 | `pokejam-pack-judge/` | Judges finished battles from both players' signed inputs and settles them (below). |
-| `../migrations/20261105_pokejam_pack_wallet.sql` | Money in and out: proven wallets, deposits credited once, withdrawals with limits and review, fee revenue, the real-money switch (below). |
+| `../migrations/20261213_pokejam_pack_wallet.sql` | Money in and out: proven wallets, deposits credited once, withdrawals with limits and review, fee revenue, the real-money switch (below). |
 | `pokejam-pack-wallet/` | Proves a wallet, builds and claims deposits; its every-minute run scans the house account for deposits and sends withdrawals (below). |
 | `pokejam-pack-machines/` | Refreshes `pokejam_pack_machines` from CC's live prices, odds and stock, for the lobby. |
 | `_shared/pack/` | Ported from the devnet-verified Bun prototype: CC client, Solana RPC, Core transfer, signing, machines and the worker. Imports use explicit `.ts` extensions, so the same files run in Deno and in vitest. |
@@ -207,7 +207,7 @@ A booking keeps the price it was made at for one day. After that, and for any ex
 5. **Schedule:** POST `{"action":"sweep"}` to `pokejam-ads-live` with the service key every few minutes (pg_cron + pg_net), as for devnet.
 6. **The site's build:** `VITE_MODE_ADS=true`. The client calls `<VITE_SUPABASE_URL>/functions/v1/pokejam-ads-live`, whose origin is already in the CSP's `connect-src`. Set `VITE_ADS_API` only for a function hosted elsewhere: it must be https, and its origin is added to `connect-src`. No Solana RPC is added, and no inline script.
 
-## Fail-safes (`../migrations/20261102_pokejam_pack_fail_safe.sql`)
+## Fail-safes (`../migrations/20261211_pokejam_pack_fail_safe.sql`)
 
 The house wallet holds everyone's money, so every way a payout can go wrong ends in one of two places: retried safely by the worker, or parked for a person with a note. Nothing is ever bought, sent or credited twice.
 
@@ -228,7 +228,7 @@ The house wallet holds everyone's money, so every way a payout can go wrong ends
 
 On mainnet the worker won't start without `HOUSE_USDC_ACCOUNT` and `CC_SIGNER` (CC's gacha wallet, confirmed with Collector Crypt), because without them it can't check where a payment goes.
 
-## Money in and out (`../migrations/20261105_pokejam_pack_wallet.sql`, `pokejam-pack-wallet/`)
+## Money in and out (`../migrations/20261213_pokejam_pack_wallet.sql`, `pokejam-pack-wallet/`)
 
 The escrow checklist, built. Every balance change goes through `pokejam_pack_post`. The chain side is `_shared/pack/wallet.ts`, and the books are the migration.
 
@@ -243,7 +243,7 @@ The escrow checklist, built. Every balance change goes through `pokejam_pack_pos
 - A transfer from a wallet nobody has proven is **held** for a person (`pokejam_pack_credit_deposit`). An exchange sends from a shared wallet, so the sender alone proves nothing. A transfer under `pack_min_deposit` (default $1) is recorded as dust.
 - The cron's scan pages through the house account's finalized history from the last signature it finished (`pack_deposit_cursor`), oldest first. The cursor only moves past a signature once it's recorded, so an outage or a backlog never skips one. If the backlog is more than 20,000 signatures, the scan stops and alerts instead of guessing.
 
-**Entries** (from 20261103): both players' entry and fee are debited from their balances as they join, one per player per battle. Every way a battle ends without a winner refunds both exactly once. A won battle's fee is booked as house revenue (`pokejam_pack_revenue`), so the books balance. A voided battle refunds it, and one under review holds it.
+**Entries** (from 20261212): both players' entry and fee are debited from their balances as they join, one per player per battle. Every way a battle ends without a winner refunds both exactly once. A won battle's fee is booked as house revenue (`pokejam_pack_revenue`), so the books balance. A voided battle refunds it, and one under review holds it.
 
 **Withdrawals.**
 - `pokejam_pack_withdraw(amount)` debits the balance first and sends only to the proven wallet.
@@ -291,7 +291,7 @@ A mainnet worker refuses to run while `pack_real_money` is off or `pack_test_cre
 
 **Rehearsed on devnet** with two real wallets, money in and out (`test/devnet-wallet.ts`, below).
 
-## Pack Battles on the test site (`../migrations/20261103_pokejam_pack_battles.sql`, `pokejam-pack-judge/`)
+## Pack Battles on the test site (`../migrations/20261212_pokejam_pack_battles.sql`, `pokejam-pack-judge/`)
 
 Devnet only. A player enters a tier and pays half the pot plus half the fee from their balance. Two players on the same tier, near each other's MMR, are paired into a `pack` match: the same online lockstep game as Ranked, with balanced teams and signed inputs. After the game, the judge replays both players' signed inputs and settles the battle:
 
@@ -313,7 +313,7 @@ Leaving the queue refunds the entry, and so does an entry nobody has polled for 
 
 ### What the `pokejam` project (`ksvfgxodbwfntqnahukn`) needs, on kungFuDOOM's "Merge"
 
-1. **Migrations, in order:** `20261023_pokejam_pack_payouts`, `20261024_pokejam_pack_keep_or_sell`, `20261102_pokejam_pack_fail_safe` (#42), `20261103_pokejam_pack_battles`, `20261105_pokejam_pack_wallet`.
+1. **Migrations, in order:** `20261023_pokejam_pack_payouts`, `20261024_pokejam_pack_keep_or_sell`, `20261211_pokejam_pack_fail_safe` (#42), `20261212_pokejam_pack_battles`, `20261213_pokejam_pack_wallet`.
 2. **Edge Functions:** `supabase functions deploy pokejam-pack-machines pokejam-pack-payouts pokejam-pack-judge pokejam-pack-wallet`.
 3. **Schedules (pg_cron + pg_net, service key):** `pokejam-pack-machines` every 10 minutes, and `pokejam-pack-payouts`, `pokejam-pack-judge` and `pokejam-pack-wallet` (body `{"action":"run"}`) every minute.
 4. **Secrets (`supabase secrets set …`):**

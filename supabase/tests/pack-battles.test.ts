@@ -1,4 +1,4 @@
-// Pack Battles (20261103_pokejam_pack_battles.sql) on a real Postgres (PGlite) running every migration in order,
+// Pack Battles (20261212_pokejam_pack_battles.sql) on a real Postgres (PGlite) running every migration in order,
 // with stand-ins for Supabase's auth, extensions and Realtime schemas: entries paid from the ledger, pairing, refunds,
 // settling a judged battle into a prize (or refunds), and who may call what.
 import { readFileSync, readdirSync } from 'node:fs';

@@ -112,7 +112,7 @@
   .pk-won .prize-steps { display: none; }
 }
 
-/* The linked wallet, adding funds and withdrawing (20261105). */
+/* The linked wallet, adding funds and withdrawing (20261213). */
 .pk-acts { display: flex; gap: 8px; flex-wrap: wrap; }
 .pk-devnet { margin: 0 0 10px; }
 .pk-wallet { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; margin-bottom: 12px; display: grid; gap: 8px; }

@@ -1,5 +1,5 @@
 -- Pack Battles (devnet test): a skill battle for a Collector Crypt pack, on the same online stack as Ranked.
--- pokejam_* objects only. Runs after 20261023 (payouts), 20261024 (keep or sell) and 20261102 (fail-safes).
+-- pokejam_* objects only. Runs after 20261023 (payouts), 20261024 (keep or sell) and 20261211 (fail-safes).
 --
 --   1. A player enters a tier (Starter $25, Elite $50, Bronze $100). Their half of the pot plus their half of the
 --      fee is taken from their balance at once (pokejam_pack_post), so nobody can enter with money they don't have.
@@ -282,7 +282,7 @@ begin
   return jsonb_build_object('state', b.state, 'prize', b.prize_id);
 end $$;
 
--- Health (20261102) also counts what's held in Pack Battles: entries waiting for a match, pots of battles still being
+-- Health (20261211) also counts what's held in Pack Battles: entries waiting for a match, pots of battles still being
 -- played, and battles waiting on a person.
 create or replace function public.pokejam_pack_health(p_max_attempts int)
 returns jsonb language sql stable security definer set search_path = public as $$

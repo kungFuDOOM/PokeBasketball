@@ -1,10 +1,10 @@
 // Pack Battles: beat another player online to win a Collector Crypt pack. Devnet test USDC, or real USDC once the
 // server's pack_real_money is on. Link a wallet by signing a message; deposit USDC from it, withdraw to it, and a card
-// you keep is sent to it (migration 20261105, the pokejam-pack-wallet Edge Function).
+// you keep is sent to it (migration 20261213, the pokejam-pack-wallet Edge Function).
 // Enter a tier and your half of the pot (plus your half of the fee) is held from your balance. The game is the same
 // online lockstep game as Ranked, with balanced teams and signed inputs. The pokejam-pack-judge Edge Function
 // replays both players' inputs to decide the winner, whose pack the payout worker buys and opens; they keep the card
-// or sell it back at the reveal. A player who leaves early forfeits; a tie refunds both entries. See migration 20261103.
+// or sell it back at the reveal. A player who leaves early forfeits; a tie refunds both entries. See migration 20261212.
 import './pack.css';
 import { connect, mobileWalletLinks, shortAddress, wallets, type Connected } from '../../ads/wallet';
 import { esc } from '../../util';

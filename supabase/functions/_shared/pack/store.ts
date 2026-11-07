@@ -44,7 +44,7 @@ export interface Health {
   cards_in_house_over_48h: number;
   oldest_unsettled_minutes: number;
   paused: boolean;
-  /** Withdrawals debited from balances but not sent yet: still owed (20261105). */
+  /** Withdrawals debited from balances but not sent yet: still owed (20261213). */
   unsent_withdrawals?: number;
   withdrawals_in_review?: number;
   held_deposits?: number;

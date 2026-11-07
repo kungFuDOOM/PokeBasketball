@@ -1,5 +1,5 @@
 -- Pack Battles: real USDC in and out (the escrow checklist in supabase/functions/README.md). pokejam_* objects only.
--- Runs after 20261103 (Pack Battles). The pokejam-pack-wallet Edge Function does the chain side; every balance change
+-- Runs after 20261212 (Pack Battles). The pokejam-pack-wallet Edge Function does the chain side; every balance change
 -- here goes through pokejam_pack_post.
 --
 --   * A proven wallet: a player links one wallet by signing a one-time message with it. One wallet per player, and a
@@ -415,7 +415,7 @@ begin
   return (select coalesce(sum(delta), 0)::bigint from public.pokejam_pack_ledger where user_id = me);
 end $$;
 
--- The lobby (20261103) also shows my wallet, my recent deposits and withdrawals, and the limits.
+-- The lobby (20261212) also shows my wallet, my recent deposits and withdrawals, and the limits.
 create or replace function public.pokejam_pack_lobby()
 returns jsonb language sql stable security definer set search_path = public as $$
   select jsonb_build_object(
@@ -452,7 +452,7 @@ returns jsonb language sql stable security definer set search_path = public as $
   );
 $$;
 
--- Health (20261103) also counts withdrawals not sent yet (already off the balances, still in the house), deposits
+-- Health (20261212) also counts withdrawals not sent yet (already off the balances, still in the house), deposits
 -- held for a person, fee revenue, and the real-money switches the workers check on mainnet.
 create or replace function public.pokejam_pack_health(p_max_attempts int)
 returns jsonb language sql stable security definer set search_path = public as $$

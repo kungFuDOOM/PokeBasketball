@@ -1,4 +1,4 @@
-// Pack Battles over the pokejam_pack_* RPCs (migration 20261103_pokejam_pack_battles.sql). Every write is a server
+// Pack Battles over the pokejam_pack_* RPCs (migration 20261212_pokejam_pack_battles.sql). Every write is a server
 // function: the client never moves money, picks the game or decides the winner.
 import type { OnlineMatch, RpcClient, SupabaseMatchService } from '../shared/onlineMatchService';
 import { OnlineError } from '../shared/onlineMatchService';
