@@ -83,6 +83,8 @@ STYLES['ranked'] = STYLES['online']
 STYLES['challenges'] = STYLES['franchise']
 # Packs: short and punchy.
 STYLES['packs'] = STYLES['vertical']
+# Regions: the season-story anthem.
+STYLES['regions'] = STYLES['franchise']
 rng = np.random.default_rng(7)
 
 
