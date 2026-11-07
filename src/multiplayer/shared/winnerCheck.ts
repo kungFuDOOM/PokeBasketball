@@ -17,7 +17,9 @@
 // can't invent the guest's input (it would need the guest's key), can't rewrite its own afterwards
 // without the guest holding the original (two different signed versions are proof, and the cheater
 // forfeits), and a player who goes silent is judged on the other's evidence. A log that stops early is
-// "incomplete" and the caller applies its forfeit rule.
+// "incomplete" and the caller applies its forfeit rule. A player who leaves on purpose (the Leave button, or
+// closing the page) sends a signed resignation (signResign) with its goodbye, so the other player holds proof of
+// who quit.
 //
 // Shared by the browser (to sign and keep evidence) and the server (to judge); nothing here trusts the
 // caller.
@@ -73,6 +75,18 @@ export interface SignedApplied {
   sig: string;
 }
 
+/** "I'm leaving this match": signed by the side that quit, sent with its goodbye. */
+export interface SignedResign {
+  side: 0 | 1;
+  sig: string;
+}
+
+/**
+ * The uploader's own record of its connection (time in ms since tip-off, what happened), for a person looking into a
+ * dispute. Self-reported and unsigned: the judge never reads it.
+ */
+export type ConnectionLog = [number, string][];
+
 /** What players submit: everything signed they sent or received. Duplicates are fine. */
 export interface Evidence {
   setup: MatchSetup;
@@ -86,6 +100,10 @@ export interface Evidence {
    * `emptyTicks` ticks (lockstep's MIN_DELAY) carry no input from either side.
    */
   lockstep?: { emptyTicks: number };
+  /** Signed resignations the uploader sent or received. */
+  resigns?: SignedResign[];
+  /** The uploader's connection log (not judged). */
+  log?: ConnectionLog;
 }
 
 export type VerdictStatus =
@@ -113,6 +131,8 @@ export interface Verdict {
    * stopped before both sides' frames were read ('invalid', 'forfeit').
    */
   lastFrame: [number, number];
+  /** 'incomplete' only: the side that signed a resignation (only one did). */
+  resigned?: 0 | 1;
   /** Why, in plain words; also lists signed items that were ignored. */
   notes: string[];
 }
@@ -153,6 +173,7 @@ const inputsMessage = (matchId: string, side: 0 | 1, from: number, frames: [numb
   enc.encode(`pokejam-inputs-v1|${matchId}|${side}|${from}|${JSON.stringify(frames)}`);
 const appliedMessage = (matchId: string, from: number, entries: [number, number][]) =>
   enc.encode(`pokejam-applied-v1|${matchId}|${from}|${JSON.stringify(entries)}`);
+const resignMessage = (matchId: string, side: 0 | 1) => enc.encode(`pokejam-resign-v1|${matchId}|${side}`);
 
 /** A fresh Ed25519 key for one match. Register `publicKey` (hex) before tip-off; never reuse it. */
 export async function matchKey(): Promise<{ privateKey: CryptoKey; publicKey: string }> {
@@ -188,6 +209,11 @@ export async function signInputs(key: CryptoKey, matchId: string, side: 0 | 1, f
  */
 export function signTicks(key: CryptoKey, matchId: string, side: 0 | 1, fromTick: number, inputs: WireInput[]): Promise<SignedInputs> {
   return signInputs(key, matchId, side, fromTick + 1, inputs);
+}
+
+/** Sign this side's resignation. Send it only when actually leaving: whoever holds it can prove this side quit. */
+export async function signResign(key: CryptoKey, matchId: string, side: 0 | 1): Promise<SignedResign> {
+  return { side, sig: await sign(key, resignMessage(matchId, side)) };
 }
 
 /** Host only: sign which frames applied on ticks `from`, from+1, … */
@@ -307,7 +333,7 @@ export async function judge(ev: Evidence): Promise<Verdict> {
       if (!h || !g) break; // nobody holds both inputs for this tick: the game couldn't have run past it
       ticks.push([h, g]);
     }
-    return settle(replay(setup, ticks), notes, out);
+    return settle(replay(setup, ticks), notes, out, await resigned(ev, notes));
   }
 
   lastFrame = [lastInRun(frames[0], 0), lastInRun(frames[1], 0)];
@@ -339,14 +365,30 @@ export async function judge(ev: Evidence): Promise<Verdict> {
     prev[1] = pair[1];
   }
 
-  return settle(replay(setup, ticks), notes, out);
+  return settle(replay(setup, ticks), notes, out, await resigned(ev, notes));
 }
 
-/** Turn a replay into a verdict: final at the buzzer, otherwise incomplete where the evidence ran out. */
-function settle(r: ReturnType<typeof replay>, notes: string[], out: (s: VerdictStatus, extra?: Partial<Verdict>) => Verdict): Verdict {
+/** The side that signed a resignation, if exactly one did (both: neither counts, and the notes say so). */
+async function resigned(ev: Evidence, notes: string[]): Promise<0 | 1 | undefined> {
+  const sides = new Set<0 | 1>();
+  for (const r of Array.isArray(ev.resigns) ? ev.resigns.slice(0, 8) : []) {
+    if ((r?.side === 0 || r?.side === 1) && typeof r.sig === 'string' && (await verify(ev.keys[r.side], resignMessage(ev.setup.matchId, r.side), r.sig))) sides.add(r.side);
+    else notes.push('ignored a resignation with a bad shape or signature');
+  }
+  if (sides.size === 2) notes.push('both players signed a resignation');
+  return sides.size === 1 ? [...sides][0] : undefined;
+}
+
+/**
+ * Turn a replay into a verdict: final at the buzzer (a resignation after that changes nothing), otherwise incomplete
+ * where the evidence ran out, naming the side that resigned, if one did.
+ */
+function settle(r: ReturnType<typeof replay>, notes: string[], out: (s: VerdictStatus, extra?: Partial<Verdict>) => Verdict, quit?: 0 | 1): Verdict {
   const leader = r.score[0] === r.score[1] ? null : r.score[0] > r.score[1] ? 0 : 1;
   const base = { winner: leader, score: r.score, ticks: r.ticks, hash: r.hash } as const;
   if (r.final) return out('final', base);
   if (r.ticks >= MAX_TICKS) return out('incomplete', { ...base, notes: [...notes, 'hit the 45-minute hard stop'] });
-  return out('incomplete', { ...base, notes: [...notes, `the inputs stop at tick ${r.ticks}, before the final buzzer`] });
+  const why = [...notes, `the inputs stop at tick ${r.ticks}, before the final buzzer`];
+  if (quit !== undefined) why.push(`${quit ? 'guest' : 'host'} signed a resignation`);
+  return out('incomplete', { ...base, ...(quit !== undefined && { resigned: quit }), notes: why });
 }

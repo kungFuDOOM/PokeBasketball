@@ -96,13 +96,13 @@ export function balancedRosters(rng: () => number): [Mon[], Mon[]] {
 
 /**
  * An online match's two starting fives, from the seed the server picked for it. Both players (and the winner check)
- * work them out the same way, so neither can hand the other a weak team (or themselves a strong one). Ranked teams
- * are balanced. Social's are a fallback for a match without a draft (#28): simply random.
+ * work them out the same way, so neither can hand the other a weak team (or themselves a strong one). Ranked and Pack
+ * Battles teams are balanced. Social's are a fallback for a match without a draft (#28): simply random.
  */
-export function rostersFor(seed: number, queue: 'social' | 'ranked' = 'social'): [Mon[], Mon[]] {
+export function rostersFor(seed: number, queue: 'social' | 'ranked' | 'pack' = 'social'): [Mon[], Mon[]] {
   // Its own stream, kept apart from the game's (which is seeded with the same number).
   const rng = seededRng((seed ^ 0x5bd1e995) >>> 0);
-  return queue === 'ranked' ? balancedRosters(rng) : [randomFive(rng), randomFive(rng)];
+  return queue === 'social' ? [randomFive(rng), randomFive(rng)] : balancedRosters(rng);
 }
 
 /**
@@ -111,7 +111,7 @@ export function rostersFor(seed: number, queue: 'social' | 'ranked' = 'social'):
  * balanced teams from a seed. Social: random fives.
  */
 export function flowRosters(
-  opts: { queue: 'social' | 'ranked'; practice?: boolean },
+  opts: { queue: 'social' | 'ranked' | 'pack'; practice?: boolean },
   opp: { simulated: boolean; rosters?: [number[], number[]] | null; mySide?: 0 | 1 },
   seed = (Math.random() * 2 ** 32) >>> 0,
 ): [Mon[], Mon[]] {

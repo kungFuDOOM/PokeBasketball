@@ -2,7 +2,7 @@
 // one function call, so each step is atomic in Postgres. The same store runs over supabase-js in the Edge
 // Function (`sb.rpc(name, args)`) and over a local Postgres in the tests.
 
-import type { Pull } from './collector-crypt.ts';
+import type { Pull, Submission } from './collector-crypt.ts';
 import type { PackTier } from './tiers.ts';
 
 export type PrizeState = 'pending' | 'sending' | 'revealed' | 'sent' | 'cashed' | 'refunded' | 'failed';
@@ -25,6 +25,32 @@ export interface PrizeRow {
   choice: 'keep' | 'sell' | null;
   /** When the reveal's wait ends (ms since the epoch), once the card has been revealed. */
   choose_by: number | null;
+  /** A purchase recorded just before it was submitted, until it's known to have landed (memo set) or not. */
+  pay_txid: string | null;
+  pay_memo: string | null;
+  pay_blockhash: string | null;
+  /** A buyback recorded just before it was submitted, and what it pays the house. */
+  cash_txid: string | null;
+  cash_blockhash: string | null;
+  cash_pending: number | null;
+}
+
+/** What the house owes and what needs a person (pokejam_pack_health). */
+export interface Health {
+  balances: number;
+  unbought_pots: number;
+  parked: number;
+  held: number;
+  cards_in_house_over_48h: number;
+  oldest_unsettled_minutes: number;
+  paused: boolean;
+  /** Withdrawals debited from balances but not sent yet: still owed (20261213). */
+  unsent_withdrawals?: number;
+  withdrawals_in_review?: number;
+  held_deposits?: number;
+  fee_revenue?: number;
+  real_money?: boolean;
+  test_credits?: boolean;
 }
 
 /** Calls one SQL function by name with named arguments and returns its rows (empty for void). */
@@ -43,6 +69,22 @@ export interface PrizeStore {
   cashed(id: string, amount: number, note: string): Promise<void>;
   refunded(id: string, why: string): Promise<void>;
   failed(id: string, attempts: number, error: string, retryInSeconds: number): Promise<void>;
+  /** Wait and retry without using up an attempt: nothing needs a person (house short, cap reached, a transaction still landing). */
+  held(id: string, reason: string, retryInSeconds: number): Promise<void>;
+  /** Record a purchase before it's submitted. False means don't submit. */
+  submitting(id: string, s: Submission): Promise<boolean>;
+  /** The recorded purchase can never land: forget it. */
+  submitCleared(id: string): Promise<void>;
+  /** Record a buyback before it's submitted. False means don't submit. */
+  cashing(id: string, s: Submission): Promise<boolean>;
+  cashCleared(id: string): Promise<void>;
+  /** The kill switch: true stops every purchase, delivery and buyback. */
+  paused(): Promise<boolean>;
+  /** Why the house may not spend `amount` on a pull right now (paused, or the hourly cap), or null. */
+  spendCheck(amount: number): Promise<string | null>;
+  health(maxAttempts: number): Promise<Health>;
+  /** True at most once per `minutes` for the same key. */
+  alertDue(key: string, minutes: number): Promise<boolean>;
 }
 
 const rows = (v: unknown): Record<string, unknown>[] => (Array.isArray(v) ? v as Record<string, unknown>[] : v ? [v as Record<string, unknown>] : []);
@@ -53,7 +95,16 @@ const toRow = (r: Record<string, unknown>): PrizeRow => ({
   pull: r.pull && typeof r.pull === 'object' ? r.pull as Pull : typeof r.pull === 'string' ? JSON.parse(r.pull) as Pull : null,
   choice: r.choice === 'keep' || r.choice === 'sell' ? r.choice : null,
   choose_by: r.choose_by ? new Date(r.choose_by as string | Date).getTime() : null,
+  pay_txid: (r.pay_txid as string) ?? null, pay_memo: (r.pay_memo as string) ?? null, pay_blockhash: (r.pay_blockhash as string) ?? null,
+  cash_txid: (r.cash_txid as string) ?? null, cash_blockhash: (r.cash_blockhash as string) ?? null,
+  cash_pending: r.cash_pending === null || r.cash_pending === undefined ? null : Number(r.cash_pending),
 });
+
+/** The single value a scalar SQL function returns, whichever shape the caller hands back. */
+const scalar = (v: unknown, fn: string): unknown => {
+  const r = rows(v)[0];
+  return r && typeof r === 'object' && fn in r ? (r as Record<string, unknown>)[fn] : v;
+};
 
 export function sqlStore(call: RpcCall): PrizeStore {
   return {
@@ -72,5 +123,29 @@ export function sqlStore(call: RpcCall): PrizeStore {
     failed: async (id, attempts, error, retryInSeconds) => {
       await call('pokejam_pack_prize_failed', { p_id: id, p_attempts: attempts, p_error: error.slice(0, 1000), p_retry_seconds: retryInSeconds });
     },
+    held: async (id, reason, retryInSeconds) => {
+      await call('pokejam_pack_prize_held', { p_id: id, p_reason: reason.slice(0, 1000), p_retry_seconds: Math.round(retryInSeconds) });
+    },
+    submitting: async (id, s) => scalar(await call('pokejam_pack_prize_submitting', {
+      p_id: id, p_memo: s.memo, p_txid: s.txid, p_blockhash: s.blockhash, p_amount: s.amount,
+    }), 'pokejam_pack_prize_submitting') === true,
+    submitCleared: async (id) => { await call('pokejam_pack_prize_submit_cleared', { p_id: id }); },
+    cashing: async (id, s) => scalar(await call('pokejam_pack_prize_cashing', {
+      p_id: id, p_txid: s.txid, p_blockhash: s.blockhash, p_amount: s.amount, p_memo: s.memo,
+    }), 'pokejam_pack_prize_cashing') === true,
+    cashCleared: async (id) => { await call('pokejam_pack_prize_cash_cleared', { p_id: id }); },
+    paused: async () => scalar(await call('pokejam_pack_paused', {}), 'pokejam_pack_paused') === true,
+    spendCheck: async (amount) => (scalar(await call('pokejam_pack_spend_check', { p_amount: amount }), 'pokejam_pack_spend_check') as string | null) ?? null,
+    health: async (maxAttempts) => {
+      const h = scalar(await call('pokejam_pack_health', { p_max_attempts: maxAttempts }), 'pokejam_pack_health');
+      const o = (typeof h === 'string' ? JSON.parse(h) : h) as Record<string, unknown>;
+      return {
+        balances: Number(o.balances), unbought_pots: Number(o.unbought_pots), parked: Number(o.parked), held: Number(o.held),
+        cards_in_house_over_48h: Number(o.cards_in_house_over_48h), oldest_unsettled_minutes: Number(o.oldest_unsettled_minutes), paused: !!o.paused,
+        unsent_withdrawals: Number(o.unsent_withdrawals ?? 0), withdrawals_in_review: Number(o.withdrawals_in_review ?? 0),
+        held_deposits: Number(o.held_deposits ?? 0), fee_revenue: Number(o.fee_revenue ?? 0), real_money: !!o.real_money, test_credits: !!o.test_credits,
+      };
+    },
+    alertDue: async (key, minutes) => scalar(await call('pokejam_pack_alert_due', { p_key: key, p_minutes: minutes }), 'pokejam_pack_alert_due') === true,
   };
 }

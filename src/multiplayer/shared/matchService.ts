@@ -4,7 +4,7 @@
 import type { RankedMe, RankedResult } from '../ranked/serverRank';
 import type { BadgeRank } from '../../ranked/badge';
 
-export type Queue = 'social' | 'ranked';
+export type Queue = 'social' | 'ranked' | 'pack';
 
 export interface Opponent {
   id: string;
