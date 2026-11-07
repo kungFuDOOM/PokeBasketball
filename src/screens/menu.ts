@@ -109,6 +109,8 @@ export interface TitleOptions {
   /** Starts a franchise with the chosen team source. */
   onNew: (source: TeamSource) => void;
   onQuick: () => void;
+  /** 3-Point Contest side mode. */
+  onThreePt: () => void;
   /** Training: the drill menu (first-time players go straight into Run all). */
   onTutorial: () => void;
   onSeason: () => void;
@@ -244,6 +246,11 @@ export function menuScreen(root: HTMLElement, settings: Settings, onChange: () =
             </div>
             <p class="tut-hint-menu"${isTutorialDone() ? ' hidden' : ''}>New? Try the tutorial</p>
           </section>
+          <section class="mode-card threept-mode">
+            <h2>3-Point Contest</h2>
+            <p class="setup-note">One shooter, five racks, sixty seconds. Just for fun.</p>
+            <div class="actions"><button class="btn big" data-go="threept">3-Point Contest</button></div>
+          </section>
           <section class="mode-card franchise">
             <h2>Franchise</h2>
           ${opts.draft ? `
@@ -345,6 +352,7 @@ export function menuScreen(root: HTMLElement, settings: Settings, onChange: () =
   });
   const quick = leave(opts.onQuick);
   $('[data-go="quick"]')!.addEventListener('click', quick);
+  $('[data-go="threept"]')!.addEventListener('click', leave(opts.onThreePt));
   $('[data-go="tutorial"]')!.addEventListener('click', leave(opts.onTutorial));
   $('[data-go="season"]')!.addEventListener('click', async () => {
     const go = opts.confirmSeason ? await opts.confirmSeason() : opts.onSeason;
