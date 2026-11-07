@@ -1302,7 +1302,7 @@ export class Game {
 
   private setFire(p: Player) {
     // Training drills never heat up: no on-fire (streaks or the blaze special) while a drill is staged.
-    if (p.fire || this.drillId) return;
+    if (p.fire || this.drillId || this.cfg.noFire) return;
     p.fire = true;
     p.fireMakes = 0;
     this.events.push({ kind: 'fire', player: p, on: true });
