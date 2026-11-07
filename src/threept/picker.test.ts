@@ -23,8 +23,8 @@ describe('pickerRows', () => {
     expect(pickerRows('25', null).some((m) => m.name === pika.name)).toBe(true);
     expect(pickerRows('zzzz-no-such-mon', null)).toEqual([]);
   });
-  it('the featured hook is off (null) and a featured dex would go first', () => {
-    expect(featuredShooter()).toBeNull();
+  it('the featured hook is off outside the window and a featured dex would go first', () => {
+    expect(featuredShooter(Date.parse('2026-01-01T00:00:00-08:00'))).toBeNull();
     const all = pickerRows('', null);
     const last = all[all.length - 1];
     expect(pickerRows('', { dex: last.dex, badge: 'x' })[0].dex).toBe(last.dex);
