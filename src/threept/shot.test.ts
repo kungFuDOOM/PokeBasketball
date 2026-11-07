@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import type { Ratings } from '../data/pokemon';
-import { CONTEST_GREEN_MULT, IDEAL_RELEASE, METER_MAX, contestGreenWindow, gradeRelease, makeProbability, resolveShot, type ContestGrade } from './shot';
+import { POKEMON, type Ratings } from '../data/pokemon';
+import { kingKabutoMon } from '../kabuto/king';
+import { CONTEST_GREEN_MULT, IDEAL_RELEASE, METER_MAX, contestGreenWindow, gradeRelease, makeProbability, resolveShot, threeBase, type ContestGrade } from './shot';
 
 const R = (sht: number): Ratings => ({ spd: 50, sht, ins: 50, pas: 50, def: 50, blk: 50, reb: 50, hnd: 50 });
 const GRADES: ContestGrade[] = ['perfect', 'good', 'early', 'late', 'very-early', 'very-late'];
@@ -71,5 +72,23 @@ describe('contest shot meter', () => {
     let makes = 0;
     for (let i = 0; i < 10000; i++) if (resolveShot('perfect', R(100), rng) === 'make') makes++;
     expect(Math.abs(makes / 10000 - 0.86)).toBeLessThanOrEqual(0.02);
+  });
+});
+
+describe('King Kabuto is the best contest shooter', () => {
+  const king = kingKabutoMon().r;
+  const sorted = <T extends number>(a: T[]) => [...a].sort((x, y) => x - y);
+  const prob = (r: typeof king) => makeProbability('good', r);
+  it('has the widest green window and the top make probability', () => {
+    for (const m of POKEMON) {
+      expect(contestGreenWindow(king)).toBeGreaterThanOrEqual(contestGreenWindow(m.r));
+      expect(prob(king)).toBeGreaterThanOrEqual(prob(m.r));
+      expect(threeBase(king)).toBeGreaterThanOrEqual(threeBase(m.r));
+    }
+  });
+  it('is strictly above the median regular player', () => {
+    const med = (f: (r: typeof king) => number) => sorted(POKEMON.map((m) => f(m.r)))[Math.floor(POKEMON.length / 2)];
+    expect(contestGreenWindow(king)).toBeGreaterThan(med(contestGreenWindow));
+    expect(prob(king)).toBeGreaterThan(med(prob));
   });
 });
