@@ -1,10 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { EVOLUTIONS, POKEMON, isRetired, monByDex } from '../data/pokemon';
-import { bestLineup, type Game } from '../game/game';
+import { Game as RealGame, bestLineup, type Game } from '../game/game';
 import { autoDraft } from '../season/team';
 import { badgeSvg } from '../ui/badges';
 import {
   LEAGUE, advance, atSeasonStart, awardRegion, canAcquire, createFranchise, enterRegion, finishRookieDraft, gameConfig, judgeTrade, loadDraft,
+  SCALE_BOOST_CAP, SCALE_MARGINS, effectiveStrength, scaledBoost,
   loadFranchise, loadRegionProfile, recordGame, regionOf, regionStatus, regionTitles, rookieOnClock, rookiePick, saveDraft, saveFranchise,
   seasonWeeks, sign, simulate, startRookieDraft, venueOf, weekGames, type Franchise,
 } from './league';
@@ -554,3 +555,113 @@ describe('entering Johto', () => {
     expect(g.teams.slice(1).map((t) => t.name)).toEqual(regionTeams(JOHTO).map((t) => t.name));
   });
 });
+
+describe('player-scaled gyms in later regions', () => {
+  const johto = () => {
+    const f = kanto();
+    finish(f, gymIds(f), 0);
+    awardRegion(f);
+    rookieDraft(f);
+    expect(enterRegion(f, 'johto')).toBe(true);
+    return f;
+  };
+  const gameVs = (f: Franchise, opp: number, difficulty: 'rookie' | 'allstar' = 'allstar') => {
+    const g = weekGames(f).concat(f.games).find((x) => (x.home === 0 && x.away === opp) || (x.away === 0 && x.home === opp))!;
+    return gameConfig(f, g, true, 20, difficulty).cfg.away;
+  };
+  /** Gives the user a five of the best natural-position mons at `ovr` (every starter exactly that rating). */
+  const setUserFive = (f: Franchise, ovr: number) => {
+    const me = f.teams[0];
+    me.roster.forEach((u) => { f.players[u].bonus = {}; });
+    const bump = (u: string) => {
+      const base = monByDex(f.players[u].dex).ovr;
+      const k = ovr - base;
+      f.players[u].bonus = { sht: k, ins: k, pas: k, hnd: k, spd: k, def: k, blk: k, reb: k } as never;
+    };
+    me.roster.forEach(bump);
+  };
+  const userEff = (f: Franchise) => {
+    const { starters } = bestLineup(f.teams[0].roster.map((u) => monByDex(f.players[u].dex)));
+    return effectiveStrength(starters);
+  };
+
+  it('margins ramp across the gyms and the finale is highest', () => {
+    expect(SCALE_MARGINS).toHaveLength(9);
+    SCALE_MARGINS.forEach((m, i) => { if (i) expect(m).toBeGreaterThanOrEqual(SCALE_MARGINS[i - 1]); });
+    expect(SCALE_MARGINS[8]).toBe(Math.max(...SCALE_MARGINS));
+    expect(SCALE_MARGINS[8]).toBeGreaterThan(SCALE_MARGINS[7]);
+  });
+
+  it('scaledBoost is never below the design boost and lifts a gym to player + margin up to the cap', () => {
+    const mons = (ovr: number) => Array.from({ length: 5 }, (_, i) => ({ ...POKEMON[i], ovr, pos: (['PG', 'SG', 'SF', 'PF', 'C'] as const)[i] }));
+    const gym = mons(80);
+    const baseEff = effectiveStrength(gym, 3);
+    // Weak user: untouched design boost.
+    expect(scaledBoost(mons(60), 0, gym, 3, 8)).toBe(3);
+    // Roster of 95: target = user eff + margin, or the cap when that is out of reach.
+    for (let slot = 1; slot <= 9; slot++) {
+      const b = scaledBoost(mons(95), 0, gym, 3, slot);
+      expect(b).toBeGreaterThanOrEqual(3);
+      const eff = effectiveStrength(gym, b);
+      const want = effectiveStrength(mons(95)) + SCALE_MARGINS[slot - 1];
+      if (b < SCALE_BOOST_CAP) expect(eff).toBeGreaterThanOrEqual(want - 1e-9);
+      else expect(b).toBe(SCALE_BOOST_CAP);
+      expect(eff).toBeGreaterThanOrEqual(baseEff);
+    }
+    // Slightly stronger user: later badges ask for more boost.
+    const b1 = scaledBoost(mons(86), 0, gym, 3, 1);
+    const b9 = scaledBoost(mons(86), 0, gym, 3, 9);
+    expect(b9 - b1).toBeCloseTo(SCALE_MARGINS[8] - SCALE_MARGINS[0], 6);
+    // A design boost above the cap is never weakened.
+    expect(scaledBoost(mons(95), 0, gym, 14, 9)).toBe(14);
+  });
+
+  it('Kanto gyms and the Kanto finale keep their fixed boost', () => {
+    const f = kanto();
+    for (const t of f.teams.slice(1)) {
+      if (!t.gym && !t.elite) continue;
+      expect(gameVs(f, t.id).boost).toBe(t.boost);
+    }
+  });
+
+  it('a Johto gym is never weaker than its design, reaches player + margin, and gets stronger as the roster does', () => {
+    const f = johto();
+    const gyms = f.teams.filter((t) => t.gym || t.elite);
+    expect(gyms).toHaveLength(9);
+    const strongest = (opp: FTeamLike) => {
+      const d = gameVs(f, opp.id);
+      return { boost: d.boost!, eff: effectiveStrength(d.roster, d.boost!), base: effectiveStrength(d.roster, opp.boost) };
+    };
+    const low = gyms.map(strongest);
+    low.forEach((r, i) => { expect(r.boost).toBeGreaterThanOrEqual(gyms[i].boost!); expect(r.eff).toBeGreaterThanOrEqual(r.base); });
+    setUserFive(f, 95);
+    const mine = userEff(f);
+    const high = gyms.map(strongest);
+    high.forEach((r, i) => {
+      expect(r.boost).toBeGreaterThanOrEqual(low[i].boost);
+      expect(r.boost).toBeLessThanOrEqual(SCALE_BOOST_CAP);
+      if (r.boost < SCALE_BOOST_CAP) expect(r.eff).toBeGreaterThanOrEqual(mine + SCALE_MARGINS[i] - 1e-9);
+    });
+    // Recomputed for each game: the same gym is tougher for the stronger roster than for the earlier one.
+    expect(high.some((r, i) => r.boost > low[i].boost)).toBe(true);
+    // The finale asks for the most.
+    expect(high[8].eff - mine).toBeGreaterThanOrEqual(high[0].eff - mine - 1e-9);
+  });
+
+  it('the difficulty setting still stacks on top in the engine', () => {
+    const f = johto();
+    setUserFive(f, 95);
+    const gym = f.teams.find((t) => t.gym === 8)!;
+    const cfgFor = (d: 'rookie' | 'allstar') => {
+      const g = f.games.find((x) => x.home === 0 && x.away === gym.id) ?? f.games.find((x) => x.away === 0 && x.home === gym.id)!;
+      return gameConfig(f, g, true, 20, d).cfg;
+    };
+    const easy = new RealGame({ ...cfgFor('rookie'), seed: 1 });
+    const hard = new RealGame({ ...cfgFor('allstar'), seed: 1 });
+    expect(easy.cfg.away.boost).toBe(hard.cfg.away.boost);
+    const sum = (g: RealGame) => g.players.filter((p) => p.team === 1).reduce((a, p) => a + p.r.sht, 0);
+    expect(sum(hard)).toBeGreaterThan(sum(easy));
+  });
+});
+
+type FTeamLike = { id: number; boost?: number };

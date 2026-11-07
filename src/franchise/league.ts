@@ -1,5 +1,5 @@
 import { EVOLUTIONS, RATING_LABELS, isRetired, monByDex, positionWeights, withBonus, type Mon, type PokeType, type Ratings } from '../data/pokemon';
-import { Game, bestLineup } from '../game/game';
+import { Game, bestLineup, chemistry } from '../game/game';
 import { courtFor, userCourt } from '../data/courts';
 import type { Difficulty, GameConfig, PStats, TeamDef } from '../game/types';
 import type { DraftState } from '../screens/draft';
@@ -608,12 +608,37 @@ export function venueOf(f: Franchise, teamId: number) {
   };
 }
 
+/** How far above the user's effective strength a later region's gym 1..8 and its finale (last) aim to be. */
+export const SCALE_MARGINS = [1, 1.5, 2, 2.5, 3, 3.5, 4, 4, 5];
+/** The most boost a scaled gym can carry (its fixed boost included). */
+export const SCALE_BOOST_CAP = 12;
+
+const meanOvr = (mons: Mon[]) => (mons.length ? mons.reduce((s, m) => s + m.ovr, 0) / mons.length : 0);
+/** Effective strength in a game: starting-five mean + chemistry + boost. */
+export const effectiveStrength = (starters: Mon[], boost = 0) => meanOvr(starters) + chemistry(starters) + boost;
+
+/**
+ * A later-region gym's boost for this game: its fixed design, raised so that its effective strength is at least the
+ * user's plus a margin that grows by badge (the finale most). Never below the fixed boost, never above the cap
+ * (unless the fixed boost itself is above it). Recomputed at every game setup, so trades and upgrades count.
+ */
+export function scaledBoost(userStarters: Mon[], userBoost: number, gymStarters: Mon[], gymBoost: number, slot: number): number {
+  const margin = SCALE_MARGINS[Math.min(Math.max(slot, 1), SCALE_MARGINS.length) - 1];
+  const need = effectiveStrength(userStarters, userBoost) + margin - effectiveStrength(gymStarters, gymBoost);
+  return Math.max(gymBoost, Math.min(SCALE_BOOST_CAP, gymBoost + Math.max(0, need)));
+}
+
 /** Teams as seen by the engine: the user's team is always engine team 0 so the controls stay the same. */
 export function gameConfig(f: Franchise, game: FGame, humanPlays: boolean, quarterLen: number, difficulty: Difficulty, autoSubs = true) {
   const userIn = game.home === 0 || game.away === 0;
   const sides: [number, number] = userIn ? [0, game.home === 0 ? game.away : game.home] : [game.home, game.away];
   const a = teamDef(f, sides[0], humanPlays && sides[0] === 0);
   const b = teamDef(f, sides[1], false);
+  // Later regions: the gym (or finale) the user faces is scaled to the user's current five. Kanto and CPU-only games keep the fixed boost.
+  const opp = f.teams[sides[1]];
+  if (userIn && regionOf(f).index > 0 && (opp.gym || opp.elite)) {
+    b.def.boost = scaledBoost(a.def.roster, a.def.boost ?? 0, b.def.roster, opp.boost ?? 0, opp.elite ? SCALE_MARGINS.length : opp.gym!);
+  }
   // Two blues (you vs Misty) are hard to tell apart on the floor: give the second team a contrasting color.
   b.def = contrastAway(a.def, b.def);
   const uidOf = new Map([...a.uidOf, ...b.uidOf]);
