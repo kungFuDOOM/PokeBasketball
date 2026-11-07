@@ -25,6 +25,7 @@ import { withIntro } from './screens/intro';
 import { playGame } from './screens/play';
 import { resultTag, type GameMode } from './screens/watch';
 import { quickPlay } from './screens/quick';
+import { threePtContest } from './screens/threept';
 import { resultsScreen } from './screens/results';
 import { rookieScreen } from './screens/rookies';
 import { rosterScreen } from './screens/roster';
@@ -181,6 +182,12 @@ function menu() {
       void import('./raffle/screen').then((m) => m.openChallenges({ root: app, back: menu }));
     },
     onQuick: () => quick('draft'),
+    onThreePt: () => {
+      audio.unlock();
+      app.className = 'screen-threept';
+      window.scrollTo(0, 0);
+      threePtContest(app, settings, audio, { menu });
+    },
     onTutorial: () => training(),
     onSeason: season,
     confirmSeason: () => guardNewDraft(menu),

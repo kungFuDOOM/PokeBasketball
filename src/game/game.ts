@@ -10,7 +10,7 @@ import { PRACTICE_STAGES, stageX, type PracticeDrill, type PracticeStage } from 
 /** Meter value (0..1 fill) at which a jump shot is released perfectly. */
 export const IDEAL_RELEASE = 0.8;
 /** Seconds for the shot meter to fill from empty to full. */
-const METER_TIME = 0.62;
+export const METER_TIME = 0.62;
 
 export type Phase = 'tip' | 'live' | 'dead' | 'break' | 'final';
 
