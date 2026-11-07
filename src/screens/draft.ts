@@ -182,15 +182,15 @@ export function draftScreen(
   onDone: (rosters: Mon[][], leftovers: Mon[]) => void,
   onBack: () => void,
   onProgress: (state: DraftState) => void,
-  /** `customize: false` leaves out the rename / color picker on the draft-complete screen. */
-  opts: { customize?: boolean } = {},
+  /** `customize: false` leaves out the rename / color picker on the draft-complete screen; `pool` replaces the draftable Pokémon. */
+  opts: { customize?: boolean; pool?: readonly Mon[] } = {},
 ) {
   const { teams, order } = state;
   // Own container so listeners die with the screen.
   const host = root;
   root = document.createElement('div');
   host.replaceChildren(root);
-  const pool = [...POKEMON].sort((a, b) => b.ovr - a.ovr);
+  const pool = [...(opts.pool ?? POKEMON)].sort((a, b) => b.ovr - a.ovr);
   const rosters: Mon[][] = teams.map(() => []);
   const size = state.rounds ?? 5;
   const picks = snakePicks(order, size);
