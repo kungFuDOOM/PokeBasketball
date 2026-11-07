@@ -597,7 +597,7 @@ export function venueOf(f: Franchise, teamId: number) {
 
 /** How far above the user's effective strength a later region's gym 1..8 and its finale (last) aim to be. */
 export const SCALE_MARGINS = [1, 1.5, 2, 2.5, 3, 3.5, 4, 4, 5];
-/** The most boost a scaled gym can carry (its fixed boost included). */
+/** The most EXTRA boost a scaled gym can get on top of its fixed design boost. */
 export const SCALE_BOOST_CAP = 12;
 
 const meanOvr = (mons: Mon[]) => (mons.length ? mons.reduce((s, m) => s + m.ovr, 0) / mons.length : 0);
@@ -606,13 +606,13 @@ export const effectiveStrength = (starters: Mon[], boost = 0) => meanOvr(starter
 
 /**
  * A later-region gym's boost for this game: its fixed design, raised so that its effective strength is at least the
- * user's plus a margin that grows by badge (the finale most). Never below the fixed boost, never above the cap
- * (unless the fixed boost itself is above it). Recomputed at every game setup, so trades and upgrades count.
+ * user's plus a margin that grows by badge (the finale most). Never below the fixed boost; the extra on top of it is
+ * at most the cap (so total = design boost + up to SCALE_BOOST_CAP). Recomputed at every game setup, so trades and upgrades count.
  */
 export function scaledBoost(userStarters: Mon[], userBoost: number, gymStarters: Mon[], gymBoost: number, slot: number): number {
   const margin = SCALE_MARGINS[Math.min(Math.max(slot, 1), SCALE_MARGINS.length) - 1];
   const need = effectiveStrength(userStarters, userBoost) + margin - effectiveStrength(gymStarters, gymBoost);
-  return Math.max(gymBoost, Math.min(SCALE_BOOST_CAP, gymBoost + Math.max(0, need)));
+  return gymBoost + Math.min(SCALE_BOOST_CAP, Math.max(0, need));
 }
 
 /** Teams as seen by the engine: the user's team is always engine team 0 so the controls stay the same. */
