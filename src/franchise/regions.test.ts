@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { POKEMON, isRetired, monByDex } from '../data/pokemon';
+import { EVOLUTIONS, POKEMON, isRetired, monByDex } from '../data/pokemon';
 import { bestLineup, type Game } from '../game/game';
 import { autoDraft } from '../season/team';
 import { badgeSvg } from '../ui/badges';
@@ -104,10 +104,9 @@ describe('region data', () => {
       expect(new Set(r.gyms.map((g) => g.name)).size).toBe(8);
       expect(new Set(r.gyms.map((g) => g.badge)).size).toBe(8);
       expect(new Set(regionTeams(r).map((g) => g.abbr)).size).toBe(9);
-      for (let k = 1; k < 8; k++) expect(r.gyms[k].boost).toBeGreaterThanOrEqual(r.gyms[k - 1].boost);
+      // Difficulty is the starting five's rating plus the boost, not the boost alone: each later region's own test checks that ramp.
       expect(r.finale.elite).toBe(true);
       expect(r.finale.gym).toBeUndefined();
-      expect(r.finale.boost).toBeGreaterThan(r.gyms[7].boost);
       for (const t of regionTeams(r)) expect(Number.isInteger(t.boost) && t.boost >= -5 && t.boost <= 8).toBe(true);
     });
     expect(nextRegion(KANTO)).toBe(JOHTO);
@@ -129,7 +128,7 @@ describe('region data', () => {
     ]);
     expect(JOHTO.finale.leader).toBe('Will · Koga · Bruno · Karen · Champion Lance');
     expect(JOHTO.finale.title).toBe('Johto Elite Four & Champion Lance');
-    expect(JOHTO.finale.ace).toBe(149);
+    expect(JOHTO.finale.ace).toBe(248);
   });
 
   it('Johto rosters: ten real, unique Pokémon, ace first, no starters, five natural positions, on-type players', () => {
@@ -151,35 +150,32 @@ describe('region data', () => {
       const earlier = mons.filter((m) => !gen2(m.dex));
       expect(earlier.length, t.name).toBeLessThanOrEqual(2);
       for (const m of earlier) expect(m.types.some((ty) => t.types.indexOf(ty) >= 0), `${t.name}: ${m.name}`).toBe(true);
-      if (t.elite) expect(earlier.map((m) => m.dex)).toEqual([149]);
       const { starters: five } = bestLineup(mons);
       expect(five.map((m) => m.pos).sort()).toEqual(['C', 'PF', 'PG', 'SF', 'SG']);
       expect(five.map((m) => m.dex), `${t.name}: the ace starts`).toContain(t.ace);
       expect(mons.some((m) => m.types.some((ty) => t.types.indexOf(ty) >= 0)), t.name).toBe(true);
     }
-    const typed = (dex: number[], type: string) => dex.filter((d) => monByDex(d).types.indexOf(type as never) >= 0).length;
-    const stars = (dex: number[]) => dex.filter((d) => !gen2(d));
-    const [falkner, bugsy, whitney, morty, chuck, jasmine, pryce, clair] = JOHTO.gyms.map((g) => g.roster!);
-    expect(stars(falkner)).toEqual([18]); // Pidgeot, Falkner's Pidgeotto line, is the ace
-    expect(typed(falkner, 'Flying')).toBe(10);
-    expect(stars(bugsy)).toEqual([123, 127]); // Scyther, Pinsir
-    expect(typed(bugsy, 'Bug')).toBe(10);
-    expect(stars(whitney)).toEqual([143, 128]); // Snorlax, Tauros
-    expect(whitney[0]).toBe(241); // Miltank stays the ace
-    expect(stars(morty)).toEqual([94, 93]); // Gengar (the ace) and Haunter
-    expect(typed(morty, 'Ghost')).toBe(3);
-    expect(stars(chuck)).toEqual([62, 106]); // Poliwrath (the ace) and Hitmonlee
-    expect(typed(chuck, 'Fighting')).toBe(4);
-    expect(stars(jasmine)).toEqual([82]); // Magneton
-    expect(typed(jasmine, 'Steel')).toBe(5);
-    expect(stars(pryce)).toEqual([131, 87]); // Lapras, Dewgong; Piloswine stays the ace
-    expect(pryce[0]).toBe(221);
-    expect(typed(pryce, 'Ice')).toBe(7);
-    expect(stars(clair)).toEqual([149, 148]); // Dragonite, Dragonair; Kingdra stays the ace
-    expect(clair[0]).toBe(230);
-    expect(typed(clair, 'Dragon')).toBe(3);
-    const e4 = JOHTO.finale.roster!;
-    for (const d of [149, 178, 169, 214, 248, 230, 196, 197, 237, 205]) expect(e4).toContain(d);
+  });
+
+  it("Johto's starting fives are strong, fully evolved and ramp like Kanto's (regression: weak PG/ace filler used to start)", () => {
+    const eff = (t: (typeof JOHTO.gyms)[number]) => {
+      const mons = t.roster!.map(monByDex);
+      const { starters: five } = bestLineup(mons);
+      for (const m of five) {
+        expect(m.ovr, `${t.name}: ${m.name} starts`).toBeGreaterThanOrEqual(70);
+        // Fully evolved within Gen 2: nothing in the five has a Gen 1-2 evolution left.
+        expect((EVOLUTIONS[m.dex]?.to ?? []).filter((d) => d <= 251), `${t.name}: ${m.name} is unevolved`).toEqual([]);
+      }
+      expect(five.filter((m) => m.types.some((ty) => t.types.indexOf(ty) >= 0)).length, `${t.name}: on-type starters`).toBeGreaterThanOrEqual(2);
+      return five.reduce((a, m) => a + m.ovr, 0) / 5 + 2 + t.boost; // +2: five positions, as in the game
+    };
+    const gyms = JOHTO.gyms.map(eff);
+    const elite = eff(JOHTO.finale);
+    for (const e of [...gyms, elite]) expect(e).toBeGreaterThanOrEqual(84); // Kanto's gym 1 plays at about 83 once boosted
+    expect(gyms[7]).toBeGreaterThan(gyms[0] + 3);
+    expect(elite).toBeGreaterThan(Math.max(...gyms));
+    // The ramp does not dip by more than a point and a half from one badge to the next.
+    gyms.forEach((e, i) => { if (i) expect(e, `badge ${i + 1}`).toBeGreaterThan(gyms[i - 1] - 1.5); });
   });
 
   it("a Johto gym's players never evolve past Gen 2 in the league; the user's still do", () => {
