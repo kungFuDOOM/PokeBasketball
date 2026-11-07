@@ -3,14 +3,16 @@
 import { POKEMON, monByDex, spriteUrl, type Mon } from '../data/pokemon';
 import type { Audio } from '../game/audio';
 import type { Sfx } from '../game/game';
+import type { GameEvent } from '../game/types';
 import { Input } from '../game/input';
 import { preload } from '../game/sprites';
 import { featuredShooter, rackPreview, rackSpots, summarize } from '../threept/contest';
 import { pickerRows } from '../threept/picker';
-import { ContestRun, type RunEvent } from '../threept/run';
+import { ContestRun, type RunEvent, type ShootInput } from '../threept/run';
 import { loadBest, saveIfBest } from '../threept/save';
 import { BALLS_PER_RACK, MAX_SCORE, RACKS, TOTAL_BALLS, type RackId } from '../threept/types';
 import { esc, tier } from '../util';
+import { guardStaleOnMenu } from '../wallet/staleBuild';
 import type { Settings } from './menu';
 import { CourtView } from './threept.view';
 
@@ -28,6 +30,26 @@ const SPOTS = rackSpots();
 const DT_MAX = 0.05;
 /** Seconds between the last ball / buzzer and the results screen. */
 const RESULTS_DELAY = 0.9;
+
+/** The play step's game: the screen always builds it here (the contest Game config, noFire included, lives in ContestRun). */
+export function newContestRun(shooter: Mon, moneyRack: RackId): ContestRun {
+  return new ContestRun(shooter, moneyRack);
+}
+
+/** Where one play frame's output goes: the contest's own events, the real game's events (to the court view) and its sounds. */
+export interface FrameSinks {
+  run(ev: RunEvent): void;
+  game(events: GameEvent[]): void;
+  sfx(s: Sfx): void;
+}
+
+/** One unpaused play frame, exactly as the screen runs it: step the contest, then hand on what the real game raised. */
+export function contestFrame(run: ContestRun, dt: number, inp: ShootInput, out: FrameSinks): void {
+  for (const ev of run.step(dt, inp)) out.run(ev);
+  // The real game's own effects and sounds (shot, swish, rim, bounce, dribble).
+  out.game(run.game.events.splice(0));
+  for (const x of run.game.sfx.splice(0)) out.sfx(x);
+}
 
 export function threePtContest(root: HTMLElement, settings: Settings, audio: Audio, act: ThreePtActions): void {
   void settings; // the contest plays on the game's default difficulty: the menu difficulty does not apply
@@ -62,7 +84,11 @@ export function threePtContest(root: HTMLElement, settings: Settings, audio: Aud
     if (next === 'pick') renderPick();
     else if (next === 'rack') renderRack();
     else if (next === 'play') renderPlay();
+    if (next === 'pick' || next === 'rack') guardMenu();
   };
+
+  // The picker and rack steps are menus: a stale bundle reloads here (back into the contest) rather than playing old code.
+  const guardMenu = () => guardStaleOnMenu(() => alive && (step === 'pick' || step === 'rack'), 'threept');
 
   const leave = () => {
     if (!alive) return;
@@ -252,7 +278,7 @@ export function threePtContest(root: HTMLElement, settings: Settings, audio: Aud
   function renderPlay() {
     if (!shooter) return go('pick');
     const m = shooter;
-    const run = new ContestRun(m, moneyRack);
+    const run = newContestRun(m, moneyRack);
     root.innerHTML = `
       <div class="tp-game">
         <div class="tp-hud" role="status">
@@ -440,10 +466,7 @@ export function threePtContest(root: HTMLElement, settings: Settings, audio: Aud
       tapLatch = false;
       const pressed = held && !prevHeld;
       prevHeld = held;
-      for (const ev of run.step(dt, { pressed, held })) handle(ev);
-      // The real game's own effects and sounds (shot, swish, rim, bounce, dribble).
-      view.handle(run.game.events.splice(0), run);
-      for (const x of run.game.sfx.splice(0)) sfx(x);
+      contestFrame(run, dt, { pressed, held }, { run: handle, game: (evs) => view.handle(evs, run), sfx });
       view.draw(run, dt);
       hud();
       if (overT >= 0) {
