@@ -2426,11 +2426,11 @@ function renderRHook(seg: Segment, t: number, a: number) {
   const pop = (at: number) => 0.3 + 0.7 * easeOutBack(clamp01((a - at) / 0.22));
   once('rh1', t, seg.t0 + 0.05, () => { flash = 0.15; cue(t, 'slam'); cue(t, 'crowd_low'); });
   jamText('FRANCHISE', W / 2, 280, 170, { scale: pop(0.05) });
-  if (a > 0.5) {
-    once('rh2', t, seg.t0 + 0.5, () => { flash = 0.25; cue(t, 'slam'); cue(t, 'crowd_big'); });
-    jamText('IS GOING ON TOUR', W / 2, 480, 110, { fill: '#f8f8f0', scale: pop(0.5), maxW: W - 120 });
+  if (a > 0.4) {
+    once('rh2', t, seg.t0 + 0.4, () => { flash = 0.25; cue(t, 'slam'); cue(t, 'crowd_big'); });
+    jamText('IS GOING ON TOUR', W / 2, 480, 110, { fill: '#f8f8f0', scale: pop(0.4), maxW: W - 120 });
   }
-  if (a > 1.1) plainText('2 NEW REGIONS · 16 NEW BADGES', W / 2, 700, 64, '#ffcb05');
+  if (a > 0.8) plainText('2 NEW REGIONS · 16 NEW BADGES', W / 2, 700, 64, '#ffcb05');
 }
 
 /** A region: name and generation, its eight badges with leaders and aces, then its Elite Four and champion. */
@@ -2446,7 +2446,7 @@ function renderRegion(r: RegionSpot, seg: Segment, t: number, a: number) {
   jamText(r.name, W / 2, 120, 150, { scale: a < 0.22 ? 0.3 + 0.7 * easeOutBack(a / 0.22) : 1 });
   plainText(`GEN ${r.gen} · 8 NEW GYMS`, W / 2, 235, 54, r.color);
   r.badges.forEach((b, i) => {
-    const at = 0.3 + i * 0.13;
+    const at = 0.25 + i * 0.11;
     const x = W / 2 + (i - 3.5) * 225;
     if (a < at) return;
     once(`rg-${r.name}-${i}`, t, seg.t0 + at, () => cue(t, 'badge'));
@@ -2462,7 +2462,7 @@ function renderRegion(r: RegionSpot, seg: Segment, t: number, a: number) {
     ctx.fillText(r.leaders[i], x, 690);
     ctx.restore();
   });
-  const fin = 1.6;
+  const fin = 1.4;
   if (a > fin) {
     once(`rg-${r.name}-fin`, t, seg.t0 + fin, () => { flash = 0.2; cue(t, 'slam'); cue(t, 'crowd_big'); });
     const k = easeOutBack(clamp01((a - fin) / 0.25));
@@ -2497,7 +2497,7 @@ function renderRWall(seg: Segment, t: number, a: number) {
   once('rw', t, seg.t0 + 0.05, () => { flash = 0.15; cue(t, 'slam'); });
   const n = Math.round(121 * clamp01(a / 1.0) ** 0.7);
   jamText(`${n} NEW POKéMON`, W / 2, H / 2 - 40, 150, { scale: a < 0.2 ? easeOutBack(a / 0.2) : 1 });
-  if (a > 0.9) plainText('GEN 3 JOINS THE DRAFT', W / 2, H / 2 + 110, 64, '#ffcb05');
+  if (a > 0.7) plainText('GEN 3 JOINS THE DRAFT', W / 2, H / 2 + 110, 64, '#ffcb05');
 }
 
 /** Win a full season to unlock the next region. */
@@ -2506,7 +2506,7 @@ function renderRUnlock(seg: Segment, t: number, a: number) {
   jamText('WIN THE SEASON. UNLOCK THE NEXT.', W / 2, 160, 84, { scale: a < 0.2 ? easeOutBack(a / 0.2) : 1, maxW: W - 120 });
   const steps: [string, string][] = [['KANTO', '#e3350d'], ['JOHTO', '#e8b923'], ['HOENN', '#2f78d0']];
   steps.forEach(([name, color], i) => {
-    const at = 0.3 + i * 0.45;
+    const at = 0.2 + i * 0.4;
     if (a < at) return;
     once(`ru${i}`, t, seg.t0 + at, () => { cue(t, i === 2 ? 'slam' : 'card'); if (i === 2) flash = 0.2; });
     const x = W / 2 + (i - 1) * 600;
@@ -2532,7 +2532,7 @@ function renderRUnlock(seg: Segment, t: number, a: number) {
       ctx.restore();
     }
   });
-  if (a > 1.6) plainText('EACH REGION UNLOCKS AFTER A FULL SEASON', W / 2, 800, 60, '#ffcb05');
+  if (a > 1.2) plainText('EACH REGION UNLOCKS AFTER A FULL SEASON', W / 2, 800, 60, '#ffcb05');
 }
 
 // ---------- cut: packs ----------
@@ -2930,14 +2930,14 @@ export async function prepare(): Promise<{ frames: number; fps: number }> {
     add({ kind: 'outro', t0: t, t1: t + 4.2 });
     musicEnd = s[s.length - 1].t0 + 1.6;
   } else if (CUT === 'regions') {
-    add({ kind: 'r-hook', t0: t, t1: t + 2.2 });
+    add({ kind: 'r-hook', t0: t, t1: t + 1.8 });
     musicStart = 0.1;
-    add({ kind: 'r-johto', t0: t, t1: t + 3.8 });
-    clip([['dunk']], 2.0, 1.2, false, 'montage');
-    add({ kind: 'r-hoenn', t0: t, t1: t + 3.8 });
-    add({ kind: 'r-wall', t0: t, t1: t + 2.4 });
-    add({ kind: 'r-unlock', t0: t, t1: t + 2.6 });
-    add({ kind: 'outro', t0: t, t1: t + 3.4 });
+    add({ kind: 'r-johto', t0: t, t1: t + 3.4 });
+    clip([['dunk']], 1.4, 0.9, false, 'montage');
+    add({ kind: 'r-hoenn', t0: t, t1: t + 3.4 });
+    add({ kind: 'r-wall', t0: t, t1: t + 2.0 });
+    add({ kind: 'r-unlock', t0: t, t1: t + 2.2 });
+    add({ kind: 'outro', t0: t, t1: t + 3.2 });
     musicEnd = s[s.length - 1].t0 + 1.6;
   } else if (CUT === 'packs') {
     // Under 10 seconds: a mystery pack, the even-teams face-off, one dunk, the end card.
