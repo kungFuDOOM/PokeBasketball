@@ -106,6 +106,8 @@ export interface GameConfig {
    * Offline only; omitted (the default) leaves the CPU exactly as before.
    */
   practice?: boolean;
+  /** Never go on fire: no streak/blaze fire state, boost, events, visuals or announcer calls (3-Point Contest). Default off. */
+  noFire?: boolean;
   /**
    * Practice only: stage a training drill instead of a normal game (src/game/practice.ts). Positions are reset
    * at the start and after every basket, turnover or lost possession; the game clock stands still.

@@ -64,6 +64,7 @@ export class ContestRun {
       difficulty: CONTEST_DIFFICULTY,
       stamina: false,
       practice: true,
+      noFire: true,
       seed: seed ?? Math.floor(Math.random() * 2 ** 32),
     });
     if (rng) (this.game as { rng: () => number }).rng = rng;

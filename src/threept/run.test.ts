@@ -141,4 +141,21 @@ describe('ContestRun (play loop on the real game)', () => {
     expect(b.s.results).toHaveLength(25);
     expect(Math.abs(a.s.timeLeft - b.s.timeLeft)).toBeLessThan(25 * 2 / 30);
   });
+  it('never goes on fire, even over a long make streak', () => {
+    const run = new ContestRun(sharp, 2, () => 0);
+    const kinds: string[] = [];
+    const dt = 1 / 60;
+    let best = 0;
+    for (let i = 0; i < 120 * 60 && run.stage !== 'over'; i++) {
+      let inp = { pressed: false, held: false };
+      if (run.stage === 'aim') inp = { pressed: true, held: true };
+      else if (run.stage === 'hold') inp = { pressed: false, held: run.meter + dt / METER_TIME < IDEAL_RELEASE };
+      run.step(dt, inp);
+      expect(run.player.fire).toBe(false);
+      best = Math.max(best, run.player.streak);
+      kinds.push(...run.game.events.map((e) => e.kind));
+    }
+    expect(best).toBeGreaterThanOrEqual(3);
+    expect(kinds).not.toContain('fire');
+  });
 });
