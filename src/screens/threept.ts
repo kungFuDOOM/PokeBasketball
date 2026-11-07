@@ -465,6 +465,7 @@ export function threePtContest(root: HTMLElement, settings: Settings, audio: Aud
     view.draw(run, 0);
 
     stepCleanup = () => {
+      view.destroy();
       shootBtn?.removeEventListener('pointerdown', onTap);
       input.destroy(); // also removes the touch overlay
       try { audio.stopCrowd(); } catch { /* silent */ }
