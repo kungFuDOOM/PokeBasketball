@@ -2500,23 +2500,29 @@ function renderRWall(seg: Segment, t: number, a: number) {
   if (a > 0.7) plainText('GEN 3 JOINS THE DRAFT', W / 2, H / 2 + 110, 64, '#ffcb05');
 }
 
-/** Win a full season to unlock the next region. */
+/** Win a full season to unlock the next region, and a locked "???" teasing more generations to come. */
 function renderRUnlock(seg: Segment, t: number, a: number) {
   renderBackground(t, 0.86);
   jamText('WIN THE SEASON. UNLOCK THE NEXT.', W / 2, 160, 84, { scale: a < 0.2 ? easeOutBack(a / 0.2) : 1, maxW: W - 120 });
-  const steps: [string, string][] = [['KANTO', '#e3350d'], ['JOHTO', '#e8b923'], ['HOENN', '#2f78d0']];
+  const steps: [string, string][] = [['KANTO', '#e3350d'], ['JOHTO', '#e8b923'], ['HOENN', '#2f78d0'], ['???', '#8f95c0']];
   steps.forEach(([name, color], i) => {
     const at = 0.2 + i * 0.4;
     if (a < at) return;
-    once(`ru${i}`, t, seg.t0 + at, () => { cue(t, i === 2 ? 'slam' : 'card'); if (i === 2) flash = 0.2; });
-    const x = W / 2 + (i - 1) * 600;
-    const k = easeOutBack(clamp01((a - at) / 0.22));
+    const tease = i === 3;
+    once(`ru${i}`, t, seg.t0 + at, () => { cue(t, tease ? 'slam' : 'card'); if (tease) flash = 0.25; });
+    const x = W / 2 + (i - 1.5) * 450;
+    const k = easeOutBack(clamp01((a - at) / 0.22)) * (tease ? 1 + 0.05 * Math.sin(a * 10) : 1);
     ctx.save();
     ctx.translate(x, 520);
     ctx.scale(k, k);
-    roundRect(-230, -110, 460, 220, 26, 'rgba(10,13,31,0.94)', color, 8);
-    ctx.font = `64px ${PIXEL}`;
-    ctx.fillStyle = color;
+    if (tease) {
+      ctx.shadowColor = 'rgba(255,203,5,0.7)';
+      ctx.shadowBlur = 50;
+    }
+    roundRect(-180, -100, 360, 200, 24, 'rgba(10,13,31,0.94)', tease ? '#ffcb05' : color, 8);
+    ctx.shadowBlur = 0;
+    ctx.font = `${tease ? 80 : 52}px ${PIXEL}`;
+    ctx.fillStyle = tease ? '#ffcb05' : color;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText(name, 4, 6);
@@ -2525,14 +2531,15 @@ function renderRUnlock(seg: Segment, t: number, a: number) {
       ctx.save();
       ctx.fillStyle = '#f8f8f0';
       ctx.beginPath();
-      const ax = x - 300;
+      const ax = x - 225;
       ctx.moveTo(ax - 40, 490); ctx.lineTo(ax + 30, 520); ctx.lineTo(ax - 40, 550);
       ctx.closePath();
       ctx.fill();
       ctx.restore();
     }
   });
-  if (a > 1.2) plainText('EACH REGION UNLOCKS AFTER A FULL SEASON', W / 2, 800, 60, '#ffcb05');
+  if (a > 1.0) plainText('EACH REGION UNLOCKS AFTER A FULL SEASON', W / 2, 770, 56, '#f2f0e6');
+  if (a > 1.6) jamText('MORE GENS. COMING SEASONS.', W / 2, 900, 84, { scale: 0.3 + 0.7 * easeOutBack(clamp01((a - 1.6) / 0.22)), maxW: W - 120 });
 }
 
 // ---------- cut: packs ----------
@@ -2936,7 +2943,7 @@ export async function prepare(): Promise<{ frames: number; fps: number }> {
     clip([['dunk']], 1.4, 0.9, false, 'montage');
     add({ kind: 'r-hoenn', t0: t, t1: t + 3.4 });
     add({ kind: 'r-wall', t0: t, t1: t + 2.0 });
-    add({ kind: 'r-unlock', t0: t, t1: t + 2.2 });
+    add({ kind: 'r-unlock', t0: t, t1: t + 2.8 });
     add({ kind: 'outro', t0: t, t1: t + 3.2 });
     musicEnd = s[s.length - 1].t0 + 1.6;
   } else if (CUT === 'packs') {
