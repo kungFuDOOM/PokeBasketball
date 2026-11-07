@@ -90,7 +90,7 @@ const JUDGED_RANKED_RESYNC_LIMIT = 3;
  * guest stopped by a desync just claims a forfeit, so honest games must get the same room as Social.
  * The caller passes the flag (JUDGE_AUTHORITATIVE in config/features.ts): this module also loads under Deno, without Vite.
  */
-export const resyncLimitFor = (queue: 'social' | 'ranked', judgeAuthoritative: boolean) =>
+export const resyncLimitFor = (queue: 'social' | 'ranked' | 'pack', judgeAuthoritative: boolean) =>
   (queue === 'ranked' && judgeAuthoritative ? JUDGED_RANKED_RESYNC_LIMIT : DEFAULT_RESYNC_LIMIT);
 const MIN_RESYNC_MS = 1500;
 /** How long after its last mismatching hash the guest will take a snapshot. */

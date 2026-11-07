@@ -196,14 +196,14 @@ describe('evidence bookkeeping', () => {
     const stayer = new EvidenceLog((await matchKey()).privateKey, setup.matchId, 0);
     stayer.note('tip-off');
     stayer.received({ k: 'bye' }); // a goodbye without a resignation (the other player was left behind too)
-    expect(stayer.evidence(setup, keys).resigns).toEqual([]);
+    expect(stayer.evidence(setup, keys).resigns).toBeUndefined();
     stayer.received({ k: 'bye', g: 'c'.repeat(128) });
     expect(stayer.evidence(setup, keys).resigns).toEqual([{ side: 1, sig: 'c'.repeat(128) }]);
     expect(stayer.evidence(setup, keys).log!.map(([, what]) => what)).toEqual(['tip-off', 'the other player said goodbye', 'the other player left (signed)']);
 
     const leaver = new EvidenceLog((await matchKey()).privateKey, setup.matchId, 1);
     await new Promise((r) => setTimeout(r, 50)); // the resignation is signed up front
-    expect(leaver.evidence(setup, keys).resigns).toEqual([]);
+    expect(leaver.evidence(setup, keys).resigns).toBeUndefined();
     const sig = leaver.resign();
     expect(sig).toMatch(/^[0-9a-f]{128}$/);
     expect(leaver.evidence(setup, keys).resigns).toEqual([{ side: 1, sig }]);

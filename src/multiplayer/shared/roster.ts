@@ -111,7 +111,7 @@ export function rostersFor(seed: number, queue: 'social' | 'ranked' | 'pack' = '
  * balanced teams from a seed. Social: random fives.
  */
 export function flowRosters(
-  opts: { queue: 'social' | 'ranked'; practice?: boolean },
+  opts: { queue: 'social' | 'ranked' | 'pack'; practice?: boolean },
   opp: { simulated: boolean; rosters?: [number[], number[]] | null; mySide?: 0 | 1 },
   seed = (Math.random() * 2 ** 32) >>> 0,
 ): [Mon[], Mon[]] {

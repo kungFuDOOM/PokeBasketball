@@ -4,7 +4,7 @@ export type ResultsButton = { id: string; label: string; kind?: 'primary' | 'gho
 
 export const FIND_RANKED_LABEL = 'FIND RANKED OPPONENT';
 
-export function onlineResultsButtons(queue: 'social' | 'ranked'): ResultsButton[] {
+export function onlineResultsButtons(queue: 'social' | 'ranked' | 'pack'): ResultsButton[] {
   const first: ResultsButton = queue === 'ranked'
     ? { id: 'find-ranked', label: FIND_RANKED_LABEL, kind: 'primary' }
     : { id: 'again', label: 'Play again', kind: 'primary' };

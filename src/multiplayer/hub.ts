@@ -12,7 +12,7 @@ if (MODE_SOCIAL) MODES.push({ id: 'social', title: 'Social', note: 'Casual and u
   load: async () => (await import('./social/index')).openSocial });
 if (MODE_RANKED) MODES.push({ id: 'ranked', title: 'Ranked', note: `5 placement matches, then climb from ${TIER_RANGE_TEXT}.`,
   load: async () => (await import('./ranked/index')).openRanked });
-if (MODE_PACK_BATTLES) MODES.push({ id: 'pack', title: 'Pack Battles', note: 'Beat another player online to win a Collector Crypt pack. Devnet test.',
+if (MODE_PACK_BATTLES) MODES.push({ id: 'pack', title: 'Pack Battles', note: 'Beat another player online to win a Collector Crypt pack.',
   load: async () => (await import('./packBattles/index')).openPackBattles });
 
 /** Modes that aren't in this build show as locked "Coming soon" tiles: no button handler, no import, no navigation. */
