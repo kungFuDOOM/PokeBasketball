@@ -2743,3 +2743,6 @@ body:has(.pause-btn) .music-btn:not(.docked) {
   .tp-resrow .tp-shooter img { width: 40px; height: 40px; }
   .tp-big { margin-top: 0; }
 }
+
+/* King Kabuto: limited-time special; gold name tag (text is always exactly "King Kabuto"). */
+.king-tag { background: linear-gradient(180deg, #fff2a6 0%, #ffcf2e 45%, #c98a12 100%); -webkit-background-clip: text; background-clip: text; color: transparent; -webkit-text-fill-color: transparent; font-weight: 800; letter-spacing: 0.02em; filter: drop-shadow(0 1px 0 rgba(0, 0, 0, 0.7)); }

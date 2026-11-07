@@ -11,6 +11,8 @@ import { inlineRename } from '../ui/teamName';
 import { badgeSvg } from '../ui/badges';
 import { abbr, esc, lettersName, shuffle, tier } from '../util';
 import { draftScreen } from './draft';
+import { watchKing } from '../kabuto/dom';
+import { withKingKabuto } from '../kabuto/king';
 import { bindSettings, settingsHtml, type Settings } from './menu';
 import { withIntro } from './intro';
 import { startingFiveEnabled } from './intro.logic';
@@ -140,7 +142,8 @@ export function quickPlay(root: HTMLElement, settings: Settings, audio: Audio, a
         picked = { color: teams[0].color, color2: teams[0].color2 };
         matchup(opp, rosters[0], rosters[1], courtFor(opp));
       },
-      pickOpponent, () => {});
+      pickOpponent, () => {}, { pool: withKingKabuto(POKEMON) });
+    watchKing(root);
   }
 
   function matchup(opp: LeagueTeam, mine: Mon[], theirs: Mon[], court: CourtStyle) {
