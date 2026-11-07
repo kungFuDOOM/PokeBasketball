@@ -60,6 +60,13 @@ const buildIdFile = (id: string): Plugin => {
     // The admin build (vite.admin.config.ts) runs after this one in the same dist/ and must not overwrite the id with its own.
     configResolved(c) { admin = JSON.stringify(c.build.rollupOptions.input ?? '').includes('admin.html'); },
     generateBundle() { if (!admin) this.emitFile({ type: 'asset', fileName: 'build-id.txt', source: id }); },
+    // The entry (assets/game.js) and stylesheet (assets/index.css) keep fixed names (scripts/build-artifact.mjs copies them), and the
+    // host caches them for 10 minutes: without a version in the URL a browser keeps running the previous deploy's game.js after a
+    // fresh index.html. Hashed chunks don't need this.
+    transformIndexHtml: {
+      order: 'post',
+      handler: (html) => html.replace(/(["'])((?:\.\/|\/)?assets\/(?:game\.js|index\.css))\1/g, (_m, q: string, url: string) => `${q}${url}?v=${encodeURIComponent(id)}${q}`),
+    },
   };
 };
 

@@ -44,7 +44,7 @@ let last = 0;
 let watching = false;
 
 /** The real thing, for the browser: tiny no-store fetch with a short timeout, throttled. */
-export function checkStaleBuild(opts: { now?: number; force?: boolean } = {}): Promise<boolean> {
+export function checkStaleBuild(opts: { now?: number; force?: boolean; beforeReload?: () => void } = {}): Promise<boolean> {
   const now = opts.now ?? Date.now();
   if (typeof window === 'undefined' || runningBuild() === 'dev' || (!opts.force && now - last < MIN_GAP_MS)) return Promise.resolve(false);
   last = now;
@@ -53,7 +53,7 @@ export function checkStaleBuild(opts: { now?: number; force?: boolean } = {}): P
   return reloadIfStale({
     running: runningBuild(),
     store,
-    reload: () => location.reload(),
+    reload: () => { opts.beforeReload?.(); location.reload(); },
     fetchLive: async () => {
       const ctl = typeof AbortController === 'function' ? new AbortController() : null;
       const timer = setTimeout(() => ctl?.abort(), 4000);
@@ -64,6 +64,46 @@ export function checkStaleBuild(opts: { now?: number; force?: boolean } = {}): P
       } finally { clearTimeout(timer); }
     },
   });
+}
+
+/** sessionStorage key: the screen to reopen after a stale-build reload (read once by main.ts on boot). */
+export const RESUME_KEY = 'pokejam.stale.resume';
+export type ResumeTo = 'threept';
+
+let safeHere: (() => boolean) | null = null;
+let resumeTo: ResumeTo | null = null;
+let watchingMenus = false;
+
+/** Reads and clears the screen a stale-build reload asked to reopen. */
+export function takeResume(): ResumeTo | null {
+  try {
+    const v = sessionStorage.getItem(RESUME_KEY);
+    if (v) sessionStorage.removeItem(RESUME_KEY);
+    return v === 'threept' ? v : null;
+  } catch { return null; }
+}
+
+/**
+ * Call when a menu-like screen is drawn (the title menu, the 3-Point Contest picker): checks for a newer deploy now, and again
+ * whenever the tab comes back while `safe()` still says that screen is up. A stale tab (an open tab or a home-screen app resumed
+ * from memory, or a cached entry bundle) then reloads onto the new build before the player starts a mode with old code.
+ * `resume` reopens that screen after the reload. Never reloads mid-match or during a Phantom sign-in.
+ */
+export function guardStaleOnMenu(safe: () => boolean, resume: ResumeTo | null = null): void {
+  if (typeof document === 'undefined' || runningBuild() === 'dev') return;
+  safeHere = safe;
+  resumeTo = resume;
+  const run = () => {
+    if (!safeHere?.() || signInBusy()) return;
+    const back = resumeTo;
+    void checkStaleBuild({
+      beforeReload: () => { if (back) try { sessionStorage.setItem(RESUME_KEY, back); } catch { /* storage unavailable */ } },
+    });
+  };
+  setTimeout(run, 0);
+  if (watchingMenus) return;
+  watchingMenus = true;
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') run(); });
 }
 
 /** Whether a Phantom sign-in is under way (the page must not reload under it). */

@@ -21,6 +21,7 @@ import { hubScreen } from './screens/hub';
 import { championshipScreen, newSeasonScreen } from './screens/moments';
 import { masterScreen } from './screens/master';
 import { menuScreen, type Settings } from './screens/menu';
+import { guardStaleOnMenu, takeResume } from './wallet/staleBuild';
 import { withIntro } from './screens/intro';
 import { playGame } from './screens/play';
 import { resultTag, type GameMode } from './screens/watch';
@@ -134,6 +135,12 @@ function draftSummary(d: DraftState): string {
   return `${d.teams[me].name} · Pick ${n + 1} of ${d.order.length * rounds} · ${mine}/${rounds} drafted`;
 }
 
+function threePt() {
+  app.className = 'screen-threept';
+  window.scrollTo(0, 0);
+  threePtContest(app, settings, audio, { menu });
+}
+
 function menu() {
   app.className = 'screen-menu';
   const f = franchise;
@@ -182,12 +189,7 @@ function menu() {
       void import('./raffle/screen').then((m) => m.openChallenges({ root: app, back: menu }));
     },
     onQuick: () => quick('draft'),
-    onThreePt: () => {
-      audio.unlock();
-      app.className = 'screen-threept';
-      window.scrollTo(0, 0);
-      threePtContest(app, settings, audio, { menu });
-    },
+    onThreePt: () => { audio.unlock(); threePt(); },
     onTutorial: () => training(),
     onSeason: season,
     confirmSeason: () => guardNewDraft(menu),
@@ -212,6 +214,8 @@ function menu() {
       void startFranchise(teams, rosters, leftovers, { fromDrafted: !!mine, onCancel: menu });
     },
   });
+  // A tab left open (or a home-screen app resumed) across a deploy would start every mode with the old bundle: reload here.
+  guardStaleOnMenu(() => app.className === 'screen-menu' && !!app.querySelector('[data-go="season"]'));
 }
 
 function quick(source: TeamSource) {
@@ -490,6 +494,8 @@ async function afterUserGame(f: Franchise, g: FGame, game: Game, sides: [number,
 
 // A share link (#s=...) opens the shared team's card first.
 const shared = shareFromHash(location.hash);
+// Reloaded onto a new build from a menu that asked to come back (the 3-Point Contest picker).
+const resume = takeResume();
 const clearHash = () => history.replaceState(null, '', location.pathname + location.search);
 const devFinal = import.meta.env.DEV ? await import('./screens/devResults').then((m) => m.devResultsKind()) : null;
 const devRanked = import.meta.env.DEV ? await import('./multiplayer/ranked/devDemo').then((m) => m.devRankedScreen()) : null;
@@ -550,7 +556,8 @@ if (introShot === 'offline' || introShot === 'online') {
       if (go) { clearHash(); go(); }
     },
   });
-} else menu();
+} else if (resume === 'threept') threePt();
+else menu();
 // A link straight to the Advertise page: pokejam.xyz/#advertise.
 const advertise = () => { if (MODE_ADS && location.hash === '#advertise') void import('./ads/screen').then((a) => a.openAdvertise(app, menu)); };
 advertise();
