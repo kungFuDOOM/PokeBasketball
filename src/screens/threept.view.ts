@@ -7,16 +7,29 @@ import { FLIGHT_TIME, MOVE_TIME, type ContestRun } from '../threept/run';
 import { IDEAL_RELEASE, contestGreenWindow, type ContestGrade } from '../threept/shot';
 import { BALLS_PER_RACK, type RackId, type ShotResult } from '../threept/types';
 
-export const VIEW_W = 800;
-export const VIEW_H = 480;
+export type CourtLayout = 'desk' | 'wide' | 'tall';
+const LAYOUTS: Record<CourtLayout, { w: number; h: number; y0: number; u: number }> = {
+  desk: { w: 800, h: 480, y0: 118, u: 1 },
+  wide: { w: 800, h: 400, y0: 92, u: 1.25 }, // landscape phone: fill the short, wide stage
+  tall: { w: 480, h: 620, y0: 96, u: 1.45 }, // portrait phone: a taller crop so the court fills the screen
+};
+/** Pick the layout from the same media queries the CSS uses. */
+export function pickLayout(): CourtLayout {
+  if (matchMedia('(orientation: portrait) and (max-width: 600px)').matches) return 'tall';
+  if (matchMedia('(orientation: landscape) and (max-height: 500px)').matches) return 'wide';
+  return 'desk';
+}
+export let VIEW_W = 800;
+export let VIEW_H = 480;
 
 const HX = hoopX(0);
 const SPOTS = rackSpots();
 const DEPTH = 36; // feet from the baseline to the bottom of the view
-const Y0 = 118; // baseline on screen
-const KY = (VIEW_H - Y0 - 8) / DEPTH;
-const KX = VIEW_W / 50;
-const KZ = 9;
+let Y0 = 118; // baseline on screen
+let KY = (VIEW_H - Y0 - 8) / DEPTH;
+let KX = VIEW_W / 50;
+let U = 1; // sprite / rack / label scale for the current layout
+let KZ = 9;
 
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
@@ -48,7 +61,7 @@ const BALL = '#f07a1f';
 const GOLD = '#ffcb05';
 
 export class CourtView {
-  private ctx: CanvasRenderingContext2D;
+  private ctx!: CanvasRenderingContext2D;
   private flights: Flight[] = [];
   private floats: Float[] = [];
   private net = 0;
@@ -57,7 +70,26 @@ export class CourtView {
   private jump = 0;
   private time = 0;
 
-  constructor(canvas: HTMLCanvasElement, private dex: number) {
+  private layout: CourtLayout = 'desk';
+
+  constructor(private canvas: HTMLCanvasElement, private dex: number) {
+    this.setLayout(pickLayout());
+    window.addEventListener('resize', this.onResize);
+  }
+
+  private onResize = () => { const l = pickLayout(); if (l !== this.layout) this.setLayout(l); };
+
+  destroy() { window.removeEventListener('resize', this.onResize); }
+
+  private setLayout(l: CourtLayout) {
+    this.layout = l;
+    const g = LAYOUTS[l];
+    VIEW_W = g.w; VIEW_H = g.h; Y0 = g.y0; U = g.u;
+    KY = (VIEW_H - Y0 - 8) / DEPTH;
+    KX = VIEW_W / 50;
+    KZ = 9 * U;
+    const canvas = this.canvas;
+    canvas.style.setProperty('--ar', String(VIEW_W / VIEW_H));
     const dpr = Math.min(2, Math.max(1, Math.round(window.devicePixelRatio || 1)));
     canvas.width = VIEW_W * dpr;
     canvas.height = VIEW_H * dpr;
@@ -142,7 +174,7 @@ export class CourtView {
     ctx.fillStyle = GOLD;
     ctx.font = '12px "Press Start 2P", monospace';
     ctx.textAlign = 'left';
-    ctx.fillText('3-POINT CONTEST', 18, Y0 - 11);
+    if (this.layout === 'desk') ctx.fillText('3-POINT CONTEST', 18, Y0 - 11);
     ctx.textAlign = 'right';
     ctx.fillText('POKé JAM', VIEW_W - 18, Y0 - 11);
   }
@@ -197,7 +229,7 @@ export class CourtView {
       const p = project(sp.x, sp.y);
       const money = sp.rack === moneyRack;
       ctx.beginPath();
-      ctx.ellipse(p.x, p.y, 22 * p.s, 8 * p.s, 0, 0, Math.PI * 2);
+      ctx.ellipse(p.x, p.y, 22 * U * p.s, 8 * U * p.s, 0, 0, Math.PI * 2);
       ctx.fillStyle = money ? 'rgba(255, 203, 5, 0.45)' : 'rgba(255, 255, 255, 0.18)';
       ctx.fill();
       if (money) { ctx.strokeStyle = GOLD; ctx.lineWidth = 2; ctx.stroke(); }
@@ -221,25 +253,25 @@ export class CourtView {
       const r = sp.rack;
       const at = this.rackPos(r);
       const p = project(at.x, at.y);
-      const w = 46 * p.s;
+      const w = 46 * U * p.s;
       // Stand.
       ctx.fillStyle = '#2b2f45';
-      ctx.fillRect(p.x - w / 2, p.y - 10 * p.s, w, 10 * p.s);
+      ctx.fillRect(p.x - w / 2, p.y - 10 * U * p.s, w, 10 * U * p.s);
       ctx.fillStyle = '#5a6080';
-      ctx.fillRect(p.x - w / 2, p.y - 12 * p.s, w, 3 * p.s);
+      ctx.fillRect(p.x - w / 2, p.y - 12 * U * p.s, w, 3 * U * p.s);
       // Balls still on the rack.
       let first = 0;
       if (done || r < cur) first = BALLS_PER_RACK;
       else if (r === cur) first = idx + (inHand ? 1 : 0);
       for (let i = first; i < BALLS_PER_RACK; i++) {
         const bx = p.x - w / 2 + (i + 0.5) * (w / BALLS_PER_RACK);
-        this.ball(ctx, bx, p.y - 16 * p.s, 4.6 * p.s, isMoneyBall(r, i, run.s.moneyRack));
+        this.ball(ctx, bx, p.y - 16 * U * p.s, 4.6 * U * p.s, isMoneyBall(r, i, run.s.moneyRack));
       }
       // Label under the rack.
-      ctx.font = `${Math.round(9 * p.s + 2)}px "Press Start 2P", monospace`;
+      ctx.font = `${Math.round((9 * p.s + 2) * U * 1.15)}px "Press Start 2P", monospace`;
       ctx.textAlign = 'center';
       ctx.fillStyle = r === run.s.moneyRack ? GOLD : 'rgba(255, 255, 255, 0.75)';
-      ctx.fillText(r === run.s.moneyRack ? 'MONEY' : sp.label.toUpperCase(), p.x, p.y + 12 * p.s);
+      ctx.fillText(r === run.s.moneyRack ? 'MONEY' : sp.label.toUpperCase(), p.x, p.y + 13 * U * p.s + 4);
     }
   }
 
@@ -269,15 +301,15 @@ export class CourtView {
 
   private drawShooter(ctx: CanvasRenderingContext2D, run: ContestRun, at: { x: number; y: number }) {
     const p = project(at.x, at.y);
-    const hop = this.jump > 0 ? Math.sin((1 - this.jump / 0.32) * Math.PI) * 14 * p.s : 0;
+    const hop = this.jump > 0 ? Math.sin((1 - this.jump / 0.32) * Math.PI) * 14 * U * p.s : 0;
     const crouch = run.stage === 'hold' ? 0.93 : 1;
     // Shadow.
     ctx.beginPath();
-    ctx.ellipse(p.x, p.y, 18 * p.s, 6 * p.s, 0, 0, Math.PI * 2);
+    ctx.ellipse(p.x, p.y, 18 * U * p.s, 6 * U * p.s, 0, 0, Math.PI * 2);
     ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
     ctx.fill();
     const spr = getSprite(this.dex, true);
-    const h = 96 * p.s;
+    const h = 96 * U * p.s;
     if (spr) {
       const w = h * (spr.w / spr.h);
       ctx.imageSmoothingEnabled = false;
@@ -285,13 +317,13 @@ export class CourtView {
       ctx.imageSmoothingEnabled = true;
     } else {
       ctx.fillStyle = '#3b6fd8';
-      ctx.fillRect(p.x - 14 * p.s, p.y - h * crouch - hop, 28 * p.s, h * crouch);
+      ctx.fillRect(p.x - 14 * U * p.s, p.y - h * crouch - hop, 28 * U * p.s, h * crouch);
     }
     // Ball in hands while aiming or holding.
     if ((run.stage === 'aim' || run.stage === 'hold') && run.s.ballIndex < 25) {
       const idx = run.s.ballIndex % BALLS_PER_RACK;
       const lift = run.stage === 'hold' ? h * 0.92 : h * 0.55;
-      this.ball(ctx, p.x + 10 * p.s, p.y - lift - hop, 7 * p.s, isMoneyBall(run.rack, idx, run.s.moneyRack));
+      this.ball(ctx, p.x + 10 * U * p.s, p.y - lift - hop, 7 * U * p.s, isMoneyBall(run.rack, idx, run.s.moneyRack));
     }
   }
 
@@ -317,7 +349,7 @@ export class CourtView {
     const rim = project(HX, HOOP_Y, RIM_Z);
     const rw = 0.85 * KX * rim.s;
     const stretch = this.net > 0 ? Math.sin((1 - this.net / 0.45) * Math.PI) * 9 : 0;
-    const nh = 20 + stretch;
+    const nh = 20 * U + stretch;
     ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
     ctx.lineWidth = 1.5;
     for (let i = 0; i <= 6; i++) {
@@ -367,11 +399,11 @@ export class CourtView {
       live.push(f);
       const sh = project(x, y, 0);
       ctx.beginPath();
-      ctx.ellipse(sh.x, sh.y, 6 * sh.s, 2.2 * sh.s, 0, 0, Math.PI * 2);
+      ctx.ellipse(sh.x, sh.y, 6 * U * sh.s, 2.2 * U * sh.s, 0, 0, Math.PI * 2);
       ctx.fillStyle = 'rgba(0, 0, 0, 0.25)';
       ctx.fill();
       const p = project(x, y, z);
-      this.ball(ctx, p.x, p.y, 7 * p.s, f.money);
+      this.ball(ctx, p.x, p.y, 7 * U * p.s, f.money);
     }
     this.flights = live;
   }
@@ -385,11 +417,11 @@ export class CourtView {
     if (!holding && !aiming && m.t <= 0) return;
     const v = holding ? run.meter : m.t > 0 ? m.v : 0;
     const p = project(at.x, at.y);
-    const h = 104;
-    const w = 14;
+    const h = 104 * Math.min(U, 1.25);
+    const w = 14 * Math.min(U, 1.25);
     const dir = -this.side(run.rack);
-    const x = Math.round(clamp(p.x + dir * (44 * p.s + 8) - (dir < 0 ? w : 0), 8, VIEW_W - w - 8));
-    const y = Math.round(clamp(p.y - 96 * p.s - 10, Y0 - 20, VIEW_H - h - 8));
+    const x = Math.round(clamp(p.x + dir * (44 * U * p.s + 8) - (dir < 0 ? w : 0), 8, VIEW_W - w - 8));
+    const y = Math.round(clamp(p.y - 96 * U * p.s - 10, Y0 - 20, VIEW_H - h - 8));
     ctx.globalAlpha = holding ? 1 : m.t > 0 ? clamp(m.t * 3, 0, 1) : 0.55;
     ctx.fillStyle = '#05060f';
     ctx.fillRect(x - 2, y - 2, w + 4, h + 4);
@@ -419,7 +451,7 @@ export class CourtView {
       if (f.t > 1.1) continue;
       live.push(f);
       ctx.globalAlpha = clamp((1.1 - f.t) * 3, 0, 1);
-      ctx.font = `${f.big ? 18 : 12}px "Press Start 2P", monospace`;
+      ctx.font = `${Math.round((f.big ? 18 : 12) * Math.min(U, 1.3))}px "Press Start 2P", monospace`;
       ctx.fillStyle = '#05060f';
       ctx.fillText(f.text, f.x + 2, f.y - f.t * 34 + 2);
       ctx.fillStyle = f.color;
