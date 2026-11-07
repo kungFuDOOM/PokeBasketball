@@ -165,47 +165,82 @@ describe('Hoenn region data', () => {
     expect(new Set(names).size).toBe(names.length);
   });
 
-  it('every roster: ten unique Gen 3 Pokémon, no exceptions, ace first and starting, five natural positions', () => {
+  it('every roster: ten unique Pokémon, Gen 3 plus at most two on-type Gen 1-2 stars, ace first and starting, five natural positions', () => {
     const starters = [252, 253, 254, 255, 256, 257, 258, 259, 260];
+    const legendaries = [144, 145, 146, 150, 151, 243, 244, 245, 249, 250, 251, 377, 378, 379, 380, 381, 382, 383, 384, 385, 386];
     for (const t of regionTeams(HOENN)) {
       const roster = t.roster!;
       expect(roster, t.name).toHaveLength(10);
       expect(new Set(roster).size).toBe(10);
       expect(roster[0]).toBe(t.ace);
-      for (const d of roster) expect(gen3(d), `${t.name}: #${d}`).toBe(true);
-      // No Hoenn starters, and no Gen 1/2 guidance slipped in (Geodude, Magnemite, Magneton, Kingdra).
-      for (const d of [...starters, 74, 75, 81, 82, 230]) expect(roster).not.toContain(d);
+      // Never a later generation.
+      for (const d of roster) expect(d, `${t.name}: #${d}`).toBeLessThanOrEqual(386);
+      // Star rule: up to two earlier-generation Pokémon, each of one of the team's types; the finale stays all Gen 3.
+      const earlier = roster.map(monByDex).filter((m) => m.dex < 252);
+      expect(earlier.length, t.name).toBeLessThanOrEqual(t.elite ? 0 : 2);
+      for (const m of earlier) expect(m.types.some((ty) => t.types.indexOf(ty) >= 0), `${t.name}: ${m.name}`).toBe(true);
+      // No Hoenn starters, no Geodude/Magnemite roster rows slipped in from the old guidance.
+      for (const d of [...starters, 74, 75, 81]) expect(roster).not.toContain(d);
       const mons = roster.map(monByDex);
       const { starters: five } = bestLineup(mons);
       expect(five.map((m) => m.pos).sort(), t.name).toEqual(['C', 'PF', 'PG', 'SF', 'SG']);
       expect(five.map((m) => m.dex)).toContain(t.ace);
       expect(mons.some((m) => m.types.some((ty) => t.types.indexOf(ty) >= 0)), t.name).toBe(true);
-      // Gyms field no legendaries; the Elite's only Gen 3 legendaries would be optional, and it has none.
-      for (const d of roster) expect(d >= 377 && d <= 386, `${t.name}: #${d}`).toBe(false);
+      // No legendaries anywhere.
+      for (const d of roster) expect(legendaries, `${t.name}: #${d}`).not.toContain(d);
     }
     const typed = (t: { roster?: number[] }, type: string) => t.roster!.filter((d) => monByDex(d).types.indexOf(type as never) >= 0).length;
+    const stars = (t: { roster?: number[] }) => t.roster!.filter((d) => d < 252);
     const [roxanne, brawly, wattson, flannery, norman, winona, tateLiza, juan] = HOENN.gyms;
     expect(roxanne.ace).toBe(299); // Nosepass
-    expect(typed(roxanne, 'Rock')).toBe(6);
+    expect(stars(roxanne)).toEqual([142, 141]); // Aerodactyl, Kabutops
+    expect(typed(roxanne, 'Rock')).toBe(8);
     expect(brawly.ace).toBe(297); // Hariyama
-    expect(typed(brawly, 'Fighting')).toBe(5);
+    expect(stars(brawly)).toEqual([68, 107]); // Machamp (his Machop line), Hitmonchan
+    expect(typed(brawly, 'Fighting')).toBe(7);
     expect(wattson.ace).toBe(310); // Manectric
-    expect(typed(wattson, 'Electric')).toBe(4); // every Gen 3 Electric Pokémon
+    expect(stars(wattson)).toEqual([82, 181]); // Magneton, Ampharos
+    expect(typed(wattson, 'Electric')).toBe(6); // every Gen 3 Electric Pokémon plus the two stars
     expect(flannery.ace).toBe(324); // Torkoal
-    expect(typed(flannery, 'Fire')).toBe(3); // every Gen 3 Fire Pokémon but the starters
+    expect(stars(flannery)).toEqual([38, 229]); // Ninetales, Houndoom
+    expect(typed(flannery, 'Fire')).toBe(5);
     expect(norman.ace).toBe(289); // Slaking
+    expect(stars(norman)).toEqual([]);
     expect(typed(norman, 'Normal')).toBe(10);
     expect(winona.ace).toBe(334); // Altaria
-    expect(typed(winona, 'Flying')).toBe(9);
+    expect(stars(winona)).toEqual([227, 169]); // Skarmory, Crobat
+    expect(typed(winona, 'Flying')).toBe(10);
     expect(tateLiza.ace).toBe(344); // Claydol
+    expect(stars(tateLiza)).toEqual([]);
     expect(tateLiza.roster).toEqual(expect.arrayContaining([337, 338]));
     expect(typed(tateLiza, 'Psychic')).toBe(10);
     expect(juan.ace).toBe(350); // Milotic
+    expect(stars(juan)).toEqual([230]); // Kingdra
     expect(juan.roster).toContain(370);
     expect(typed(juan, 'Water')).toBe(10);
     const elite = HOENN.finale;
     expect(elite.ace).toBe(376); // Metagross
     expect(elite.roster).toEqual(expect.arrayContaining([376, 373, 306, 365, 356, 302, 330, 350]));
+    // Roxanne, the weakest gym before the stars, now starts a five averaging 70+.
+    const avg = (t: { roster?: number[] }) => bestLineup(t.roster!.map(monByDex)).starters.reduce((a, m) => a + m.ovr, 0) / 5;
+    expect(avg(roxanne)).toBeGreaterThanOrEqual(70);
+  });
+
+  it("a Hoenn gym's players never evolve past Gen 3 in the league", () => {
+    const f = inJohto();
+    finish(f, gymIds(f), 0);
+    rookieDraft(f);
+    expect(enterRegion(f, 'hoenn')).toBe(true);
+    // Give Wattson a Kirlia (Gardevoir in Gen 3, Gallade later) at a level well past its evolution.
+    const mau = f.teams.find((t) => t.leader === 'Wattson')!;
+    const u = mau.roster[1];
+    Object.assign(f.players[u], { dex: 281, level: 9, xp: 255 });
+    const kirlia = { ...monByDex(281) };
+    const line = { pts: 0, reb: 0, ast: 0, stl: 0, blk: 0, sec: 60, fgm: 0, fga: 0, tpm: 0, tpa: 0, dnk: 0, gs: 1 };
+    const g = f.games.find((x) => !x.score)!;
+    const box = { score: [80, 70], cfg: { quarterLen: 60 }, quarter: 4, rosterOf: (side: number) => (side === 1 ? [{ mon: kirlia, team: 1, stats: line }] : []) } as unknown as Game;
+    for (let i = 0; i < 20 && f.players[u].dex === 281; i++) recordGame(f, { ...g, score: null }, box, [0, mau.id], new Map([[kirlia, u]]));
+    expect(f.players[u].dex).toBe(282);
   });
 
   it('draws every Hoenn badge', () => {
