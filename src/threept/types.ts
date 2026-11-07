@@ -37,6 +37,11 @@ export interface ContestState {
   /** Next ball to shoot, 0..TOTAL_BALLS. */
   ballIndex: number;
   results: BallResult[];
+  /**
+   * A shot released while 'live' that has not landed yet. It still counts if the buzzer sounds while it is in
+   * the air: recordShot accepts exactly that one shot after the phase has become 'done'.
+   */
+  inFlight: boolean;
 }
 
 export interface ContestSummary {

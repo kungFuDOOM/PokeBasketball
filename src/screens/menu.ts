@@ -246,11 +246,6 @@ export function menuScreen(root: HTMLElement, settings: Settings, onChange: () =
             </div>
             <p class="tut-hint-menu"${isTutorialDone() ? ' hidden' : ''}>New? Try the tutorial</p>
           </section>
-          <section class="mode-card threept-mode">
-            <h2>3-Point Contest</h2>
-            <p class="setup-note">One shooter, five racks, sixty seconds. Just for fun.</p>
-            <div class="actions"><button class="btn big" data-go="threept">3-Point Contest</button></div>
-          </section>
           <section class="mode-card franchise">
             <h2>Franchise</h2>
           ${opts.draft ? `
@@ -276,6 +271,11 @@ export function menuScreen(root: HTMLElement, settings: Settings, onChange: () =
             <div class="actions">
               <button class="btn" data-go="new">${opts.saved || opts.draft ? 'New franchise' : 'Start a franchise'}</button>
             </div>
+          </section>
+          <section class="mode-card threept-mode">
+            <h2>3-Point Contest</h2>
+            <p class="setup-note">One shooter, five racks, sixty seconds. Just for fun.</p>
+            <div class="actions"><button class="btn big" data-go="threept">3-Point Contest</button></div>
           </section>
           <section class="mode-card roster-mode">
             <h2>Roster</h2>
