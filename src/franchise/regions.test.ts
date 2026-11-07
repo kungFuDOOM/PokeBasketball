@@ -569,6 +569,11 @@ describe('player-scaled gyms in later regions', () => {
     const g = weekGames(f).concat(f.games).find((x) => (x.home === 0 && x.away === opp) || (x.away === 0 && x.home === opp))!;
     return gameConfig(f, g, true, 20, difficulty).cfg.away;
   };
+  /** The user's real configured strength in the game vs `opp`: starters (bonuses included) + chemistry + boost. */
+  const cfgVs = (f: Franchise, opp: number) => {
+    const g = weekGames(f).concat(f.games).find((x) => (x.home === 0 && x.away === opp) || (x.away === 0 && x.home === opp))!;
+    return gameConfig(f, g, true, 20, 'allstar').cfg;
+  };
   /** Gives the user a five of the best natural-position mons at `ovr` (every starter exactly that rating). */
   const setUserFive = (f: Franchise, ovr: number) => {
     const me = f.teams[0];
@@ -579,10 +584,6 @@ describe('player-scaled gyms in later regions', () => {
       f.players[u].bonus = { sht: k, ins: k, pas: k, hnd: k, spd: k, def: k, blk: k, reb: k } as never;
     };
     me.roster.forEach(bump);
-  };
-  const userEff = (f: Franchise) => {
-    const { starters } = bestLineup(f.teams[0].roster.map((u) => monByDex(f.players[u].dex)));
-    return effectiveStrength(starters);
   };
 
   it('margins ramp across the gyms and the finale is highest', () => {
@@ -604,8 +605,9 @@ describe('player-scaled gyms in later regions', () => {
       expect(b).toBeGreaterThanOrEqual(3);
       const eff = effectiveStrength(gym, b);
       const want = effectiveStrength(mons(95)) + SCALE_MARGINS[slot - 1];
-      if (b < SCALE_BOOST_CAP) expect(eff).toBeGreaterThanOrEqual(want - 1e-9);
-      else expect(b).toBe(SCALE_BOOST_CAP);
+      // The extra over the design boost is exactly the need, capped at SCALE_BOOST_CAP.
+      expect(b).toBeCloseTo(3 + Math.min(SCALE_BOOST_CAP, Math.max(0, want - baseEff)), 9);
+      if (b - 3 < SCALE_BOOST_CAP) expect(eff).toBeGreaterThanOrEqual(want - 1e-9);
       expect(eff).toBeGreaterThanOrEqual(baseEff);
     }
     // Slightly stronger user: later badges ask for more boost.
@@ -613,7 +615,9 @@ describe('player-scaled gyms in later regions', () => {
     const b9 = scaledBoost(mons(86), 0, gym, 3, 9);
     expect(b9 - b1).toBeCloseTo(SCALE_MARGINS[8] - SCALE_MARGINS[0], 6);
     // A design boost above the cap is never weakened.
-    expect(scaledBoost(mons(95), 0, gym, 14, 9)).toBe(14);
+    expect(scaledBoost(mons(60), 0, gym, 14, 9)).toBe(14);
+    // Extra boost caps at +12 ON TOP of the design boost (not total 12).
+    expect(scaledBoost(mons(99), 0, gym, 3, 9)).toBe(3 + SCALE_BOOST_CAP);
   });
 
   it('Kanto gyms and the Kanto finale keep their fixed boost', () => {
@@ -624,28 +628,35 @@ describe('player-scaled gyms in later regions', () => {
     }
   });
 
-  it('a Johto gym is never weaker than its design, reaches player + margin, and gets stronger as the roster does', () => {
-    const f = johto();
+  /** Shared check: gyms never weaker than design, reach the exact expected capped target, and grow with the roster. */
+  const checkRegion = (f: Franchise) => {
     const gyms = f.teams.filter((t) => t.gym || t.elite);
     expect(gyms).toHaveLength(9);
-    const strongest = (opp: FTeamLike) => {
-      const d = gameVs(f, opp.id);
-      return { boost: d.boost!, eff: effectiveStrength(d.roster, d.boost!), base: effectiveStrength(d.roster, opp.boost) };
+    const measure = (opp: FTeamLike) => {
+      const c = cfgVs(f, opp.id);
+      const mine = effectiveStrength(c.home.roster, c.home.boost ?? 0);
+      return { mine, boost: c.away.boost!, eff: effectiveStrength(c.away.roster, c.away.boost!), base: effectiveStrength(c.away.roster, opp.boost) };
     };
-    const low = gyms.map(strongest);
+    const low = gyms.map(measure);
     low.forEach((r, i) => { expect(r.boost).toBeGreaterThanOrEqual(gyms[i].boost!); expect(r.eff).toBeGreaterThanOrEqual(r.base); });
     setUserFive(f, 95);
-    const mine = userEff(f);
-    const high = gyms.map(strongest);
+    const high = gyms.map(measure);
     high.forEach((r, i) => {
+      // The user's real five is at least 95 (+ chemistry), measured from the configured roster and boost.
+      expect(r.mine).toBeGreaterThanOrEqual(95);
+      const extra = Math.min(SCALE_BOOST_CAP, Math.max(0, r.mine + SCALE_MARGINS[i] - r.base));
+      expect(r.boost).toBeCloseTo(gyms[i].boost! + extra, 9);
       expect(r.boost).toBeGreaterThanOrEqual(low[i].boost);
-      expect(r.boost).toBeLessThanOrEqual(SCALE_BOOST_CAP);
-      if (r.boost < SCALE_BOOST_CAP) expect(r.eff).toBeGreaterThanOrEqual(mine + SCALE_MARGINS[i] - 1e-9);
+      if (extra < SCALE_BOOST_CAP) expect(r.eff).toBeGreaterThanOrEqual(r.mine + SCALE_MARGINS[i] - 1e-9);
+      else expect(r.boost).toBe(gyms[i].boost! + SCALE_BOOST_CAP);
     });
-    // Recomputed for each game: the same gym is tougher for the stronger roster than for the earlier one.
     expect(high.some((r, i) => r.boost > low[i].boost)).toBe(true);
     // The finale asks for the most.
-    expect(high[8].eff - mine).toBeGreaterThanOrEqual(high[0].eff - mine - 1e-9);
+    expect(high[8].eff - high[8].mine).toBeGreaterThanOrEqual(high[0].eff - high[0].mine - 1e-9);
+  };
+
+  it('a Johto gym is never weaker than its design, reaches player + margin (extra capped at +12), and grows with the roster', () => {
+    checkRegion(johto());
   });
 
   it('the difficulty setting still stacks on top in the engine', () => {
