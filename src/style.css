@@ -2640,7 +2640,7 @@ body:has(.pause-btn) .music-btn:not(.docked) {
 .tp-rackinfo b { font-size: 1.05rem; white-space: nowrap; }
 .tp-rackinfo small { color: var(--muted); font-size: 0.8rem; white-space: nowrap; }
 .tp-stage { position: relative; flex: 1 1 auto; min-height: 0; display: grid; place-items: center; container-type: size; touch-action: none; }
-.tp-court { display: block; width: min(100cqw, 100cqh * var(--ar, 1.6667)); height: auto; aspect-ratio: var(--ar, 1.6667); border-radius: 6px; }
+.tp-court { display: block; width: min(100cqw, 100cqh * 16 / 9); height: auto; aspect-ratio: 16 / 9; border-radius: 6px; image-rendering: pixelated; image-rendering: crisp-edges; }
 .tp-tip {
   position: absolute; left: 50%; bottom: 8px; transform: translateX(-50%); margin: 0; width: max-content; max-width: 92%;
   background: rgba(5, 6, 15, 0.8); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px;
@@ -2676,24 +2676,17 @@ body:has(.pause-btn) .music-btn:not(.docked) {
   .tp-score b { font-size: 2.6rem; }
   .tp-rackinfo { display: none; }
   .tp-stage { flex: 1 1 auto; min-height: 0; width: 100%; }
+  /* The game's own 16:9 canvas, cropped to a taller box (the fixed camera keeps every rack and the hoop in frame). */
+  .tp-court { width: 100cqw; height: min(100cqh, 100cqw * 0.86); aspect-ratio: auto; object-fit: cover; object-position: 50% 100%; }
   .tp-dots { gap: 6px 8px; }
   .tp-game .tp-rackline { display: block; font-size: 1.1rem; }
-  .tp-game .tp-meter { display: block; }
   .tp-game.has-touch { padding-bottom: calc(max(8px, env(safe-area-inset-bottom, 0px)) + 112px); }
 }
-/* Portrait-only DOM meter (the canvas meter is small there): same colours as the in-game meter. */
-.tp-meter { display: none; position: relative; height: 16px; margin: 0 24px; background: #2f3560; border: 2px solid #05060f; border-radius: 3px; opacity: 0.6; }
-.tp-meter.active { opacity: 1; }
-.tp-meter i { position: absolute; top: 0; bottom: 0; }
-.tp-mgreen { left: var(--lo); width: calc(var(--hi) - var(--lo)); background: #21d07a; }
-.tp-mfill { left: 0; width: var(--v, 0%); background: rgba(255, 255, 255, 0.2); }
-.tp-mmark { left: var(--v, 0%); width: 4px; margin-left: -2px; top: -5px !important; bottom: -5px !important; background: #ffcb05; }
-.tp-meter:not(.active) .tp-mmark { display: none; }
-.tp-meter.green .tp-mmark { background: #fff; }
 .tp-rackline { display: none; text-align: center; font-weight: 700; margin: 2px 0 0; }
 .tp-rackline small { color: var(--muted); font-weight: 500; margin-left: 6px; }
 @media (orientation: landscape) and (max-height: 500px) {
   .tp-hud { min-height: 34px; padding-bottom: 2px; padding-right: 96px; }
+  .tp-court { width: 100cqw; height: 100cqh; aspect-ratio: auto; object-fit: cover; object-position: 50% 100%; }
   .tp-clock { font-size: 1.1rem; }
   .tp-score b { font-size: 1.4rem; }
   .tp-dots { padding-top: 3px; gap: 4px 6px; }
