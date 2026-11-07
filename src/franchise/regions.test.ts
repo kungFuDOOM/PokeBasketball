@@ -107,7 +107,7 @@ describe('region data', () => {
       // Difficulty is the starting five's rating plus the boost, not the boost alone: each later region's own test checks that ramp.
       expect(r.finale.elite).toBe(true);
       expect(r.finale.gym).toBeUndefined();
-      for (const t of regionTeams(r)) expect(Number.isInteger(t.boost) && t.boost >= -5 && t.boost <= 8).toBe(true);
+      for (const t of regionTeams(r)) expect(Number.isInteger(t.boost) && t.boost >= -5 && t.boost <= 10).toBe(true);
     });
     expect(nextRegion(KANTO)).toBe(JOHTO);
     expect(nextRegion(JOHTO)).toBe(HOENN);

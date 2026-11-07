@@ -189,41 +189,32 @@ describe('Hoenn region data', () => {
       // No legendaries anywhere.
       for (const d of roster) expect(legendaries, `${t.name}: #${d}`).not.toContain(d);
     }
-    const typed = (t: { roster?: number[] }, type: string) => t.roster!.filter((d) => monByDex(d).types.indexOf(type as never) >= 0).length;
     const stars = (t: { roster?: number[] }) => t.roster!.filter((d) => d < 252);
-    const [roxanne, brawly, wattson, flannery, norman, winona, tateLiza, juan] = HOENN.gyms;
-    expect(roxanne.ace).toBe(299); // Nosepass
-    expect(stars(roxanne)).toEqual([142, 141]); // Aerodactyl, Kabutops
-    expect(typed(roxanne, 'Rock')).toBe(8);
-    expect(brawly.ace).toBe(297); // Hariyama
-    expect(stars(brawly)).toEqual([68, 107]); // Machamp (his Machop line), Hitmonchan
-    expect(typed(brawly, 'Fighting')).toBe(7);
-    expect(wattson.ace).toBe(310); // Manectric
-    expect(stars(wattson)).toEqual([82, 181]); // Magneton, Ampharos
-    expect(typed(wattson, 'Electric')).toBe(6); // every Gen 3 Electric Pokémon plus the two stars
-    expect(flannery.ace).toBe(324); // Torkoal
-    expect(stars(flannery)).toEqual([38, 229]); // Ninetales, Houndoom
-    expect(typed(flannery, 'Fire')).toBe(5);
-    expect(norman.ace).toBe(289); // Slaking
-    expect(stars(norman)).toEqual([]);
-    expect(typed(norman, 'Normal')).toBe(10);
-    expect(winona.ace).toBe(334); // Altaria
-    expect(stars(winona)).toEqual([227, 169]); // Skarmory, Crobat
-    expect(typed(winona, 'Flying')).toBe(10);
-    expect(tateLiza.ace).toBe(344); // Claydol
-    expect(stars(tateLiza)).toEqual([]);
-    expect(tateLiza.roster).toEqual(expect.arrayContaining([337, 338]));
-    expect(typed(tateLiza, 'Psychic')).toBe(10);
-    expect(juan.ace).toBe(350); // Milotic
-    expect(stars(juan)).toEqual([230]); // Kingdra
-    expect(juan.roster).toContain(370);
-    expect(typed(juan, 'Water')).toBe(10);
-    const elite = HOENN.finale;
-    expect(elite.ace).toBe(376); // Metagross
-    expect(elite.roster).toEqual(expect.arrayContaining([376, 373, 306, 365, 356, 302, 330, 350]));
-    // Roxanne, the weakest gym before the stars, now starts a five averaging 70+.
-    const avg = (t: { roster?: number[] }) => bestLineup(t.roster!.map(monByDex)).starters.reduce((a, m) => a + m.ovr, 0) / 5;
-    expect(avg(roxanne)).toBeGreaterThanOrEqual(70);
+    const [roxanne] = HOENN.gyms;
+    expect(HOENN.finale.ace).toBe(376); // Metagross
+    expect(stars(HOENN.finale)).toEqual([]);
+    // Rustboro reads as a Rock gym again: Aggron leads, Aerodactyl and Kabutops are its two stars.
+    expect(roxanne.ace).toBe(306);
+    expect(stars(roxanne)).toEqual([142, 141]);
+  });
+
+  it("Hoenn's starting fives are strong, fully evolved and ramp like Kanto's (regression: Nosepass 63 / Baltoy 54 used to start at Rustboro)", () => {
+    const eff = (t: (typeof HOENN.gyms)[number]) => {
+      const mons = t.roster!.map(monByDex);
+      const { starters: five } = bestLineup(mons);
+      for (const m of five) {
+        expect(m.ovr, `${t.name}: ${m.name} starts`).toBeGreaterThanOrEqual(70);
+        expect((EVOLUTIONS[m.dex]?.to ?? []).filter((d) => d <= 386), `${t.name}: ${m.name} is unevolved`).toEqual([]);
+      }
+      expect(five.filter((m) => m.types.some((ty) => t.types.indexOf(ty) >= 0)).length, `${t.name}: on-type starters`).toBeGreaterThanOrEqual(2);
+      return five.reduce((a, m) => a + m.ovr, 0) / 5 + 2 + t.boost; // +2: five positions, as in the game
+    };
+    const gyms = HOENN.gyms.map(eff);
+    const elite = eff(HOENN.finale);
+    for (const e of [...gyms, elite]) expect(e).toBeGreaterThanOrEqual(84); // Kanto's gym 1 plays at about 83 once boosted
+    expect(gyms[7]).toBeGreaterThan(gyms[0] + 3);
+    expect(elite).toBeGreaterThan(Math.max(...gyms));
+    gyms.forEach((e, i) => { if (i) expect(e, `badge ${i + 1}`).toBeGreaterThan(gyms[i - 1] - 1.5); });
   });
 
   it("a Hoenn gym's players never evolve past Gen 3 in the league", () => {

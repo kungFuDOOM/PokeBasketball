@@ -115,11 +115,15 @@ export const JOHTO: RegionDef = {
 };
 
 /**
- * Hoenn: each roster is ten Gen 3 Pokémon (#252-386) plus at most two on-type stars from Gens 1-2, never a later
- * generation, and no Hoenn starters. The stars go where Gen 3 is thinnest in the gym's type: Roxanne's Aerodactyl and
- * Kabutops, Brawly's Machamp (his Machop line) and Hitmonchan, Wattson's Magneton and Ampharos, Flannery's Ninetales
- * and Houndoom, Winona's Skarmory and Crobat, Juan's Kingdra. Norman and Tate & Liza stay all Gen 3: ten on-type
- * Pokémon each already. Every gym's best five play their natural positions, with the ace starting.
+ * Hoenn: each roster is ten fully evolved Pokémon, the region's own Gen 3 (#252-386, no starters, no legendaries) plus
+ * at most two on-type stars from Gens 1-2, never a later generation; the finale stays all Gen 3. The five who start
+ * come from the same `bestLineup` the games use, so each roster is built to play five natural positions (the +2
+ * chemistry) with every starter 70+ OVR. Hoenn is thin at some positions in some types (no Rock point guard, no
+ * Electric center), so the strongest Gen 3 Pokémon of another type fills the gap rather than a weak on-type one.
+ * The stars are the best on-type picks: Roxanne's Aerodactyl and Kabutops, Brawly's Hitmonchan and Hitmonlee,
+ * Wattson's Magneton and Ampharos, Flannery's Houndoom and Charizard, Norman's Porygon2 and Kangaskhan, Winona's
+ * Charizard and Dragonite, Tate & Liza's Espeon and Girafarig, Juan's Starmie and Kingdra. The boosts then ramp the
+ * starting fives to a Kanto-like climb, a little above it for a team that has beaten two regions.
  */
 export const HOENN: RegionDef = {
   id: 'hoenn',
@@ -130,27 +134,27 @@ export const HOENN: RegionDef = {
   // The fourteen Hoenn Pokémon hand-tuned before the region existed.
   open: [254, 257, 260, 282, 303, 310, 350, 373, 376, 380, 381, 382, 383, 384],
   gyms: [
-    { name: 'Rustboro Stones', abbr: 'RUS', city: 'Rustboro City', color: '#b08d57', color2: '#2e2414', leader: 'Roxanne', types: ['Rock'], boost: 4, gym: 1, badge: 'Stone',
-      ace: 299, roster: [299, 142, 141, 305, 304, 347, 345, 369, 343, 290] },
-    { name: 'Dewford Breakers', abbr: 'DEW', city: 'Dewford Town', color: '#d0703a', color2: '#35180a', leader: 'Brawly', types: ['Fighting'], boost: 4, gym: 2, badge: 'Knuckle',
-      ace: 297, roster: [297, 68, 107, 296, 308, 307, 286, 302, 359, 261] },
+    { name: 'Rustboro Stones', abbr: 'RUS', city: 'Rustboro City', color: '#b08d57', color2: '#2e2414', leader: 'Roxanne', types: ['Rock'], boost: 2, gym: 1, badge: 'Stone',
+      ace: 306, roster: [306, 282, 142, 141, 369, 348, 346, 338, 337, 299] },
+    { name: 'Dewford Breakers', abbr: 'DEW', city: 'Dewford Town', color: '#d0703a', color2: '#35180a', leader: 'Brawly', types: ['Fighting'], boost: 6, gym: 2, badge: 'Knuckle',
+      ace: 297, roster: [297, 282, 107, 106, 286, 308, 310, 321, 291, 277] },
     { name: 'Mauville Dynamos', abbr: 'MAU', city: 'Mauville City', color: '#f5c518', color2: '#3a2f06', leader: 'Wattson', types: ['Electric'], boost: 5, gym: 3, badge: 'Dynamo',
-      ace: 310, roster: [310, 82, 181, 309, 311, 312, 299, 305, 374, 375] },
-    { name: 'Lavaridge Flames', abbr: 'LAV', city: 'Lavaridge Town', color: '#e2492f', color2: '#3a120b', leader: 'Flannery', types: ['Fire'], boost: 5, gym: 4, badge: 'Heat',
-      ace: 324, roster: [324, 38, 229, 323, 322, 338, 328, 331, 343, 325] },
-    { name: 'Petalburg Balance', abbr: 'PET', city: 'Petalburg City', color: '#a8a77a', color2: '#2a2a1c', leader: 'Norman', types: ['Normal'], boost: 6, gym: 5, badge: 'Balance',
-      ace: 289, roster: [289, 288, 287, 335, 264, 263, 295, 301, 294, 300] },
-    { name: 'Fortree Feathers', abbr: 'FOR', city: 'Fortree City', color: '#6fb7e8', color2: '#0f2a3a', leader: 'Winona', types: ['Flying'], boost: 6, gym: 6, badge: 'Feather',
-      ace: 334, roster: [334, 227, 169, 277, 279, 278, 267, 284, 291, 357] },
-    { name: 'Mossdeep Minds', abbr: 'MOS', city: 'Mossdeep City', color: '#e05a9c', color2: '#3a1026', leader: 'Tate & Liza', types: ['Psychic'], boost: 7, gym: 7, badge: 'Mind',
-      ace: 344, roster: [344, 337, 338, 326, 282, 281, 308, 358, 360, 375] },
+      ace: 310, roster: [310, 289, 82, 319, 181, 311, 312, 376, 306, 297] },
+    { name: 'Lavaridge Flames', abbr: 'LAV', city: 'Lavaridge Town', color: '#e2492f', color2: '#3a120b', leader: 'Flannery', types: ['Fire'], boost: 3, gym: 4, badge: 'Heat',
+      ace: 6, roster: [6, 282, 229, 373, 323, 324, 350, 310, 291, 277] },
+    { name: 'Petalburg Balance', abbr: 'PET', city: 'Petalburg City', color: '#a8a77a', color2: '#2a2a1c', leader: 'Norman', types: ['Normal'], boost: 7, gym: 5, badge: 'Balance',
+      ace: 289, roster: [289, 277, 233, 335, 115, 295, 264, 301, 351, 352] },
+    { name: 'Fortree Feathers', abbr: 'FOR', city: 'Fortree City', color: '#6fb7e8', color2: '#0f2a3a', leader: 'Winona', types: ['Flying'], boost: 4, gym: 6, badge: 'Feather',
+      ace: 373, roster: [373, 6, 291, 284, 149, 277, 357, 334, 267, 279] },
+    { name: 'Mossdeep Minds', abbr: 'MOS', city: 'Mossdeep City', color: '#e05a9c', color2: '#3a1026', leader: 'Tate & Liza', types: ['Psychic'], boost: 8, gym: 7, badge: 'Mind',
+      ace: 376, roster: [376, 282, 196, 203, 338, 344, 326, 337, 358, 308] },
     { name: 'Sootopolis Rain', abbr: 'SOO', city: 'Sootopolis City', color: '#2f78d0', color2: '#0c1e38', leader: 'Juan', types: ['Water'], boost: 7, gym: 8, badge: 'Rain',
-      ace: 350, roster: [350, 230, 370, 342, 340, 364, 321, 368, 367, 272] },
+      ace: 121, roster: [121, 230, 319, 350, 321, 365, 369, 367, 368, 342] },
   ],
   // All Gen 3. Steven's Mawile: Steel, and from Granite Cave, where the player first meets him.
   finale: { name: 'Hoenn Elite', abbr: 'EVR', city: 'Ever Grande City', title: 'Hoenn Elite Four & Champion Steven', color: '#5b7fa6', color2: '#141f2c',
-    leader: 'Sidney · Phoebe · Glacia · Drake · Champion Steven', types: ['Dark', 'Ghost', 'Ice', 'Dragon', 'Steel'], boost: 8, elite: true,
-    ace: 376, roster: [376, 373, 306, 365, 356, 302, 330, 350, 275, 303] },
+    leader: 'Sidney · Phoebe · Glacia · Drake · Champion Steven', types: ['Dark', 'Ghost', 'Ice', 'Dragon', 'Steel'], boost: 10, elite: true,
+    ace: 376, roster: [376, 303, 284, 319, 373, 306, 330, 365, 275, 359] },
 };
 
 /** Every region, in unlock order. */
