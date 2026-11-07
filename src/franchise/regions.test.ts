@@ -659,6 +659,16 @@ describe('player-scaled gyms in later regions', () => {
     checkRegion(johto());
   });
 
+  it('a Hoenn gym is never weaker than its design, reaches player + margin (extra capped at +12), and grows with the roster', () => {
+    const f = johto();
+    finish(f, gymIds(f), 0);
+    awardRegion(f);
+    rookieDraft(f);
+    expect(enterRegion(f, 'hoenn')).toBe(true);
+    expect(f.region).toBe('hoenn');
+    checkRegion(f);
+  });
+
   it('the difficulty setting still stacks on top in the engine', () => {
     const f = johto();
     setUserFive(f, 95);
