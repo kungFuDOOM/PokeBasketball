@@ -59,7 +59,7 @@ function friendly(e: unknown): string {
 
 const entryCost = (t: { cost: { stake: number; fee: number } }) => Number(t.cost.stake) + Number(t.cost.fee);
 const explorer = (kind: 'address' | 'tx', id: string) =>
-  `https://explorer.solana.com/${kind}/${encodeURIComponent(id)}${cluster === 'devnet' ? '?cluster=devnet' : ''}`;
+  `https://solscan.io/${kind}/${encodeURIComponent(id)}${cluster === 'devnet' ? '?cluster=devnet' : ''}`;
 
 /** "25" or "12.50" dollars → USDC base units, or null. */
 const micro = (dollars: string) => /^\d{1,9}(\.\d{1,6})?$/.test(dollars.trim()) ? Math.round(Number(dollars.trim()) * 1e6) : null;
@@ -109,7 +109,7 @@ function prizeHtml(p: PrizeView, compact: boolean): string {
         ${choiceHtml({ id: p.id, chooseBy: p.choose_by ? new Date(p.choose_by).getTime() : null, ifNoChoice: p.prefer_cash ? 'sell' : 'keep', sellEstimate: p.sell_estimate }, compact)}</div>`;
     case 'sent':
       return `<div class="pk-prize" style="--tc:${TIERS[p.tier].color}">${card ? cardHtml(card, compact ? 'small' : 'big') : ''}
-        <p class="pk-done">In your wallet${p.nft_address ? ` · <a href="${explorer('address', p.nft_address)}" target="_blank" rel="noopener">see it on ${cluster === 'devnet' ? 'devnet' : 'Solana Explorer'}</a>` : ''}</p></div>`;
+        <p class="pk-done">In your wallet${p.nft_address ? ` · <a href="${explorer('address', p.nft_address)}" target="_blank" rel="noopener">see it on ${cluster === 'devnet' ? 'devnet' : 'Solscan'}</a>` : ''}</p></div>`;
     case 'cashed':
       return `<div class="pk-prize" style="--tc:${TIERS[p.tier].color}">${card ? cardHtml(card, 'small') : ''}
         <p class="pk-done">Sold back for ${usd(Number(p.cash_amount))}, added to your balance</p></div>`;
