@@ -9,7 +9,11 @@ import '../fonts.css';
 import { COURTS, type CourtStyle } from '../data/courts';
 import { LEAGUE } from '../franchise/league';
 import { POKEMON, monByDex, TYPE_COLORS, type Mon } from '../data/pokemon';
-import { Game, type Sfx } from '../game/game';
+import { Game, IDEAL_RELEASE, type Sfx } from '../game/game';
+import { CourtView } from '../screens/threept.view';
+import { summarize } from '../threept/contest';
+import { ContestRun, type ShootInput } from '../threept/run';
+import type { BallResult, RackId } from '../threept/types';
 import { Announcer, CLIPS } from '../game/announcer';
 import { DUNK_MOVES } from '../game/hud';
 import { Renderer, VH, VW } from '../game/render';
@@ -28,8 +32,8 @@ export const FPS = 30;
  * (an 18-second spot for the Training drills and the new Alley-Oop drill, filmed on real practice games with
  * their floor markers) or 'ranked' (a 20-second Season 1 launch spot: placements, the real tier badges up to Zenith).
  */
-type Cut = 'main' | 'vertical' | 'franchise' | 'top5' | 'online' | 'watch' | 'training' | 'ranked' | 'challenges' | 'packs' | 'regions';
-const CUT: Cut = (['vertical', 'franchise', 'top5', 'online', 'watch', 'training', 'ranked', 'challenges', 'packs', 'regions'] as const).find((c) => c === new URLSearchParams(location.search).get('cut')) ?? 'main';
+type Cut = 'main' | 'vertical' | 'franchise' | 'top5' | 'online' | 'watch' | 'training' | 'ranked' | 'challenges' | 'packs' | 'regions' | 'threept';
+const CUT: Cut = (['vertical', 'franchise', 'top5', 'online', 'watch', 'training', 'ranked', 'challenges', 'packs', 'regions', 'threept'] as const).find((c) => c === new URLSearchParams(location.search).get('cut')) ?? 'main';
 const VERTICAL = CUT === 'vertical';
 /** The top 5 cut is dressed as a 90s sports highlight show ("POKé CENTER"). */
 const RETRO = CUT === 'top5';
@@ -110,6 +114,7 @@ const MATCHUPS: Record<Cut, { home: TeamDef; away: TeamDef; court: CourtStyle }>
     away: { name: 'Rival', abbr: 'RVL', color: '#e3350d', color2: '#4a0d04', human: false, roster: mons(ONLINE_PICKS.rival) },
     court: COURTS['Indigo Elite'],
   },
+  threept: { home: pallet([25, 6, 9, 3, 143]), away: gym('Indigo Elite', [151, 94, 150, 383, 149]), court: COURTS['Pallet Town'] },
   regions: { home: pallet([25, 6, 9, 3, 143]), away: gym('Indigo Elite', [151, 94, 150, 383, 149]), court: COURTS['Indigo Elite'] },
   packs: { home: pallet([254, 448, 6, 445, 248]), away: gym('Saffron Psychics', [65, 257, 212, 9, 149]), court: COURTS['Saffron Psychics'] },
   challenges: {
@@ -199,9 +204,11 @@ type Scene = 'tipoff' | 'logo' | 'wall' | 'clock' | 'legends' | 'badges' | 'evol
   | 'rk-hook' | 'rk-place' | 'rk-climb' | 'rk-season'
   | 'c-hook' | 'c-list' | 'c-bonus' | 'c-prize'
   | 'p-hook'
-  | 'r-hook' | 'r-johto' | 'r-hoenn' | 'r-wall' | 'r-unlock';
+  | 'r-hook' | 'r-johto' | 'r-hoenn' | 'r-wall' | 'r-unlock'
+  | 'tp-hook' | 'tp-rules' | 'tp-score';
 type Segment =
   | { kind: Scene; t0: number; t1: number }
+  | { kind: 'tp-clip'; t0: number; t1: number; from: number; label?: string }
   | { kind: 'tr-drill'; t0: number; t1: number; drill: TrainingDrill; seed: number; start: number; events: number[] }
   | { kind: 'clip'; t0: number; t1: number; plan: ClipPlan; style: 'hero' | 'montage'; rank?: number; lower?: string };
 
@@ -910,11 +917,11 @@ function renderOutro(seg: Segment, t: number, a: number) {
   renderBackground(t, 0.66);
   const k = clamp01(a / 0.25);
   once('outro-hit', t, seg.t0 + 0.25, () => { flash = 0.3; cue(t, 'slam'); cue(t, 'crowd_big'); });
-  const pjAt = CUT === 'online' || CUT === 'watch' || CUT === 'training' || CUT === 'ranked' || CUT === 'challenges' ? 1.6 : CUT === 'packs' ? 1.7 : CUT === 'regions' ? 1.6 : 2.2;
+  const pjAt = CUT === 'online' || CUT === 'watch' || CUT === 'training' || CUT === 'ranked' || CUT === 'challenges' ? 1.6 : CUT === 'packs' ? 1.7 : CUT === 'regions' || CUT === 'threept' ? 1.6 : 2.2;
   const pj = a - pjAt;
   if (pj < 0) {
     logo(W / 2, H / 2 - 150, 170, a < 0.25 ? 3 - 2 * k * k : 1);
-    if (a > 0.6) jamText(CUT === 'online' ? 'PLAY ONLINE NOW. FREE.' : CUT === 'watch' ? 'PLAY IT. WATCH IT. SIM IT.' : CUT === 'training' ? 'TRAIN UP. THEN JAM.' : CUT === 'ranked' ? 'RANKED IS LIVE. CLIMB NOW.' : CUT === 'challenges' ? 'PLAY. CLIMB. ENTER.' : CUT === 'packs' ? 'PACK BATTLES. COMING SOON.' : CUT === 'regions' ? 'NEW REGIONS. COMING SOON.' : 'PLAY FREE IN YOUR BROWSER', W / 2, H / 2 + 40, 64, { fill: '#f8f8f0' });
+    if (a > 0.6) jamText(CUT === 'online' ? 'PLAY ONLINE NOW. FREE.' : CUT === 'watch' ? 'PLAY IT. WATCH IT. SIM IT.' : CUT === 'training' ? 'TRAIN UP. THEN JAM.' : CUT === 'ranked' ? 'RANKED IS LIVE. CLIMB NOW.' : CUT === 'challenges' ? 'PLAY. CLIMB. ENTER.' : CUT === 'packs' ? 'PACK BATTLES. COMING SOON.' : CUT === 'regions' ? 'NEW REGIONS. COMING SOON.' : CUT === 'threept' ? '3-POINT CONTEST. PLAY NOW.' : 'PLAY FREE IN YOUR BROWSER', W / 2, H / 2 + 40, 64, { fill: '#f8f8f0' });
     if (a > 1.0) plainText('pokejam.xyz', W / 2, H / 2 + 170, 80, '#ffcb05');
   } else {
     // $PJAM: gold, glinting, center stage.
@@ -2402,6 +2409,159 @@ function renderRkSeason(seg: Segment, t: number, a: number) {
   if (a > 1.0) plainText("DON'T RAGE QUIT. QUITTERS GET BANNED.", W / 2, 700, 64, '#ff7a59');
 }
 
+// ---------- cut: threept ----------
+
+/** The filmed contest: Pikachu, money rack in the far corner, a fixed seed, and the balls released late (missed). */
+const TP_SEED = 4242;
+const TP_MONEY_RACK: RackId = 4;
+const TP_LATE = new Set([2, 8, 13, 17]);
+/** Clips play the contest at this speed (game seconds per video second). */
+const TP_SPEED = 1.5;
+let tpResults: { t: number; ball: BallResult }[] = [];
+let tpFinal = { score: 0, makes: 0 };
+
+const tpShooter = () => monByDex(25);
+const newTpRun = () => new ContestRun(tpShooter(), TP_MONEY_RACK, undefined, TP_SEED);
+
+/** The scripted thumb: press when aiming, let go at the ideal release (or late, on the planned misses). */
+function tpInput(run: ContestRun): ShootInput {
+  if (run.stage === 'aim' && run.s.phase !== 'done') return { pressed: true, held: true };
+  if (run.stage === 'hold') return { pressed: false, held: run.meter < (TP_LATE.has(run.s.ballIndex) ? IDEAL_RELEASE + 0.32 : IDEAL_RELEASE) };
+  return { pressed: false, held: false };
+}
+
+/** Plays the whole contest once to find when each ball lands, so the clips can be cut around them. */
+function tpScan() {
+  const run = newTpRun();
+  let gt = 0;
+  tpResults = [];
+  while (run.stage !== 'over' && gt < 75) {
+    for (const ev of run.step(STEP, tpInput(run))) if (ev.kind === 'result') tpResults.push({ t: gt, ball: ev.ball });
+    run.game.events.length = 0;
+    run.game.sfx.length = 0;
+    gt += STEP;
+  }
+  const sum = summarize(run.s);
+  tpFinal = { score: sum.score, makes: sum.makes };
+}
+
+function renderTpHook(seg: Segment, t: number, a: number) {
+  renderBackground(t, 0.72);
+  const pop = (at: number) => 0.3 + 0.7 * easeOutBack(clamp01((a - at) / 0.22));
+  once('tph1', t, seg.t0 + 0.05, () => { flash = 0.15; cue(t, 'slam'); cue(t, 'crowd_low'); });
+  jamText('3-POINT', W / 2, 260, 210, { scale: pop(0.05) });
+  if (a > 0.4) {
+    once('tph2', t, seg.t0 + 0.4, () => { flash = 0.25; cue(t, 'slam'); cue(t, 'crowd_big'); });
+    jamText('CONTEST', W / 2, 480, 170, { fill: '#f8f8f0', scale: pop(0.4) });
+  }
+  if (a > 0.9) plainText('NEW MODE. PICK ANY POKéMON. LET IT FLY.', W / 2, 690, 60, '#ffcb05');
+}
+
+/** Five racks of five, the gold balls worth two, the money rack all gold. */
+function renderTpRules(seg: Segment, t: number, a: number) {
+  renderBackground(t, 0.88);
+  jamText('5 RACKS · 25 BALLS · 60 SECONDS', W / 2, 140, 84, { scale: a < 0.2 ? easeOutBack(a / 0.2) : 1, maxW: W - 120 });
+  for (let r = 0; r < 5; r++) {
+    const cx = W / 2 + (r - 2) * 350;
+    const money = r === TP_MONEY_RACK;
+    const at = 0.2 + r * 0.22;
+    if (a < at) continue;
+    once(`tpr${r}`, t, seg.t0 + at, () => cue(t, money ? 'coin' : 'card'));
+    const k = easeOutBack(clamp01((a - at) / 0.2));
+    ctx.save();
+    ctx.translate(cx, 470);
+    ctx.scale(k, k);
+    roundRect(-150, 10, 300, 26, 8, '#20243a', money ? '#ffcb05' : '#3a3f5c', 4);
+    for (let i = 0; i < 5; i++) {
+      const gold = money || i === 4;
+      ctx.beginPath();
+      ctx.arc(-120 + i * 60, -18, 26, 0, Math.PI * 2);
+      ctx.fillStyle = gold ? '#ffcb05' : '#e8762c';
+      ctx.fill();
+      ctx.lineWidth = 4;
+      ctx.strokeStyle = gold ? '#fff6d6' : '#5a2a0a';
+      ctx.stroke();
+    }
+    ctx.font = `800 40px ${SPORT}`;
+    ctx.fillStyle = money ? '#ffcb05' : '#f2f0e6';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(money ? 'MONEY RACK' : `RACK ${r + 1}`, 0, 90);
+    ctx.restore();
+  }
+  if (a > 1.4) plainText('GOLD BALLS = 2 POINTS. PICK YOUR MONEY RACK.', W / 2, 760, 60, '#ffcb05');
+  if (a > 1.9) plainText('MAX SCORE: 34', W / 2, 880, 64, '#f8f8f0');
+}
+
+let tpClip: { run: ContestRun; view: CourtView; seg: Segment } | null = null;
+const tpCanvas = document.createElement('canvas');
+/** A stretch of the real contest, with the time and score up top. */
+function renderTpClip(seg: Segment & { kind: 'tp-clip' }, t: number, first: boolean) {
+  if (first || !tpClip || tpClip.seg !== seg) {
+    const run = newTpRun();
+    let gt = 0;
+    while (gt < seg.from - 1e-9 && run.stage !== 'over') {
+      run.step(STEP, tpInput(run));
+      run.game.events.length = 0;
+      run.game.sfx.length = 0;
+      gt += STEP;
+    }
+    tpClip = { run, view: new CourtView(tpCanvas, run), seg };
+  }
+  const { run, view } = tpClip;
+  const steps = Math.round((TP_SPEED / FPS) / STEP);
+  for (let i = 0; i < steps; i++) {
+    for (const ev of run.step(STEP, tpInput(run))) {
+      if (ev.kind === 'release') view.released(ev.grade);
+      else if (ev.kind === 'result') {
+        const make = ev.ball.result === 'make';
+        view.landed(ev.ball.points, ev.ball.money, make);
+        if (make) { cue(t, ev.ball.money ? 'crowd_big' : 'crowd'); if (ev.ball.money) cue(t, 'coin'); }
+      } else if (ev.kind === 'buzzer') cue(t, 'buzzer');
+    }
+    view.handle(run.game.events.splice(0), run);
+    for (const x of run.game.sfx.splice(0)) cue(t, x);
+  }
+  view.draw(run, steps * STEP);
+  // Closer than the mode's own framing: the shooting half of the court, the racks and the hoop.
+  ctx.drawImage(tpCanvas, 112, 54, 368, 207, 0, 0, W, H);
+  // Time and score.
+  const sum = summarize(run.s);
+  // Time and score sit in the dark space right of the court, clear of every rack.
+  const box = (y: number, label: string, value: string, color: string) => {
+    const x = W - 200;
+    roundRect(x - 150, y, 300, 130, 18, 'rgba(5,6,15,0.9)', color, 5);
+    ctx.save();
+    ctx.font = `800 34px ${SPORT}`;
+    ctx.fillStyle = '#aab0d8';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(label, x, y + 34);
+    ctx.font = `60px ${PIXEL}`;
+    ctx.fillStyle = color;
+    ctx.fillText(value, x, y + 92);
+    ctx.restore();
+  };
+  const left = Math.max(0, Math.ceil(run.s.timeLeft));
+  box(360, 'TIME', `:${String(left).padStart(2, '0')}`, left <= 10 ? '#ff5a3c' : '#f8f8f0');
+  box(520, 'SCORE', String(sum.score), '#ffcb05');
+  if (seg.label) {
+    roundRect(50, H - 130, 720, 90, 45, 'rgba(5,6,15,0.9)', '#ffcb05', 5);
+    plainText(seg.label, 410, H - 84, 52, '#ffcb05');
+  }
+}
+
+/** The final score, counting up, out of 34. */
+function renderTpScore(seg: Segment, t: number, a: number) {
+  renderBackground(t, 0.88);
+  once('tps', t, seg.t0 + 0.05, () => { flash = 0.2; cue(t, 'slam'); cue(t, 'crowd_big'); });
+  sprite(25, W / 2 - 520, 780, 360);
+  plainText('FINAL SCORE', W / 2 + 160, 300, 70, '#aab0d8');
+  const n = Math.round(tpFinal.score * clamp01(a / 0.7));
+  jamText(`${n} / 34`, W / 2 + 160, 480, 200, { scale: a < 0.2 ? 0.3 + 0.7 * easeOutBack(a / 0.2) : 1, maxW: 1000 });
+  if (a > 0.9) plainText(`${tpFinal.makes} OF 25 FROM DOWNTOWN. BEAT IT.`, W / 2 + 160, 680, 60, '#ffcb05');
+}
+
 // ---------- cut: regions ----------
 
 /** A franchise region as the spot shows it (mirrors src/franchise/regions.ts: badges in order, each gym's ace and leader). */
@@ -2799,6 +2959,10 @@ function renderSegment(seg: Segment, t: number, first: boolean) {
     case 'r-hoenn': renderRegion(REGION_HOENN, seg, t, a); break;
     case 'r-wall': renderRWall(seg, t, a); break;
     case 'r-unlock': renderRUnlock(seg, t, a); break;
+    case 'tp-hook': renderTpHook(seg, t, a); break;
+    case 'tp-rules': renderTpRules(seg, t, a); break;
+    case 'tp-clip': renderTpClip(seg, t, first); break;
+    case 'tp-score': renderTpScore(seg, t, a); break;
     case 'clip': renderClip(seg, t, first); break;
   }
 }
@@ -2935,6 +3099,20 @@ export async function prepare(): Promise<{ frames: number; fps: number }> {
     add({ kind: 'o-packs', t0: t, t1: t + 3.4 });
     for (let i = 0; i < 2; i++) clip([['dunk']], 0.9, 0.6, false, 'montage');
     add({ kind: 'outro', t0: t, t1: t + 4.2 });
+    musicEnd = s[s.length - 1].t0 + 1.6;
+  } else if (CUT === 'threept') {
+    tpScan();
+    const r = tpResults;
+    const money = r.find((x) => x.ball.rack === TP_MONEY_RACK) ?? r[r.length - 1];
+    const lastShot = r[r.length - 1];
+    add({ kind: 'tp-hook', t0: t, t1: t + 2.0 });
+    musicStart = 0.1;
+    add({ kind: 'tp-rules', t0: t, t1: t + 2.8 });
+    add({ kind: 'tp-clip', t0: t, t1: t + 2.6, from: Math.max(0, r[0].t - 1.6) });
+    add({ kind: 'tp-clip', t0: t, t1: t + 3.0, from: money.t - 1.7, label: 'MONEY RACK · EVERY BALL = 2' });
+    add({ kind: 'tp-clip', t0: t, t1: t + 1.8, from: lastShot.t - 1.9, label: 'LAST BALL' });
+    add({ kind: 'tp-score', t0: t, t1: t + 2.0 });
+    add({ kind: 'outro', t0: t, t1: t + 3.4 });
     musicEnd = s[s.length - 1].t0 + 1.6;
   } else if (CUT === 'regions') {
     add({ kind: 'r-hook', t0: t, t1: t + 1.8 });
