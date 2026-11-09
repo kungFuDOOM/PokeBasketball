@@ -1,4 +1,5 @@
 import { EVOLUTIONS, RATING_LABELS, isRetired, monByDex, positionWeights, withBonus, type Mon, type PokeType, type Ratings } from '../data/pokemon';
+import { isKingKabuto, kingKabutoCard } from '../kabuto/king';
 import { Game, bestLineup, chemistry } from '../game/game';
 import { courtFor, userCourt } from '../data/courts';
 import type { Difficulty, GameConfig, PStats, TeamDef } from '../game/types';
@@ -30,6 +31,11 @@ export interface FPlayer {
   ovrStart?: number;
   /** Weeks left on the injury list. */
   injury?: number;
+  /**
+   * King Kabuto: drafted during his event, so this team keeps the King card (dex 140) for good, after the event too.
+   * He never evolves. Missing on every other player, and on a Kabuto that went undrafted.
+   */
+  king?: true;
 }
 
 export interface FTeam {
@@ -154,8 +160,11 @@ const emptyStats = (): SeasonStats => ({ gp: 0, pts: 0, fgm: 0, fga: 0, tpm: 0, 
 
 export const monOf = (f: Franchise, uid: string): Mon => {
   const p = f.players[uid];
-  return withBonus(p.dex, p.bonus);
+  return p.king === true ? kingKabutoCard(p.bonus) : withBonus(p.dex, p.bonus);
 };
+
+/** Where this player can evolve, if anywhere. King Kabuto stays King Kabuto. */
+export const evolutionOf = (p: FPlayer) => (p.king === true ? undefined : EVOLUTIONS[p.dex]);
 
 /** Uids of a team's starting five and bench, in the order the coach would use them. */
 /**
@@ -240,9 +249,12 @@ export function createFranchise(
 ): Franchise {
   const players: Record<string, FPlayer> = {};
   let n = 0;
-  const add = (m: Mon) => {
+  // Only a team that drafted King Kabuto keeps him: one left in the pool joins free agency as a plain Kabuto.
+  const add = (m: Mon, drafted = false) => {
     const uid = `p${n++}`;
-    players[uid] = { uid, dex: m.dex, level: 1, xp: 0, bonus: {}, stats: emptyStats(), ovrStart: m.ovr };
+    const king = drafted && isKingKabuto(m);
+    players[uid] = { uid, dex: m.dex, level: 1, xp: 0, bonus: {}, stats: emptyStats(), ovrStart: king ? m.ovr : withBonus(m.dex, {}).ovr };
+    if (king) players[uid].king = true;
     return uid;
   };
   return {
@@ -250,9 +262,9 @@ export function createFranchise(
     season: 1,
     week: 1,
     phase: 'season',
-    teams: teams.map((t, id) => ({ id, ...t, roster: rosters[id].map(add), w: 0, l: 0, pf: 0, pa: 0, streak: 0 })),
+    teams: teams.map((t, id) => ({ id, ...t, roster: rosters[id].map((m) => add(m, true)), w: 0, l: 0, pf: 0, pa: 0, streak: 0 })),
     players,
-    freeAgents: leftovers.map(add),
+    freeAgents: leftovers.map((m) => add(m)),
     weeks: teams.length - 1,
     games: schedule(teams.length, false),
     signedWeek: 0,
@@ -741,9 +753,9 @@ export function recordGame(f: Franchise, fg: FGame, g: Game, sides: [number, num
     while (p.xp >= xpToNext(p.level)) {
       p.xp -= xpToNext(p.level);
       p.level++;
-      const name = monByDex(p.dex).name;
+      const name = monOf(f, uid).name;
       const entry: Progress = { uid, team, name, level: p.level, gains: levelUp(p) };
-      const evo = EVOLUTIONS[p.dex];
+      const evo = evolutionOf(p);
       const to = evo ? evolutionsFor(f, team, evo.to) : [];
       if (evo && to.length && p.level >= evo.level) {
         entry.evolvedFrom = p.dex;
@@ -858,7 +870,7 @@ export function tradeValue(f: Franchise, uid: string, toTeam?: FTeam): number {
   const p = f.players[uid];
   const m = monOf(f, uid);
   let v = Math.pow(Math.max(0, m.ovr - 55), 1.5);
-  const evo = EVOLUTIONS[p.dex];
+  const evo = evolutionOf(p);
   if (evo) {
     // Upside: the best form it can reach, discounted by how far away it is.
     const best = Math.max(...evo.to.map((d) => withBonus(d, p.bonus).ovr));
