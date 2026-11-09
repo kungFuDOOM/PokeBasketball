@@ -2545,16 +2545,21 @@ function renderKCard(seg: Segment, t: number, a: number) {
   if (a > 1.5) plainText('THE BEST SHOOTER IN THE GAME', W / 2 + 380, 860, 56, '#ffcb05');
 }
 
-/** Where to find him, and until when. */
+/** Where to find him, until when, and the Franchise keeper rule. */
 function renderKWhere(seg: Segment, t: number, a: number) {
   ctx.fillStyle = '#0a0612';
   ctx.fillRect(0, 0, W, H);
   goldRays(a, 540);
   once('kw', t, seg.t0 + 0.05, () => { flash = 0.15; cue(t, 'slam'); });
-  kingSprite(W / 2, 520, 300, 0.6);
-  jamText('LIMITED TIME ONLY', W / 2, 140, 110, { scale: a < 0.22 ? 0.3 + 0.7 * easeOutBack(a / 0.22) : 1 });
-  if (a > 0.4) plainText('QUICK PLAY + 3-POINT CONTEST', W / 2, 700, 66, '#f8f8f0');
-  if (a > 0.8) jamText('UNTIL NOV 23', W / 2, 860, 120, { fill: '#ffe27a', scale: 0.3 + 0.7 * easeOutBack(clamp01((a - 0.8) / 0.22)) });
+  kingSprite(W / 2, 470, 260, 0.6);
+  jamText('2 WEEKS ONLY', W / 2, 130, 110, { scale: a < 0.22 ? 0.3 + 0.7 * easeOutBack(a / 0.22) : 1 });
+  if (a > 0.3) plainText('QUICK PLAY · 3-POINT CONTEST · FRANCHISE', W / 2, 560, 60, '#f8f8f0');
+  if (a > 0.6) jamText('UNTIL NOV 23', W / 2, 690, 110, { fill: '#ffe27a', scale: 0.3 + 0.7 * easeOutBack(clamp01((a - 0.6) / 0.22)) });
+  if (a > 1.2) {
+    once('kw2', t, seg.t0 + 1.2, () => { flash = 0.15; cue(t, 'slam'); cue(t, 'crowd'); });
+    jamText('DRAFT HIM IN FRANCHISE.', W / 2, 860, 76, { fill: '#f8f8f0', scale: 0.3 + 0.7 * easeOutBack(clamp01((a - 1.2) / 0.22)), maxW: W - 120 });
+  }
+  if (a > 1.6) jamText("HE'S YOURS TO KEEP.", W / 2, 970, 76, { scale: 0.3 + 0.7 * easeOutBack(clamp01((a - 1.6) / 0.22)), maxW: W - 120 });
 }
 
 // ---------- cut: threept ----------
@@ -3263,7 +3268,7 @@ export async function prepare(): Promise<{ frames: number; fps: number }> {
     add({ kind: 'tp-clip', t0: t, t1: t + 2.0, from: Math.max(0, r[0].t - 1.4), label: 'KING KABUTO · 3-POINT CONTEST' });
     add({ kind: 'tp-clip', t0: t, t1: t + 2.2, from: money.t - 1.6, label: 'MONEY RACK · EVERY BALL = 2' });
     add({ kind: 'tp-score', t0: t, t1: t + 1.8 });
-    add({ kind: 'k-where', t0: t, t1: t + 2.4 });
+    add({ kind: 'k-where', t0: t, t1: t + 3.0 });
     add({ kind: 'outro', t0: t, t1: t + 3.4 });
     musicEnd = s[s.length - 1].t0 + 1.6;
   } else if (CUT === 'threept') {
