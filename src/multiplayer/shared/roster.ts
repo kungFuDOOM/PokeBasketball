@@ -19,12 +19,12 @@ export const RANKED_EXCLUDED: readonly number[] = [
   249, // Lugia, C 96
   250, // Ho-Oh, C 95
   151, // Mew, PG 94
-  384, // Rayquaza, PF 93
+  384, // Rayquaza, PF 97
   381, // Latios, SF 92
   383, // Groudon, PF 92
   382, // Kyogre, C 92
   380, // Latias, SF 91
-  386, // Deoxys, SG 99
+  386, // Deoxys, SG 97
 ];
 
 /** Every lore legendary in the dex: the RANKED_EXCLUDED ten plus the birds, beasts, Celebi, the Regis and Jirachi. None may be on a

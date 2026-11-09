@@ -104,8 +104,8 @@ describe('Gen 3 data (#252-386)', () => {
     expect(others).toHaveLength(277);
     expect(fnv(JSON.stringify(others))).toBe('1c1d4f82');
     expect(fnv(JSON.stringify(Object.entries(EVOLUTIONS).filter(([k]) => !gen3(Number(k)))))).toBe('922c9a81');
-    // The fourteen hand-tuned Hoenn cards: ratings, positions, sizes and moves unchanged.
-    expect(fnv(JSON.stringify(POKEMON.filter((m) => LEGACY.indexOf(m.dex) >= 0)))).toBe('bbd64e35');
+    // The fourteen hand-tuned Hoenn cards. Rayquaza was retuned to 97 OVR; the rest of this set is unchanged.
+    expect(fnv(JSON.stringify(POKEMON.filter((m) => LEGACY.indexOf(m.dex) >= 0)))).toBe('4bd1d270');
     expect(monByDex(376)).toMatchObject({ name: 'Metagross', pos: 'C', types: ['Steel', 'Psychic'], r: { spd: 58, sht: 64, ins: 90, pas: 70, def: 84, blk: 94, reb: 90, hnd: 60 } });
   });
 
@@ -426,8 +426,10 @@ describe('entering and playing Hoenn', () => {
     expect(shouldPlayMasterCutscene(g)).toBe(false);
     expect(g.unlockedRegions).toEqual(['johto', 'hoenn']);
     rookieDraft(g);
-    expect(g.region).toBe('hoenn');
-    expect(g.teams.slice(1).map((t) => t.name)).toEqual(regionTeams(HOENN).map((t) => t.name));
+    // The Hoenn title sends the next season back to Kanto. The banner above was already recorded.
+    expect(g.region).toBe('kanto');
+    expect(g.teams.slice(1).map((t) => t.name)).toEqual(regionTeams(REGIONS[0]).map((t) => t.name));
+    expect(g.titles).toEqual([{ regionId: 'kanto', season: 1 }, { regionId: 'johto', season: 2 }, { regionId: 'hoenn', season: 3 }]);
   }, 60000);
 
   it('entering Hoenn needs Hoenn unlocked: a Johto league without it is refused', () => {

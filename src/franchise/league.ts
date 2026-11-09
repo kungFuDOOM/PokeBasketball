@@ -1,5 +1,5 @@
 import { EVOLUTIONS, RATING_LABELS, isRetired, monByDex, positionWeights, withBonus, type Mon, type PokeType, type Ratings } from '../data/pokemon';
-import { isKingKabuto, kingKabutoCard } from '../kabuto/king';
+import { isKingKabuto, kingKabutoCard, withKingKabuto } from '../kabuto/king';
 import { Game, bestLineup, chemistry } from '../game/game';
 import { courtFor, userCourt } from '../data/courts';
 import type { Difficulty, GameConfig, PStats, TeamDef } from '../game/types';
@@ -7,7 +7,8 @@ import type { DraftState } from '../screens/draft';
 import { safeName } from '../nameFilter';
 import { fixAbbr } from '../util';
 import { USER_STYLE, contrastAway } from '../multiplayer/shared/matchSetup';
-import { KANTO, REGIONS, inPool, nextRegion, openRegionIds, regionById, regionTeams, type LeagueTeam, type RegionDef } from './regions';
+import { autoDraft } from '../season/team';
+import { HOENN, KANTO, REGIONS, inPool, nextRegion, openRegionIds, poolMons, regionById, regionTeams, type LeagueTeam, type RegionDef } from './regions';
 
 const SAVE_KEY = 'pokejam.franchise.v1';
 /** XP needed to go from `level` to the next one; each level costs a bit more. */
@@ -419,6 +420,9 @@ export function gymBadgeCount(f: Franchise): number {
 
 /** The user's team won this season's title (the final is over). */
 export const wonTitle = (f: Franchise) => f.phase === 'done' && f.champion === 0 && !!f.teams[0]?.human;
+
+/** A Hoenn championship by the user's team. The next season returns to Kanto. A loss does not. */
+export const shouldReturnToKanto = (f: Franchise) => regionOf(f).id === HOENN.id && wonTitle(f);
 
 const addRecord = (list: RegionRecord[], regionId: string, season: number) => {
   if (!list.some((r) => r.regionId === regionId && r.season === season)) list.push({ regionId, season });
@@ -838,8 +842,51 @@ function computeAwards(f: Franchise): Award[] {
   return out;
 }
 
-/** Same rosters and levels, fresh schedule and records. */
+/**
+ * Kanto's gyms and Elite Four have no fixed rosters, so a return cannot reuse `enterRegion` (that stops when a
+ * roster is missing). Draft them the same way a new franchise does: snake order, each CPU's types, from the open
+ * pool, skipping species the user already owns. Old CPU players become free agents and keep their levels.
+ */
+function bringBackKanto(f: Franchise): void {
+  const me = f.teams[0];
+  const held = new Set(me.roster.map((u) => f.players[u].dex));
+  const pool = withKingKabuto(poolMons(openRegions(f))).filter((m) => !held.has(m.dex));
+  const cpu = regionTeams(KANTO);
+  const draftTeams = [
+    { name: me.name, abbr: me.abbr, color: me.color, color2: me.color2, human: true },
+    ...cpu.map((t) => ({ ...t, human: false })),
+  ];
+  // `fixed` only skips the user's picks. Those objects are already out of `pool` (removed by dex above).
+  const { rosters } = autoDraft(draftTeams, 10, me.roster.map((u) => monByDex(f.players[u].dex)), pool);
+  const fa = new Set(f.freeAgents);
+  for (const t of f.teams) {
+    if (t.human) continue;
+    for (const u of t.roster) if (!fa.has(u) && f.players[u]) { f.freeAgents.push(u); fa.add(u); }
+  }
+  let n = Object.keys(f.players).reduce((a, k) => Math.max(a, /^p\d+$/.test(k) ? Number(k.slice(1)) + 1 : a), 0);
+  const add = (m: Mon) => {
+    while (f.players[`p${n}`]) n++;
+    const uid = `p${n++}`;
+    const king = isKingKabuto(m);
+    f.players[uid] = { uid, dex: m.dex, level: 1, xp: 0, bonus: {}, stats: emptyStats(), ovrStart: king ? m.ovr : withBonus(m.dex, {}).ovr };
+    if (king) f.players[uid].king = true;
+    return uid;
+  };
+  f.teams = [me, ...cpu.map((t, i): FTeam => ({
+    id: i + 1, name: t.name, abbr: t.abbr, color: t.color, color2: t.color2, human: false, leader: t.leader, types: [...t.types], boost: t.boost,
+    ...(t.gym ? { gym: t.gym, badge: t.badge } : {}), ...(t.elite ? { elite: true } : {}),
+    roster: rosters[i + 1].map(add), w: 0, l: 0, pf: 0, pa: 0, streak: 0,
+  }))];
+  Object.assign(me, { w: 0, l: 0, pf: 0, pa: 0, streak: 0 });
+  f.region = KANTO.id;
+  f.weeks = f.teams.length - 1;
+  delete f.introShown;
+}
+
+/** Same rosters and levels, fresh schedule and records. A Hoenn title first brings the league back to Kanto. */
 export function nextSeason(f: Franchise) {
+  const cycle = shouldReturnToKanto(f);
+  if (cycle) bringBackKanto(f);
   f.season++;
   f.week = 1;
   f.phase = 'season';
@@ -854,7 +901,10 @@ export function nextSeason(f: Franchise) {
     p.injury = 0;
   }
   f.awards = undefined;
-  f.news = [`Season ${f.season} tips off.`];
+  const first = regionTeams(KANTO)[0];
+  f.news = cycle
+    ? [`Season ${f.season} returns to the Kanto League. ${first.leader} and the ${first.name} are first.`, `The Hoenn teams' players are now free agents.`]
+    : [`Season ${f.season} tips off.`];
 }
 
 export const canSign = (f: Franchise) => f.phase !== 'done' && f.signedWeek < f.week;

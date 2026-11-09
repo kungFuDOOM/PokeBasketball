@@ -125,7 +125,8 @@ const ROWS: Row[] = [
   [448, 'Lucario', ['Fighting', 'Steel'], 'SG', 84, 86, 82, 78, 82, 58, 60, 84],
   [445, 'Garchomp', ['Dragon', 'Ground'], 'PF', 92, 66, 96, 60, 84, 84, 82, 70],
   [149, 'Dragonite', ['Dragon', 'Flying'], 'C', 74, 70, 92, 72, 76, 88, 92, 66],
-  [384, 'Rayquaza', ['Dragon', 'Flying'], 'PF', 84, 86, 96, 66, 82, 88, 90, 70],
+  // 93 to 97. Block stays at 89 so he remains a Stretch Big; inside is still the peak.
+  [384, 'Rayquaza', ['Dragon', 'Flying'], 'PF', 88, 89, 99, 68, 86, 89, 94, 70],
   [151, 'Mew', ['Psychic'], 'PG', 92, 92, 80, 90, 78, 70, 68, 92],
   [257, 'Blaziken', ['Fire', 'Fighting'], 'SF', 88, 76, 95, 68, 78, 74, 70, 80],
   [248, 'Tyranitar', ['Rock', 'Dark'], 'C', 60, 58, 94, 56, 82, 92, 92, 58],
@@ -249,6 +250,9 @@ const ROWS: Row[] = [
   [80, 'Slowbro', ['Water', 'Psychic'], 'PF', 38, 84, 74, 80, 64, 78, 80, 62],
   [8, 'Wartortle', ['Water'], 'PG', 74, 78, 60, 72, 68, 46, 52, 74],
   [208, 'Steelix', ['Steel', 'Ground'], 'C', 50, 44, 90, 48, 82, 98, 92, 50],
+  // Override generated.ts. Same positions and stat order. Slaking 94 to 91, Deoxys 99 to 97.
+  [289, 'Slaking', ['Normal'], 'C', 81, 74, 97, 65, 86, 80, 97, 72],
+  [386, 'Deoxys', ['Psychic'], 'SG', 97, 96, 97, 74, 83, 54, 64, 89],
 ];
 
 /**
