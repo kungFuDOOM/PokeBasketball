@@ -8,6 +8,7 @@ import '../framed';
 import '../fonts.css';
 import { COURTS, type CourtStyle } from '../data/courts';
 import { LEAGUE } from '../franchise/league';
+import { HOENN, JOHTO, type RegionDef } from '../franchise/regions';
 import { POKEMON, monByDex, TYPE_COLORS, type Mon } from '../data/pokemon';
 import { Game, IDEAL_RELEASE, type Sfx } from '../game/game';
 import { CourtView } from '../screens/threept.view';
@@ -32,8 +33,8 @@ export const FPS = 30;
  * (an 18-second spot for the Training drills and the new Alley-Oop drill, filmed on real practice games with
  * their floor markers) or 'ranked' (a 20-second Season 1 launch spot: placements, the real tier badges up to Zenith).
  */
-type Cut = 'main' | 'vertical' | 'franchise' | 'top5' | 'online' | 'watch' | 'training' | 'ranked' | 'challenges' | 'packs' | 'regions' | 'threept';
-const CUT: Cut = (['vertical', 'franchise', 'top5', 'online', 'watch', 'training', 'ranked', 'challenges', 'packs', 'regions', 'threept'] as const).find((c) => c === new URLSearchParams(location.search).get('cut')) ?? 'main';
+type Cut = 'main' | 'vertical' | 'franchise' | 'top5' | 'online' | 'watch' | 'training' | 'ranked' | 'challenges' | 'packs' | 'regions' | 'regionslive' | 'threept';
+const CUT: Cut = (['vertical', 'franchise', 'top5', 'online', 'watch', 'training', 'ranked', 'challenges', 'packs', 'regions', 'regionslive', 'threept'] as const).find((c) => c === new URLSearchParams(location.search).get('cut')) ?? 'main';
 const VERTICAL = CUT === 'vertical';
 /** The top 5 cut is dressed as a 90s sports highlight show ("POKé CENTER"). */
 const RETRO = CUT === 'top5';
@@ -115,6 +116,7 @@ const MATCHUPS: Record<Cut, { home: TeamDef; away: TeamDef; court: CourtStyle }>
     court: COURTS['Indigo Elite'],
   },
   threept: { home: pallet([25, 6, 9, 3, 143]), away: gym('Indigo Elite', [151, 94, 150, 383, 149]), court: COURTS['Pallet Town'] },
+  regionslive: { home: pallet([25, 6, 9, 3, 143]), away: gym('Indigo Elite', [151, 94, 150, 383, 149]), court: COURTS['Indigo Elite'] },
   regions: { home: pallet([25, 6, 9, 3, 143]), away: gym('Indigo Elite', [151, 94, 150, 383, 149]), court: COURTS['Indigo Elite'] },
   packs: { home: pallet([254, 448, 6, 445, 248]), away: gym('Saffron Psychics', [65, 257, 212, 9, 149]), court: COURTS['Saffron Psychics'] },
   challenges: {
@@ -917,11 +919,11 @@ function renderOutro(seg: Segment, t: number, a: number) {
   renderBackground(t, 0.66);
   const k = clamp01(a / 0.25);
   once('outro-hit', t, seg.t0 + 0.25, () => { flash = 0.3; cue(t, 'slam'); cue(t, 'crowd_big'); });
-  const pjAt = CUT === 'online' || CUT === 'watch' || CUT === 'training' || CUT === 'ranked' || CUT === 'challenges' ? 1.6 : CUT === 'packs' ? 1.7 : CUT === 'regions' || CUT === 'threept' ? 1.6 : 2.2;
+  const pjAt = CUT === 'online' || CUT === 'watch' || CUT === 'training' || CUT === 'ranked' || CUT === 'challenges' ? 1.6 : CUT === 'packs' ? 1.7 : CUT === 'regions' || CUT === 'regionslive' || CUT === 'threept' ? 1.6 : 2.2;
   const pj = a - pjAt;
   if (pj < 0) {
     logo(W / 2, H / 2 - 150, 170, a < 0.25 ? 3 - 2 * k * k : 1);
-    if (a > 0.6) jamText(CUT === 'online' ? 'PLAY ONLINE NOW. FREE.' : CUT === 'watch' ? 'PLAY IT. WATCH IT. SIM IT.' : CUT === 'training' ? 'TRAIN UP. THEN JAM.' : CUT === 'ranked' ? 'RANKED IS LIVE. CLIMB NOW.' : CUT === 'challenges' ? 'PLAY. CLIMB. ENTER.' : CUT === 'packs' ? 'PACK BATTLES. COMING SOON.' : CUT === 'regions' ? 'NEW REGIONS. COMING SOON.' : CUT === 'threept' ? '3-POINT CONTEST. PLAY NOW.' : 'PLAY FREE IN YOUR BROWSER', W / 2, H / 2 + 40, 64, { fill: '#f8f8f0' });
+    if (a > 0.6) jamText(CUT === 'online' ? 'PLAY ONLINE NOW. FREE.' : CUT === 'watch' ? 'PLAY IT. WATCH IT. SIM IT.' : CUT === 'training' ? 'TRAIN UP. THEN JAM.' : CUT === 'ranked' ? 'RANKED IS LIVE. CLIMB NOW.' : CUT === 'challenges' ? 'PLAY. CLIMB. ENTER.' : CUT === 'packs' ? 'PACK BATTLES. COMING SOON.' : CUT === 'regions' ? 'NEW REGIONS. COMING SOON.' : CUT === 'regionslive' ? 'JOHTO + HOENN. OUT NOW.' : CUT === 'threept' ? '3-POINT CONTEST. PLAY NOW.' : 'PLAY FREE IN YOUR BROWSER', W / 2, H / 2 + 40, 64, { fill: '#f8f8f0' });
     if (a > 1.0) plainText('pokejam.xyz', W / 2, H / 2 + 170, 80, '#ffcb05');
   } else {
     // $PJAM: gold, glinting, center stage.
@@ -2564,31 +2566,30 @@ function renderTpScore(seg: Segment, t: number, a: number) {
 
 // ---------- cut: regions ----------
 
-/** A franchise region as the spot shows it (mirrors src/franchise/regions.ts: badges in order, each gym's ace and leader). */
+/** A franchise region as the spot shows it, read from the game's own region data (src/franchise/regions.ts). */
 interface RegionSpot { name: string; gen: number; color: string; badges: string[]; leaders: string[]; aces: number[]; champ: string; champAce: number }
-const REGION_JOHTO: RegionSpot = {
-  name: 'JOHTO', gen: 2, color: '#e8b923',
-  badges: ['Zephyr', 'Hive', 'Plain', 'Fog', 'Storm', 'Mineral', 'Glacier', 'Rising'],
-  leaders: ['FALKNER', 'BUGSY', 'WHITNEY', 'MORTY', 'CHUCK', 'JASMINE', 'PRYCE', 'CLAIR'],
-  aces: [164, 212, 241, 200, 237, 208, 221, 230],
-  champ: 'ELITE FOUR & CHAMPION LANCE', champAce: 149,
-};
-const REGION_HOENN: RegionSpot = {
-  name: 'HOENN', gen: 3, color: '#2f78d0',
-  badges: ['Stone', 'Knuckle', 'Dynamo', 'Heat', 'Balance', 'Feather', 'Mind', 'Rain'],
-  leaders: ['ROXANNE', 'BRAWLY', 'WATTSON', 'FLANNERY', 'NORMAN', 'WINONA', 'TATE & LIZA', 'JUAN'],
-  aces: [299, 297, 310, 324, 289, 334, 344, 350],
-  champ: 'ELITE FOUR & CHAMPION STEVEN', champAce: 376,
-};
+const regionSpot = (r: RegionDef, color: string): RegionSpot => ({
+  name: r.name.toUpperCase(), gen: r.generation, color,
+  badges: r.gyms.map((g) => g.badge ?? ''),
+  leaders: r.gyms.map((g) => g.leader.toUpperCase()),
+  aces: r.gyms.map((g) => g.ace ?? g.roster?.[0] ?? 25),
+  // "Johto Elite Four & Champion Lance" -> "ELITE FOUR & CHAMPION LANCE"
+  champ: (r.finale.title ?? r.finale.leader).replace(new RegExp(`^${r.name} `), '').toUpperCase(),
+  champAce: r.finale.ace ?? r.finale.roster?.[0] ?? 149,
+});
+const REGION_JOHTO = regionSpot(JOHTO, '#e8b923');
+const REGION_HOENN = regionSpot(HOENN, '#2f78d0');
+/** The release cut: the regions are out, not coming. */
+const REGIONS_LIVE = CUT === 'regionslive';
 
 function renderRHook(seg: Segment, t: number, a: number) {
   renderBackground(t, 0.72);
   const pop = (at: number) => 0.3 + 0.7 * easeOutBack(clamp01((a - at) / 0.22));
   once('rh1', t, seg.t0 + 0.05, () => { flash = 0.15; cue(t, 'slam'); cue(t, 'crowd_low'); });
-  jamText('FRANCHISE', W / 2, 280, 170, { scale: pop(0.05) });
+  jamText(REGIONS_LIVE ? 'JOHTO + HOENN' : 'FRANCHISE', W / 2, 280, REGIONS_LIVE ? 150 : 170, { scale: pop(0.05), maxW: W - 120 });
   if (a > 0.4) {
     once('rh2', t, seg.t0 + 0.4, () => { flash = 0.25; cue(t, 'slam'); cue(t, 'crowd_big'); });
-    jamText('IS GOING ON TOUR', W / 2, 480, 110, { fill: '#f8f8f0', scale: pop(0.4), maxW: W - 120 });
+    jamText(REGIONS_LIVE ? 'OUT NOW IN FRANCHISE' : 'IS GOING ON TOUR', W / 2, 480, 110, { fill: '#f8f8f0', scale: pop(0.4), maxW: W - 120 });
   }
   if (a > 0.8) plainText('2 NEW REGIONS · 16 NEW BADGES', W / 2, 700, 64, '#ffcb05');
 }
@@ -2604,7 +2605,7 @@ function renderRegion(r: RegionSpot, seg: Segment, t: number, a: number) {
   ctx.fillRect(0, 0, W, H);
   once(`rg-${r.name}`, t, seg.t0 + 0.05, () => { flash = 0.2; cue(t, 'slam'); cue(t, 'crowd'); });
   jamText(r.name, W / 2, 120, 150, { scale: a < 0.22 ? 0.3 + 0.7 * easeOutBack(a / 0.22) : 1 });
-  plainText(`GEN ${r.gen} · 8 NEW GYMS`, W / 2, 235, 54, r.color);
+  plainText(`GEN ${r.gen} · 8 NEW GYMS${REGIONS_LIVE ? ' · LIVE NOW' : ''}`, W / 2, 235, 54, r.color);
   r.badges.forEach((b, i) => {
     const at = 0.25 + i * 0.11;
     const x = W / 2 + (i - 3.5) * 225;
@@ -3114,7 +3115,7 @@ export async function prepare(): Promise<{ frames: number; fps: number }> {
     add({ kind: 'tp-score', t0: t, t1: t + 2.0 });
     add({ kind: 'outro', t0: t, t1: t + 3.4 });
     musicEnd = s[s.length - 1].t0 + 1.6;
-  } else if (CUT === 'regions') {
+  } else if (CUT === 'regions' || CUT === 'regionslive') {
     add({ kind: 'r-hook', t0: t, t1: t + 1.8 });
     musicStart = 0.1;
     add({ kind: 'r-johto', t0: t, t1: t + 3.4 });

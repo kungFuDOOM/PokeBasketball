@@ -85,6 +85,7 @@ STYLES['challenges'] = STYLES['franchise']
 STYLES['packs'] = STYLES['vertical']
 # Regions: the season-story anthem.
 STYLES['regions'] = STYLES['franchise']
+STYLES['regionslive'] = STYLES['franchise']
 # 3-Point Contest: short and punchy.
 STYLES['threept'] = STYLES['vertical']
 rng = np.random.default_rng(7)
