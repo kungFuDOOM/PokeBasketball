@@ -1,4 +1,4 @@
-// Small inline SVG badges for the badge case. Shapes and colors nod to the Kanto and Johto badges.
+// Small inline SVG badges for the badge case. Shapes and colors nod to the Kanto, Johto and Hoenn badges.
 
 const shapes: Record<string, string> = {
   Boulder: `<polygon points="12,3 28,3 37,12 37,28 28,37 12,37 3,28 3,12" fill="#8d939c" stroke="#4b5058" stroke-width="2"/>
@@ -34,6 +34,23 @@ const shapes: Record<string, string> = {
     <path d="M20 9 V31 M11 14.5 L29 25.5 M29 14.5 L11 25.5" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round"/>`,
   Rising: `<path d="M20 3 L34 30 L20 24 L6 30z" fill="#3d6fd8" stroke="#13265a" stroke-width="2"/>
     <path d="M20 12 L27 27 L20 24 L13 27z" fill="#e8483c"/><circle cx="20" cy="34" r="3" fill="#f5c518"/>`,
+  // Hoenn.
+  Stone: `<polygon points="20,3 31,9 37,21 30,34 14,37 4,26 7,11" fill="#9c8a6e" stroke="#4a3e2c" stroke-width="2"/>
+    <polygon points="20,10 27,14 29,22 24,29 15,30 11,22 13,14" fill="#c9b892"/>`,
+  Knuckle: `<rect x="6" y="12" width="28" height="20" rx="7" fill="#e08a4a" stroke="#6a2f0c" stroke-width="2"/>
+    <path d="M13 12 V20 M20 12 V20 M27 12 V20" stroke="#6a2f0c" stroke-width="2"/><rect x="10" y="5" width="20" height="8" rx="4" fill="#f2b07a" stroke="#6a2f0c" stroke-width="2"/>`,
+  Dynamo: `<circle cx="20" cy="20" r="16" fill="#f5c518" stroke="#6e5600" stroke-width="2"/>
+    <circle cx="20" cy="20" r="9" fill="none" stroke="#6e5600" stroke-width="2" stroke-dasharray="4 3"/><path d="M22 9 L14 22 H20 L18 31 L26 18 H20z" fill="#fff6c2" stroke="#6e5600" stroke-width="1.2"/>`,
+  Heat: `<path d="M20 3 C26 12 34 16 32 27 C30 34 25 37 20 37 C15 37 9 34 8 27 C7 19 13 16 14 9 C17 13 18 15 20 3z" fill="#e2492f" stroke="#6a160a" stroke-width="2"/>
+    <path d="M20 17 C23 22 26 24 25 29 C24 32 22 33 20 33 C17 33 15 31 15 28 C15 24 18 22 20 17z" fill="#ffc24a"/>`,
+  Balance: `<rect x="5" y="5" width="30" height="30" rx="4" fill="#c9c3a3" stroke="#57523a" stroke-width="2"/>
+    <rect x="9" y="9" width="10" height="22" fill="#e3463a"/><rect x="21" y="9" width="10" height="22" fill="#f2e7c2"/>`,
+  Feather: `<path d="M8 34 C10 20 20 8 34 5 C33 17 26 28 12 33z" fill="#8fd0f2" stroke="#1f5d82" stroke-width="2"/>
+    <path d="M8 34 L28 12 M15 26 L22 25 M19 21 L26 19" stroke="#1f5d82" stroke-width="1.8" stroke-linecap="round"/>`,
+  Mind: `<circle cx="14" cy="20" r="10" fill="#f28ab8" stroke="#6a1a42" stroke-width="2"/><circle cx="26" cy="20" r="10" fill="#f5d04a" stroke="#6a4e0a" stroke-width="2"/>
+    <circle cx="14" cy="20" r="3.5" fill="#6a1a42"/><circle cx="26" cy="20" r="3.5" fill="#6a4e0a"/>`,
+  Rain: `<path d="M20 3 C27 14 33 20 33 26 C33 33 27 37 20 37 C13 37 7 33 7 26 C7 20 13 14 20 3z" fill="#2f78d0" stroke="#0c2a52" stroke-width="2"/>
+    <path d="M15 24 C15 29 18 31 21 31" fill="none" stroke="#bfe0ff" stroke-width="2.5" stroke-linecap="round"/>`,
   /** Any badge without its own design: a plain medal, never mistaken for the Elite emblem. */
   Neutral: `<circle cx="20" cy="20" r="16" fill="#9aa3ad" stroke="#4d555e" stroke-width="2"/>
     <circle cx="20" cy="20" r="9" fill="none" stroke="#e3e7eb" stroke-width="2"/>`,

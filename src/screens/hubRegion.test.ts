@@ -80,7 +80,11 @@ describe('hub: the next region', () => {
     expect(actions(nextCard(f, settings))).toEqual(expect.arrayContaining(['play', 'watch-mine', 'sim-mine']));
 
     expect(enterRegion(f, 'johto')).toBe(true);
-    expect(regionCardHtml(f)).toBe('');
+    // In Johto, the card moves on to Hoenn: locked, with this season's Johto progress.
+    const hoenn = regionCardHtml(f);
+    expect(text(hoenn)).toContain('Hoenn is locked');
+    expect(text(hoenn)).toContain('Johto badges 0/8');
+    expect(actions(hoenn)).not.toContain('enter-region');
     const card = text(nextCard(f, settings));
     expect(card).toContain('Violet Soar');
     expect(card).toContain('Gym Leader Falkner · Zephyr Badge on the line');

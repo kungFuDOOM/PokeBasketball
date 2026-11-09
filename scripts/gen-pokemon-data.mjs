@@ -1,11 +1,11 @@
-// Generates src/data/generated.ts: basketball ratings for every Gen 1 and Gen 2 Pokémon (#1-251), derived
+// Generates src/data/generated.ts: basketball ratings for every Gen 1-3 Pokémon (#1-386), derived
 // from base stats, height and weight in PokeAPI's open CSV data, plus evolution rules for franchise mode.
 // Hand-tuned rows in src/data/pokemon.ts take precedence and are used to calibrate the scale.
 // Usage: node scripts/gen-pokemon-data.mjs
 import { readFile, writeFile } from 'node:fs/promises';
 
 const CSV = 'https://raw.githubusercontent.com/PokeAPI/pokeapi/master/data/v2/csv';
-const MAX_DEX = 251;
+const MAX_DEX = 386;
 
 function parseCsv(text) {
   const rows = [];

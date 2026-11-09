@@ -412,9 +412,22 @@ const addRecord = (list: RegionRecord[], regionId: string, season: number) => {
   if (!list.some((r) => r.regionId === regionId && r.season === season)) list.push({ regionId, season });
 };
 
-/** Regions unlocked by this franchise's own completions: each one needs the region before it fully beaten. */
-export const earnedUnlocks = (f: Franchise): string[] =>
-  REGIONS.filter((r) => r.index > 0 && (f.completedRegions ?? []).some((c) => regionById(c.regionId)?.index === r.index - 1)).map((r) => r.id);
+/**
+ * Regions unlocked by this franchise's own completions: each one needs the region before it fully beaten, and that
+ * region open when it was (the first region, the league's own, one in `known`, or one unlocked earlier in the chain),
+ * so a Johto record can only unlock Hoenn for a franchise that could play in Johto.
+ */
+export function earnedUnlocks(f: Franchise, known: readonly string[] = f.unlockedRegions ?? []): string[] {
+  const open = new Set([KANTO.id, regionOf(f).id, ...known]);
+  const out: string[] = [];
+  for (const r of REGIONS) {
+    const prev = REGIONS.find((x) => x.index === r.index - 1);
+    if (r.index === 0 || !prev || !open.has(prev.id) || !(f.completedRegions ?? []).some((c) => c.regionId === prev.id)) continue;
+    out.push(r.id);
+    open.add(r.id);
+  }
+  return out;
+}
 
 /**
  * Called when the final crowns a champion: a user title goes in the record book for the region, and a title with
@@ -463,7 +476,7 @@ export function reconcileRegions(f: Franchise, device: string[]) {
     addRecord(f.completedRegions, KANTO.id, pm!);
   }
   awardRegion(f);
-  f.unlockedRegions = laterRegionIds([...earnedUnlocks(f), ...device]);
+  f.unlockedRegions = laterRegionIds([...earnedUnlocks(f, device), ...device]);
 }
 
 /** Every region the user has won a title in, with the seasons: the hub's champion banners. */
@@ -1062,7 +1075,14 @@ function rookieScore(f: Franchise, uid: string, t: FTeam): number {
   const have = t.roster.filter((u) => monOf(f, u).pos === m.pos).length;
   return pot.ovr * 1.2 + m.ovr * 0.3 - pot.level * 1.5 + (have === 0 ? 6 : have === 1 ? 2 : 0)
     + (t.types?.length && m.types.some((ty) => t.types!.includes(ty))
-      && !t.roster.some((u) => monOf(f, u).types.some((ty) => t.types!.includes(ty))) ? 5 : 0) + Math.random() * 3;
+      && !t.roster.some((u) => monOf(f, u).types.some((ty) => t.types!.includes(ty))) ? 5 : 0) + rookieJitter(f, uid, t) * 3;
+}
+
+/** A little noise in CPU rookie picks, fixed by the save's seed: the same save drafts the same way. */
+function rookieJitter(f: Franchise, uid: string, t: FTeam): number {
+  let h = draftSeed(f) ^ Math.imul(f.season, 0x9e3779b1) ^ Math.imul(t.id + 1, 0x85ebca6b);
+  for (let i = 0; i < uid.length; i++) h = Math.imul(h ^ uid.charCodeAt(i), 0x01000193);
+  return mulberry32(h >>> 0)();
 }
 
 /** Makes the current pick: `uid` for the team on the clock, or the CPU's choice when omitted. */

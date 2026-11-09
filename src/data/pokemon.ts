@@ -316,7 +316,10 @@ function buildMon([dex, name, types, pos, spd, sht, ins, pas, def, blk, reb, hnd
 /** The draft pool. */
 const HAND = new Set(ROWS.map((r) => r[0]));
 
-/** The draft pool: every Gen 1 and Gen 2 Pokémon plus favorites from Gens 3-5 and a few requested later picks (Tyrantrum, Tinkaton). Hand-tuned rows win over generated ones. */
+/**
+ * The draft pool: every Gen 1-3 Pokémon plus favorites from Gens 4-5 and a few requested later picks (Tyrantrum,
+ * Tinkaton). Franchises hold back locked regions (`franchise/regions.ts`). Hand-tuned rows win over generated ones.
+ */
 export const POKEMON: Mon[] = [...ROWS, ...GENERATED_ROWS.filter((r) => !HAND.has(r[0]))]
   .sort((a, b) => a[0] - b[0])
   .map(buildMon);
