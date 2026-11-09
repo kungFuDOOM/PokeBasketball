@@ -474,6 +474,23 @@ async function loadAnnouncer() {
   }));
 }
 
+/** Scenes that aren't a filmed game call the announcer themselves; he never talks over himself. */
+let annBusy = -Infinity;
+function say(t: number, clip: string, force = false) {
+  const len = clipLength.get(clip);
+  if (len === undefined || (!force && t < annBusy)) return;
+  cue(t, `ann:${clip}`);
+  annBusy = t + len + 0.08;
+}
+/** A line that must be said: it waits for him to finish the current one instead of talking over it. */
+function sayNext(t: number, clip: string) {
+  const len = clipLength.get(clip);
+  if (len === undefined) return;
+  const at = Math.max(t, annBusy);
+  cue(at, `ann:${clip}`);
+  annBusy = at + len + 0.08;
+}
+
 // ---------- cue sheet for the audio pass ----------
 
 export interface Cue { t: number; sound: string }
@@ -2469,7 +2486,7 @@ function renderKHook(seg: Segment, t: number, a: number) {
   const drop = 0.5;
   const fall = clamp01((a - drop) / 0.25);
   if (a > drop) {
-    once('kh1', t, seg.t0 + drop + 0.25, () => { flash = 0.35; cue(t, 'slam'); cue(t, 'crowd_big'); });
+    once('kh1', t, seg.t0 + drop + 0.25, () => { flash = 0.35; cue(t, 'slam'); cue(t, 'crowd_big'); say(t, 'fire_2', true); });
     const y = -200 + (720 - -200) * (fall * fall);
     const shake = a > drop + 0.25 && a < drop + 0.6 ? (Math.random() - 0.5) * 24 : 0;
     kingSprite(W / 2 + shake, y + shake, 440, a > drop + 0.25 ? 0.8 : 0);
@@ -2526,7 +2543,7 @@ function renderKCard(seg: Segment, t: number, a: number) {
   rows.forEach(([label, value], i) => {
     const at = 0.4 + i * 0.22;
     if (a < at) return;
-    once(`kcr${i}`, t, seg.t0 + at, () => cue(t, i === 1 ? 'slam' : 'tick'));
+    once(`kcr${i}`, t, seg.t0 + at, () => { cue(t, i === 1 ? 'slam' : 'tick'); if (i === 1) say(t, 'super'); });
     const y = 300 + i * 130;
     const kk = easeOutBack(clamp01((a - at) / 0.2));
     ctx.save();
@@ -2671,7 +2688,12 @@ function renderTpClip(seg: Segment & { kind: 'tp-clip' }, t: number, first: bool
       else if (ev.kind === 'result') {
         const make = ev.ball.result === 'make';
         view.landed(ev.ball.points, ev.ball.money, make);
-        if (make) { cue(t, ev.ball.money ? 'crowd_big' : 'crowd'); if (ev.ball.money) cue(t, 'coin'); }
+        if (make) {
+          cue(t, ev.ball.money ? 'crowd_big' : 'crowd');
+          if (ev.ball.money) cue(t, 'coin');
+          // The announcer: a three call on a make, and he's on fire once the money rack starts falling.
+          say(t, ev.ball.rack === TP_MONEY_RACK && ev.ball.money ? `fire_${1 + (ev.ball.index % 2)}` : `three_${1 + (ev.ball.index % 3)}`);
+        }
       } else if (ev.kind === 'buzzer') cue(t, 'buzzer');
     }
     view.handle(run.game.events.splice(0), run);
@@ -2709,7 +2731,7 @@ function renderTpClip(seg: Segment & { kind: 'tp-clip' }, t: number, first: bool
 /** The final score, counting up, out of 34. */
 function renderTpScore(seg: Segment, t: number, a: number) {
   renderBackground(t, 0.88);
-  once('tps', t, seg.t0 + 0.05, () => { flash = 0.2; cue(t, 'slam'); cue(t, 'crowd_big'); });
+  once('tps', t, seg.t0 + 0.05, () => { flash = 0.2; cue(t, 'slam'); cue(t, 'crowd_big'); sayNext(t, 'final'); });
   if (CUT === 'kabuto') kingSprite(W / 2 - 520, 780, 360);
   else sprite(25, W / 2 - 520, 780, 360);
   plainText('FINAL SCORE', W / 2 + 160, 300, 70, '#aab0d8');
