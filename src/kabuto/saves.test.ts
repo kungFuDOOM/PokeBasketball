@@ -14,9 +14,9 @@ beforeAll(() => {
 });
 afterEach(() => store.clear());
 
-describe('saves and the regular roster do not see King Kabuto', () => {
-  it('POKEMON has no King Kabuto and exactly one plain Kabuto', () => {
-    expect(POKEMON.some((m) => m.name === 'King Kabuto')).toBe(false);
+describe('saves and the regular roster do not see Kabuto King', () => {
+  it('POKEMON has no Kabuto King and exactly one plain Kabuto', () => {
+    expect(POKEMON.some((m) => m.name === 'Kabuto King')).toBe(false);
     const k = POKEMON.filter((m) => m.dex === 140);
     expect(k).toHaveLength(1);
     expect(k[0].name).toBe('Kabuto');

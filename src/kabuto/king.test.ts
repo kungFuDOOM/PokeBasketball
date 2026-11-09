@@ -4,11 +4,11 @@ import { kingKabutoMon } from './king';
 
 const KEYS = Object.keys(monByDex(140).r) as (keyof Ratings)[];
 
-describe('King Kabuto card', () => {
+describe('Kabuto King card', () => {
   const k = kingKabutoMon();
 
   it('is a derived Kabuto: name, dex, SG, inherited types', () => {
-    expect(k.name).toBe('King Kabuto');
+    expect(k.name).toBe('Kabuto King');
     expect(k.dex).toBe(140);
     expect(k.pos).toBe('SG');
     expect(k.types).toEqual(monByDex(140).types);

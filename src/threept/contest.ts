@@ -131,7 +131,7 @@ export const isLastBall = (ballIndex: number) => ballIndex >= TOTAL_BALLS - 1;
 export const RACK_COUNT = RACKS;
 export { CONTEST_SECONDS };
 
-/** Featured-shooter hook for the picker: King Kabuto (pinned first, badged) while his window is open, else null. */
+/** Featured-shooter hook for the picker: Kabuto King (pinned first, badged) while his window is open, else null. */
 export function featuredShooter(now: number = Date.now()): FeaturedShooter {
   return kingFeatured(now);
 }

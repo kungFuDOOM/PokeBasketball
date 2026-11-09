@@ -88,7 +88,7 @@ STYLES['regions'] = STYLES['franchise']
 STYLES['regionslive'] = STYLES['franchise']
 # 3-Point Contest: short and punchy.
 STYLES['threept'] = STYLES['vertical']
-# King Kabuto: the 90s highlight-show fanfare suits a coronation.
+# Kabuto King: the 90s highlight-show fanfare suits a coronation.
 STYLES['kabuto'] = STYLES['top5']
 rng = np.random.default_rng(7)
 

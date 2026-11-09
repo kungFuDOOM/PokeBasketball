@@ -32,7 +32,7 @@ export interface FPlayer {
   /** Weeks left on the injury list. */
   injury?: number;
   /**
-   * King Kabuto: drafted during his event, so this team keeps the King card (dex 140) for good, after the event too.
+   * Kabuto King: drafted during his event, so this team keeps the King card (dex 140) for good, after the event too.
    * He never evolves. Missing on every other player, and on a Kabuto that went undrafted.
    */
   king?: true;
@@ -163,7 +163,7 @@ export const monOf = (f: Franchise, uid: string): Mon => {
   return p.king === true ? kingKabutoCard(p.bonus) : withBonus(p.dex, p.bonus);
 };
 
-/** Where this player can evolve, if anywhere. King Kabuto stays King Kabuto. */
+/** Where this player can evolve, if anywhere. Kabuto King stays Kabuto King. */
 export const evolutionOf = (p: FPlayer) => (p.king === true ? undefined : EVOLUTIONS[p.dex]);
 
 /** Uids of a team's starting five and bench, in the order the coach would use them. */
@@ -249,7 +249,7 @@ export function createFranchise(
 ): Franchise {
   const players: Record<string, FPlayer> = {};
   let n = 0;
-  // Only a team that drafted King Kabuto keeps him: one left in the pool joins free agency as a plain Kabuto.
+  // Only a team that drafted Kabuto King keeps him: one left in the pool joins free agency as a plain Kabuto.
   const add = (m: Mon, drafted = false) => {
     const uid = `p${n++}`;
     const king = drafted && isKingKabuto(m);

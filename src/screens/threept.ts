@@ -29,12 +29,12 @@ let lastDex: number | null = null;
 let lastRack: RackId = 2;
 
 const SPOTS = rackSpots();
-/** The picker pool: King Kabuto replaces Kabuto while his window is open, so dex lookups must go through here. */
+/** The picker pool: Kabuto King replaces Kabuto while his window is open, so dex lookups must go through here. */
 const pickerPool = () => withKingKabuto(POKEMON);
 const monByDex = (dex: number): Mon => pickerPool().find((m) => m.dex === dex) ?? POKEMON[0];
-/** Name markup: the gold tag for King Kabuto, escaped text for everyone else. */
+/** Name markup: the gold tag for Kabuto King, escaped text for everyone else. */
 const nameHtml = (m: Mon) => (isKingKabuto(m) ? `<span class="king-tag">${esc(m.name)}</span>` : esc(m.name));
-/** Crown King Kabuto's sprites under `scope` (they start plain and swap once the crowned image is ready). */
+/** Crown Kabuto King's sprites under `scope` (they start plain and swap once the crowned image is ready). */
 const crownAll = (scope: ParentNode) => scope.querySelectorAll<HTMLImageElement>('img[data-king]').forEach(crownImg);
 const DT_MAX = 0.05;
 /** Seconds between the last ball / buzzer and the results screen. */

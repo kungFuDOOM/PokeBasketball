@@ -5,7 +5,7 @@ const t = (iso: string) => Date.parse(iso);
 const START = t(KING_KABUTO.start);
 const END = t(KING_KABUTO.end);
 
-describe('King Kabuto window', () => {
+describe('Kabuto King window', () => {
   it('is closed just before the start', () => expect(kingKabutoActive(t('2026-11-08T23:59:59-08:00'))).toBe(false));
   it('opens exactly at the start (inclusive)', () => expect(kingKabutoActive(START)).toBe(true));
   it('is open mid-window', () => expect(kingKabutoActive(t('2026-11-15T12:00:00-08:00'))).toBe(true));

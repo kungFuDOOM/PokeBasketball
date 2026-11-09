@@ -1,4 +1,4 @@
-// DOM helpers for King Kabuto: crowned sprite + gold name tag, applied to screens we don't want to fork (the draft).
+// DOM helpers for Kabuto King: crowned sprite + gold name tag, applied to screens we don't want to fork (the draft).
 import { spriteUrl } from '../data/pokemon';
 import { KING_KABUTO, kingKabutoActive } from './config';
 import { crownedSpriteUrl } from './crown';
@@ -9,7 +9,7 @@ export function crownImg(img: HTMLImageElement): void {
   void crownedSpriteUrl(plain).then((u) => { if (u !== plain && img.getAttribute('src') === plain) img.src = u; });
 }
 
-/** Crown every King Kabuto sprite under `root` and wrap exact "King Kabuto" name text in the gold tag. */
+/** Crown every Kabuto King sprite under `root` and wrap exact "Kabuto King" name text in the gold tag. */
 export function decorateKing(root: ParentNode): void {
   const url = spriteUrl(KING_KABUTO.dex);
   root.querySelectorAll<HTMLImageElement>('img').forEach((img) => { if (img.getAttribute('src') === url) crownImg(img); });

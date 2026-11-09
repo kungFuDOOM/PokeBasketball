@@ -1,10 +1,10 @@
-// King Kabuto: limited-time special character. This is the ONE place that sets when he is available.
-// A tribute to an X collector called Kabuto King (no real names or links anywhere in the game).
+// Kabuto King: limited-time special character. This is the ONE place that sets when he is available.
+// A tribute to an X collector, named after their handle, Kabuto King (no real names or links anywhere in the game).
 
 export const KING_KABUTO = {
-  /** Base species: Kabuto. King Kabuto replaces it in the quick play and 3-point pickers while active. */
+  /** Base species: Kabuto. Kabuto King replaces it in the quick play and 3-point pickers while active. */
   dex: 140,
-  name: 'King Kabuto',
+  name: 'Kabuto King',
   badge: 'KING',
   /** America/Los_Angeles wall clock, written with the PST offset (-08:00, DST has ended by November). */
   tz: 'America/Los_Angeles',

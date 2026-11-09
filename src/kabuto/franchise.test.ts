@@ -20,17 +20,17 @@ function league(mine: number[], pool = POKEMON): Franchise {
 
 const kingUid = (f: Franchise) => Object.values(f.players).find((p) => p.dex === 140)!.uid;
 
-describe('King Kabuto in Franchise', () => {
+describe('Kabuto King in Franchise', () => {
   it('is in the franchise draft pool during his event and not after it', () => {
-    expect(withKingKabuto(POKEMON, DURING).some((m) => m.name === 'King Kabuto')).toBe(true);
-    expect(withKingKabuto(POKEMON, AFTER).some((m) => m.name === 'King Kabuto')).toBe(false);
+    expect(withKingKabuto(POKEMON, DURING).some((m) => m.name === 'Kabuto King')).toBe(true);
+    expect(withKingKabuto(POKEMON, AFTER).some((m) => m.name === 'Kabuto King')).toBe(false);
   });
 
   it('a team that drafted him keeps the King card, through a save round trip and after the event', () => {
     const f = league([25, 140, 6, 9, 143], withKingKabuto(POKEMON, DURING));
     const saved = JSON.parse(JSON.stringify(f)) as Franchise;
     const king = monOf(saved, kingUid(saved));
-    expect(king.name).toBe('King Kabuto');
+    expect(king.name).toBe('Kabuto King');
     expect(king.ovr).toBe(kingKabutoMon().ovr);
     expect(king.r.sht).toBe(kingKabutoMon().r.sht);
     expect(saved.players[kingUid(saved)].king).toBe(true);
@@ -41,7 +41,7 @@ describe('King Kabuto in Franchise', () => {
     const p = f.players[kingUid(f)];
     p.bonus = { spd: 3 };
     expect(monOf(f, p.uid).r.spd).toBe(kingKabutoMon().r.spd + 3);
-    expect(monOf(f, p.uid).name).toBe('King Kabuto');
+    expect(monOf(f, p.uid).name).toBe('Kabuto King');
   });
 
   it('never evolves, while a plain Kabuto still can', () => {

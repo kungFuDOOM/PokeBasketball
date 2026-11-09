@@ -53,5 +53,5 @@ export interface ContestSummary {
   finishedEarly: boolean;
 }
 
-/** Hook for the future King Kabuto bonus. Normal sorting for now: this returns null. */
+/** Hook for the future Kabuto King bonus. Normal sorting for now: this returns null. */
 export type FeaturedShooter = { dex: number; badge: string } | null;

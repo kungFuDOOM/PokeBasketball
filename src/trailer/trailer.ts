@@ -927,7 +927,7 @@ function renderOutro(seg: Segment, t: number, a: number) {
   const pj = a - pjAt;
   if (pj < 0) {
     logo(W / 2, H / 2 - 150, 170, a < 0.25 ? 3 - 2 * k * k : 1);
-    if (a > 0.6) jamText(CUT === 'online' ? 'PLAY ONLINE NOW. FREE.' : CUT === 'watch' ? 'PLAY IT. WATCH IT. SIM IT.' : CUT === 'training' ? 'TRAIN UP. THEN JAM.' : CUT === 'ranked' ? 'RANKED IS LIVE. CLIMB NOW.' : CUT === 'challenges' ? 'PLAY. CLIMB. ENTER.' : CUT === 'packs' ? 'PACK BATTLES. COMING SOON.' : CUT === 'regions' ? 'NEW REGIONS. COMING SOON.' : CUT === 'regionslive' ? 'JOHTO + HOENN. OUT NOW.' : CUT === 'threept' ? '3-POINT CONTEST. PLAY NOW.' : CUT === 'kabuto' ? 'KING KABUTO. LIMITED TIME.' : 'PLAY FREE IN YOUR BROWSER', W / 2, H / 2 + 40, 64, { fill: '#f8f8f0' });
+    if (a > 0.6) jamText(CUT === 'online' ? 'PLAY ONLINE NOW. FREE.' : CUT === 'watch' ? 'PLAY IT. WATCH IT. SIM IT.' : CUT === 'training' ? 'TRAIN UP. THEN JAM.' : CUT === 'ranked' ? 'RANKED IS LIVE. CLIMB NOW.' : CUT === 'challenges' ? 'PLAY. CLIMB. ENTER.' : CUT === 'packs' ? 'PACK BATTLES. COMING SOON.' : CUT === 'regions' ? 'NEW REGIONS. COMING SOON.' : CUT === 'regionslive' ? 'JOHTO + HOENN. OUT NOW.' : CUT === 'threept' ? '3-POINT CONTEST. PLAY NOW.' : CUT === 'kabuto' ? 'KABUTO KING. LIMITED TIME.' : 'PLAY FREE IN YOUR BROWSER', W / 2, H / 2 + 40, 64, { fill: '#f8f8f0' });
     if (a > 1.0) plainText('pokejam.xyz', W / 2, H / 2 + 170, 80, '#ffcb05');
   } else {
     // $PJAM: gold, glinting, center stage.
@@ -2479,7 +2479,7 @@ function renderKHook(seg: Segment, t: number, a: number) {
     GOLDF.addColorStop(0, '#fff7c2');
     GOLDF.addColorStop(0.5, '#ffcb05');
     GOLDF.addColorStop(1, '#b37400');
-    jamText('KING KABUTO', W / 2, 880, 150, { fill: GOLDF, scale: 0.3 + 0.7 * easeOutBack(clamp01((a - drop - 0.4) / 0.22)), maxW: W - 120 });
+    jamText('KABUTO KING', W / 2, 880, 150, { fill: GOLDF, scale: 0.3 + 0.7 * easeOutBack(clamp01((a - drop - 0.4) / 0.22)), maxW: W - 120 });
   }
 }
 
@@ -2515,7 +2515,7 @@ function renderKCard(seg: Segment, t: number, a: number) {
   ctx.textBaseline = 'middle';
   ctx.font = `800 42px ${SPORT}`;
   ctx.fillStyle = '#fff';
-  ctx.fillText('KING KABUTO', 0, 120);
+  ctx.fillText('KABUTO KING', 0, 120);
   ctx.font = `800 26px ${SPORT}`;
   ctx.fillStyle = '#ffcb05';
   ctx.fillText('ROCK · WATER', 0, 165);
@@ -2715,7 +2715,7 @@ function renderTpScore(seg: Segment, t: number, a: number) {
   plainText('FINAL SCORE', W / 2 + 160, 300, 70, '#aab0d8');
   const n = Math.round(tpFinal.score * clamp01(a / 0.7));
   jamText(`${n} / 34`, W / 2 + 160, 480, 200, { scale: a < 0.2 ? 0.3 + 0.7 * easeOutBack(a / 0.2) : 1, maxW: 1000 });
-  if (a > 0.9) plainText(CUT === 'kabuto' ? `KING KABUTO: ${tpFinal.makes} OF 25. BOW DOWN.` : `${tpFinal.makes} OF 25 FROM DOWNTOWN. BEAT IT.`, W / 2 + 160, 680, 60, '#ffcb05');
+  if (a > 0.9) plainText(CUT === 'kabuto' ? `KABUTO KING: ${tpFinal.makes} OF 25. BOW DOWN.` : `${tpFinal.makes} OF 25 FROM DOWNTOWN. BEAT IT.`, W / 2 + 160, 680, 60, '#ffcb05');
 }
 
 // ---------- cut: regions ----------
@@ -3265,7 +3265,7 @@ export async function prepare(): Promise<{ frames: number; fps: number }> {
     add({ kind: 'k-hook', t0: t, t1: t + 2.4 });
     musicStart = 0.1;
     add({ kind: 'k-card', t0: t, t1: t + 2.8 });
-    add({ kind: 'tp-clip', t0: t, t1: t + 2.0, from: Math.max(0, r[0].t - 1.4), label: 'KING KABUTO · 3-POINT CONTEST' });
+    add({ kind: 'tp-clip', t0: t, t1: t + 2.0, from: Math.max(0, r[0].t - 1.4), label: 'KABUTO KING · 3-POINT CONTEST' });
     add({ kind: 'tp-clip', t0: t, t1: t + 2.2, from: money.t - 1.6, label: 'MONEY RACK · EVERY BALL = 2' });
     add({ kind: 'tp-score', t0: t, t1: t + 1.8 });
     add({ kind: 'k-where', t0: t, t1: t + 3.0 });

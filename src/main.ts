@@ -283,7 +283,7 @@ function season() {
 function draft(state: DraftState) {
   app.className = 'screen-draft';
   window.scrollTo(0, 0);
-  // King Kabuto is draftable while his event runs (crowned, gold tag); whoever drafts him keeps him (createFranchise).
+  // Kabuto King is draftable while his event runs (crowned, gold tag); whoever drafts him keeps him (createFranchise).
   const unwatch = watchKing(app);
   draftScreen(app, state, audio, (rosters, leftovers) => {
     unwatch();
@@ -310,7 +310,7 @@ async function startFranchise(
   save();
   if (opts.fromDrafted) renameDrafted(name);
   // Pokémon held back from the draft pool (locked regions) still join free agency, for when their region unlocks.
-  // By dex, so a drafted King Kabuto (his own card) doesn't also bring a plain Kabuto into free agency.
+  // By dex, so a drafted Kabuto King (his own card) doesn't also bring a plain Kabuto into free agency.
   const used = new Set([...rosters.flat(), ...leftovers].map((m) => m.dex));
   franchise = createFranchise(teams, rosters, [...leftovers, ...POKEMON.filter((m) => !used.has(m.dex))]);
   const unlocked = loadRegionProfile();
