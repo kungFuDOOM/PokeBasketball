@@ -260,7 +260,7 @@ export function menuScreen(root: HTMLElement, settings: Settings, onChange: () =
               <strong>${esc(opts.saved)}</strong>
               <button class="btn ${opts.draft ? '' : 'primary big'}" data-go="continue">Continue franchise</button>
             </div>` : ''}
-            <p class="setup-note">Draft ten Pokémon against the eight Kanto Gym Leaders and the Elite Four, then play a 9-week season and the playoffs. Starters tire and the bench steps in. Earn badges, level up and evolve, season after season.</p>
+            <p class="setup-note">Draft ten Pokémon, then play a 9-week season and the playoffs. Starters tire and the bench steps in. Earn badges, level up and evolve. Win all eight gym badges and the title in the same season to unlock Johto, then Hoenn, season after season.</p>
             <div class="field">Start with
               <div class="seg" id="source">
                 <button data-v="draft" class="on">Draft</button>
