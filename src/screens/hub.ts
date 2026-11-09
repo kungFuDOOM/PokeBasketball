@@ -1,6 +1,6 @@
 import { POSITIONS, monByDex, spriteUrl, type Pos } from '../data/pokemon';
 import {
-  badgesEarned, canSign, canTrade, finalWeek, judgeTrade, lineupOf, makeTrade, resetLineup, swapInLineup, tradeDeadline, venueOf, monOf, perGame, sign, standings, teamOvrOf, userGame, weekGames, weekLabel,
+  badgesEarned, canAcquire, canSign, regionOf, regionStatus, regionTitles, canTrade, finalWeek, judgeTrade, lineupOf, makeTrade, resetLineup, swapInLineup, tradeDeadline, venueOf, monOf, perGame, sign, standings, teamOvrOf, userGame, weekGames, weekLabel,
   xpToNext, type FGame, type FTeam, type Franchise,
 } from '../franchise/league';
 import { badgeSvg } from '../ui/badges';
@@ -19,6 +19,8 @@ export interface HubActions {
   /** Every game this season, with box scores. */
   games(): void;
   menu(): void;
+  /** Move the league to the unlocked region `id` (only offered at the start of a season). */
+  enterRegion(id: string): void;
   /** Franchise or settings changed and should be saved. */
   saved(): void;
 }
@@ -108,6 +110,8 @@ function badgeCaseHtml(f: Franchise): string {
   if (!gyms.length) return '';
   const earned = badgesEarned(f);
   const elite = f.teams.find((t) => t.elite);
+  const region = regionOf(f);
+  const first = region.index === 0;
   const count = gyms.filter((t) => earned.has(t.id)).length;
   const slot = (t: FTeam, name: string, label: string) => `
     <li class="${earned.has(t.id) ? 'got' : ''}" title="${esc(label)}">
@@ -116,7 +120,7 @@ function badgeCaseHtml(f: Franchise): string {
     </li>`;
   return `
     <section class="card badge-case">
-      <h3 class="sec">Badge case <b>${count}/8</b>${elite && earned.has(elite.id) ? ' · Elite Four defeated' : ''}</h3>
+      <h3 class="sec">${first ? 'Badge case' : `${esc(region.name)} badge case`} <b>${count}/8</b>${elite && earned.has(elite.id) ? ` · ${esc(first ? 'Elite Four' : region.finale.title ?? elite.name)} defeated` : ''}</h3>
       <ul>
         ${gyms.map((t) => slot(t, t.badge!, `${t.badge} Badge: beat ${t.leader} (${t.name})`)).join('')}
         ${elite ? slot(elite, 'Elite', `Beat ${elite.leader} (${elite.name})`) : ''}
@@ -125,11 +129,54 @@ function badgeCaseHtml(f: Franchise): string {
     </section>`;
 }
 
-function standingsHtml(f: Franchise): string {
+/** "Kanto Champion" (and later regions' titles) for the hub header: every region the user has won a title in. */
+export function championBannerHtml(f: Franchise): string {
+  const won = regionTitles(f);
+  if (!won.length) return '';
+  return `<ul class="champ-banners" aria-label="Titles">${won.map(({ region, seasons }) =>
+    `<li class="champ-banner"><strong>${esc(region.name)} Champion</strong><span>Season${seasons.length > 1 ? 's' : ''} ${seasons.join(', ')}</span></li>`).join('')}</ul>`;
+}
+
+/**
+ * The next region: while locked, the two conditions (all eight gym badges and the title, in one season) and where
+ * the user stands this season; once unlocked, what it brings and, at the start of a season, the button to go.
+ */
+export function regionCardHtml(f: Franchise): string {
+  const st = regionStatus(f);
+  const next = st.next;
+  if (!next) return '';
+  const here = regionOf(f).name;
+  const range = `#${next.dex[0]}–${next.dex[1]}`;
+  const gyms = `${next.gyms[0].leader} to ${next.gyms[next.gyms.length - 1].leader}`;
+  if (!st.unlocked) {
+    const req = (ok: boolean, label: string, value: string) =>
+      `<li class="${ok ? 'ok' : 'todo'}"><span class="mark" aria-hidden="true">${ok ? '✓' : '·'}</span><b>${esc(label)}</b><span class="val">${esc(value)}</span></li>`;
+    return `
+      <section class="card region-card locked" style="--tc:${next.gyms[0].color}">
+        <p class="eyebrow">Next region · ${esc(next.name)} League</p>
+        <h3>${esc(next.name)} is locked</h3>
+        <ul class="region-reqs">
+          ${req(st.badges >= 8, `${here} badges`, `${st.badges}/8`)}
+          ${req(st.title, `${here} championship`, st.title ? 'Won' : f.phase === 'done' ? 'Not won' : 'Not won yet')}
+        </ul>
+        <p class="note">Win all eight ${esc(here)} gym badges and the ${esc(here)} championship in the same season to unlock the ${esc(next.name)} League (${esc(gyms)}) and Gen ${next.generation} Pokémon (${range}) for your franchise.</p>
+      </section>`;
+  }
+  const what = `Eight new gyms (${esc(gyms)}) and the ${esc(next.finale.title ?? next.finale.name)}. Your team, levels and evolutions come with you; the ${esc(here)} teams' players join free agency. Gen ${next.generation} Pokémon (${range}) are open in drafts, free agency, trades and rookie classes.`;
+  return `
+    <section class="card region-card open" style="--tc:${next.gyms[0].color}">
+      <p class="eyebrow">${esc(next.name)} unlocked</p>
+      <h3>${st.canEnter ? `Enter the ${esc(next.name)} League` : `The ${esc(next.name)} League is open`}</h3>
+      <p class="note">${what}${st.canEnter ? ' This season starts over there.' : ` Enter it at the start of a season, after the rookie draft and before your first game.`}</p>
+      ${st.canEnter ? `<div class="actions"><button class="btn primary big" data-a="enter-region" data-region="${esc(next.id)}">Enter ${esc(next.name)}</button></div>` : ''}
+    </section>`;
+}
+
+export function standingsHtml(f: Franchise): string {
   const rows = standings(f).map((t, i) => `
     <tr class="${t.human ? 'me' : ''} ${i === 3 ? 'cut' : ''}" style="--tc:${t.color}">
       <td>${i + 1}</td>
-      <th><div><i></i><span>${esc(t.name)}${t.leader ? `<small>${esc(t.leader)}</small>` : ''}</span></div></th>
+      <th><div><i></i><span>${esc(t.name)}${t.leader ? `<small title="${esc(t.leader)}">${esc(t.leader)}</small>` : ''}</span></div></th>
       <td>${t.w}</td><td>${t.l}</td>
       <td>${t.pf - t.pa > 0 ? '+' : ''}${t.pf - t.pa}</td>
       <td>${t.streak ? (t.streak > 0 ? `W${t.streak}` : `L${-t.streak}`) : '–'}</td>
@@ -292,7 +339,7 @@ function freeAgentSheet(f: Franchise, release: string, pos: Pos | 'ALL'): string
   const after = f.teams[0].roster.filter((u) => u !== release).map((u) => monOf(f, u));
   const goal = targetPer(f.teams[0].roster.length);
   const wants = new Set(POSITIONS.filter((p) => countAt(after, p) < goal));
-  const fas = [...f.freeAgents].filter((u) => pos === 'ALL' || monOf(f, u).pos === pos).sort((a, b) => monOf(f, b).ovr - monOf(f, a).ovr);
+  const fas = [...f.freeAgents].filter((u) => canAcquire(f, u) && (pos === 'ALL' || monOf(f, u).pos === pos)).sort((a, b) => monOf(f, b).ovr - monOf(f, a).ovr);
   return `
     <div class="sheet-bg">
       <div class="sheet" role="dialog" aria-label="Free agents">
@@ -327,10 +374,12 @@ export function hubScreen(root: HTMLElement, f: Franchise, settings: Settings, a
           <button class="btn ghost small" data-a="menu">Menu</button>
           <div>
             <h1>${esc(me.name)}${f.pokejamMaster !== undefined ? ' <span class="master-mark" title="Won the title with every badge">PokeJam Master</span>' : ''}</h1>
-            <p>Season ${f.season} · ${f.phase === 'done' ? 'Offseason' : weekLabel(f)} · ${rec(me)}, ${ordinal(place)} place</p>
+            <p>${regionOf(f).index ? `${esc(regionOf(f).name)} League · ` : ''}Season ${f.season} · ${f.phase === 'done' ? 'Offseason' : weekLabel(f)} · ${rec(me)}, ${ordinal(place)} place</p>
           </div>
         </header>
+        ${championBannerHtml(f)}
         ${nextCard(f, settings)}
+        ${regionCardHtml(f)}
         ${badgeCaseHtml(f)}
         <div class="hub-grid">
           <div class="col">${rosterHtml(f, editing, picked)}${scoresHtml(f)}</div>
@@ -405,6 +454,10 @@ export function hubScreen(root: HTMLElement, f: Franchise, settings: Settings, a
     else if (a === 'watch-mine' && g) act.watchMine(g);
     else if (a === 'sim-week') act.simWeek();
     else if (a === 'rookies') act.rookies();
+    else if (a === 'enter-region') {
+      const id = t.closest<HTMLElement>('[data-region]')?.dataset.region;
+      if (id) act.enterRegion(id);
+    }
     else if (a === 'games') act.games();
   });
 

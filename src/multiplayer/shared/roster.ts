@@ -24,9 +24,10 @@ export const RANKED_EXCLUDED: readonly number[] = [
   383, // Groudon, PF 92
   382, // Kyogre, C 92
   380, // Latias, SF 91
+  386, // Deoxys, SG 99
 ];
 
-/** Every lore legendary in the dex: the RANKED_EXCLUDED nine plus the birds, beasts and Celebi. None may be on a
+/** Every lore legendary in the dex: the RANKED_EXCLUDED ten plus the birds, beasts, Celebi, the Regis and Jirachi. None may be on a
  * Ranked preset team. */
 export const RANKED_LEGENDARIES: readonly number[] = [
   ...RANKED_EXCLUDED,
@@ -37,6 +38,10 @@ export const RANKED_LEGENDARIES: readonly number[] = [
   244, // Entei
   245, // Suicune
   251, // Celebi
+  377, // Regirock
+  378, // Regice
+  379, // Registeel
+  385, // Jirachi
 ];
 
 /** No Ranked preset member may be rated above this. */

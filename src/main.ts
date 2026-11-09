@@ -2,10 +2,10 @@ import './framed';
 import './compat';
 import './fonts.css';
 import './style.css';
-import { monByDex, spriteUrl, type Mon } from './data/pokemon';
+import { POKEMON, monByDex, spriteUrl, type Mon } from './data/pokemon';
 import {
-  LEAGUE, USER_STYLE, advance, badgesEarned, createFranchise, gameConfig, loadDraft, loadFranchise, recordGame, startRookieDraft, saveDraft, saveFranchise,
-  simulate, weekGames, weekLabel, type FGame, type Franchise, type Progress,
+  LEAGUE, USER_STYLE, advance, badgesEarned, createFranchise, enterRegion, gameConfig, loadDraft, loadFranchise, loadRegionProfile, recordGame, startRookieDraft,
+  saveDraft, saveFranchise, simulate, weekGames, weekLabel, type FGame, type Franchise, type Progress,
 } from './franchise/league';
 import { Audio } from './game/audio';
 import { sharedVoice } from './game/voice';
@@ -16,11 +16,13 @@ import { musicToggle } from './ui/musicToggle';
 import { DIFFICULTIES, type Difficulty } from './game/types';
 import type { Game } from './game/game';
 import { draftScreen, type DraftState } from './screens/draft';
+import { openRegionIds, poolMons } from './franchise/regions';
 import { shouldPlayMasterCutscene, shouldShowChampionship, shouldShowNewSeason } from './franchise/moments';
 import { hubScreen } from './screens/hub';
 import { championshipScreen, newSeasonScreen } from './screens/moments';
 import { masterScreen } from './screens/master';
 import { menuScreen, type Settings } from './screens/menu';
+import { guardStaleOnMenu, takeResume } from './wallet/staleBuild';
 import { withIntro } from './screens/intro';
 import { playGame } from './screens/play';
 import { resultTag, type GameMode } from './screens/watch';
@@ -134,6 +136,12 @@ function draftSummary(d: DraftState): string {
   return `${d.teams[me].name} · Pick ${n + 1} of ${d.order.length * rounds} · ${mine}/${rounds} drafted`;
 }
 
+function threePt() {
+  app.className = 'screen-threept';
+  window.scrollTo(0, 0);
+  threePtContest(app, settings, audio, { menu });
+}
+
 function menu() {
   app.className = 'screen-menu';
   const f = franchise;
@@ -182,12 +190,7 @@ function menu() {
       void import('./raffle/screen').then((m) => m.openChallenges({ root: app, back: menu }));
     },
     onQuick: () => quick('draft'),
-    onThreePt: () => {
-      audio.unlock();
-      app.className = 'screen-threept';
-      window.scrollTo(0, 0);
-      threePtContest(app, settings, audio, { menu });
-    },
+    onThreePt: () => { audio.unlock(); threePt(); },
     onTutorial: () => training(),
     onSeason: season,
     confirmSeason: () => guardNewDraft(menu),
@@ -203,15 +206,19 @@ function menu() {
         ...LEAGUE.map((t) => ({ ...t, human: false })),
       ];
       const mine = source === 'mine' ? loadDrafted() : null;
+      // The franchise pool: Kanto, plus every region unlocked on this device.
+      const regions = openRegionIds(loadRegionProfile());
       if (source === 'draft' || (source === 'mine' && !mine)) {
         saveDraft(null);
-        return draft({ teams, order: shuffle(teams.map((_, i) => i)), taken: [], rounds: 10 });
+        return draft({ teams, order: shuffle(teams.map((_, i) => i)), taken: [], rounds: 10, regions });
       }
       // My Drafted Team or Random: no draft screen. The CPU teams fill their rosters from what's left.
-      const { rosters, leftovers } = autoDraft(teams, 10, mine ? draftedMons(mine) : undefined);
+      const { rosters, leftovers } = autoDraft(teams, 10, mine ? draftedMons(mine) : undefined, poolMons(regions));
       void startFranchise(teams, rosters, leftovers, { fromDrafted: !!mine, onCancel: menu });
     },
   });
+  // A tab left open (or a home-screen app resumed) across a deploy would start every mode with the old bundle: reload here.
+  guardStaleOnMenu(() => app.className === 'screen-menu' && !!app.querySelector('[data-go="season"]'));
 }
 
 function quick(source: TeamSource) {
@@ -242,7 +249,7 @@ function franchiseWithDrafted(onCancel: () => void) {
     { name, abbr: abbr(name), ...USER_STYLE, ...(mine ? mine.colors : {}), human: true },
     ...LEAGUE.map((t) => ({ ...t, human: false })),
   ];
-  const { rosters, leftovers } = autoDraft(teams, 10, mine ? draftedMons(mine) : undefined);
+  const { rosters, leftovers } = autoDraft(teams, 10, mine ? draftedMons(mine) : undefined, poolMons(openRegionIds(loadRegionProfile())));
   void startFranchise(teams, rosters, leftovers, { fromDrafted: !!mine, onCancel });
 }
 
@@ -297,7 +304,11 @@ async function startFranchise(
   settings.teamName = name;
   save();
   if (opts.fromDrafted) renameDrafted(name);
-  franchise = createFranchise(teams, rosters, leftovers);
+  // Pokémon held back from the draft pool (locked regions) still join free agency, for when their region unlocks.
+  const used = new Set([...rosters.flat(), ...leftovers]);
+  franchise = createFranchise(teams, rosters, [...leftovers, ...POKEMON.filter((m) => !used.has(m))]);
+  const unlocked = loadRegionProfile();
+  if (unlocked.length) franchise.unlockedRegions = unlocked;
   saveFranchise(franchise);
   saveDraft(null);
   hub();
@@ -346,6 +357,11 @@ function hub() {
       rookieScreen(app, f, audio, { done: hub, menu, saved: () => saveFranchise(f) });
     },
     menu,
+    enterRegion: (id) => {
+      if (!enterRegion(f, id)) return;
+      saveFranchise(f);
+      hub();
+    },
     saved: () => {
       save();
       saveFranchise(f);
@@ -490,6 +506,8 @@ async function afterUserGame(f: Franchise, g: FGame, game: Game, sides: [number,
 
 // A share link (#s=...) opens the shared team's card first.
 const shared = shareFromHash(location.hash);
+// Reloaded onto a new build from a menu that asked to come back (the 3-Point Contest picker).
+const resume = takeResume();
 const clearHash = () => history.replaceState(null, '', location.pathname + location.search);
 const devFinal = import.meta.env.DEV ? await import('./screens/devResults').then((m) => m.devResultsKind()) : null;
 const devRanked = import.meta.env.DEV ? await import('./multiplayer/ranked/devDemo').then((m) => m.devRankedScreen()) : null;
@@ -550,7 +568,8 @@ if (introShot === 'offline' || introShot === 'online') {
       if (go) { clearHash(); go(); }
     },
   });
-} else menu();
+} else if (resume === 'threept') threePt();
+else menu();
 // A link straight to the Advertise page: pokejam.xyz/#advertise.
 const advertise = () => { if (MODE_ADS && location.hash === '#advertise') void import('./ads/screen').then((a) => a.openAdvertise(app, menu)); };
 advertise();
