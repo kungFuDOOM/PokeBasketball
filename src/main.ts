@@ -141,7 +141,7 @@ function draftSummary(d: DraftState): string {
 function threePt() {
   app.className = 'screen-threept';
   window.scrollTo(0, 0);
-  threePtContest(app, settings, audio, { menu });
+  threePtContest(app, settings, audio, { menu: () => { clearHash(); menu(); } });
 }
 
 function menu() {
@@ -580,6 +580,11 @@ else menu();
 const advertise = () => { if (MODE_ADS && location.hash === '#advertise') void import('./ads/screen').then((a) => a.openAdvertise(app, menu)); };
 advertise();
 window.addEventListener('hashchange', advertise);
+
+// A link straight to the 3-Point Contest: pokejam.xyz/#3pt.
+const threePtLink = () => { if (location.hash === '#3pt') threePt(); };
+threePtLink();
+window.addEventListener('hashchange', threePtLink);
 
 // Back from the Phantom app, or reloaded while a Phantom sign-in is in progress in this tab.
 if (ANY_MULTIPLAYER) {
