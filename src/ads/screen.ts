@@ -14,6 +14,7 @@ import { AD_MAX, AD_THEMES, THEME_ORDER, adTextOk, boardAfterAd, cleanAdText, ty
 import { drawLedBoard } from '../game/ledBoard';
 import { esc } from '../util';
 import { ADS_CONFIGURED, AdsError, adsApi, exactTokens, explorer, replaceMessage, shortTokens, type Board, type Booking, type Quote } from './api';
+import { burnAmount, burnPriceNote, burnQuote, PRICE_UNAVAILABLE, TOKEN_PRICE_POLL_MS, type BurnQuote } from '../../supabase/functions/_shared/ads/burn-price.ts';
 import { applyBoard } from './board';
 import { BurnGuardError, burnNeeded, checkBurnTransaction } from './burnGuard';
 import { DM_CONTACTS, DM_ONLY, isPlan, offers, pickPlan, planBadges, savePercent, type PayMethod, type Plan } from './plans';
@@ -81,6 +82,10 @@ interface State {
   verdict: { ok: boolean; message: string | null } | null;
   /** This wallet's ads, once connected. */
   mine: Booking[] | null;
+  /** Live $PJAM price. Null after a failed read (nothing stale is kept). */
+  tokenPrice: { usd: string; at: string } | null;
+  /** False until the first board or price read has come back. */
+  tokenReady: boolean;
 }
 
 const fmtTime = (iso: string) => new Date(iso).toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
@@ -108,6 +113,7 @@ export function openAdvertise(root: HTMLElement, back: () => void) {
     plan: isPlan(draft.plan) ? draft.plan : 'day',
     pay: draft.pay === 'usdc' ? 'usdc' : 'burn', usdcPlan: isPlan(draft.usdcPlan) ? draft.usdcPlan : 'week', start: null, quote: null, court: PREVIEW_COURTS[0],
     wallet: null, phantomWallet: null, approve: null, balance: null, credit: null, lamports: null, busy: false, step: 0, error: '', done: null, verdict: null, mine: null,
+    tokenPrice: null, tokenReady: false,
   };
   let alive = true;
   let raf = 0;
@@ -115,12 +121,21 @@ export function openAdvertise(root: HTMLElement, back: () => void) {
   let checkTimer = 0;
   let mineTimer = 0;
   let recheckTimer = 0;
+  let priceTimer = 0;
   /** USDC can be picked only when the server offers it. */
   const usdcOffered = () => !!s.board?.usdcPay && offers(s.board.plans, 'usdc').length > 0;
   const payWith = (): PayMethod => (s.pay === 'usdc' && usdcOffered() ? 'usdc' : 'burn');
   const activePlan = (): Plan => (payWith() === 'usdc' ? s.usdcPlan : s.plan);
   /** The server's price for a plan paid this way; null before the board loads, or when it isn't on sale. */
   const boardPrice = (m: PayMethod, p: Plan) => offers(s.board?.plans, m).find((o) => o.plan === p)?.amount ?? null;
+  /** Catalog burn price, or 20% off the matching USDC price at the live token price. */
+  const burnShown = (plan: Plan): BurnQuote => burnQuote({
+    usdcBase: boardPrice('usdc', plan),
+    catalogBase: boardPrice('burn', plan),
+    tokenUsd: s.tokenReady ? (s.tokenPrice?.usd ?? null) : undefined,
+    at: s.tokenPrice?.at,
+    decimals: s.board?.decimals ?? 6,
+  });
   const onWallets = () => { if (alive) renderWallet(); };
 
   root.innerHTML = `
@@ -203,6 +218,7 @@ export function openAdvertise(root: HTMLElement, back: () => void) {
   function leave() {
     alive = false;
     clearTimeout(recheckTimer);
+    clearTimeout(priceTimer);
     cancelAnimationFrame(raf);
     stopWatching(onWallets);
     offPay();
@@ -320,6 +336,7 @@ export function openAdvertise(root: HTMLElement, back: () => void) {
   });
 
   root.querySelector('[data-plans]')!.addEventListener('click', (e) => {
+    if ((e.target as HTMLElement).closest('[data-a="retry-price"]')) { void refreshTokenPrice(); return; }
     const b = (e.target as HTMLElement).closest<HTMLButtonElement>('[data-plan]');
     if (!b) return;
     if (payWith() === 'usdc') s.usdcPlan = b.dataset.plan as Plan;
@@ -377,19 +394,34 @@ export function openAdvertise(root: HTMLElement, back: () => void) {
     const dec = (method === 'usdc' ? s.board?.usdcPay?.decimals : s.board?.decimals) ?? 6;
     const list = offers(s.board?.plans, method);
     const picked = method === 'usdc' ? s.usdcPlan : s.plan;
+    const shown = list.map((o) => method === 'burn' ? burnShown(o.plan) : null);
+    const priced = list.map((o, i) => {
+      const amount = method === 'usdc' ? o.amount : burnAmount(shown[i]!);
+      return { plan: o.plan, hours: o.hours, amount };
+    });
+    // A live week next to a catalog hour is not "save N%": the two prices are not the same kind of number.
+    const mixed = method === 'burn' && shown.some((q) => q?.kind === 'live') && shown.some((q) => q?.kind === 'catalog');
     const box = $('[data-plans]');
     box.style.setProperty('--n', String(Math.max(1, list.length)));
-    box.innerHTML = !list.length ? '<p class="note">Nothing on sale this way right now.</p>' : list.map((o) => {
-      const save = savePercent(o, list);
-      const perHour = method === 'burn' && o.amount !== null && o.hours > 1 ? `${shortTokens(o.amount / BigInt(o.hours), dec)} an hour · ` : '';
+    const cards = !list.length ? '<p class="note">Nothing on sale this way right now.</p>' : list.map((o, i) => {
+      const q = shown[i];
+      const amount = priced[i].amount;
+      const save = mixed ? 0 : savePercent(priced[i], priced);
+      const perHour = method === 'burn' && amount !== null && o.hours > 1 ? `${shortTokens(amount / BigInt(o.hours), dec)} an hour · ` : '';
       const best = save >= 5 && o.hours === list[list.length - 1].hours;
+      const price = method === 'usdc'
+        ? (amount === null ? '…' : usd(amount, dec))
+        : burnPriceText(q!, dec);
+      const unit = method === 'usdc' ? 'USDC' : (q?.kind === 'loading' || q?.kind === 'unavailable' ? '' : '$PJAM');
       return `<button class="ad-plan ${o.plan === picked ? 'on' : ''}" data-plan="${o.plan}">
         ${planBadges(save, best)}
         <strong>${PLAN_LABEL[o.plan].name}</strong>
-        <span class="ad-price">${o.amount === null ? '…' : method === 'usdc' ? usd(o.amount, dec) : exactTokens(o.amount, dec)}<small>${method === 'usdc' ? 'USDC' : '$PJAM'}</small></span>
+        <span class="ad-price${q?.kind === 'unavailable' ? ' bad' : ''}">${price}${unit ? `<small>${unit}</small>` : ''}</span>
         <small>${perHour}${PLAN_LABEL[o.plan].per}</small>
       </button>`;
     }).join('');
+    const note = method !== 'burn' ? '' : burnPlanNote(shown);
+    box.innerHTML = cards + note;
   }
   renderPlans();
 
@@ -517,7 +549,9 @@ export function openAdvertise(root: HTMLElement, back: () => void) {
     if (s.done) { el.innerHTML = receiptHtml(s.done, b); bindCheckout(); return; }
     if (payWith() === 'usdc') { renderUsdcCheckout(el); return; }
     const qp = q && q.plan === s.plan ? q : null;
-    const price = qp?.price ? BigInt(qp.price) : boardPrice('burn', s.plan);
+    const shown = burnShown(s.plan);
+    const price = burnAmount(shown);
+    const priceReady = shown.kind === 'live' ? !!qp : !!qp?.price;
     const dec = b?.decimals ?? 6;
     const textOk = adTextOk(s.text);
     // Burn credit counts toward the price: the burn is the price less the credit, and never less than that.
@@ -527,7 +561,7 @@ export function openAdvertise(root: HTMLElement, back: () => void) {
     const addr = payer();
     const short = !!addr && s.balance !== null && need !== null && s.balance < need;
     const noSol = !!addr && s.lamports !== null && s.lamports < 20_000;
-    const can = !!(b && !b.paused && qp?.price && textOk && s.verdict?.ok && (s.wallet || s.phantomWallet || deeplink()) && !short && !noSol && !s.busy && !held().length);
+    const can = !!(b && !b.paused && price !== null && priceReady && textOk && s.verdict?.ok && (s.wallet || s.phantomWallet || deeplink()) && !short && !noSol && !s.busy && !held().length);
     const steps = ['Booking', `Approve in ${s.wallet?.name ?? 'your wallet'}`, 'Burning on Solana', 'On the board'];
     el.innerHTML = `
       <h2>Checkout</h2>
@@ -537,7 +571,7 @@ export function openAdvertise(root: HTMLElement, back: () => void) {
           <dt>Runs</dt><dd>${qp ? `${esc(fmtTime(qp.starts_at))} → ${esc(fmtTime(qp.ends_at))}` : '…'}</dd>
           <dt>Length</dt><dd>${PLAN_LABEL[s.plan].name}</dd>
           ${credit > 0n && price !== null ? `<dt>Price</dt><dd>${exactTokens(price, dec)} <small>$PJAM</small></dd><dt>Your burn credit</dt><dd>−${exactTokens(price - need!, dec)} <small>$PJAM</small></dd>` : ''}
-          <dt>Burn</dt><dd class="ad-burn">${need !== null ? `${exactTokens(need, dec)} <small>$PJAM</small>` : '…'}</dd>
+          <dt>Burn</dt><dd class="ad-burn">${need !== null ? `${exactTokens(need, dec)} <small>$PJAM</small>` : burnPriceText(shown, dec)}</dd>
         </dl>
         ${qp?.moved ? `<p class="ad-warn">The board is full at that time, so this would start at the next opening.</p>` : ''}
       </div>
@@ -546,7 +580,9 @@ export function openAdvertise(root: HTMLElement, back: () => void) {
       ${short ? `<p class="ad-err">This wallet has ${exactTokens(s.balance!, dec)} $PJAM; this ad burns ${exactTokens(need!, dec)}.${covered ? ' Your credit covers the price and stays yours, but a burn is what books it.' : ''}</p>` : ''}
       ${noSol ? '<p class="ad-err">This wallet needs a little SOL for the network fee.</p>' : ''}
       ${s.text && (!textOk || s.verdict?.ok === false) ? '<p class="ad-err">Fix your message first (see above).</p>' : ''}
-      ${payControl('burn', s.busy ? 'Working…' : need !== null ? `Burn ${exactTokens(need, dec)} $PJAM` : 'Burn $PJAM', can)}
+      ${shown.kind === 'live' ? `<p class="ad-price-note">${esc(burnPriceNote(shown.at))}</p>` : ''}
+      ${shown.kind === 'unavailable' ? `<p class="ad-err">Price unavailable, <button type="button" class="link-btn" data-a="retry-price">try again</button></p>` : ''}
+      ${payControl('burn', s.busy ? 'Working…' : need !== null ? `Burn ${exactTokens(need, dec)} $PJAM` : shown.kind === 'unavailable' ? 'Price unavailable' : 'Burn $PJAM', can)}
       ${s.step ? `<ol class="ad-steps">${steps.map((x, i) => `<li class="${i + 1 < s.step ? 'done' : i + 1 === s.step ? 'on' : ''}">${esc(x)}</li>`).join('')}</ol>` : ''}
       ${s.error ? `<p class="ad-err">${esc(s.error)}</p>` : ''}
       ${heldHtml()}
@@ -613,6 +649,7 @@ export function openAdvertise(root: HTMLElement, back: () => void) {
       renderCheckout();
     });
     el.querySelector('[data-a="burn"]')?.addEventListener('click', () => void burn());
+    el.querySelector('[data-a="retry-price"]')?.addEventListener('click', () => void refreshTokenPrice());
     el.querySelector('[data-a="usdc"]')?.addEventListener('click', () => void payUsdc());
     el.querySelector<HTMLAnchorElement>('[data-a="phantom-connect"]')?.addEventListener('click', (e) => {
       const a = e.currentTarget as HTMLAnchorElement;
@@ -735,16 +772,19 @@ export function openAdvertise(root: HTMLElement, back: () => void) {
     renderCheckout();
     let id = '';
     try {
-      // The price the page shows: if the server's has changed since, nothing is signed and the page shows the new one.
-      const expect = (s.quote?.plan === s.plan ? s.quote.price : null) ?? boardPrice('burn', s.plan)?.toString();
-      if (!expect) throw new AdsError("That plan isn't on sale right now.");
+      // The price the page shows. A live tier sends that amount; the server accepts it within 5% of a fresh quote.
+      const quoted = burnShown(s.plan);
+      const expect = quoted.kind === 'live'
+        ? quoted.amount.toString()
+        : ((s.quote?.plan === s.plan ? s.quote.price : null) ?? burnAmount(quoted)?.toString());
+      if (!expect || quoted.kind === 'unavailable' || quoted.kind === 'loading') throw new AdsError(quoted.kind === 'unavailable' ? `${PRICE_UNAVAILABLE}.` : "That plan isn't on sale right now.");
       const who = s.wallet?.address ?? usableSession()?.wallet;
       if (!who) throw new AdsError('Connect Phantom to burn $PJAM.');
       let prep;
       try {
         prep = await adsApi.prepare({ wallet: who, text: s.text.trim(), theme: s.theme, plan: s.plan, start: s.start, expect });
       } catch (e) {
-        if (e instanceof AdsError && e.info.price) void loadBoard();
+        if (e instanceof AdsError && (e.info.price || e.info.priceUnavailable)) { void loadBoard(); void refreshTokenPrice(); }
         throw e;
       }
       id = prep.booking.id;
@@ -935,6 +975,8 @@ export function openAdvertise(root: HTMLElement, back: () => void) {
       const b = await adsApi.board();
       if (!alive) return;
       s.board = b;
+      s.tokenReady = true;
+      s.tokenPrice = b.tokenPrice && typeof b.tokenPrice.usd === 'string' && typeof b.tokenPrice.at === 'string' ? b.tokenPrice : null;
       s.plan = pickPlan(offers(b.plans, 'burn'), s.plan);
       s.usdcPlan = pickPlan(offers(b.plans, 'usdc'), s.usdcPlan);
       applyBoard(b);
@@ -1079,6 +1121,29 @@ export function openAdvertise(root: HTMLElement, back: () => void) {
     s.error = friendly(e);
     renderCheckout();
   });
+  function applyTokenPrice(p: { usd: string; at: string } | null) {
+    s.tokenReady = true;
+    s.tokenPrice = p;
+    renderPlans();
+    if (!s.busy && !s.approve) renderCheckout();
+  }
+
+  /** A failed read clears the price. The page does not keep showing the last amount. */
+  async function refreshTokenPrice() {
+    let next: { usd: string; at: string } | null = null;
+    try { next = await adsApi.tokenPrice(); } catch { next = null; }
+    if (!alive) return;
+    applyTokenPrice(next);
+  }
+
+  function schedulePrice() {
+    clearTimeout(priceTimer);
+    priceTimer = window.setTimeout(() => {
+      void refreshTokenPrice().finally(() => { if (alive) schedulePrice(); });
+    }, TOKEN_PRICE_POLL_MS);
+  }
+  schedulePrice();
+
   void loadBoard().then(async () => {
     usableSession();
     if (s.phantomWallet) await refreshBalance().catch(() => {});
@@ -1108,6 +1173,27 @@ function txLink(a: { burn_sig?: string | null; usdc_sig?: string | null }, board
   if (!sig) return '';
   const link = `<a href="${esc(explorer('tx', sig, board.cluster))}" target="_blank" rel="noopener">${label}</a>`;
   return sep === ' ' ? ` <small>${link}</small>` : `${sep}${link}`;
+}
+
+function burnPriceText(q: BurnQuote, decimals: number): string {
+  switch (q.kind) {
+    case 'catalog': return q.amount === null ? '…' : exactTokens(q.amount, decimals);
+    case 'live': return exactTokens(q.amount, decimals);
+    case 'loading': return 'Loading price…';
+    case 'unavailable': return 'Price unavailable';
+    default: {
+      const never: never = q;
+      return never;
+    }
+  }
+}
+
+function burnPlanNote(rows: (BurnQuote | null)[]): string {
+  if (rows.some((r) => r?.kind === 'unavailable')) {
+    return `<p class="ad-price-note">Price unavailable, <button type="button" class="link-btn" data-a="retry-price">try again</button></p>`;
+  }
+  const live = rows.find((r): r is Extract<BurnQuote, { kind: 'live' }> => r?.kind === 'live');
+  return live ? `<p class="ad-price-note">${esc(burnPriceNote(live.at))}</p>` : '';
 }
 
 function statHtml(big: string, label: string, fire = false) {

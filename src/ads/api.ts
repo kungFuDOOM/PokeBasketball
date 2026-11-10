@@ -23,6 +23,8 @@ export interface Board {
   supply: string;
   /** Always false on the live function's mainnet; the live page never offers a faucet either way. */
   faucet: boolean;
+  /** Live $PJAM price in USD, when the server could read one. Null means the read failed. Absent on the devnet function. */
+  tokenPrice?: { usd: string; at: string } | null;
 }
 
 /** `price`: PJAM to burn (null for a USDC-only plan); `usdc`: USDC base units (null when it can't be paid in USDC). */
@@ -108,6 +110,18 @@ export const replaceMessage = (id: string, text: string, theme: string) => `Poke
 
 export const adsApi = {
   board: () => call<Board>(null),
+  /** Live token price. Null when it could not be read: the page must not keep the previous amount. */
+  tokenPrice: async (): Promise<{ usd: string; at: string } | null> => {
+    let res: Response;
+    try {
+      res = await fetch(`${URL_}?action=pjam-price`);
+    } catch {
+      return null;
+    }
+    const data = (await res.json().catch(() => null)) as { usd?: unknown; at?: unknown } | null;
+    if (!res.ok || !data || typeof data.usd !== 'string' || typeof data.at !== 'string' || !/^\d+(\.\d+)?$/.test(data.usd)) return null;
+    return { usd: data.usd, at: data.at };
+  },
   quote: (plan: Plan, start: string | null) => call<Quote>({ action: 'quote', plan, start }),
   wallet: (wallet: string) => call<{ balance: string; lamports: number; decimals: number }>({ action: 'wallet', wallet }),
   check: (text: string) => call<{ ok: boolean; reason: string | null; message: string | null }>({ action: 'check', text }),

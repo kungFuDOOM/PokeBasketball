@@ -20,6 +20,7 @@ const QUIT_BAN_FILE = '20261207_pokejam_ranked_quit_bans.sql';
 const DISCORD_FILE = '20261209_pokejam_discord_signin.sql';
 const RAFFLE_FILE = '20261210_pokejam_weekly_raffle.sql';
 const HOENN_MONS_FILE = '20261211_pokejam_mons_hoenn.sql';
+const BURN_PRICE_FILE = '20261212_pokejam_ads_live_burn_price.sql';
 const LIVE_SQL = readFileSync(new URL(LIVE_FILE, DIR), 'utf8');
 // sha256 of pokejam-test's 20261104_pokejam_ads.sql, renamed since and now 20261203_pokejam_ads.sql, already applied on the shared project.
 const DEVNET_SHA256 = 'adf6c2b432673feb800146593f6eeb87567c6a051678521d47a5d3c6a3c04cd0';
@@ -118,11 +119,13 @@ describe('the migration is additive', () => {
     const t = await testDb();
     await t.db.exec(LIVE_SQL);
     await t.db.exec(readFileSync(new URL(CREDIT_FILE, DIR), 'utf8'));
+    // 20261204 and 20261205 put the older function signatures back. 20261212 drops those and is safe to apply again.
+    await t.db.exec(readFileSync(new URL(BURN_PRICE_FILE, DIR), 'utf8'));
     expect((await t.create()).state).toBe('pending');
   });
 
   it('sorts after every other migration, keeping the devnet file first', () => {
-    expect(FILES.slice(-8)).toEqual([...MIGRATION_TAIL, QUIT_BAN_FILE, DISCORD_FILE, RAFFLE_FILE, HOENN_MONS_FILE]);
+    expect(FILES.slice(-9)).toEqual([...MIGRATION_TAIL, QUIT_BAN_FILE, DISCORD_FILE, RAFFLE_FILE, HOENN_MONS_FILE, BURN_PRICE_FILE]);
     expect(FILES).toContain('20261201_pokejam_judge_decides.sql');
     expect(new Set(FILES.map((f) => f.slice(0, 8))).size).toBe(FILES.length);
   });
@@ -134,6 +137,7 @@ describe('the migration is additive', () => {
     await t.db.exec(readFileSync(new URL('20261203_pokejam_ads.sql', DIR), 'utf8'));
     await t.db.exec(LIVE_SQL);
     await t.db.exec(readFileSync(new URL(CREDIT_FILE, DIR), 'utf8'));
+    await t.db.exec(readFileSync(new URL(BURN_PRICE_FILE, DIR), 'utf8'));
     const b = await t.service<{ spots: number; live: { id: string }[] }>('pokejam_live_ad_board');
     expect(b.spots).toBe(7);
     expect(b.live.map((x) => x.id)).toEqual([a.id]);
@@ -143,7 +147,7 @@ describe('the migration is additive', () => {
     const list = readFileSync(new URL('./testDb.ts', import.meta.url), 'utf8').match(/const MIGRATIONS = \[[^\]]*\]/)![0];
     const listed = [...list.matchAll(/'([^']+\.sql)'/g)].map((m) => m[1]);
     expect(listed).toEqual([...listed].sort());
-    expect(listed.slice(-8)).toEqual([...MIGRATION_TAIL, QUIT_BAN_FILE, DISCORD_FILE, RAFFLE_FILE, HOENN_MONS_FILE]);
+    expect(listed.slice(-9)).toEqual([...MIGRATION_TAIL, QUIT_BAN_FILE, DISCORD_FILE, RAFFLE_FILE, HOENN_MONS_FILE, BURN_PRICE_FILE]);
   });
 });
 
@@ -179,6 +183,33 @@ describe('prices are one row each, read from the database', () => {
     const t = await testDb();
     await t.sql(`update public.pokejam_live_ad_plans set amount = 200000 where method = 'burn' and plan = 'hour'`);
     await expect(t.service('pokejam_live_ad_create', [WALLET, 'HI', 'gold', 'hour', null, '100000000000', null])).rejects.toThrow(/price changed/);
+  });
+
+  it('locks a live burn quote, and a short burn on the first day still buys nothing', async () => {
+    const t = await testDb();
+    const live = 1_067_616_000_000n;
+    const ad = await t.service<Ad>('pokejam_live_ad_create', [WALLET, 'LIVE PRICE', 'gold', 'week', null, String(live), null, String(live)]);
+    expect(ad.price).toBe(String(live));
+    expect(ad.price).not.toBe('7500000000000');
+    // 4% under the locked quote is still an underpayment on the first day.
+    expect((await t.pay(ad, live - live / 25n)).state).toBe('dust');
+    await expect(t.service('pokejam_live_ad_create', [WALLET, 'BAD', 'gold', 'week', null, '1', null, '0'])).rejects.toThrow(/bad burn price/);
+  });
+
+  it('a late burn within 5% of a fresh live quote buys the full run, and a larger gap does not', async () => {
+    const t = await testDb();
+    const locked = 1_000_000n;
+    const fresh = 1_200_000n;
+    const late = async (wallet: string, burned: string, sig: string) => {
+      const ad = await t.service<Ad>('pokejam_live_ad_create', [wallet, 'LATE', 'gold', 'week', null, String(locked), null, String(locked)]);
+      await t.sql(`update public.pokejam_live_ads set created_at = now() - interval '2 days' where id = $1`, [ad.id]);
+      return t.service<Ad>('pokejam_live_ad_pay', [ad.id, sig, burned, wallet, String(fresh)]);
+    };
+    // ceil(1,200,000 * 0.95) = 1,140,000. The catalog week price is far higher; p_rate is what counts.
+    expect((await late(WALLET, '1000000', 'late-short')).state).toBe('dust');
+    const ok = await late(OTHER, '1140000', 'late-ok');
+    expect(ok.state).toBe('paid');
+    expect(ms(ok.ends_at) - ms(ok.starts_at)).toBe(168 * H);
   });
 
   it('a plan switched off or added takes effect straight away', async () => {

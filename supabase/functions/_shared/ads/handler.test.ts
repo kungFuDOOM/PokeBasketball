@@ -8,6 +8,7 @@ import { base58Encode, base64Decode, base64Encode, randomBytes } from '../pack/b
 import { generateKeypair, type Keypair } from '../pack/ed25519.ts';
 import { parseTransaction, signTransactionBase64 } from '../pack/solana-tx.ts';
 import { decodeTransaction } from '../pack/tx-inspect.ts';
+import { burnTokensForUsdc } from './burn-price.ts';
 import { liveDbName, type AdsConfig } from './config.ts';
 import { adsHandler, replaceMessage, type AdsDeps, type Booking } from './handler.ts';
 import { buildMessage, burnCheckedIx, memoIx, MEMO_PROGRAM, SPL_2022_PROGRAM, SPL_PROGRAM, unsignedTransaction } from './tx.ts';
@@ -124,12 +125,12 @@ function chain(me: string, tokenProgram = SPL_2022_PROGRAM) {
 
 const CFG: AdsConfig = { cluster: 'devnet', rpcUrl: '', mint: MINT, origins: [], priorityMicroLamports: 0, faucetSecret: undefined, faucetAmount: 25_000_000_000_000n, serviceKey: 'svc' };
 
-async function setup(cfg: Partial<AdsConfig> = {}, tokenProgram = SPL_2022_PROGRAM) {
+async function setup(cfg: Partial<AdsConfig> = {}, tokenProgram = SPL_2022_PROGRAM, tokenPrice?: AdsDeps['tokenPrice']) {
   const { keypair: me } = await generateKeypair();
   const c = chain(me.address, tokenProgram);
   const alerts: string[] = [];
   const db = await database();
-  const deps: AdsDeps = { db: db.call, rpc: c.rpc, sleep: async () => {}, alert: async (t) => { alerts.push(t); } };
+  const deps: AdsDeps = { db: db.call, rpc: c.rpc, sleep: async () => {}, alert: async (t) => { alerts.push(t); }, tokenPrice };
   let ip = '1.1.1.1';
   const call = async (body: Record<string, unknown>, headers: Record<string, string> = {}) => {
     const res = await adsHandler(new Request('https://x/', { method: 'POST', headers: { 'content-type': 'application/json', 'x-forwarded-for': ip, ...headers }, body: JSON.stringify(body) }), { ...CFG, ...cfg }, deps);
@@ -356,6 +357,46 @@ describe('the live board (pokejam-ads-live) reads a burn strictly', () => {
     const b = await t.call({ action: 'board' }, { origin: 'https://plans.test' });
     expect(b.body.plans).toContainEqual({ method: 'usdc', plan: 'month', hours: 720, amount: '500000000' });
     expect(b.body.usdcPay).toMatchObject({ receiver: LIVE.usdc!.receiver, mint: LIVE.usdc!.mint });
+  });
+
+  it('prices a burn that has a USDC price at 20% off, using the live token price', async () => {
+    const usd = '0.0001124';
+    const at = '2026-11-10T22:04:00.000Z';
+    const fresh = burnTokensForUsdc(150_000_000n, usd)!;
+    const t = await setup(LIVE, SPL_2022_PROGRAM, async () => ({ usd, at }));
+    const quoted = await t.call({ action: 'quote', plan: 'week' });
+    expect(quoted.body.price).toBe(fresh.toString());
+    const board = await t.call({ action: 'board' });
+    expect(board.body.tokenPrice).toEqual({ usd, at });
+    // Hour has no USDC price, so the catalog amount stays.
+    expect((await t.prepare({ plan: 'hour' })).body.booking.price).toBe(String(HOUR));
+    const under = await t.prepare({ plan: 'week', expect: (fresh / 2n).toString() });
+    expect(under.status).toBe(409);
+    expect(under.body.price).toBe(fresh.toString());
+    expect(await t.db.sql(`select id from public.pokejam_live_ads where plan = 'week'`)).toHaveLength(0);
+    // Within 5%: the wallet is asked for the amount the page showed, not a newer quote.
+    const shown = fresh - fresh / 20n;
+    const p = await t.prepare({ plan: 'week', expect: shown.toString() });
+    expect(p.status).toBe(200);
+    expect(p.body.booking.price).toBe(shown.toString());
+    const r = await t.call({ action: 'confirm', id: p.body.booking.id, tx: await t.sign(p.body.tx) });
+    expect(r.body.booking.state).toBe('paid');
+    expect(run(r.body.booking)).toBe(168 * H);
+  });
+
+  it('refuses a buy-and-burn when the live price cannot be read, and does not charge the catalog amount', async () => {
+    const t = await setup(LIVE, SPL_2022_PROGRAM, async () => null);
+    const p = await t.prepare({ plan: 'week', expect: '7500000000000' });
+    expect(p.status).toBe(400);
+    expect(p.body.error).toMatch(/Price unavailable, try again/);
+    expect(p.body.priceUnavailable).toBe(true);
+    expect(await t.db.sql(`select id from public.pokejam_live_ads`)).toHaveLength(0);
+    const q = await t.call({ action: 'quote', plan: 'week' });
+    expect(q.body.price).toBeNull();
+    expect(q.body.priceUnavailable).toBe(true);
+    expect((await t.call({ action: 'pjam-price' })).body).toEqual({ unavailable: true });
+    // A tier with no USDC price is unchanged.
+    expect((await t.prepare({ plan: 'hour' })).body.booking.price).toBe(String(HOUR));
   });
 
   it('refuses to sell against a mint without the decimals the prices assume', async () => {
