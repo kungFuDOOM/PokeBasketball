@@ -17,7 +17,7 @@
 //   POST {action:'faucet', wallet}            devnet only: test $PJAM and a little test SOL, once a day
 //   POST {action:'sweep'}                     cron (service key): pay every burn on-chain that names a booking
 //                                             (live: also book USDC payments whose page closed; usdcSweep)
-//   POST {action:'usdc-intent', ...}          live only (pokejam-ads-live): pay for a week or a month in USDC
+//   POST {action:'usdc-intent', ...}          live only (pokejam-ads-live): pay for an hour, a day, a week or a month in USDC
 //   POST {action:'usdc-confirm', id, signature?, tx?}
 //                                             live only: check the USDC payment on-chain and book the ad
 //                                             (both in usdc-handlers.ts; the devnet pokejam-ads answers 'unknown action')
@@ -35,6 +35,7 @@ import { parseTransaction } from '../pack/solana-tx.ts';
 import { base58Encode } from '../pack/bytes.ts';
 import { decodeTransaction } from '../pack/tx-inspect.ts';
 import type { AdsConfig } from './config.ts';
+import { burnTokensForUsdc, TOKEN_PRICE_CACHE_MS, withinBurnTolerance, type TokenUsd } from './burn-price.ts';
 import { adMemo, buildBurnTransaction, buildFaucetTransaction, MEMO_PROGRAM, SPL_2022_PROGRAM, SPL_PROGRAM } from './tx.ts';
 import { neverSent, usdcConfirm, usdcIntent, usdcSweep, type Reply, type SweepResult } from './usdc-handlers.ts';
 import { checkBurn, type ParsedTransaction } from './verify.ts';
@@ -49,6 +50,11 @@ export interface AdsDeps {
   sleep?: (ms: number) => Promise<void>;
   /** Where reports go (a Slack or Discord incoming webhook), when set. */
   alert?: (text: string) => Promise<void>;
+  /**
+   * Live $PJAM price in USD (DexScreener, no key). Set on pokejam-ads-live. A burn tier that also has a USDC price
+   * is quoted from it; when this is absent (the devnet function, and tests) the catalog burn price stays.
+   */
+  tokenPrice?: (mint: string) => Promise<TokenUsd | null>;
 }
 
 export interface Booking {
@@ -60,6 +66,7 @@ export interface Booking {
   /** 'month' only on the live board, paid in USDC. */
   plan: 'hour' | 'day' | 'week' | 'month';
   hours: number;
+  pay_method?: 'burn' | 'usdc';
   price: string;
   state: 'pending' | 'paid' | 'dust' | 'removed';
   starts_at: string | null;
@@ -102,6 +109,7 @@ export const VERDICTS: Record<string, string> = {
 const LIMITS: Record<string, [number, number]> = {
   check: [120, 60], quote: [60, 60], wallet: [30, 60], prepare: [30, 3600], confirm: [120, 60], mine: [30, 60],
   credit: [60, 60], replace: [10, 3600], report: [10, 3600], faucet: [3, 86_400], 'usdc-intent': [30, 3600], 'usdc-confirm': [120, 60],
+  'pjam-price': [60, 60],
 };
 
 /** A mistake the caller can fix: shown to them as-is. */
@@ -111,6 +119,51 @@ class Refusal extends Error {
 
 let mintCache: Mint | null = null;
 let boardCache: { at: number; body: Record<string, unknown> } | null = null;
+let tokenPriceCache: { mint: string; at: number; price: TokenUsd; src: AdsDeps['tokenPrice'] } | null = null;
+
+interface PlanQuote { price: string | null; usdc?: string | null }
+
+type LiveBurn = { mode: 'catalog'; price: bigint } | { mode: 'live'; price: bigint } | { mode: 'unavailable' };
+
+/** The cached DexScreener price, or a fresh read. A failure is not cached, so the next try hits the source again. */
+async function readTokenPrice(cfg: AdsConfig, deps: AdsDeps): Promise<TokenUsd | null> {
+  const src = deps.tokenPrice;
+  if (!src) return null;
+  const hit = tokenPriceCache;
+  if (hit && hit.src === src && hit.mint === cfg.mint && Date.now() - hit.at < TOKEN_PRICE_CACHE_MS) return hit.price;
+  const price = await src(cfg.mint);
+  if (!price || !/^\d+(\.\d+)?$/.test(price.usd)) return null;
+  tokenPriceCache = { mint: cfg.mint, at: Date.now(), price, src };
+  return price;
+}
+
+/**
+ * A tier with a USDC price burns 20% off that price at the live token price. No live price: unavailable,
+ * never a fixed token amount. A plan with no USDC price (the devnet board) keeps its catalog burn amount.
+ */
+async function liveBurnQuote(cfg: AdsConfig, deps: AdsDeps, quote: PlanQuote): Promise<LiveBurn> {
+  const catalog = quote.price && /^\d+$/.test(quote.price) ? BigInt(quote.price) : null;
+  const usdc = quote.usdc && /^\d+$/.test(quote.usdc) ? BigInt(quote.usdc) : null;
+  if (usdc && cfg.usdc && deps.tokenPrice) {
+    const spot = await readTokenPrice(cfg, deps);
+    const price = spot ? burnTokensForUsdc(usdc, spot.usd, cfg.strictBurn?.decimals ?? 6) : null;
+    return price === null ? { mode: 'unavailable' } : { mode: 'live', price };
+  }
+  if (!catalog) return { mode: 'unavailable' };
+  return { mode: 'catalog', price: catalog };
+}
+
+/** Fresh live quote for a late or extra burn, when this plan is priced that way. Null leaves the catalog rule in place. */
+async function liveBurnRate(cfg: AdsConfig, deps: AdsDeps, plan: string): Promise<string | undefined> {
+  if (!cfg.usdc || !deps.tokenPrice) return undefined;
+  try {
+    const quote = await deps.db<PlanQuote>('pokejam_ad_quote', { p_plan: plan, p_start: null, p_wallet: null });
+    const live = await liveBurnQuote(cfg, deps, quote);
+    return live.mode === 'live' ? live.price.toString() : undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 async function mintInfo(cfg: AdsConfig, rpc: AdsDeps['rpc']): Promise<Mint> {
   if (mintCache && Date.now() - mintCache.at < 60_000) return mintCache;
@@ -170,7 +223,10 @@ async function settle(cfg: AdsConfig, deps: AdsDeps, b: Booking, sigs: string[])
     const check = checkBurn(tx, { code: b.code, mint: cfg.mint, tokenProgram: mint.tokenProgram,
       ...(cfg.strictBurn ? { wallet: b.wallet, decimals: cfg.strictBurn.decimals, notBefore: Math.floor(Date.parse(b.created_at) / 1000) } : {}) });
     if (!check.ok) { why = check.why; continue; }
-    const paid = await deps.db<Booking>('pokejam_ad_pay', { p_id: b.id, p_sig: check.signature, p_burned: check.burned.toString(), p_burner: check.burner });
+    const rate = await liveBurnRate(cfg, deps, b.pay_method === 'usdc' ? 'hour' : b.plan);
+    const paid = await deps.db<Booking>('pokejam_ad_pay', {
+      p_id: b.id, p_sig: check.signature, p_burned: check.burned.toString(), p_burner: check.burner, ...(rate ? { p_rate: rate } : {}),
+    });
     changed();
     // The booking itself, or (for a second burn) its extra run.
     out = paid;
@@ -287,7 +343,14 @@ export async function adsHandler(req: Request, cfg: AdsConfig, rawDeps: AdsDeps)
             // Where USDC payments go (live only). The prices are the board's own `plans` (from the database).
             ...(cfg.usdc ? { usdcPay: { mint: cfg.usdc.mint, receiver: cfg.usdc.receiver, decimals: 6 } } : {}) } };
         }
-        return json(boardCache.body, 200, { 'cache-control': 'public, max-age=10' });
+        // Attached on the way out, not frozen in the 10s board cache. Null when the feed is on but DexScreener didn't answer.
+        const tokenPrice = deps.tokenPrice ? await readTokenPrice(cfg, deps) : undefined;
+        return json(tokenPrice === undefined ? boardCache.body : { ...boardCache.body, tokenPrice }, 200, { 'cache-control': 'public, max-age=10' });
+      }
+      case 'pjam-price': {
+        if (!deps.tokenPrice) return json({ unavailable: true });
+        const spot = await readTokenPrice(cfg, deps);
+        return json(spot ? { usd: spot.usd, at: spot.at } : { unavailable: true });
       }
       case 'check': {
         const why = await deps.db<string | null>('pokejam_ad_verdict', { p: str('text', 200) });
@@ -298,7 +361,11 @@ export async function adsHandler(req: Request, cfg: AdsConfig, rawDeps: AdsDeps)
         // A month is a live-board plan: quoted only there.
         if (!PLANS.has(plan) && !(cfg.usdc && LIVE_PLANS.has(plan))) throw new Refusal(cfg.usdc ? 'Pick an hour, a day, a week or a month.' : 'Pick an hour, a day or a week.');
         const w = str('wallet');
-        return json(await deps.db('pokejam_ad_quote', { p_plan: plan, p_start: start(), p_wallet: isAddress(w) ? w : null }));
+        const quote = await deps.db<PlanQuote & Record<string, unknown>>('pokejam_ad_quote', { p_plan: plan, p_start: start(), p_wallet: isAddress(w) ? w : null });
+        const live = await liveBurnQuote(cfg, deps, quote);
+        if (live.mode === 'live') return json({ ...quote, price: live.price.toString() });
+        if (live.mode === 'unavailable' && (quote.price || quote.usdc)) return json({ ...quote, price: null, priceUnavailable: true });
+        return json(quote);
       }
       case 'wallet': {
         const w = wallet();
@@ -314,11 +381,22 @@ export async function adsHandler(req: Request, cfg: AdsConfig, rawDeps: AdsDeps)
         if (!THEMES.has(theme)) throw new Refusal('Pick a colour.');
         const why = await deps.db<string | null>('pokejam_ad_verdict', { p: str('text', 200) });
         if (why) throw new Refusal(VERDICTS[why], 400, { reason: why });
-        const quote = await deps.db<{ price: string | null }>('pokejam_ad_quote', { p_plan: plan, p_start: start(), p_wallet: w });
-        if (!quote.price) throw new Refusal("That plan can't be paid by burning $PJAM.");
-        const price = BigInt(quote.price);
+        const quote = await deps.db<PlanQuote>('pokejam_ad_quote', { p_plan: plan, p_start: start(), p_wallet: w });
+        const live = await liveBurnQuote(cfg, deps, quote);
+        if (live.mode === 'unavailable') {
+          if (quote.usdc && cfg.usdc) throw new Refusal('Price unavailable, try again.', 400, { priceUnavailable: true });
+          throw new Refusal("That plan can't be paid by burning $PJAM.");
+        }
         const expect = str('expect');
-        if (expect && /^\d+$/.test(expect) && BigInt(expect) !== price) {
+        let price = live.price;
+        // Live: the page's amount stands when it is within 5% of a fresh quote. Omitting it pays the fresh quote.
+        if (live.mode === 'live') {
+          const shown = /^\d+$/.test(expect) ? BigInt(expect) : null;
+          if (shown !== null && !withinBurnTolerance(shown, live.price)) {
+            throw new Refusal('The price just changed. Check the new price and try again.', 409, { price: live.price.toString() });
+          }
+          if (shown !== null) price = shown;
+        } else if (expect && /^\d+$/.test(expect) && BigInt(expect) !== price) {
           throw new Refusal('The price just changed. Check the new price and try again.', 409, { price: price.toString() });
         }
         const [accounts, lamports, mint, blockhash] = await Promise.all([
@@ -341,6 +419,8 @@ export async function adsHandler(req: Request, cfg: AdsConfig, rawDeps: AdsDeps)
         if (lamports < FEE_RESERVE) throw new Refusal('This wallet needs a little SOL for the network fee.', 400, { noSol: true });
         const b = await deps.db<Booking>('pokejam_ad_create', {
           p_wallet: w, p_text: str('text', 200), p_theme: theme, p_plan: plan, p_start: start(), p_expect: price.toString(), p_blockhash: blockhash,
+          // Locks the live quote. Omitted for a catalog tier so the devnet function, which has no p_price, is unchanged.
+          ...(live.mode === 'live' ? { p_price: price.toString() } : {}),
         });
         const tx = buildBurnTransaction({
           owner: w, tokenAccount: from.address, mint: cfg.mint, tokenProgram: mint.tokenProgram, amount: BigInt(b.price) > credit ? BigInt(b.price) - credit : 1n,

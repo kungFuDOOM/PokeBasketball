@@ -315,6 +315,16 @@ describe('usdc-intent and usdc-confirm through pokejam-ads-live', () => {
     expect(quote.body).toMatchObject({ usdc: MONTH.toString(), hours: 720 });
   });
 
+  it('sells an hour for $15 and a day for $40 the same way as a week', async () => {
+    const t = await setup();
+    const hour = await t.intent({ plan: 'hour', text: 'ONE HOUR' });
+    expect(hour.status).toBe(200);
+    expect(hour.body).toMatchObject({ amount: '15000000', intent: { plan: 'hour', hours: 1 } });
+    const day = await t.intent({ plan: 'day', text: 'ONE DAY' });
+    expect(day.status).toBe(200);
+    expect(day.body).toMatchObject({ amount: '40000000', intent: { plan: 'day', hours: 24 } });
+  });
+
   it('runs the text filter before any intent, and checks price, balance and the receiver first', async () => {
     const t = await setup();
     const bad = await t.intent({ text: 'FREE AIRDROP CLAIM NOW' });
@@ -322,7 +332,6 @@ describe('usdc-intent and usdc-confirm through pokejam-ads-live', () => {
     expect(bad.body.reason).toBeTruthy();
     expect(bad.body.error).toMatch(/./);
     expect((await t.intent({ text: 'VISIT SCAM.COM' })).status).toBe(400);
-    expect((await t.intent({ plan: 'day' })).body.error).toMatch(/can't be paid in USDC/);
     expect((await t.intent({ plan: 'year' })).body.error).toMatch(/Pick a plan/);
     expect((await t.intent({ expect: '1' })).status).toBe(409);
     t.ch.usdc.set(await deriveAta(t.wallet, USDC), WEEK - 1n);
@@ -332,7 +341,7 @@ describe('usdc-intent and usdc-confirm through pokejam-ads-live', () => {
     expect((await t.intent()).body).toMatchObject({ noSol: true });
     t.ch.sw.lamports = 1_000_000_000;
     expect(await t.db.sql('select count(*)::int as n from public.pokejam_live_ad_usdc_intents')).toEqual([{ n: 0 }]);
-    // A burn booking can't buy a month.
+    // No live token price in this setup, so a burn is refused rather than charged a fixed amount.
     expect((await t.post({ action: 'prepare', wallet: t.wallet, text: 'GM', theme: 'gold', plan: 'month' })).status).toBe(400);
   });
 

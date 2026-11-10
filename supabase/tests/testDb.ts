@@ -16,7 +16,8 @@ const MIGRATIONS = ['20261021_pokejam_online.sql', '20261022_pokejam_social.sql'
   '20261129_pokejam_judge_jobs.sql', '20261130_pokejam_judge_cron.sql', '20261201_pokejam_judge_decides.sql', '20261202_pokejam_phantom_relay.sql',
   '20261203_pokejam_ads.sql', '20261204_pokejam_ads_live.sql', '20261205_pokejam_ads_burn_credit.sql',
   '20261206_pokejam_admin_ranked_stats.sql', '20261207_pokejam_ranked_quit_bans.sql',
-  '20261209_pokejam_discord_signin.sql', '20261210_pokejam_weekly_raffle.sql', '20261211_pokejam_mons_hoenn.sql']
+  '20261209_pokejam_discord_signin.sql', '20261210_pokejam_weekly_raffle.sql', '20261211_pokejam_mons_hoenn.sql',
+  '20261212_pokejam_ads_live_burn_price.sql', '20261213_pokejam_ads_usdc_tiers.sql']
   .map((f) => readFileSync(new URL(`../migrations/${f}`, import.meta.url), 'utf8'));
 
 // Auto usernames are Tr1, Tr2, ...: digits only after the prefix, so they can never spell a blocked word.

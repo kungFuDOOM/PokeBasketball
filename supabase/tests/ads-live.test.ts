@@ -20,6 +20,8 @@ const QUIT_BAN_FILE = '20261207_pokejam_ranked_quit_bans.sql';
 const DISCORD_FILE = '20261209_pokejam_discord_signin.sql';
 const RAFFLE_FILE = '20261210_pokejam_weekly_raffle.sql';
 const HOENN_MONS_FILE = '20261211_pokejam_mons_hoenn.sql';
+const BURN_PRICE_FILE = '20261212_pokejam_ads_live_burn_price.sql';
+const USDC_TIERS_FILE = '20261213_pokejam_ads_usdc_tiers.sql';
 const LIVE_SQL = readFileSync(new URL(LIVE_FILE, DIR), 'utf8');
 // sha256 of pokejam-test's 20261104_pokejam_ads.sql, renamed since and now 20261203_pokejam_ads.sql, already applied on the shared project.
 const DEVNET_SHA256 = 'adf6c2b432673feb800146593f6eeb87567c6a051678521d47a5d3c6a3c04cd0';
@@ -74,9 +76,12 @@ async function testDb(before = '') {
   const service = as('service_role');
   const sql = async (q: string, p: unknown[] = []) => (await db.query(q, p)).rows as Record<string, unknown>[];
   let n = 0;
-  const create = (text = 'BUY MORE POTIONS', plan = 'hour', wallet = WALLET) =>
-    service<Ad>('pokejam_live_ad_create', [wallet, text, 'gold', plan, null, null, null]);
-  const pay = (ad: Ad, burned: string | bigint = ad.price, sig = `burn${++n}`) => service<Ad>('pokejam_live_ad_pay', [ad.id, sig, String(burned), ad.wallet]);
+  // Burn rows are off. A booking locks the price it was quoted (p_price), which tests pass explicitly.
+  const LOCKED: Record<string, string> = { hour: '100000000000', day: '1500000000000', week: '7500000000000' };
+  const create = (text = 'BUY MORE POTIONS', plan = 'hour', wallet = WALLET, price = LOCKED[plan]) =>
+    service<Ad>('pokejam_live_ad_create', price ? [wallet, text, 'gold', plan, null, price, null, price] : [wallet, text, 'gold', plan, null, null, null]);
+  const pay = (ad: Ad, burned: string | bigint = ad.price, sig = `burn${++n}`, rate?: string) =>
+    service<Ad>('pokejam_live_ad_pay', rate === undefined ? [ad.id, sig, String(burned), ad.wallet] : [ad.id, sig, String(burned), ad.wallet, rate]);
   const intent = (text = 'BUY MORE POTIONS', plan = 'week', wallet = WALLET, expect: string | null = null) =>
     service<Intent>('pokejam_live_ad_usdc_intent', [wallet, text, 'fire', plan, null, ref(), `pokejam-ad-usdc:${++n}abcdef`, RECEIVER, USDC, 'mainnet-beta', expect]);
   const usdcPay = (i: Intent, sig = `usdc${++n}`, amount: string = i.amount, payer = WALLET) =>
@@ -118,11 +123,13 @@ describe('the migration is additive', () => {
     const t = await testDb();
     await t.db.exec(LIVE_SQL);
     await t.db.exec(readFileSync(new URL(CREDIT_FILE, DIR), 'utf8'));
+    // 20261204 and 20261205 put the older function signatures back. 20261212 drops those and is safe to apply again.
+    await t.db.exec(readFileSync(new URL(BURN_PRICE_FILE, DIR), 'utf8'));
     expect((await t.create()).state).toBe('pending');
   });
 
   it('sorts after every other migration, keeping the devnet file first', () => {
-    expect(FILES.slice(-8)).toEqual([...MIGRATION_TAIL, QUIT_BAN_FILE, DISCORD_FILE, RAFFLE_FILE, HOENN_MONS_FILE]);
+    expect(FILES.slice(-10)).toEqual([...MIGRATION_TAIL, QUIT_BAN_FILE, DISCORD_FILE, RAFFLE_FILE, HOENN_MONS_FILE, BURN_PRICE_FILE, USDC_TIERS_FILE]);
     expect(FILES).toContain('20261201_pokejam_judge_decides.sql');
     expect(new Set(FILES.map((f) => f.slice(0, 8))).size).toBe(FILES.length);
   });
@@ -134,6 +141,7 @@ describe('the migration is additive', () => {
     await t.db.exec(readFileSync(new URL('20261203_pokejam_ads.sql', DIR), 'utf8'));
     await t.db.exec(LIVE_SQL);
     await t.db.exec(readFileSync(new URL(CREDIT_FILE, DIR), 'utf8'));
+    await t.db.exec(readFileSync(new URL(BURN_PRICE_FILE, DIR), 'utf8'));
     const b = await t.service<{ spots: number; live: { id: string }[] }>('pokejam_live_ad_board');
     expect(b.spots).toBe(7);
     expect(b.live.map((x) => x.id)).toEqual([a.id]);
@@ -143,7 +151,7 @@ describe('the migration is additive', () => {
     const list = readFileSync(new URL('./testDb.ts', import.meta.url), 'utf8').match(/const MIGRATIONS = \[[^\]]*\]/)![0];
     const listed = [...list.matchAll(/'([^']+\.sql)'/g)].map((m) => m[1]);
     expect(listed).toEqual([...listed].sort());
-    expect(listed.slice(-8)).toEqual([...MIGRATION_TAIL, QUIT_BAN_FILE, DISCORD_FILE, RAFFLE_FILE, HOENN_MONS_FILE]);
+    expect(listed.slice(-10)).toEqual([...MIGRATION_TAIL, QUIT_BAN_FILE, DISCORD_FILE, RAFFLE_FILE, HOENN_MONS_FILE, BURN_PRICE_FILE, USDC_TIERS_FILE]);
   });
 });
 
@@ -155,38 +163,63 @@ describe('prices are one row each, read from the database', () => {
     const t = await testDb();
     const b = await t.service<{ plans: unknown[] }>('pokejam_live_ad_board');
     expect(b.plans).toEqual([
-      { method: 'burn', plan: 'hour', hours: 1, amount: '100000000000' },
-      { method: 'burn', plan: 'day', hours: 24, amount: '1500000000000' },
-      { method: 'burn', plan: 'week', hours: 168, amount: '7500000000000' },
+      { method: 'usdc', plan: 'hour', hours: 1, amount: '15000000' },
+      { method: 'usdc', plan: 'day', hours: 24, amount: '40000000' },
       { method: 'usdc', plan: 'week', hours: 168, amount: '150000000' },
       { method: 'usdc', plan: 'month', hours: 720, amount: '500000000' },
     ]);
+    expect(b.plans.some((p) => (p as { method: string }).method === 'burn')).toBe(false);
   });
 
-  it('a single SQL update changes what the board, quotes, bookings and intents charge', async () => {
+  it('a USDC price change is what a quote and an intent charge; a burn has no fixed token price', async () => {
     const t = await testDb();
-    await t.sql(`update public.pokejam_live_ad_plans set amount = 200000 where method = 'burn' and plan = 'hour'`);
     await t.sql(`update public.pokejam_live_ad_plans set amount = 175.50 where method = 'usdc' and plan = 'week'`);
-    expect((await t.create()).price).toBe('200000000000');
     expect((await t.intent()).amount).toBe('175500000');
-    const q = await t.service<{ price: string; usdc: string }>('pokejam_live_ad_quote', ['week', null, WALLET]);
-    expect(q).toMatchObject({ price: '7500000000000', usdc: '175500000' });
+    const q = await t.service<{ price: string | null; usdc: string }>('pokejam_live_ad_quote', ['week', null, WALLET]);
+    expect(q).toMatchObject({ price: null, usdc: '175500000' });
     const b = await t.service<{ plans: { plan: string; method: string; amount: string }[] }>('pokejam_live_ad_board');
-    expect(b.plans.find((p) => p.plan === 'hour')!.amount).toBe('200000000000');
+    expect(b.plans.find((p) => p.method === 'usdc' && p.plan === 'hour')!.amount).toBe('15000000');
+    expect(b.plans.find((p) => p.method === 'usdc' && p.plan === 'week')!.amount).toBe('175500000');
   });
 
-  it('refuses a booking at a price the page no longer shows', async () => {
+  it('refuses a burn booking that does not name the price it will lock', async () => {
     const t = await testDb();
-    await t.sql(`update public.pokejam_live_ad_plans set amount = 200000 where method = 'burn' and plan = 'hour'`);
-    await expect(t.service('pokejam_live_ad_create', [WALLET, 'HI', 'gold', 'hour', null, '100000000000', null])).rejects.toThrow(/price changed/);
+    await expect(t.service('pokejam_live_ad_create', [WALLET, 'HI', 'gold', 'hour', null, '100000000000', null])).rejects.toThrow(/not paid by burning/);
+  });
+
+  it('locks a live burn quote, and a short burn on the first day still buys nothing', async () => {
+    const t = await testDb();
+    const live = 1_067_616_000_000n;
+    const ad = await t.service<Ad>('pokejam_live_ad_create', [WALLET, 'LIVE PRICE', 'gold', 'week', null, String(live), null, String(live)]);
+    expect(ad.price).toBe(String(live));
+    expect(ad.price).not.toBe('7500000000000');
+    // 4% under the locked quote is still an underpayment on the first day.
+    expect((await t.pay(ad, live - live / 25n)).state).toBe('dust');
+    await expect(t.service('pokejam_live_ad_create', [WALLET, 'BAD', 'gold', 'week', null, '1', null, '0'])).rejects.toThrow(/bad burn price/);
+  });
+
+  it('a late burn within 5% of a fresh live quote buys the full run, and a larger gap does not', async () => {
+    const t = await testDb();
+    const locked = 1_000_000n;
+    const fresh = 1_200_000n;
+    const late = async (wallet: string, burned: string, sig: string) => {
+      const ad = await t.service<Ad>('pokejam_live_ad_create', [wallet, 'LATE', 'gold', 'week', null, String(locked), null, String(locked)]);
+      await t.sql(`update public.pokejam_live_ads set created_at = now() - interval '2 days' where id = $1`, [ad.id]);
+      return t.service<Ad>('pokejam_live_ad_pay', [ad.id, sig, burned, wallet, String(fresh)]);
+    };
+    // ceil(1,200,000 * 0.95) = 1,140,000. The catalog week price is far higher; p_rate is what counts.
+    expect((await late(WALLET, '1000000', 'late-short')).state).toBe('dust');
+    const ok = await late(OTHER, '1140000', 'late-ok');
+    expect(ok.state).toBe('paid');
+    expect(ms(ok.ends_at) - ms(ok.starts_at)).toBe(168 * H);
   });
 
   it('a plan switched off or added takes effect straight away', async () => {
     const t = await testDb();
-    await t.sql(`update public.pokejam_live_ad_plans set enabled = false where method = 'burn' and plan = 'hour'`);
-    await expect(t.create()).rejects.toThrow(/not paid by burning/);
-    expect((await t.service<{ plans: { plan: string }[] }>('pokejam_live_ad_board')).plans.map((p) => p.plan)).not.toContain('hour');
-    await t.sql(`insert into public.pokejam_live_ad_plans(method, plan, amount) values ('burn', 'month', 20000000), ('usdc', 'day', 40)`);
+    await t.sql(`update public.pokejam_live_ad_plans set enabled = false where method = 'usdc' and plan = 'hour'`);
+    await expect(t.intent('HI', 'hour')).rejects.toThrow(/burning/);
+    expect((await t.service<{ plans: { plan: string; method: string }[] }>('pokejam_live_ad_board')).plans.filter((p) => p.method === 'usdc').map((p) => p.plan)).not.toContain('hour');
+    await t.sql(`insert into public.pokejam_live_ad_plans(method, plan, amount) values ('burn', 'month', 20000000)`);
     expect((await t.create('HI', 'month')).price).toBe('20000000000000');
     expect(await t.intent('HI', 'day')).toMatchObject({ plan: 'day', hours: 24, amount: '40000000' });
   });
@@ -243,16 +276,16 @@ describe('a burn pays for its plan and no less', () => {
     const t = await testDb();
     const old = await t.create('OLD PRICE', 'hour');
     const paidOnce = await t.pay(await t.create('PAID ONCE', 'hour', OTHER));
-    await t.sql(`update public.pokejam_live_ad_plans set amount = 300000 where method = 'burn' and plan = 'hour'`);
-    // Fresh: the price the advertiser was shown still holds.
-    const fresh = await t.create('NEW PRICE', 'hour', THIRD);
-    expect(fresh.price).toBe('300000000000');
+    const higher = '300000000000';
+    // Fresh: the price the advertiser was shown (the live quote) is what a new booking locks.
+    const fresh = await t.create('NEW PRICE', 'hour', THIRD, higher);
+    expect(fresh.price).toBe(higher);
     await t.sql(`update public.pokejam_live_ads set created_at = now() - interval '2 days' where id = $1`, [old.id]);
-    expect((await t.pay(old, old.price)).state).toBe('dust');
-    expect(await t.pay(paidOnce, paidOnce.price)).toMatchObject({ id: paidOnce.id, state: 'paid', extra_of: null }); // short: kept as credit, no extra run
+    expect((await t.pay(old, old.price, `late${old.id}`, higher)).state).toBe('dust');
+    expect(await t.pay(paidOnce, paidOnce.price, `extra${paidOnce.id}`, higher)).toMatchObject({ id: paidOnce.id, state: 'paid', extra_of: null }); // short: kept as credit, no extra run
     const old2 = await t.create('OLD TWO', 'hour', FOURTH);
     await t.sql(`update public.pokejam_live_ads set created_at = now() - interval '2 days', price = 100000000000 where id = $1`, [old2.id]);
-    const r = await t.pay(old2, '300000000000');
+    const r = await t.pay(old2, higher, `full${old2.id}`, higher);
     expect(r.state).toBe('paid');
     expect(ms(r.ends_at) - ms(r.starts_at)).toBe(H);
   });
@@ -364,8 +397,8 @@ describe('devnet and mainnet never meet', () => {
     await t.service('pokejam_ad_set_cfg', ['ad_price_hour', '5']);
     await t.service('pokejam_ad_set_cfg', ['ads_paused', 'true']);
     expect((await t.create()).price).toBe('100000000000');
-    await t.sql(`update public.pokejam_live_ad_plans set amount = 42 where method = 'burn' and plan = 'hour'`);
-    expect((await t.create()).price).toBe('42000000');
+    await t.sql(`update public.pokejam_live_ad_plans set amount = 42, enabled = true where method = 'burn' and plan = 'hour'`);
+    expect((await t.service<Ad>('pokejam_live_ad_create', [WALLET, 'FROM THE ROW', 'gold', 'hour', null, null, null])).price).toBe('42000000');
     expect(String(await t.service('pokejam_ad_price', ['hour']))).toBe('5');
     await t.service('pokejam_live_ad_set_cfg', ['ads_paused', 'true']);
     await expect(t.create()).rejects.toThrow(/paused/);
@@ -412,7 +445,7 @@ describe('paying by burning $PJAM on the live board', () => {
     const t = await testDb();
     const i = await t.intent('USDC AD', 'week');
     const r = await t.usdcPay(i);
-    const extra = await t.service<Ad>('pokejam_live_ad_pay', [r.ad!.id, 'craftedburn', '200000000000', WALLET]);
+    const extra = await t.service<Ad>('pokejam_live_ad_pay', [r.ad!.id, 'craftedburn', '200000000000', WALLET, '100000000000']);
     expect(extra).toMatchObject({ extra_of: r.ad!.id, plan: 'hour', pay_method: 'burn', state: 'paid' });
     expect(ms(extra.ends_at) - ms(extra.starts_at)).toBe(2 * H);
   });
@@ -424,13 +457,15 @@ describe('paying in USDC', () => {
     const w = await t.intent('POKE SHOP', 'week');
     expect(w).toMatchObject({ plan: 'week', hours: 168, amount: '150000000', status: 'open', text: 'POKE SHOP', cluster: 'mainnet-beta', receiver: RECEIVER, mint: USDC, signature: null });
     expect((await t.intent('POKE SHOP', 'month')).amount).toBe('500000000');
-    await expect(t.intent('POKE SHOP', 'hour')).rejects.toThrow(/burning/);
-    await expect(t.intent('POKE SHOP', 'day')).rejects.toThrow(/burning/);
+    expect((await t.intent('ONE HOUR', 'hour')).amount).toBe('15000000');
+    expect((await t.intent('ONE DAY', 'day')).amount).toBe('40000000');
     await expect(t.intent('POKE SHOP', 'year')).rejects.toThrow(/unknown plan/);
     const q = await t.service<{ price: string | null; usdc: string | null; hours: number }>('pokejam_live_ad_quote', ['month', null, WALLET]);
     expect(q).toMatchObject({ price: null, usdc: '500000000', hours: 720 });
     const b = await t.service<{ plans: { method: string; plan: string; hours: number; amount: string }[] }>('pokejam_live_ad_board');
     expect(b.plans.filter((p) => p.method === 'usdc')).toEqual([
+      { method: 'usdc', plan: 'hour', hours: 1, amount: '15000000' },
+      { method: 'usdc', plan: 'day', hours: 24, amount: '40000000' },
       { method: 'usdc', plan: 'week', hours: 168, amount: '150000000' },
       { method: 'usdc', plan: 'month', hours: 720, amount: '500000000' },
     ]);

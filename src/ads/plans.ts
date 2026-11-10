@@ -9,8 +9,9 @@ export interface BoardPlan { method: PayMethod; plan: Plan; hours: number; amoun
 export interface PlanOffer { plan: Plan; hours: number; amount: bigint | null }
 
 const HOURS: Record<Plan, number> = { hour: 1, day: 24, week: 168, month: 720 };
-/** Display only, until the board answers. */
-const FALLBACK: Record<PayMethod, Plan[]> = { burn: ['hour', 'day', 'week'], usdc: ['week', 'month'] };
+const ALL: Plan[] = ['hour', 'day', 'week', 'month'];
+/** Display only, until the board answers. Every tier can be USDC or burn. */
+const FALLBACK: Record<PayMethod, Plan[]> = { burn: ALL, usdc: ALL };
 
 export const isPlan = (p: unknown): p is Plan => typeof p === 'string' && p in HOURS;
 
@@ -20,6 +21,16 @@ export function offers(plans: BoardPlan[] | null | undefined, method: PayMethod)
   return plans.filter((p) => p.method === method && isPlan(p.plan) && /^\d+$/.test(p.amount))
     .map((p) => ({ plan: p.plan, hours: p.hours, amount: BigInt(p.amount) }))
     .sort((a, b) => a.hours - b.hours);
+}
+
+/**
+ * Burn cards follow the USDC tiers. The token amount is not stored: the page prices it from the live
+ * $PJAM price. A board with no USDC rows (the devnet test site) uses its own burn rows.
+ */
+export function burnOffers(plans: BoardPlan[] | null | undefined): PlanOffer[] {
+  const usdc = offers(plans, 'usdc');
+  if (usdc.length) return usdc.map((o) => ({ plan: o.plan, hours: o.hours, amount: null }));
+  return offers(plans, 'burn');
 }
 
 /** `want` if it's on offer, else the plan closest to the middle of the list. */

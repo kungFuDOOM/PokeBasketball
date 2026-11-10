@@ -69,7 +69,7 @@ describe('site CSP with live ads', () => {
 
     it('fetches only the ad endpoint', () => {
       const fetches = Object.keys(sources).flatMap((f) => [...code(f).matchAll(/\bfetch\(\s*([^,)]+)/g)].map((m) => m[1].trim()));
-      expect(new Set(fetches)).toEqual(new Set(['URL_', '`${URL_}?action=board`']));
+      expect(new Set(fetches)).toEqual(new Set(['URL_', '`${URL_}?action=board`', '`${URL_}?action=pjam-price`']));
       expect(Object.keys(sources).filter((f) => /XMLHttpRequest|WebSocket|EventSource|sendBeacon/.test(code(f)))).toEqual([]);
     });
 
