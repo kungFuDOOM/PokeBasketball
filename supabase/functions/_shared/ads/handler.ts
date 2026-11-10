@@ -17,7 +17,7 @@
 //   POST {action:'faucet', wallet}            devnet only: test $PJAM and a little test SOL, once a day
 //   POST {action:'sweep'}                     cron (service key): pay every burn on-chain that names a booking
 //                                             (live: also book USDC payments whose page closed; usdcSweep)
-//   POST {action:'usdc-intent', ...}          live only (pokejam-ads-live): pay for a week or a month in USDC
+//   POST {action:'usdc-intent', ...}          live only (pokejam-ads-live): pay for an hour, a day, a week or a month in USDC
 //   POST {action:'usdc-confirm', id, signature?, tx?}
 //                                             live only: check the USDC payment on-chain and book the ad
 //                                             (both in usdc-handlers.ts; the devnet pokejam-ads answers 'unknown action')
@@ -66,6 +66,7 @@ export interface Booking {
   /** 'month' only on the live board, paid in USDC. */
   plan: 'hour' | 'day' | 'week' | 'month';
   hours: number;
+  pay_method?: 'burn' | 'usdc';
   price: string;
   state: 'pending' | 'paid' | 'dust' | 'removed';
   starts_at: string | null;
@@ -137,17 +138,19 @@ async function readTokenPrice(cfg: AdsConfig, deps: AdsDeps): Promise<TokenUsd |
 }
 
 /**
- * Burn tiers that also have a USDC price are 20% off that USDC price at the live token price.
- * No USDC price, or no price feed: the catalog burn amount. Feed set but no price: unavailable (do not charge the catalog).
+ * A tier with a USDC price burns 20% off that price at the live token price. No live price: unavailable,
+ * never a fixed token amount. A plan with no USDC price (the devnet board) keeps its catalog burn amount.
  */
 async function liveBurnQuote(cfg: AdsConfig, deps: AdsDeps, quote: PlanQuote): Promise<LiveBurn> {
   const catalog = quote.price && /^\d+$/.test(quote.price) ? BigInt(quote.price) : null;
   const usdc = quote.usdc && /^\d+$/.test(quote.usdc) ? BigInt(quote.usdc) : null;
+  if (usdc && cfg.usdc && deps.tokenPrice) {
+    const spot = await readTokenPrice(cfg, deps);
+    const price = spot ? burnTokensForUsdc(usdc, spot.usd, cfg.strictBurn?.decimals ?? 6) : null;
+    return price === null ? { mode: 'unavailable' } : { mode: 'live', price };
+  }
   if (!catalog) return { mode: 'unavailable' };
-  if (!cfg.usdc || !deps.tokenPrice || !usdc) return { mode: 'catalog', price: catalog };
-  const spot = await readTokenPrice(cfg, deps);
-  const price = spot ? burnTokensForUsdc(usdc, spot.usd, cfg.strictBurn?.decimals ?? 6) : null;
-  return price === null ? { mode: 'unavailable' } : { mode: 'live', price };
+  return { mode: 'catalog', price: catalog };
 }
 
 /** Fresh live quote for a late or extra burn, when this plan is priced that way. Null leaves the catalog rule in place. */
@@ -220,7 +223,7 @@ async function settle(cfg: AdsConfig, deps: AdsDeps, b: Booking, sigs: string[])
     const check = checkBurn(tx, { code: b.code, mint: cfg.mint, tokenProgram: mint.tokenProgram,
       ...(cfg.strictBurn ? { wallet: b.wallet, decimals: cfg.strictBurn.decimals, notBefore: Math.floor(Date.parse(b.created_at) / 1000) } : {}) });
     if (!check.ok) { why = check.why; continue; }
-    const rate = await liveBurnRate(cfg, deps, b.plan);
+    const rate = await liveBurnRate(cfg, deps, b.pay_method === 'usdc' ? 'hour' : b.plan);
     const paid = await deps.db<Booking>('pokejam_ad_pay', {
       p_id: b.id, p_sig: check.signature, p_burned: check.burned.toString(), p_burner: check.burner, ...(rate ? { p_rate: rate } : {}),
     });
@@ -361,7 +364,7 @@ export async function adsHandler(req: Request, cfg: AdsConfig, rawDeps: AdsDeps)
         const quote = await deps.db<PlanQuote & Record<string, unknown>>('pokejam_ad_quote', { p_plan: plan, p_start: start(), p_wallet: isAddress(w) ? w : null });
         const live = await liveBurnQuote(cfg, deps, quote);
         if (live.mode === 'live') return json({ ...quote, price: live.price.toString() });
-        if (live.mode === 'unavailable' && quote.price) return json({ ...quote, price: null, priceUnavailable: true });
+        if (live.mode === 'unavailable' && (quote.price || quote.usdc)) return json({ ...quote, price: null, priceUnavailable: true });
         return json(quote);
       }
       case 'wallet': {
@@ -379,18 +382,20 @@ export async function adsHandler(req: Request, cfg: AdsConfig, rawDeps: AdsDeps)
         const why = await deps.db<string | null>('pokejam_ad_verdict', { p: str('text', 200) });
         if (why) throw new Refusal(VERDICTS[why], 400, { reason: why });
         const quote = await deps.db<PlanQuote>('pokejam_ad_quote', { p_plan: plan, p_start: start(), p_wallet: w });
-        if (!quote.price) throw new Refusal("That plan can't be paid by burning $PJAM.");
         const live = await liveBurnQuote(cfg, deps, quote);
-        if (live.mode === 'unavailable') throw new Refusal('Price unavailable, try again.', 400, { priceUnavailable: true });
+        if (live.mode === 'unavailable') {
+          if (quote.usdc && cfg.usdc) throw new Refusal('Price unavailable, try again.', 400, { priceUnavailable: true });
+          throw new Refusal("That plan can't be paid by burning $PJAM.");
+        }
         const expect = str('expect');
         let price = live.price;
-        // Live: the page's amount stands when it is within 5% of a fresh quote. That is the amount the wallet signs.
+        // Live: the page's amount stands when it is within 5% of a fresh quote. Omitting it pays the fresh quote.
         if (live.mode === 'live') {
           const shown = /^\d+$/.test(expect) ? BigInt(expect) : null;
-          if (shown === null || !withinBurnTolerance(shown, live.price)) {
+          if (shown !== null && !withinBurnTolerance(shown, live.price)) {
             throw new Refusal('The price just changed. Check the new price and try again.', 409, { price: live.price.toString() });
           }
-          price = shown;
+          if (shown !== null) price = shown;
         } else if (expect && /^\d+$/.test(expect) && BigInt(expect) !== price) {
           throw new Refusal('The price just changed. Check the new price and try again.', 409, { price: price.toString() });
         }

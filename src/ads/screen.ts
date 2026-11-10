@@ -17,7 +17,7 @@ import { ADS_CONFIGURED, AdsError, adsApi, exactTokens, explorer, replaceMessage
 import { burnAmount, burnPriceNote, burnQuote, PRICE_UNAVAILABLE, TOKEN_PRICE_POLL_MS, type BurnQuote } from '../../supabase/functions/_shared/ads/burn-price.ts';
 import { applyBoard } from './board';
 import { BurnGuardError, burnNeeded, checkBurnTransaction } from './burnGuard';
-import { DM_CONTACTS, DM_ONLY, isPlan, offers, pickPlan, planBadges, savePercent, type PayMethod, type Plan } from './plans';
+import { DM_CONTACTS, DM_ONLY, burnOffers, isPlan, offers, pickPlan, planBadges, savePercent, type PayMethod, type Plan } from './plans';
 import { heldBy, readPending, relaying, settleBurn, settleUsdc, type PendingPay, type PollOptions, type Settled } from './settle';
 import { UsdcPayError, checkTransfer, parseUsdcIntent, usd } from './usdcPay';
 import { connect, mobileWalletLinks, shortAddress, stopWatching, wallets, type Connected } from './wallet';
@@ -392,7 +392,7 @@ export function openAdvertise(root: HTMLElement, back: () => void) {
     payEl.querySelectorAll<HTMLButtonElement>('button').forEach((x) => x.classList.toggle('on', x.dataset.v === payWith()));
     const method = payWith();
     const dec = (method === 'usdc' ? s.board?.usdcPay?.decimals : s.board?.decimals) ?? 6;
-    const list = offers(s.board?.plans, method);
+    const list = method === 'burn' ? burnOffers(s.board?.plans) : offers(s.board?.plans, method);
     const picked = method === 'usdc' ? s.usdcPlan : s.plan;
     const shown = list.map((o) => method === 'burn' ? burnShown(o.plan) : null);
     const priced = list.map((o, i) => {
@@ -407,7 +407,9 @@ export function openAdvertise(root: HTMLElement, back: () => void) {
       const q = shown[i];
       const amount = priced[i].amount;
       const save = mixed ? 0 : savePercent(priced[i], priced);
+      const usdcAlt = method === 'burn' ? boardPrice('usdc', o.plan) : null;
       const perHour = method === 'burn' && amount !== null && o.hours > 1 ? `${shortTokens(amount / BigInt(o.hours), dec)} an hour · ` : '';
+      const versus = usdcAlt !== null ? `vs ${usd(usdcAlt, s.board?.usdcPay?.decimals ?? 6)} USDC · ` : '';
       const best = save >= 5 && o.hours === list[list.length - 1].hours;
       const price = method === 'usdc'
         ? (amount === null ? '…' : usd(amount, dec))
@@ -417,7 +419,7 @@ export function openAdvertise(root: HTMLElement, back: () => void) {
         ${planBadges(save, best)}
         <strong>${PLAN_LABEL[o.plan].name}</strong>
         <span class="ad-price${q?.kind === 'unavailable' ? ' bad' : ''}">${price}${unit ? `<small>${unit}</small>` : ''}</span>
-        <small>${perHour}${PLAN_LABEL[o.plan].per}</small>
+        <small>${versus}${perHour}${PLAN_LABEL[o.plan].per}</small>
       </button>`;
     }).join('');
     const note = method !== 'burn' ? '' : burnPlanNote(shown);
@@ -977,7 +979,7 @@ export function openAdvertise(root: HTMLElement, back: () => void) {
       s.board = b;
       s.tokenReady = true;
       s.tokenPrice = b.tokenPrice && typeof b.tokenPrice.usd === 'string' && typeof b.tokenPrice.at === 'string' ? b.tokenPrice : null;
-      s.plan = pickPlan(offers(b.plans, 'burn'), s.plan);
+      s.plan = pickPlan(burnOffers(b.plans), s.plan);
       s.usdcPlan = pickPlan(offers(b.plans, 'usdc'), s.usdcPlan);
       applyBoard(b);
       renderBoard();

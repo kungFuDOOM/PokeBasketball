@@ -3,7 +3,7 @@
 // confirm logic of origin/claude/shield-usdc-only (_shared/shield/usdc-handlers.ts), without the sign-in: on the ad page
 // the advertiser is just a wallet, the same as a burn, and the payment must be signed by that wallet.
 //
-//   POST {action:'usdc-intent', wallet, text, theme, plan: 'week'|'month', start?, expect?}
+//   POST {action:'usdc-intent', wallet, text, theme, plan: 'hour'|'day'|'week'|'month', start?, expect?}
 //        Everything that could refuse the ad (text filter, ban, paused sales, the price the page showed, the wallet's USDC
 //        and SOL) is checked first; then a one-time intent (reference key, memo, exact amount) and the unsigned transfer
 //        to the receiver's USDC account for the wallet to sign.

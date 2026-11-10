@@ -125,12 +125,16 @@ function chain(me: string, tokenProgram = SPL_2022_PROGRAM) {
 
 const CFG: AdsConfig = { cluster: 'devnet', rpcUrl: '', mint: MINT, origins: [], priorityMicroLamports: 0, faucetSecret: undefined, faucetAmount: 25_000_000_000_000n, serviceKey: 'svc' };
 
+/** $0.00012 makes a 15 USDC hour burn exactly 100,000 $PJAM, which the credit tests lock against. */
+const TEST_PJAM_USD = { usd: '0.00012', at: '2026-11-10T22:00:00.000Z' };
+
 async function setup(cfg: Partial<AdsConfig> = {}, tokenProgram = SPL_2022_PROGRAM, tokenPrice?: AdsDeps['tokenPrice']) {
   const { keypair: me } = await generateKeypair();
   const c = chain(me.address, tokenProgram);
   const alerts: string[] = [];
   const db = await database();
-  const deps: AdsDeps = { db: db.call, rpc: c.rpc, sleep: async () => {}, alert: async (t) => { alerts.push(t); }, tokenPrice };
+  const feed = tokenPrice !== undefined ? tokenPrice : (cfg.usdc ? async () => TEST_PJAM_USD : undefined);
+  const deps: AdsDeps = { db: db.call, rpc: c.rpc, sleep: async () => {}, alert: async (t) => { alerts.push(t); }, tokenPrice: feed };
   let ip = '1.1.1.1';
   const call = async (body: Record<string, unknown>, headers: Record<string, string> = {}) => {
     const res = await adsHandler(new Request('https://x/', { method: 'POST', headers: { 'content-type': 'application/json', 'x-forwarded-for': ip, ...headers }, body: JSON.stringify(body) }), { ...CFG, ...cfg }, deps);
@@ -332,14 +336,15 @@ describe('the live board (pokejam-ads-live) reads a burn strictly', () => {
     expect(await t.db.sql('select id from public.pokejam_live_ads where burn_sig = $1', [sig])).toHaveLength(1);
   });
 
-  it('takes prices from the database: a change reaches the next booking, and the old price is refused', async () => {
+  it('takes the burn price from the USDC price and the live token price, and refuses a stale amount', async () => {
     const t = await setup(LIVE);
-    await t.db.sql(`update public.pokejam_live_ad_plans set amount = 250000 where method = 'burn' and plan = 'hour'`);
+    await t.db.sql(`update public.pokejam_live_ad_plans set amount = 30 where method = 'usdc' and plan = 'hour'`);
     const stale = await t.prepare({ plan: 'hour', expect: String(HOUR) });
     expect(stale.status).toBe(409);
-    expect(stale.body.price).toBe('250000000000');
-    expect((await t.prepare({ plan: 'hour' })).body.booking.price).toBe('250000000000');
-    expect((await t.call({ action: 'quote', plan: 'hour' })).body.price).toBe('250000000000');
+    // 30 USDC * 0.80 / $0.00012 = 200,000 $PJAM.
+    expect(stale.body.price).toBe('200000000000');
+    expect((await t.prepare({ plan: 'hour', expect: '200000000000' })).body.booking.price).toBe('200000000000');
+    expect((await t.call({ action: 'quote', plan: 'hour' })).body.price).toBe('200000000000');
   });
 
   it('the client cannot choose the plan, the length or the price', async () => {
@@ -347,9 +352,10 @@ describe('the live board (pokejam-ads-live) reads a burn strictly', () => {
     const p = await t.prepare({ plan: 'hour', hours: 720, price: '1', amount: '1' });
     expect(p.body.booking).toMatchObject({ plan: 'hour', hours: 1, price: String(HOUR) });
     expect((await t.prepare({ plan: 'year' })).status).toBe(400);
-    const month = await t.prepare({ plan: 'month' });
-    expect(month.status).toBe(400);
-    expect(month.body.error).toMatch(/can't be paid by burning/);
+    const month = await t.prepare({ plan: 'month', text: 'ALL MONTH' });
+    expect(month.status).toBe(200);
+    expect(month.body.booking).toMatchObject({ plan: 'month', hours: 720 });
+    expect(month.body.booking.price).not.toBe(String(HOUR));
   });
 
   it('the board lists what is on sale, and the page gets the mint and receiver from the server', async () => {
@@ -368,8 +374,9 @@ describe('the live board (pokejam-ads-live) reads a burn strictly', () => {
     expect(quoted.body.price).toBe(fresh.toString());
     const board = await t.call({ action: 'board' });
     expect(board.body.tokenPrice).toEqual({ usd, at });
-    // Hour has no USDC price, so the catalog amount stays.
-    expect((await t.prepare({ plan: 'hour' })).body.booking.price).toBe(String(HOUR));
+    expect((await t.prepare({ plan: 'hour', text: 'AN HOUR' })).body.booking.price).toBe(burnTokensForUsdc(15_000_000n, usd)!.toString());
+    expect((await t.prepare({ plan: 'month', text: 'A MONTH', expect: burnTokensForUsdc(500_000_000n, usd)!.toString() })).body.booking.price)
+      .toBe(burnTokensForUsdc(500_000_000n, usd)!.toString());
     const under = await t.prepare({ plan: 'week', expect: (fresh / 2n).toString() });
     expect(under.status).toBe(409);
     expect(under.body.price).toBe(fresh.toString());
@@ -395,8 +402,10 @@ describe('the live board (pokejam-ads-live) reads a burn strictly', () => {
     expect(q.body.price).toBeNull();
     expect(q.body.priceUnavailable).toBe(true);
     expect((await t.call({ action: 'pjam-price' })).body).toEqual({ unavailable: true });
-    // A tier with no USDC price is unchanged.
-    expect((await t.prepare({ plan: 'hour' })).body.booking.price).toBe(String(HOUR));
+    const hour = await t.prepare({ plan: 'hour', text: 'AN HOUR' });
+    expect(hour.status).toBe(400);
+    expect(hour.body.priceUnavailable).toBe(true);
+    expect(await t.db.sql(`select id from public.pokejam_live_ads where plan = 'hour'`)).toHaveLength(0);
   });
 
   it('refuses to sell against a mint without the decimals the prices assume', async () => {
@@ -710,7 +719,7 @@ describe('the live board keeps a short burn as credit, and never as airtime', ()
     const mine = await t.prepare({ plan: 'hour', text: 'mine' });
     const { keypair: friend } = await generateKeypair();
     // Their booking, created in their name. Preparing it would also ask them to burn, which this test doesn't.
-    const other = await t.db.call<Booking>('pokejam_live_ad_create', { p_wallet: friend.address, p_text: 'not mine', p_theme: 'gold', p_plan: 'hour', p_start: null });
+    const other = await t.db.call<Booking>('pokejam_live_ad_create', { p_wallet: friend.address, p_text: 'not mine', p_theme: 'gold', p_plan: 'hour', p_start: null, p_expect: String(HOUR), p_price: String(HOUR) });
     const { message } = buildMessage(t.me.address, [
       burnCheckedIx(SPL_2022_PROGRAM, MY_ACCOUNT, MINT, t.me.address, HOUR / 2n, 6),
       // Theirs is named first. It must not take the burn or the credit.
