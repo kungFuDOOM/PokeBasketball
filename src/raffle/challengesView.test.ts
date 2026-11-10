@@ -3,6 +3,9 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { challengesHtml, compactTokenAmount, modelFromDefaults, modelFromServer, resetLabel, weeklyChallengesTickerHtml, weeklyChallengesTickerText } from './challengesView';
 import { RAFFLE_DEFAULTS } from './entries';
+import { THIS_WEEK_PRIZE, prizeHtml, usd, type WeeklyCardPrize } from './prize';
+import { monByDex } from '../data/pokemon';
+import { KANTO } from '../franchise/regions';
 import type { RaffleMe } from './client';
 
 const me = (over: Partial<RaffleMe> = {}): RaffleMe => ({
@@ -27,6 +30,11 @@ describe('challenges screen', () => {
     expect(html).toContain('up to 5');
     expect(html).toContain('your entries divided by');
     expect(html).toContain('raffle-rules.html');
+    expect(html).toContain('AZ&#39;s Tranquility');
+    expect(html).toContain('$115.00');
+    expect(html).toContain('$103.50');
+    expect(html).toContain('sent by hand');
+    expect(html).toContain('does not take payment');
     expect(html).toContain('5nji…q16p');
     expect(html).toContain('Entries so far');
     expect(html).toContain('>2<');
@@ -35,7 +43,9 @@ describe('challenges screen', () => {
 
   it('escapes a name-like error and shows the guest prompt from the defaults', () => {
     const html = challengesHtml(modelFromDefaults(), '<img src=x onerror=alert(1)>');
-    expect(html).not.toContain('<img');
+    expect(html).toContain('&lt;img src=x onerror=alert(1)&gt;');
+    expect(html).not.toContain('<img src=x');
+    expect(html).toContain('raffle/azs-tranquility-psa10.webp');
     expect(html).toContain('Sign in');
     expect(html).toContain('0/3');
     expect(html).toContain('Monday 00:00 PT');
@@ -49,6 +59,43 @@ describe('challenges screen', () => {
     expect(html).toContain('Zenith, the top rank');
     expect(html).toContain('You won');
     expect(html).toContain('2 of 4');
+  });
+
+  it("shows this week's AZ's Tranquility prize, value, and buyback", () => {
+    const html = challengesHtml(modelFromDefaults());
+    expect(html).toContain('AZ&#39;s Tranquility');
+    expect(html).toContain('Supporter / Trainer');
+    expect(html).toContain('2026 Pokémon CRI EN');
+    expect(html).toContain('#120');
+    expect(html).toContain('120/086');
+    expect(html).toContain('Special Illustration Rare');
+    expect(html).toContain('PSA Gem Mint 10');
+    expect(html).toContain('1624777451');
+    expect(html).toContain('$115.00');
+    expect(html).toContain('$103.50');
+    expect(html).toContain('OmniVault');
+    expect(html).toContain('Collector Crypt');
+    expect(html).toContain('raffle/azs-tranquility-psa10.webp');
+    expect(html).toContain('This week\'s prize');
+    expect(html).toContain('The prize is a Pokémon card, sent by hand.');
+    expect(html).not.toContain('Owned by');
+    expect(html).not.toContain('$0.18');
+    expect(usd(THIS_WEEK_PRIZE.valueCents)).toBe('$115.00');
+    expect(usd(THIS_WEEK_PRIZE.buybackCents)).toBe('$103.50');
+    const next: WeeklyCardPrize = { ...THIS_WEEK_PRIZE, id: 'later', name: 'Next Week Card', valueCents: 200, buybackCents: 150 };
+    const swapped = prizeHtml(next);
+    expect(swapped).toContain('Next Week Card');
+    expect(swapped).toContain('$2.00');
+    expect(swapped).toContain('$1.50');
+    expect(swapped).not.toContain('AZ&#39;s Tranquility');
+  });
+
+  it('does not change Kanto or the live starter cards', () => {
+    expect(monByDex(6)).toMatchObject({ name: 'Charizard', ovr: 91, pos: 'SF' });
+    expect(monByDex(3)).toMatchObject({ name: 'Venusaur', ovr: 88 });
+    expect(monByDex(9)).toMatchObject({ name: 'Blastoise', ovr: 88 });
+    expect(KANTO.gyms.map((g) => g.badge)).toEqual(['Boulder', 'Cascade', 'Thunder', 'Rainbow', 'Soul', 'Marsh', 'Volcano', 'Earth']);
+    expect(KANTO.id).toBe('kanto');
   });
 
   it('formats the reset in Pacific time', () => {

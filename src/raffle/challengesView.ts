@@ -2,6 +2,7 @@
 import { esc } from '../util';
 import { RAFFLE_DEFAULTS, configFromJson, scoreRaffle, type RaffleConfig } from './entries';
 import type { RaffleMe } from './client';
+import { prizeHtml } from './prize';
 
 export interface ChallengeRow { label: string; have: number; need: number; done: boolean; detail?: string }
 
@@ -113,6 +114,7 @@ export function challengesHtml(m: ChallengeModel, error?: string | null): string
   const err = error ? `<p class="note">${esc(error)}</p>` : '';
   return `<div class="ch">
     <p class="ch-when">Week ends ${esc(when)}. Resets every Monday at 00:00 Pacific.</p>
+    ${prizeHtml()}
     ${err}${sign}
     <ul class="ch-list">${rows}</ul>
     <p class="ch-base">${m.base ? 'Base entry earned.' : 'Finish all four for 1 base entry.'} Entries so far, before the wallet check: <b>${m.entriesNow}</b>.</p>
