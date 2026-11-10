@@ -128,7 +128,8 @@ const ROWS: Row[] = [
   // 93 to 97. Block stays at 89 so he remains a Stretch Big; inside is still the peak.
   [384, 'Rayquaza', ['Dragon', 'Flying'], 'PF', 88, 89, 99, 68, 86, 89, 94, 70],
   [151, 'Mew', ['Psychic'], 'PG', 92, 92, 80, 90, 78, 70, 68, 92],
-  [257, 'Blaziken', ['Fire', 'Fighting'], 'SF', 88, 76, 95, 68, 78, 74, 70, 80],
+  // Speed +2 only. Overall stays 84 so Ranked preset Sky Hammers remains 425 and legal.
+  [257, 'Blaziken', ['Fire', 'Fighting'], 'SF', 90, 76, 95, 68, 78, 74, 70, 80],
   [248, 'Tyranitar', ['Rock', 'Dark'], 'C', 60, 58, 94, 56, 82, 92, 92, 58],
   [143, 'Snorlax', ['Normal'], 'C', 38, 56, 90, 68, 70, 94, 98, 48],
   [9, 'Blastoise', ['Water'], 'PF', 62, 92, 88, 72, 80, 88, 90, 64],
@@ -167,8 +168,8 @@ const ROWS: Row[] = [
   // Water
   [121, 'Starmie', ['Water', 'Psychic'], 'PG', 92, 84, 62, 84, 70, 50, 50, 86],
   [134, 'Vaporeon', ['Water'], 'SF', 68, 76, 82, 74, 78, 82, 88, 62],
-  [260, 'Swampert', ['Water', 'Ground'], 'PF', 66, 60, 92, 60, 78, 84, 88, 62],
-  [160, 'Feraligatr', ['Water'], 'SF', 76, 70, 90, 58, 84, 74, 80, 70],
+  [260, 'Swampert', ['Water', 'Ground'], 'PF', 68, 62, 96, 62, 82, 88, 89, 64],
+  [160, 'Feraligatr', ['Water'], 'SF', 80, 74, 94, 62, 88, 78, 84, 74],
   [230, 'Kingdra', ['Water', 'Dragon'], 'SG', 82, 90, 72, 74, 72, 62, 62, 80],
   [350, 'Milotic', ['Water'], 'PF', 66, 72, 84, 84, 78, 86, 88, 62],
   [91, 'Cloyster', ['Water', 'Ice'], 'C', 52, 58, 78, 52, 88, 94, 84, 50],
@@ -180,10 +181,11 @@ const ROWS: Row[] = [
   [243, 'Raikou', ['Electric'], 'SG', 94, 86, 82, 72, 80, 60, 58, 86],
   [310, 'Manectric', ['Electric'], 'PG', 90, 76, 70, 70, 70, 44, 48, 84],
   // Grass
-  [254, 'Sceptile', ['Grass'], 'PG', 95, 82, 76, 80, 74, 48, 52, 88],
+  // Speed +1 only. Overall stays 88, level with Venusaur and Blastoise and inside the Ranked cap.
+  [254, 'Sceptile', ['Grass'], 'PG', 96, 82, 76, 80, 74, 48, 52, 88],
   [45, 'Vileplume', ['Grass', 'Poison'], 'PF', 46, 64, 76, 72, 70, 82, 82, 54],
   [71, 'Victreebel', ['Grass', 'Poison'], 'SF', 70, 70, 82, 64, 82, 74, 70, 66],
-  [154, 'Meganium', ['Grass'], 'C', 52, 60, 80, 80, 72, 84, 88, 58],
+  [154, 'Meganium', ['Grass'], 'C', 54, 62, 84, 81, 76, 88, 92, 60],
   [465, 'Tangrowth', ['Grass'], 'C', 48, 68, 90, 58, 76, 86, 92, 50],
   [470, 'Leafeon', ['Grass'], 'PG', 92, 80, 78, 80, 82, 50, 52, 84],
   // Poison
@@ -205,7 +207,7 @@ const ROWS: Row[] = [
   [126, 'Magmar', ['Fire'], 'SF', 78, 80, 82, 66, 72, 66, 62, 74],
   [78, 'Rapidash', ['Fire'], 'PG', 96, 72, 74, 72, 70, 44, 48, 86],
   [38, 'Ninetales', ['Fire'], 'PG', 86, 86, 62, 86, 72, 52, 54, 84],
-  [157, 'Typhlosion', ['Fire'], 'SF', 80, 86, 86, 64, 72, 66, 66, 76],
+  [157, 'Typhlosion', ['Fire'], 'SF', 84, 90, 90, 68, 78, 70, 70, 80],
   [136, 'Flareon', ['Fire'], 'PF', 66, 64, 90, 58, 74, 74, 80, 62],
   [146, 'Moltres', ['Fire', 'Flying'], 'SF', 89, 90, 97, 68, 82, 80, 74, 74],
   [229, 'Houndoom', ['Dark', 'Fire'], 'SG', 88, 82, 78, 66, 84, 58, 58, 82],
@@ -253,6 +255,20 @@ const ROWS: Row[] = [
   // Override generated.ts. Same positions and stat order. Slaking 94 to 91, Deoxys 99 to 97.
   [289, 'Slaking', ['Normal'], 'C', 81, 74, 97, 65, 86, 80, 97, 72],
   [386, 'Deoxys', ['Psychic'], 'SG', 97, 96, 97, 74, 83, 54, 64, 89],
+  // Johto and Hoenn starter lines. These override generated.ts. Finals above were buffed in place.
+  // Basics +2 (Totodile's shot +3), middle evolutions +2 or +3, so each stage stays under its evolution.
+  [152, 'Chikorita', ['Grass'], 'SG', 54, 60, 60, 59, 66, 57, 53, 57],
+  [153, 'Bayleef', ['Grass'], 'SF', 63, 67, 68, 66, 73, 68, 62, 65],
+  [155, 'Cyndaquil', ['Fire'], 'PG', 65, 65, 60, 59, 65, 44, 49, 62],
+  [156, 'Quilava', ['Fire'], 'SG', 74, 73, 68, 67, 72, 57, 60, 70],
+  [158, 'Totodile', ['Water'], 'SG', 53, 59, 66, 54, 67, 52, 57, 54],
+  [159, 'Croconaw', ['Water'], 'SF', 62, 65, 75, 62, 74, 66, 66, 62],
+  [252, 'Treecko', ['Grass'], 'PG', 68, 67, 57, 61, 63, 42, 48, 64],
+  [253, 'Grovyle', ['Grass'], 'PG', 82, 75, 67, 68, 71, 51, 55, 74],
+  [255, 'Torchic', ['Fire'], 'SG', 54, 67, 63, 58, 62, 43, 52, 57],
+  [256, 'Combusken', ['Fire', 'Fighting'], 'SG', 60, 74, 76, 64, 70, 57, 63, 63],
+  [258, 'Mudkip', ['Water'], 'SG', 51, 60, 67, 55, 64, 47, 56, 54],
+  [259, 'Marshtomp', ['Water', 'Ground'], 'SF', 58, 65, 77, 63, 71, 61, 68, 61],
 ];
 
 /**
