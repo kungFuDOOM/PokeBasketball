@@ -61,3 +61,8 @@ export function boardAds(now = Date.now()): BoardAd[] {
   const on = live.filter((a) => a.until > now);
   return on.length ? on : [HOUSE_AD];
 }
+
+/** The booked ads still running right now (none when nothing is booked; no house fallback). */
+export function liveAdsNow(now = Date.now()): BoardAd[] {
+  return live.filter((a) => a.until > now);
+}
