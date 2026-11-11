@@ -4,7 +4,7 @@ import type { TeamSource } from '../season/team';
 import { isNameBlocked } from '../nameFilter';
 import { isTutorialDone } from '../tutorial/store';
 import { esc, lettersName, showNameError } from '../util';
-import { liveAdsNow, onLiveAdsChange } from '../data/ads';
+import { adLinkUrl, liveAdsNow, onLiveAdsChange } from '../data/ads';
 import { weeklyChallengesTickerHtml } from '../raffle/challengesView';
 import { prefersStatic, startAttract, type Attract, type AttractState } from './attract';
 import { isIntroMode, type IntroMode } from './intro.logic';
@@ -178,7 +178,12 @@ export function tickerHtml(isStatic: boolean, clickable = false): string {
   ];
   // $PJAM first, then an open ad slot after every two content items.
   // Paid ads running right now lead the run, ahead of the house $PJAM ad.
-  const paid = liveAdsNow().map((a) => ad(a.text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')));
+  const esc = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  const paid = liveAdsNow().map((a) => {
+    const href = adLinkUrl(a.text, a.url);
+    const text = esc(a.text);
+    return ad(href ? `<a class="tk-link" href="${esc(href)}" target="_blank" rel="noopener noreferrer nofollow sponsored">${text}</a>` : text);
+  });
   const runOf = (tab: number | null) => {
     const items = [...paid, ad(PJAM_AD)];
     content(tab).forEach((c, i) => {

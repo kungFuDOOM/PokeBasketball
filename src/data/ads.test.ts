@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { AD_THEMES, BANNER_ADS, HOUSE_AD, adTextOk, boardAds, boardAfterAd, bookableHalfOn, cleanAdText, houseAds, setLiveAds } from './ads';
+import { AD_THEMES, BANNER_ADS, HOUSE_AD, adLinkUrl, adTextOk, boardAds, boardAfterAd, bookableHalfOn, cleanAdText, houseAds, setLiveAds } from './ads';
 import { COURTS } from './courts';
 
 describe('boardAfterAd', () => {
@@ -69,5 +69,24 @@ describe('ad text', () => {
   it('has the eight themes the server accepts', () => {
     // supabase/migrations/20261203_pokejam_ads.sql: theme in (...)
     expect(Object.keys(AD_THEMES).sort()).toEqual(['electric', 'fire', 'ghost', 'gold', 'grass', 'ice', 'psychic', 'water']);
+  });
+});
+
+describe('adLinkUrl', () => {
+  it('builds an https link from a domain in the text', () => {
+    expect(adLinkUrl('RIPIT .CO')).toBe('https://ripit.co');
+    expect(adLinkUrl('Visit My-Site . XYZ now')).toBe('https://my-site.xyz');
+    expect(adLinkUrl('play at foo.gg')).toBe('https://foo.gg');
+  });
+  it('gives no link when there is no domain', () => {
+    expect(adLinkUrl('YOUR AD HERE')).toBeNull();
+    expect(adLinkUrl('Hello. Come play')).toBeNull();
+  });
+  it('never lets a scheme through', () => {
+    expect(adLinkUrl('javascript:alert(1)')).toBeNull();
+    expect(adLinkUrl('x', 'javascript:alert(1)')).toBeNull();
+    expect(adLinkUrl('x', 'http://evil.com')).toBeNull();
+    expect(adLinkUrl('RIPIT .CO', 'http://evil.com')).toBe('https://ripit.co');
+    expect(adLinkUrl('RIPIT .CO', 'https://ripit.co/play')).toBe('https://ripit.co/play');
   });
 });
