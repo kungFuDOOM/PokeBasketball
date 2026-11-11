@@ -23,6 +23,7 @@ import { Renderer, VH, VW } from '../game/render';
 import { getSprite, preload } from '../game/sprites';
 import { oopSpot, type PracticeDrill } from '../game/practice';
 import type { GameConfig, GameEvent, Marker, TeamDef } from '../game/types';
+import type { BoardAd } from '../data/ads';
 import { badgeSvg } from '../ui/badges';
 import { tier } from '../util';
 
@@ -35,8 +36,8 @@ export const FPS = 30;
  * (an 18-second spot for the Training drills and the new Alley-Oop drill, filmed on real practice games with
  * their floor markers) or 'ranked' (a 20-second Season 1 launch spot: placements, the real tier badges up to Zenith).
  */
-type Cut = 'main' | 'vertical' | 'franchise' | 'top5' | 'online' | 'watch' | 'training' | 'ranked' | 'challenges' | 'packs' | 'regions' | 'regionslive' | 'threept' | 'kabuto';
-const CUT: Cut = (['vertical', 'franchise', 'top5', 'online', 'watch', 'training', 'ranked', 'challenges', 'packs', 'regions', 'regionslive', 'threept', 'kabuto'] as const).find((c) => c === new URLSearchParams(location.search).get('cut')) ?? 'main';
+type Cut = 'main' | 'vertical' | 'franchise' | 'top5' | 'online' | 'watch' | 'training' | 'ranked' | 'challenges' | 'packs' | 'regions' | 'regionslive' | 'threept' | 'kabuto' | 'ads';
+const CUT: Cut = (['vertical', 'franchise', 'top5', 'online', 'watch', 'training', 'ranked', 'challenges', 'packs', 'regions', 'regionslive', 'threept', 'kabuto', 'ads'] as const).find((c) => c === new URLSearchParams(location.search).get('cut')) ?? 'main';
 const VERTICAL = CUT === 'vertical';
 /** The top 5 cut is dressed as a 90s sports highlight show ("POKé CENTER"). */
 const RETRO = CUT === 'top5';
@@ -117,6 +118,7 @@ const MATCHUPS: Record<Cut, { home: TeamDef; away: TeamDef; court: CourtStyle }>
     away: { name: 'Rival', abbr: 'RVL', color: '#e3350d', color2: '#4a0d04', human: false, roster: mons(ONLINE_PICKS.rival) },
     court: COURTS['Indigo Elite'],
   },
+  ads: { home: pallet([25, 6, 9, 3, 143]), away: gym('Indigo Elite', [151, 94, 150, 383, 149]), court: COURTS['Indigo Elite'] },
   kabuto: { home: pallet([25, 6, 9, 3, 143]), away: gym('Indigo Elite', [151, 94, 150, 383, 149]), court: COURTS['Pewter Boulders'] },
   threept: { home: pallet([25, 6, 9, 3, 143]), away: gym('Indigo Elite', [151, 94, 150, 383, 149]), court: COURTS['Pallet Town'] },
   regionslive: { home: pallet([25, 6, 9, 3, 143]), away: gym('Indigo Elite', [151, 94, 150, 383, 149]), court: COURTS['Indigo Elite'] },
@@ -211,7 +213,8 @@ type Scene = 'tipoff' | 'logo' | 'wall' | 'clock' | 'legends' | 'badges' | 'evol
   | 'p-hook'
   | 'r-hook' | 'r-johto' | 'r-hoenn' | 'r-wall' | 'r-unlock'
   | 'tp-hook' | 'tp-rules' | 'tp-score'
-  | 'k-hook' | 'k-card' | 'k-where';
+  | 'k-hook' | 'k-card' | 'k-where'
+  | 'ad-hook' | 'ad-board' | 'ad-tiers' | 'ad-burn' | 'ad-steps';
 type Segment =
   | { kind: Scene; t0: number; t1: number }
   | { kind: 'tp-clip'; t0: number; t1: number; from: number; label?: string }
@@ -615,6 +618,7 @@ function renderClip(seg: Segment & { kind: 'clip' }, t: number, first: boolean) 
     sg.g.events.length = 0;
     sg.g.sfx.length = 0;
     const r = new Renderer(clipCanvas);
+    if (CUT === 'ads') r.ads = () => SAMPLE_ADS;
     r.snap(sg.g);
     // Let the camera and particles settle for a few frames before filming.
     for (let i = 0; i < 4; i++) r.draw(sg.g, STEP);
@@ -686,6 +690,7 @@ function renderBackground(t: number, dim = 0.6) {
     const sg = new SeededGame(5151);
     sg.advance(900);
     const r = new Renderer(bgCanvas);
+    if (CUT === 'ads') r.ads = () => SAMPLE_ADS;
     r.snap(sg.g);
     bg = { sg, r };
   }
@@ -940,12 +945,12 @@ function renderOutro(seg: Segment, t: number, a: number) {
   renderBackground(t, 0.66);
   const k = clamp01(a / 0.25);
   once('outro-hit', t, seg.t0 + 0.25, () => { flash = 0.3; cue(t, 'slam'); cue(t, 'crowd_big'); });
-  const pjAt = CUT === 'online' || CUT === 'watch' || CUT === 'training' || CUT === 'ranked' || CUT === 'challenges' ? 1.6 : CUT === 'packs' ? 1.7 : CUT === 'regions' || CUT === 'regionslive' || CUT === 'threept' || CUT === 'kabuto' ? 1.6 : 2.2;
+  const pjAt = CUT === 'online' || CUT === 'watch' || CUT === 'training' || CUT === 'ranked' || CUT === 'challenges' ? 1.6 : CUT === 'packs' ? 1.7 : CUT === 'regions' || CUT === 'regionslive' || CUT === 'threept' || CUT === 'kabuto' || CUT === 'ads' ? 1.6 : 2.2;
   const pj = a - pjAt;
   if (pj < 0) {
     logo(W / 2, H / 2 - 150, 170, a < 0.25 ? 3 - 2 * k * k : 1);
-    if (a > 0.6) jamText(CUT === 'online' ? 'PLAY ONLINE NOW. FREE.' : CUT === 'watch' ? 'PLAY IT. WATCH IT. SIM IT.' : CUT === 'training' ? 'TRAIN UP. THEN JAM.' : CUT === 'ranked' ? 'RANKED IS LIVE. CLIMB NOW.' : CUT === 'challenges' ? 'PLAY. CLIMB. ENTER.' : CUT === 'packs' ? 'PACK BATTLES. COMING SOON.' : CUT === 'regions' ? 'NEW REGIONS. COMING SOON.' : CUT === 'regionslive' ? 'JOHTO + HOENN. OUT NOW.' : CUT === 'threept' ? '3-POINT CONTEST. PLAY NOW.' : CUT === 'kabuto' ? 'KABUTO KING. LIMITED TIME.' : 'PLAY FREE IN YOUR BROWSER', W / 2, H / 2 + 40, 64, { fill: '#f8f8f0' });
-    if (a > 1.0) plainText('pokejam.xyz', W / 2, H / 2 + 170, 80, '#ffcb05');
+    if (a > 0.6) jamText(CUT === 'online' ? 'PLAY ONLINE NOW. FREE.' : CUT === 'watch' ? 'PLAY IT. WATCH IT. SIM IT.' : CUT === 'training' ? 'TRAIN UP. THEN JAM.' : CUT === 'ranked' ? 'RANKED IS LIVE. CLIMB NOW.' : CUT === 'challenges' ? 'PLAY. CLIMB. ENTER.' : CUT === 'packs' ? 'PACK BATTLES. COMING SOON.' : CUT === 'regions' ? 'NEW REGIONS. COMING SOON.' : CUT === 'regionslive' ? 'JOHTO + HOENN. OUT NOW.' : CUT === 'threept' ? '3-POINT CONTEST. PLAY NOW.' : CUT === 'kabuto' ? 'KABUTO KING. LIMITED TIME.' : CUT === 'ads' ? 'COURTSIDE ADS. BOOK NOW.' : 'PLAY FREE IN YOUR BROWSER', W / 2, H / 2 + 40, 64, { fill: '#f8f8f0' });
+    if (a > 1.0) plainText(CUT === 'ads' ? 'pokejam.xyz/#advertise' : 'pokejam.xyz', W / 2, H / 2 + 170, 80, '#ffcb05');
   } else {
     // $PJAM: gold, glinting, center stage.
     once('pjam', t, seg.t0 + pjAt, () => { flash = 0.35; cue(t, 'slam'); cue(t, 'coin'); cue(t, 'crowd_big'); });
@@ -2432,6 +2437,169 @@ function renderRkSeason(seg: Segment, t: number, a: number) {
   if (a > 1.0) plainText("DON'T RAGE QUIT. QUITTERS GET BANNED.", W / 2, 700, 64, '#ff7a59');
 }
 
+// ---------- cut: ads ----------
+
+/** Placeholder bookings for the trailer's boards: generic copy only, never a real brand. */
+const SAMPLE_ADS: BoardAd[] = [
+  { text: 'YOUR BRAND HERE', theme: 'fire' },
+  { text: 'YOUR TOKEN HERE', theme: 'electric' },
+  { text: 'YOUR PROJECT HERE', theme: 'water' },
+  { text: 'GM FROM THE COURT', theme: 'psychic' },
+];
+/**
+ * The plans and USDC prices on the Advertise page (pokejam_live_ad_plans, #125), with the page's own badges:
+ * "Save N%" per hour against the hourly plan (savePercent in src/ads/plans.ts), "Best value" on the month.
+ */
+const AD_PLANS: [string, string, string][] = [['1 HOUR', '$15', ''], ['1 DAY', '$40', 'SAVE 88%'], ['1 WEEK', '$150', 'SAVE 94%'], ['1 MONTH', '$500', 'BEST VALUE']];
+
+function renderAdHook(seg: Segment, t: number, a: number) {
+  renderBackground(t, 0.7);
+  const pop = (at: number) => 0.3 + 0.7 * easeOutBack(clamp01((a - at) / 0.22));
+  once('adh1', t, seg.t0 + 0.05, () => { flash = 0.2; cue(t, 'slam'); cue(t, 'crowd_low'); });
+  jamText('YOUR BRAND', W / 2, 300, 190, { scale: pop(0.05), maxW: W - 120 });
+  if (a > 0.45) {
+    once('adh2', t, seg.t0 + 0.45, () => { flash = 0.25; cue(t, 'slam'); cue(t, 'crowd_big'); });
+    const shake = a < 0.8 ? (Math.random() - 0.5) * 20 : 0;
+    jamText('ON THE COURT', W / 2 + shake, 520 + shake, 150, { fill: '#f8f8f0', scale: pop(0.45), maxW: W - 120 });
+  }
+  if (a > 1.0) plainText('COURTSIDE ADS ARE LIVE', W / 2, 720, 64, '#ffcb05');
+}
+
+/** A close-up of the real courtside LED board, the booked ads taking turns. */
+function renderAdBoard(seg: Segment, t: number, a: number) {
+  renderBackground(t, 0.86);
+  // The board is the canvas's top band (top Y_FAR-22, 20px tall): blow up its left half, crisp.
+  const zoom = 1 + 0.06 * clamp01(a / 2.8);
+  const bw = W * zoom;
+  const bh = (W / 240) * 30 * zoom;
+  ctx.save();
+  ctx.imageSmoothingEnabled = false;
+  ctx.fillStyle = '#05060f';
+  ctx.fillRect(0, 430 - bh / 2 - 12, W, bh + 24);
+  ctx.drawImage(bgCanvas, 0, 72, 240, 30, (W - bw) / 2, 430 - bh / 2, bw, bh);
+  ctx.restore();
+  once('adb', t, seg.t0 + 0.05, () => { flash = 0.15; cue(t, 'whoosh'); });
+  jamText('EVERY GAME. EVERY PLAYER.', W / 2, 110, 92, { scale: a < 0.22 ? 0.3 + 0.7 * easeOutBack(a / 0.22) : 1, maxW: W - 120 });
+  if (a > 0.7) plainText('QUICK PLAY · FRANCHISE · ONLINE · RANKED', W / 2, 720, 60, '#f8f8f0');
+  if (a > 1.3) {
+    once('adb2', t, seg.t0 + 1.3, () => cue(t, 'slam'));
+    jamText('ON THE LED BOARD', W / 2, 870, 110, { scale: 0.3 + 0.7 * easeOutBack(clamp01((a - 1.3) / 0.22)) });
+  }
+}
+
+/** The four plans with their USDC prices. */
+function renderAdTiers(seg: Segment, t: number, a: number) {
+  renderBackground(t, 0.88);
+  jamText('PICK YOUR SLOT', W / 2, 120, 110, { scale: a < 0.2 ? easeOutBack(a / 0.2) : 1 });
+  AD_PLANS.forEach(([name, price, badge], i) => {
+    const at = 0.25 + i * 0.28;
+    if (a < at) return;
+    once(`adt${i}`, t, seg.t0 + at, () => cue(t, i === 3 ? 'slam' : 'card'));
+    const k = easeOutBack(clamp01((a - at) / 0.22));
+    const x = W / 2 + (i - 1.5) * 430;
+    const best = i === 3;
+    ctx.save();
+    ctx.translate(x, 540);
+    ctx.scale(k, k);
+    if (best) {
+      ctx.shadowColor = 'rgba(255,203,5,0.8)';
+      ctx.shadowBlur = 60;
+    }
+    roundRect(-190, -240, 380, 480, 26, best ? '#2a1f05' : 'rgba(10,13,31,0.95)', best ? '#ffcb05' : 'rgba(255,255,255,0.4)', best ? 8 : 5);
+    ctx.shadowBlur = 0;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font = `800 64px ${SPORT}`;
+    ctx.fillStyle = '#f2f0e6';
+    ctx.fillText(name, 0, -150);
+    ctx.font = `${price.length > 3 ? 78 : 96}px ${PIXEL}`;
+    ctx.fillStyle = best ? '#ffcb05' : '#f8f8f0';
+    ctx.fillText(price, 6, 10);
+    ctx.font = `800 40px ${SPORT}`;
+    ctx.fillStyle = '#aab0d8';
+    ctx.fillText('USDC', 0, 110);
+    if (badge) {
+      roundRect(-140, 150, 280, 60, 30, best ? '#ffcb05' : '#e3350d', '#fff', 4);
+      ctx.font = `800 36px ${SPORT}`;
+      ctx.fillStyle = best ? '#14122a' : '#fff';
+      ctx.fillText(badge, 0, 182);
+    }
+    ctx.restore();
+  });
+}
+
+/** Or buy and burn $PJAM, 20% off the USDC price at the live token price. */
+function renderAdBurn(seg: Segment, t: number, a: number) {
+  ctx.fillStyle = '#120403';
+  ctx.fillRect(0, 0, W, H);
+  // Flames licking up from the bottom.
+  for (let i = 0; i < 70; i++) {
+    const x = ((i * 137.5) % W);
+    const life = ((a * (0.9 + (i % 5) * 0.15) + i * 0.13) % 1);
+    const y = H + 40 - life * (420 + (i % 7) * 50);
+    const r = (1 - life) * (40 + (i % 4) * 14);
+    const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+    g.addColorStop(0, `rgba(255,${200 - life * 120},40,${0.75 * (1 - life)})`);
+    g.addColorStop(1, 'rgba(227,53,13,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(x - r, y - r, r * 2, r * 2);
+  }
+  once('adbu', t, seg.t0 + 0.05, () => { flash = 0.25; cue(t, 'slam'); cue(t, 'fire'); cue(t, 'crowd'); say(t, 'fire_1', true); });
+  jamText('OR BUY & BURN', W / 2, 200, 150, { scale: a < 0.22 ? 0.3 + 0.7 * easeOutBack(a / 0.22) : 1, maxW: W - 120 });
+  if (a > 0.4) pjam(W / 2, 430, 200, a - 0.4);
+  if (a > 1.0) {
+    once('adbu2', t, seg.t0 + 1.0, () => { flash = 0.2; cue(t, 'slam'); cue(t, 'coin'); });
+    const p = clamp01((a - 1.0) / 0.18);
+    ctx.save();
+    ctx.translate(W / 2, 680);
+    ctx.rotate(-0.06);
+    ctx.scale(2.4 - 1.4 * p, 2.4 - 1.4 * p);
+    ctx.globalAlpha = 0.4 + 0.6 * p;
+    ctx.lineWidth = 10;
+    ctx.strokeStyle = '#ffcb05';
+    ctx.strokeRect(-300, -70, 600, 140);
+    ctx.font = `80px ${PIXEL}`;
+    ctx.fillStyle = '#ffcb05';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('20% OFF', 6, 6);
+    ctx.restore();
+  }
+  if (a > 1.6) plainText('PRICED LIVE IN $PJAM. BURNED TOKENS LEAVE THE SUPPLY.', W / 2, 880, 54, '#f2f0e6');
+}
+
+/** Booking in three steps. */
+function renderAdSteps(seg: Segment, t: number, a: number) {
+  renderBackground(t, 0.88);
+  jamText('BOOK IT IN 3 STEPS', W / 2, 120, 110, { scale: a < 0.2 ? easeOutBack(a / 0.2) : 1 });
+  const steps = ['PICK A PLAN', 'WRITE YOUR AD', 'PAY FROM YOUR WALLET'];
+  steps.forEach((label, i) => {
+    const at = 0.3 + i * 0.4;
+    if (a < at) return;
+    once(`ads${i}`, t, seg.t0 + at, () => cue(t, i === 2 ? 'slam' : 'card'));
+    const k = easeOutBack(clamp01((a - at) / 0.22));
+    const y = 330 + i * 190;
+    ctx.save();
+    ctx.translate((1 - k) * 300, 0);
+    roundRect(W / 2 - 560, y - 75, 1120, 150, 24, 'rgba(10,13,31,0.95)', '#ffcb05', 5);
+    ctx.beginPath();
+    ctx.arc(W / 2 - 460, y, 52, 0, Math.PI * 2);
+    ctx.fillStyle = '#ffcb05';
+    ctx.fill();
+    ctx.font = `64px ${PIXEL}`;
+    ctx.fillStyle = '#14122a';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(String(i + 1), W / 2 - 456, y + 4);
+    ctx.font = `800 70px ${SPORT}`;
+    ctx.fillStyle = '#f8f8f0';
+    ctx.textAlign = 'left';
+    ctx.fillText(label, W / 2 - 370, y + 4);
+    ctx.restore();
+  });
+  if (a > 1.7) plainText('THEN WATCH IT RUN COURTSIDE.', W / 2, 960, 60, '#ffcb05');
+}
+
 // ---------- cut: kabuto ----------
 
 /** Kabuto's sprite with the game's gold pixel crown (src/kabuto/crown.ts) drawn on, as the pickers show him. */
@@ -3143,6 +3311,11 @@ function renderSegment(seg: Segment, t: number, first: boolean) {
     case 'k-hook': renderKHook(seg, t, a); break;
     case 'k-card': renderKCard(seg, t, a); break;
     case 'k-where': renderKWhere(seg, t, a); break;
+    case 'ad-hook': renderAdHook(seg, t, a); break;
+    case 'ad-board': renderAdBoard(seg, t, a); break;
+    case 'ad-tiers': renderAdTiers(seg, t, a); break;
+    case 'ad-burn': renderAdBurn(seg, t, a); break;
+    case 'ad-steps': renderAdSteps(seg, t, a); break;
     case 'clip': renderClip(seg, t, first); break;
   }
 }
@@ -3279,6 +3452,17 @@ export async function prepare(): Promise<{ frames: number; fps: number }> {
     add({ kind: 'o-packs', t0: t, t1: t + 3.4 });
     for (let i = 0; i < 2; i++) clip([['dunk']], 0.9, 0.6, false, 'montage');
     add({ kind: 'outro', t0: t, t1: t + 4.2 });
+    musicEnd = s[s.length - 1].t0 + 1.6;
+  } else if (CUT === 'ads') {
+    add({ kind: 'ad-hook', t0: t, t1: t + 2.0 });
+    musicStart = 0.1;
+    add({ kind: 'ad-board', t0: t, t1: t + 2.8 });
+    clip([['dunk']], 2.0, 1.3, false, 'montage');
+    add({ kind: 'ad-tiers', t0: t, t1: t + 3.4 });
+    add({ kind: 'ad-burn', t0: t, t1: t + 3.0 });
+    add({ kind: 'ad-steps', t0: t, t1: t + 2.6 });
+    clip([['dunk']], 1.0, 0.7, false, 'montage');
+    add({ kind: 'outro', t0: t, t1: t + 3.4 });
     musicEnd = s[s.length - 1].t0 + 1.6;
   } else if (CUT === 'kabuto') {
     tpScan();
