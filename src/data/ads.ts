@@ -52,8 +52,19 @@ export function boardAfterAd(board: string): string {
 // drops off on time even between refreshes.
 let live: (BoardAd & { until: number })[] = [];
 
+const sig = () => JSON.stringify(live.map((a) => [a.text, a.theme, a.until]));
+const listeners = new Set<() => void>();
+
+/** Calls fn whenever the booked ads actually change (not on every refresh). Returns the unsubscribe. */
+export function onLiveAdsChange(fn: () => void): () => void {
+  listeners.add(fn);
+  return () => { listeners.delete(fn); };
+}
+
 export function setLiveAds(ads: (BoardAd & { until: number })[]) {
+  const before = sig();
   live = ads.filter((a) => a.theme in AD_THEMES);
+  if (sig() !== before) listeners.forEach((fn) => fn());
 }
 
 /** The ads to run in turn on the banner: the booked ones still running, or the house ad. */

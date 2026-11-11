@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { weeklyChallengesTickerHtml } from '../raffle/challengesView';
-import { setLiveAds } from '../data/ads';
+import { onLiveAdsChange, setLiveAds } from '../data/ads';
 import { tickerHtml } from './menu';
 
 describe('menu ticker', () => {
@@ -44,5 +44,21 @@ describe('menu ticker', () => {
     expect(html).not.toContain('OLD');
     setLiveAds([]);
     expect(tickerHtml(false, true)).not.toContain('RIPIT');
+  });
+
+  it('tells the menu when the board changes, but not on an identical refresh', () => {
+    setLiveAds([]);
+    let n = 0;
+    const off = onLiveAdsChange(() => n++);
+    const ad = { text: 'RIPIT .CO', theme: 'gold' as const, until: Date.now() + 60_000 };
+    setLiveAds([ad]);
+    setLiveAds([{ ...ad }]);
+    expect(n).toBe(1);
+    setLiveAds([]);
+    expect(n).toBe(2);
+    off();
+    setLiveAds([ad]);
+    expect(n).toBe(2);
+    setLiveAds([]);
   });
 });
