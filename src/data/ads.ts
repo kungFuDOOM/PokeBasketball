@@ -18,7 +18,21 @@ export const AD_THEMES: Record<AdTheme, ThemeStyle> = {
 export const THEME_ORDER = Object.keys(AD_THEMES) as AdTheme[];
 
 /** One ad on the banner: its text, as the server cleaned it, and its theme. */
-export interface BoardAd { text: string; theme: AdTheme }
+export interface BoardAd { text: string; theme: AdTheme; url?: string }
+
+const AD_DOMAIN = /(?:^|[^a-z0-9-])([a-z0-9](?:[a-z0-9-]*[a-z0-9])?)\s*\.\s*(co|com|xyz|io|gg|app|net|org|fun)(?![a-z0-9-])/i;
+
+/** The https link for a paid ad: its own https url when given, else a domain found in its text ("RIPIT .CO" -> https://ripit.co). Null when none. */
+export function adLinkUrl(text: string, url?: string | null): string | null {
+  if (url) {
+    try {
+      const u = new URL(url);
+      if (u.protocol === 'https:' && u.hostname.includes('.') && !u.username && !u.password) return u.href;
+    } catch { /* fall through to the text */ }
+  }
+  const m = AD_DOMAIN.exec(text);
+  return m ? `https://${m[1].toLowerCase()}.${m[2].toLowerCase()}` : null;
+}
 
 /** What the banner shows when nobody has booked it: an ad for the ad space. */
 export const HOUSE_AD: BoardAd = { text: 'YOUR AD HERE', theme: 'gold' };

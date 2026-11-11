@@ -1119,6 +1119,9 @@ button.tk-item { appearance: none; -webkit-appearance: none; background: transpa
 .tk-tag { font: 0.6rem var(--pixel); background: var(--red); color: #fff !important; padding: 3px 5px; border-radius: 3px; }
 .tk-ad { text-transform: uppercase; }
 .tk-ad a { color: inherit; }
+.tk-ad a.tk-link { text-decoration: underline; text-underline-offset: 3px; cursor: pointer; padding: 8px 0; -webkit-tap-highlight-color: rgba(255,255,255,0.2); }
+.tk-track:has(a.tk-link:hover),
+.tk-track:has(a.tk-link:active) { animation-play-state: paused; }
 .tk-live-item .tk-live { color: #fff; }
 /* Center the labels when they fit. On a narrow phone they start at the safe edge and can be swiped; no auto-motion. */
 .ticker.static .tk-clip { justify-content: flex-start; justify-content: safe center; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
