@@ -4,7 +4,7 @@ import type { TeamSource } from '../season/team';
 import { isNameBlocked } from '../nameFilter';
 import { isTutorialDone } from '../tutorial/store';
 import { esc, lettersName, showNameError } from '../util';
-import { liveAdsNow } from '../data/ads';
+import { liveAdsNow, onLiveAdsChange } from '../data/ads';
 import { weeklyChallengesTickerHtml } from '../raffle/challengesView';
 import { prefersStatic, startAttract, type Attract, type AttractState } from './attract';
 import { isIntroMode, type IntroMode } from './intro.logic';
@@ -200,7 +200,10 @@ export function menuScreen(root: HTMLElement, settings: Settings, onChange: () =
   const isStatic = prefersStatic();
   const parade = [...POKEMON].sort(() => Math.random() - 0.5).slice(0, 14);
   let attract: Attract | null = null;
+  let offAds: (() => void) | null = null;
   const destroy = () => {
+    offAds?.();
+    offAds = null;
     attract?.stop();
     attract = null;
   };
@@ -320,12 +323,12 @@ export function menuScreen(root: HTMLElement, settings: Settings, onChange: () =
 
   // ---- attract game ----
   const canvas = $<HTMLCanvasElement>('.attract-canvas');
+  let scoreLine = '';
   if (canvas) {
     // The game plays silently behind the menu; its score only feeds the bottom ticker.
-    const live = root.querySelectorAll<HTMLElement>('.tk-live');
     const show = (s: AttractState) => {
-      const line = `${s.home} ${s.score[0]} - ${s.score[1]} ${s.away} · ${s.clock}`;
-      live.forEach((el) => (el.textContent = line));
+      scoreLine = `${s.home} ${s.score[0]} - ${s.score[1]} ${s.away} · ${s.clock}`;
+      root.querySelectorAll<HTMLElement>('.tk-live').forEach((el) => (el.textContent = scoreLine));
     };
     attract = startAttract(canvas, show);
   }
@@ -365,12 +368,23 @@ export function menuScreen(root: HTMLElement, settings: Settings, onChange: () =
   if (opts.onMultiplayer) $('[data-go="multiplayer"]')!.addEventListener('click', leave(opts.onMultiplayer));
   if (opts.onAdvertise) $('[data-go="advertise"]')!.addEventListener('click', leave(opts.onAdvertise));
   if (opts.onProfile) $('[data-go="profile"]')!.addEventListener('click', leave(opts.onProfile));
-  if (opts.onChallenges) {
-    const openChallenges = leave(opts.onChallenges);
-    $('[data-go="challenges"]')!.addEventListener('click', openChallenges);
+  const wireTicker = (open?: () => void) => {
     // Both copies of the scrolling run carry the promo; either tap opens the panel.
-    root.querySelectorAll<HTMLButtonElement>('[data-go="ticker-challenges"]').forEach((btn) => btn.addEventListener('click', openChallenges));
+    if (open) root.querySelectorAll<HTMLButtonElement>('[data-go="ticker-challenges"]').forEach((btn) => btn.addEventListener('click', open));
+  };
+  const openChallenges = opts.onChallenges ? leave(opts.onChallenges) : undefined;
+  if (openChallenges) {
+    $('[data-go="challenges"]')!.addEventListener('click', openChallenges);
+    wireTicker(openChallenges);
   }
+  // Booked ads can arrive after the menu is drawn (the board loads on its own): redraw just the ticker then.
+  offAds = onLiveAdsChange(() => {
+    const old = $('.ticker');
+    if (!old || !root.isConnected) return;
+    old.outerHTML = tickerHtml(isStatic, !!opts.onChallenges);
+    if (scoreLine) root.querySelectorAll<HTMLElement>('.tk-live').forEach((el) => (el.textContent = scoreLine));
+    wireTicker(openChallenges);
+  });
   startNew.addEventListener('click', tryNew);
   $('[data-go="continue"]')?.addEventListener('click', leave(opts.onContinue));
   $('[data-go="resume-draft"]')?.addEventListener('click', leave(opts.onResumeDraft));
