@@ -4,6 +4,7 @@ import type { TeamSource } from '../season/team';
 import { isNameBlocked } from '../nameFilter';
 import { isTutorialDone } from '../tutorial/store';
 import { esc, lettersName, showNameError } from '../util';
+import { liveAdsNow } from '../data/ads';
 import { weeklyChallengesTickerHtml } from '../raffle/challengesView';
 import { prefersStatic, startAttract, type Attract, type AttractState } from './attract';
 import { isIntroMode, type IntroMode } from './intro.logic';
@@ -176,8 +177,10 @@ export function tickerHtml(isStatic: boolean, clickable = false): string {
     item('', `<b class="tk-tag">TIP</b>${TIPS[5]}`),
   ];
   // $PJAM first, then an open ad slot after every two content items.
+  // Paid ads running right now lead the run, ahead of the house $PJAM ad.
+  const paid = liveAdsNow().map((a) => ad(a.text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')));
   const runOf = (tab: number | null) => {
-    const items = [ad(PJAM_AD)];
+    const items = [...paid, ad(PJAM_AD)];
     content(tab).forEach((c, i) => {
       items.push(c);
       if (i % 2 === 1) items.push(ad(OPEN_AD));
