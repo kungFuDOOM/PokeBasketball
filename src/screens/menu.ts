@@ -6,6 +6,7 @@ import { isTutorialDone } from '../tutorial/store';
 import { esc, lettersName, showNameError } from '../util';
 import { adLinkUrl, liveAdsNow, onLiveAdsChange } from '../data/ads';
 import { weeklyChallengesTickerHtml } from '../raffle/challengesView';
+import { tickerRotation, type TickerSlot } from './tickerRotation';
 import { prefersStatic, startAttract, type Attract, type AttractState } from './attract';
 import { isIntroMode, type IntroMode } from './intro.logic';
 
@@ -163,30 +164,50 @@ export function tickerHtml(isStatic: boolean, clickable = false): string {
   }
   const item = (cls: string, html: string) => `<span class="tk-item ${cls}">${html}</span>`;
   const ad = (html: string) => item('tk-ad', `<b class="tk-tag">AD</b>${html}`);
-  const content = (tab: number | null) => [
-    promo(tab, weeklyChallengesTickerHtml()),
-    item('tk-live-item', '<b class="tk-tag">LIVE</b><span class="tk-live">warming up…</span>'),
-    item('', `<b class="tk-tag">TIP</b>${TIPS[0]}`),
-    item('', TEASERS[0]),
-    item('', `<b class="tk-tag">TIP</b>${TIPS[1]}`),
-    item('', TEASERS[1]),
-    item('', `<b class="tk-tag">TIP</b>${TIPS[2]}`),
-    item('', TEASERS[2]),
-    item('', `<b class="tk-tag">TIP</b>${TIPS[3]}`),
-    item('', `<b class="tk-tag">TIP</b>${TIPS[4]}`),
-    item('', `<b class="tk-tag">TIP</b>${TIPS[5]}`),
-  ];
-  // $PJAM first, then an open ad slot after every two content items.
-  // Paid ads running right now lead the run, ahead of the house $PJAM ad.
+  const tip = (text: string) => item('', `<b class="tk-tag">TIP</b>${text}`);
+  const live = item('tk-live-item', '<b class="tk-tag">LIVE</b><span class="tk-live">warming up…</span>');
+  const content = (tab: number | null) => {
+    const lines = [promo(tab, weeklyChallengesTickerHtml()), live];
+    TIPS.forEach((text, i) => {
+      lines.push(tip(text));
+      if (i < TEASERS.length) lines.push(item('', TEASERS[i]));
+    });
+    return lines;
+  };
+  // $PJAM first, then an open ad slot after every two content items, when nothing is booked.
+  // Paid ads running right now lead the run, ahead of the house $PJAM ad. Tips are a small share of that mix.
   const esc = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   const paid = liveAdsNow().map((a) => {
     const href = adLinkUrl(a.text, a.url);
     const text = esc(a.text);
-    return ad(href ? `<a class="tk-link" href="${esc(href)}" target="_blank" rel="noopener noreferrer nofollow sponsored">${text}</a>` : text);
+    return href ? `<a class="tk-link" href="${esc(href)}" target="_blank" rel="noopener noreferrer nofollow sponsored">${text}</a>` : text;
   });
+  const slotItem = (slot: TickerSlot): string => {
+    switch (slot.kind) {
+      case 'ad':
+        return ad(slot.text);
+      case 'tip':
+        return tip(slot.text);
+      default: {
+        const unexpected: never = slot;
+        throw new Error(`Unexpected ticker slot: ${JSON.stringify(unexpected)}`);
+      }
+    }
+  };
   const runOf = (tab: number | null) => {
-    const items = [...paid, ad(PJAM_AD)];
-    content(tab).forEach((c, i) => {
+    // No paid ads: today's tips, teasers, live line and house slots, so the ticker stays full.
+    if (paid.length === 0) {
+      const items = [ad(PJAM_AD)];
+      content(tab).forEach((c, i) => {
+        items.push(c);
+        if (i % 2 === 1) items.push(ad(OPEN_AD));
+      });
+      return items;
+    }
+    const items = tickerRotation(paid, TIPS).map(slotItem);
+    items.push(ad(PJAM_AD));
+    const rest = [promo(tab, weeklyChallengesTickerHtml()), live, ...TEASERS.map((t) => item('', t))];
+    rest.forEach((c, i) => {
       items.push(c);
       if (i % 2 === 1) items.push(ad(OPEN_AD));
     });
