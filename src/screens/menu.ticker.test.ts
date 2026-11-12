@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { weeklyChallengesTickerHtml } from '../raffle/challengesView';
 import { onLiveAdsChange, setLiveAds } from '../data/ads';
 import { tickerHtml } from './menu';
+import { TICKER_TIP_RATIO } from './tickerRotation';
 
 describe('menu ticker', () => {
   it('adds one weekly-challenges line and leaves the other items in place', () => {
@@ -34,6 +35,34 @@ describe('menu ticker', () => {
     expect(html).toContain('>Quick Play</span>');
     expect(html).toContain('data-go="ticker-challenges">Weekly Challenges</button>');
     expect(html.match(/class="tk-item/g)?.length).toBe(4);
+  });
+
+  it('shows paid ads about five times as often as tips, then falls back to every tip', () => {
+    setLiveAds([
+      { text: 'RIPIT .CO', theme: 'gold', until: Date.now() + 60_000 },
+      { text: 'SECOND AD', theme: 'fire', until: Date.now() + 60_000 },
+    ]);
+    const html = tickerHtml(false, true);
+    const run = html.slice(0, html.indexOf('aria-hidden'));
+    const tips = run.match(/<b class="tk-tag">TIP<\/b>/g)?.length ?? 0;
+    const paid = (run.split('RIPIT .CO').length - 1) + (run.split('SECOND AD').length - 1);
+    expect(tips).toBeGreaterThan(0);
+    expect(paid / tips).toBeCloseTo((1 - TICKER_TIP_RATIO) / TICKER_TIP_RATIO, 5);
+    expect(run.indexOf('RIPIT .CO')).toBeLessThan(run.indexOf('<b class="tk-tag">TIP</b>'));
+    expect(run.indexOf('RIPIT .CO')).toBeLessThan(run.indexOf('SECOND AD'));
+    expect(run).toContain('href="https://ripit.co"');
+    expect(run.split(weeklyChallengesTickerHtml()).length - 1).toBe(1);
+    expect(run).toContain('<b class="tk-tag">LIVE</b>');
+    expect(run).toContain('Franchise: 9-week seasons, badges, level-ups and evolutions');
+    expect(run).toContain('Your ad here');
+    const betweenTips = run.split('<b class="tk-tag">TIP</b>').slice(1, -1);
+    for (const gap of betweenTips) expect(gap).toContain('tk-tag">AD');
+
+    setLiveAds([]);
+    const fallback = tickerHtml(false, true);
+    expect(fallback).not.toContain('RIPIT');
+    expect(fallback).not.toContain('SECOND AD');
+    expect((fallback.match(/<b class="tk-tag">TIP<\/b>/g) ?? []).length).toBe(tips * 2);
   });
 
   it('leads with paid live ads that are still running, before the $PJAM house ad', () => {
