@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { TICKER_TIP_RATIO, tickerRotation, type TickerSlot } from './tickerRotation';
+import { TICKER_TIP_RATIO, adBlockPool, tickerRotation, type TickerSlot } from './tickerRotation';
 
 const TIPS = ['Hold shoot', 'Dunk', 'Lineup bonus', 'Matchups', 'Signature move', 'Bench'];
 
@@ -70,8 +70,49 @@ describe('tickerRotation', () => {
     expect(booked[booked.length - 1]).toEqual({ kind: 'tip', text: 'Only' });
   });
 
+  const HOUSE = ['$PJAM', 'Your ad here'];
+
+  function adsOf(slots: TickerSlot[]): string[] {
+    return slots.filter((s): s is Extract<TickerSlot, { kind: 'ad' }> => s.kind === 'ad').map((s) => s.text);
+  }
+
+  function noRepeatedAd(slots: TickerSlot[]) {
+    for (let i = 1; i < slots.length; i++) {
+      const prev = slots[i - 1];
+      const cur = slots[i];
+      if (prev.kind === 'ad' && cur.kind === 'ad') expect(cur.text).not.toBe(prev.text);
+    }
+  }
+
+  it('fills a single paid ad with house slots: RIPIT, $PJAM, RIPIT, Your ad here, RIPIT', () => {
+    expect(adBlockPool(['RIPIT'], HOUSE, 5)).toEqual(['RIPIT', '$PJAM', 'RIPIT', 'Your ad here', 'RIPIT']);
+    const slots = tickerRotation(['RIPIT'], TIPS, TICKER_TIP_RATIO, HOUSE);
+    const ads = adsOf(slots);
+    expect(ads.slice(0, 5)).toEqual(['RIPIT', '$PJAM', 'RIPIT', 'Your ad here', 'RIPIT']);
+    expect(adsBeforeFirstTip(slots)).toBe(5);
+    expect(tipShare(slots)).toBeCloseTo(TICKER_TIP_RATIO, 10);
+    noRepeatedAd(slots);
+    const n = (text: string) => ads.filter((t) => t === text).length;
+    expect(n('RIPIT')).toBeGreaterThanOrEqual(n('$PJAM'));
+    expect(n('RIPIT')).toBeGreaterThanOrEqual(n('Your ad here'));
+  });
+
+  it('gives every paid ad at least as many slots as each house item', () => {
+    for (const paid of [['A', 'B'], ['A', 'B', 'C'], ['A', 'B', 'C', 'D', 'E']]) {
+      const slots = tickerRotation(paid, TIPS, TICKER_TIP_RATIO, HOUSE);
+      const ads = adsOf(slots);
+      const n = (text: string) => ads.filter((t) => t === text).length;
+      const houseMax = Math.max(...HOUSE.map(n));
+      for (const ad of paid) expect(n(ad)).toBeGreaterThanOrEqual(houseMax);
+      expect(slots[0]).toEqual({ kind: 'ad', text: paid[0] });
+      expect(adsBeforeFirstTip(slots)).toBe(5);
+      noRepeatedAd(slots);
+    }
+  });
+
   it('falls back to the tips when no ad is booked, and to ads when there are no tips', () => {
     expect(tickerRotation([], TIPS)).toEqual(TIPS.map((text) => ({ kind: 'tip', text })));
+    expect(tickerRotation([], TIPS, TICKER_TIP_RATIO, HOUSE)).toEqual(TIPS.map((text) => ({ kind: 'tip', text })));
     expect(tickerRotation(['ONLY'], [])).toEqual([{ kind: 'ad', text: 'ONLY' }]);
     expect(tickerRotation([], [])).toEqual([]);
     expect(tickerRotation(['ONLY'], TIPS, 0).every((s) => s.kind === 'ad')).toBe(true);

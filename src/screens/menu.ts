@@ -6,7 +6,7 @@ import { isTutorialDone } from '../tutorial/store';
 import { esc, lettersName, showNameError } from '../util';
 import { adLinkUrl, liveAdsNow, onLiveAdsChange } from '../data/ads';
 import { weeklyChallengesTickerHtml } from '../raffle/challengesView';
-import { tickerRotation, type TickerSlot } from './tickerRotation';
+import { TICKER_TIP_RATIO, tickerRotation, type TickerSlot } from './tickerRotation';
 import { prefersStatic, startAttract, type Attract, type AttractState } from './attract';
 import { isIntroMode, type IntroMode } from './intro.logic';
 
@@ -175,7 +175,7 @@ export function tickerHtml(isStatic: boolean, clickable = false): string {
     return lines;
   };
   // $PJAM first, then an open ad slot after every two content items, when nothing is booked.
-  // Paid ads running right now lead the run, ahead of the house $PJAM ad. Tips are a small share of that mix.
+  // Paid ads lead. While any are booked they share the ad blocks with $PJAM and the open slot, so one ad is not repeated.
   const esc = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   const paid = liveAdsNow().map((a) => {
     const href = adLinkUrl(a.text, a.url);
@@ -204,13 +204,10 @@ export function tickerHtml(isStatic: boolean, clickable = false): string {
       });
       return items;
     }
-    const items = tickerRotation(paid, TIPS).map(slotItem);
-    items.push(ad(PJAM_AD));
+    // House lines sit in the five-ad blocks with the paid ads. The tail keeps challenges, the live score and teasers.
+    const items = tickerRotation(paid, TIPS, TICKER_TIP_RATIO, [PJAM_AD, OPEN_AD]).map(slotItem);
     const rest = [promo(tab, weeklyChallengesTickerHtml()), live, ...TEASERS.map((t) => item('', t))];
-    rest.forEach((c, i) => {
-      items.push(c);
-      if (i % 2 === 1) items.push(ad(OPEN_AD));
-    });
+    for (const c of rest) items.push(c);
     return items;
   };
   const items = runOf(null);
