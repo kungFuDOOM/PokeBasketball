@@ -37,6 +37,7 @@ export class Audio {
     } catch {
       return; // too many contexts or audio blocked: the game stays silent instead of throwing
     }
+    void this.ctx.resume().catch(() => {}); // synchronously inside the gesture, for iOS Safari
     this.master = this.ctx.createGain();
     this.master.gain.value = this.muted ? 0 : 0.5;
     this.master.connect(this.ctx.destination);

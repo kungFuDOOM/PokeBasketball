@@ -98,6 +98,13 @@ const unlock = () => {
   music.attach(audio.context);
 };
 for (const ev of ['pointerdown', 'touchend', 'click', 'keydown']) window.addEventListener(ev, unlock, { passive: true });
+// The very first gesture of any kind unlocks audio and starts the music. audio.unlock() creates/resumes the
+// context synchronously inside the gesture, which iOS Safari requires.
+const firstGesture = () => {
+  for (const ev of ['pointerdown', 'touchstart', 'keydown']) document.removeEventListener(ev, firstGesture, true);
+  unlock();
+};
+for (const ev of ['pointerdown', 'touchstart', 'keydown']) document.addEventListener(ev, firstGesture, { capture: true, passive: true });
 
 // Background music follows the screen: each screen sets #app's class.
 const musicBtn = musicToggle(music, unlock);
