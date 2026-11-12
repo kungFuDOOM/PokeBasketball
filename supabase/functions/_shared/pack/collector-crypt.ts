@@ -14,7 +14,7 @@ import { base58Encode, base64Decode, hex } from './bytes.ts';
 import { MPL_CORE, buildTransfer, decodeAccountData, parseAsset } from './core-transfer.ts';
 import type { Keypair } from './ed25519.ts';
 import type { Fetch, Rpc } from './rpc.ts';
-import { signTransactionBase64 } from './solana-tx.ts';
+import { signTransactionBase64, transactionId } from './solana-tx.ts';
 import { PACK_TIERS, type PackTier } from './tiers.ts';
 import { PROGRAM, UnsafeTransaction, checkCcTransaction, purchaseDestination, type GuardOptions } from './tx-guard.ts';
 
@@ -37,13 +37,29 @@ export interface Pull {
   vrf: unknown;
 }
 
+/** A transaction the house is about to submit: record it first, so a lost reply can be settled from the chain. */
+export interface Submission {
+  memo: string;
+  txid: string;
+  blockhash: string;
+  /** USDC it moves: what a purchase pays, or what a buyback pays the house. */
+  amount: number;
+}
+
+/** Where a recorded transaction stands. 'dropped' means its blockhash expired unseen: it can never land. */
+export type TxStatus = 'landed' | 'failed' | 'pending' | 'dropped';
+
 export interface BuyHooks {
+  /** Called just before the purchase is submitted. If it throws, nothing is submitted. */
+  onSubmitting?(s: Submission): Promise<void> | void;
   /** The most the house may pay CC for this pull (the escrowed pot); defaults to the tier's price. */
   maxPrice?: number;
   /** Called the moment the purchase is paid, before anything can fail after it. Save the memo then. */
   onPaid?(memo: string): Promise<void> | void;
   /** Finish a purchase that was already paid (from onPaid) instead of buying again. */
   resumeMemo?: string;
+  /** The machine to buy from (our builder-fee machine for the tier); defaults to CC's own machine for the tier. */
+  machineCode?: string;
 }
 
 export interface CollectorCryptOptions {
@@ -135,6 +151,12 @@ export class CollectorCrypt {
     return this.call('GET', '/api/machines');
   }
 
+  /** The machines our partner key owns (our adopted builder-fee machines, with their partnerFee), or none without a
+   * key. GET /api/v1/machines is the one route that refuses a missing or wrong key. */
+  partnerMachines(): Promise<unknown> {
+    return this.opts.apiKey ? this.call('GET', '/api/v1/machines') : Promise.resolve({ machines: [] });
+  }
+
   private get guard(): GuardOptions {
     if (!this.opts.guard.houseUsdc) throw new UnsafeTransaction("HOUSE_USDC_ACCOUNT is not set, so payments from the house can't be checked");
     return { ...this.opts.guard, house: this.opts.house.address };
@@ -152,8 +174,9 @@ export class CollectorCrypt {
     if (g.ccSigner && owner !== g.ccSigner) throw new UnsafeTransaction(`the payment goes to ${owner}'s account, not Collector Crypt's`);
   }
 
-  private async signAndSubmit(base64Tx: string): Promise<string> {
+  private async signAndSubmit(base64Tx: string, before?: (id: { txid: string; blockhash: string }) => Promise<void> | void): Promise<string> {
     const signedTransaction = await signTransactionBase64(base64Tx, this.opts.house);
+    await before?.(transactionId(signedTransaction));
     const r = await this.call<{ success: boolean; signature: string }>('POST', '/api/submitTransaction', { signedTransaction });
     if (!r.success) throw new CollectorCryptError('submitTransaction did not succeed', 200, r);
     return r.signature;
@@ -167,11 +190,11 @@ export class CollectorCrypt {
   async buy(packType: PackTier, hooks: BuyHooks = {}): Promise<Pull> {
     let memo = hooks.resumeMemo;
     if (!memo) {
-      const p = await this.call<{ memo: string; transaction: string }>('POST', '/api/generatePack', { playerAddress: this.opts.house.address, packType, turbo: false });
+      const p = await this.call<{ memo: string; transaction: string }>('POST', '/api/generatePack', { playerAddress: this.opts.house.address, packType: hooks.machineCode ?? packType, turbo: false });
       const tx = base64Decode(p.transaction);
-      checkCcTransaction(tx, this.guard, { kind: 'purchase', maxPrice: hooks.maxPrice ?? PACK_TIERS[packType].price });
+      const { paid } = checkCcTransaction(tx, this.guard, { kind: 'purchase', maxPrice: hooks.maxPrice ?? PACK_TIERS[packType].price });
       await this.checkTreasury(tx);
-      await this.signAndSubmit(p.transaction);
+      await this.signAndSubmit(p.transaction, (id) => hooks.onSubmitting?.({ memo: p.memo, ...id, amount: paid }));
       memo = p.memo;
       await hooks.onPaid?.(memo);
     }
@@ -244,14 +267,28 @@ export class CollectorCrypt {
   }
 
   /** Sell a card the house holds back to Collector Crypt (within 72 hours of the pull). */
-  async buyback(nftAddress: string): Promise<{ memo: string; refundAmount: number }> {
+  async buyback(nftAddress: string, hooks: { onSubmitting?(s: Submission): Promise<void> | void } = {}): Promise<{ memo: string; refundAmount: number }> {
     const b = await this.call<{ serializedTransaction: string; refundAmount: unknown; memo: string }>('POST', '/api/buyback', { playerAddress: this.opts.house.address, nftAddress });
     // Credit what CC's transaction actually pays the house, and only if it matches CC's quote.
     const { received } = checkCcTransaction(base64Decode(b.serializedTransaction), this.guard, { kind: 'buyback', nft: nftAddress });
     if (received <= 0) throw new UnsafeTransaction('the buyback pays the house nothing');
     if (Number(b.refundAmount) !== received) throw new UnsafeTransaction(`CC quotes ${String(b.refundAmount)} but its transaction pays ${received}`);
-    await this.signAndSubmit(b.serializedTransaction);
+    await this.signAndSubmit(b.serializedTransaction, (id) => hooks.onSubmitting?.({ memo: b.memo, ...id, amount: received }));
     return { memo: b.memo, refundAmount: received };
+  }
+
+  /**
+   * Did a recorded transaction land? 'pending' while it may still land (in a block but not confirmed, or its
+   * blockhash is still valid); 'dropped' once its blockhash has expired and it was never seen, so it never will.
+   */
+  async txStatus(txid: string, blockhash: string): Promise<TxStatus> {
+    const of = (s: Awaited<ReturnType<Rpc['signatureStatus']>>): TxStatus | null =>
+      s === 'confirmed' ? 'landed' : s === 'failed' ? 'failed' : s === 'processed' ? 'pending' : null;
+    const first = of(await this.opts.rpc.signatureStatus(txid));
+    if (first) return first;
+    if (await this.opts.rpc.blockhashValid(blockhash)) return 'pending';
+    // Expired: one more look, in case it landed between the two calls.
+    return of(await this.opts.rpc.signatureStatus(txid)) ?? 'dropped';
   }
 
   verifyUrl(memo: string) {

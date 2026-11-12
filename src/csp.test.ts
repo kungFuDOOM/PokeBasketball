@@ -3,7 +3,7 @@
 // @ts-ignore Node's fs has no type declarations in this project.
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { adsApiOrigin, csp } from '../vite.config';
+import { adsApiOrigin, CC_IMAGES, csp } from '../vite.config';
 import { adsUrl } from './ads/api';
 
 const SUPA = 'https://ksvfgxodbwfntqnahukn.supabase.co';
@@ -51,6 +51,16 @@ describe('site CSP with live ads', () => {
 
   it('allows the wallet icons the page draws (the Wallet Standard makes them data: URIs)', () => {
     expect(directive(csp(SUPA, false, true), 'img-src').split(' ')).toContain('data:');
+  });
+
+  it("allows Collector Crypt's card images only in a Pack Battles build (VITE_MODE_PACK_BATTLES)", () => {
+    const cc = CC_IMAGES.split(' ');
+    const off = directive(csp(SUPA, false, true), 'img-src').split(' ');
+    const on = directive(csp(SUPA, false, true, undefined, true), 'img-src').split(' ');
+    expect(cc.filter((h) => off.includes(h))).toEqual([]);
+    expect(cc.every((h) => on.includes(h))).toBe(true);
+    expect(on.filter((h) => !off.includes(h))).toEqual(cc);
+    expect(directive(csp(SUPA, false, true, undefined, true), 'connect-src')).toBe(directive(csp(SUPA, false, true), 'connect-src'));
   });
 
   describe('the ad client never calls Solana from the browser', () => {

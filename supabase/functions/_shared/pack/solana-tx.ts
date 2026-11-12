@@ -80,5 +80,11 @@ export async function signTransactionBase64(base64Tx: string, kp: Keypair): Prom
   return base64Encode(serializeTransaction(tx));
 }
 
+/** A transaction's id (its first signature, the fee payer's) and the blockhash it was built on. */
+export function transactionId(base64Tx: string): { txid: string; blockhash: string } {
+  const tx = parseTransaction(base64Decode(base64Tx));
+  return { txid: base58Encode(tx.signatures[0]), blockhash: tx.recentBlockhash };
+}
+
 /** Address from base58, for tests. */
 export const addressBytes = (a: string) => base58Decode(a);

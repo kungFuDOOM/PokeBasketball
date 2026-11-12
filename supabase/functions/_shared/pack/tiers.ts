@@ -1,15 +1,17 @@
-// Pack Battles tiers: one per public Collector Crypt Pokémon machine. The pot each battle escrows is the
-// machine's price; machines.ts pauses a tier whenever CC's live price stops matching it.
+// Pack Battles tiers: one per Collector Crypt Pokémon machine price. The pot each battle escrows is the machine's
+// price; machines.ts pauses a tier whenever the live price stops matching it. `house` is CC's own machine at that
+// price; `partner` is the builder-fee machine a partner key adopts to earn a fee on every pack (machines.ts uses our
+// adopted copy of it when the key owns one).
 
 /** USDC has 6 decimals; every amount here is an integer number of base units. */
 export const MICRO = 1_000_000;
 
 export type PackTier = 'pokemon_25' | 'pokemon_50' | 'pokemon_100';
 
-export const PACK_TIERS: Record<PackTier, { label: string; ccName: string; price: number }> = {
-  pokemon_25: { label: 'Starter Pack', ccName: 'Starter Pokémon Gacha Pack', price: 25 * MICRO },
-  pokemon_50: { label: 'Elite Pack', ccName: 'Elite Pokémon Gacha Pack', price: 50 * MICRO },
-  pokemon_100: { label: 'Bronze Pack', ccName: 'Bronze Pokémon Gacha Pack', price: 100 * MICRO },
+export const PACK_TIERS: Record<PackTier, { label: string; ccName: string; price: number; partner: string }> = {
+  pokemon_25: { label: 'Starter Pack', ccName: 'Starter Pokémon Gacha Pack', price: 25 * MICRO, partner: 'bf_poke25' },
+  pokemon_50: { label: 'Elite Pack', ccName: 'Elite Pokémon Gacha Pack', price: 50 * MICRO, partner: 'bf_poke50' },
+  pokemon_100: { label: 'Bronze Pack', ccName: 'Bronze Pokémon Gacha Pack', price: 100 * MICRO, partner: 'bf_poke100' },
 };
 
 export const TIER_ORDER: PackTier[] = ['pokemon_25', 'pokemon_50', 'pokemon_100'];

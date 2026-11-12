@@ -50,7 +50,21 @@ export interface OnlineGameOptions {
   outcomeHtml: string | ((out: ReportOutcome) => string);
   /** Social: another match. Ranked: a fresh search for a different opponent (no rematch). */
   playAgain(): void;
+  /**
+   * Pack Battles: called with the outcome slot once the results screen (or the screen for a game that stopped
+   * early) is shown, to follow the judge and the prize.
+   */
+  afterResult?(slot: HTMLElement): void;
+  /** Pack Battles: replaces "No result was recorded." when a game stops early (the judge decides what happens). */
+  stopped?(why: StopReason): string;
+  /** Pack Battles: leaving forfeits, so the Leave button and the waiting banner say so. */
+  leaveForfeits?: boolean;
 }
+
+/** Why a game stopped before the buzzer: we left, they left, the connection died, or the peer broke the rules. */
+export type StopReason = 'left' | 'opponent-left' | 'lost' | 'problem';
+
+const QUEUE_TAG = { social: 'Social match', ranked: 'Ranked match', pack: 'Pack Battle' } as const;
 
 export async function playOnline(ctx: ModeContext, o: OnlineGameOptions) {
   const { root, audio } = ctx;
@@ -104,6 +118,12 @@ export async function playOnline(ctx: ModeContext, o: OnlineGameOptions) {
   }
 
   let over = false;
+  // Pack Battles: this player's connection log, uploaded with the evidence for a person looking into a disconnect.
+  // Other queues keep no log.
+  const packs = match.queue === 'pack';
+  const logLine = (what: string) => { if (packs) link.evidence?.note(what); };
+  logLine(`connected as ${match.side ? 'guest' : 'host'}`);
+
   // Move gameplay to a relayed direct link if the server hands out TURN credentials (stays on Realtime otherwise).
   void iceFor(o.sb, match.id).then((ice) => {
     if (ice && !over) link.upgrade(match.side, ice.iceServers, ice.policy);
@@ -157,21 +177,29 @@ export async function playOnline(ctx: ModeContext, o: OnlineGameOptions) {
     statsSent = true;
     void submitNetStats(o.sb, netStatsRow(match.id, service.userId, link, ls, link.pinger.stats(), (performance.now() - startedAt) / 1000));
   };
-  sayBye = () => ls?.bye();
+  // Pack Battles: closing the page mid-game is leaving, so the goodbye carries a signed resignation.
+  sayBye = () => ls?.bye(packs ? link.evidence?.resign() : undefined);
   // Clears the intro's timers and listener if the match ends while it's still showing.
   let stopIntro = () => {};
   // While the game is on, a heartbeat: if both players vanish without a leave arriving, the server calls it off.
   void service.alive(match.id);
   const beat = setInterval(() => void service.alive(match.id), HEARTBEAT_MS);
-  const end = async (title: string, note: string, peerLost = false, desync = false) => {
+  const stats = () => (ls ? `tick ${ls.tick}, delay ${ls.delay}, ${link.direct ? 'direct' : 'realtime'}, ${JSON.stringify(ls.stats)}` : 'before tip-off');
+  const end = async (title: string, note: string, why: StopReason, desync = false) => {
+    // The other player went (or the games went out of sync), as opposed to us leaving.
+    const peerLost = why !== 'left';
+    if (o.stopped) note = note.replace('No result was recorded.', o.stopped(why));
     if (over) return;
     over = true;
     offExit();
     if (!desync) clearInterval(beat); // a desync: still here while the server looks at it
     clearInterval(watch);
+    unlisten();
+    logLine(`game stopped (${why}): ${stats()}`);
     stopIntro();
     handle?.stop();
-    ls?.bye();
+    // Pack Battles: only a player who chose to leave sends a signed resignation; the one left behind just says goodbye.
+    ls?.bye(packs && why === 'left' ? link.evidence?.resign() : undefined);
     sendNetStats();
     uploadEvidence();
     link.close();
@@ -181,7 +209,7 @@ export async function playOnline(ctx: ModeContext, o: OnlineGameOptions) {
         const q = quitNoticeText(await service.rankedMe().catch(() => null));
         if (q) return rankedQuitMessage(q, { service, match });
       }
-      message(ctx, title, note, { service, match });
+      message(ctx, title, note, { service, match }, o.afterResult);
       return;
     }
     // Ranked, and the other player is the one who went, or the games went out of sync: I'm not a leaver, so I don't
@@ -203,12 +231,30 @@ export async function playOnline(ctx: ModeContext, o: OnlineGameOptions) {
       if (final) say({ ...final, later: undefined });
     })().catch(() => {}).finally(() => clearInterval(beat));
   };
+  let stalled = 0;
   const watch = setInterval(() => {
     if (!ls || over) return;
-    if (ls.problem) void (match.queue === 'ranked' ? end('GAME STOPPED', ls.problem, true, true) : end('GAME STOPPED', `${ls.problem} No result was recorded.`, true));
-    else if (ls.peerLeft) void end('OPPONENT LEFT', `${match.opponent.name} left the game. No result was recorded.`, true);
-    else if (performance.now() - ls.lastHeard > PEER_TIMEOUT_MS) void end('CONNECTION LOST', `Lost the connection to ${match.opponent.name}. No result was recorded.`, true);
+    if (ls.waiting > 1 && !stalled) { stalled = performance.now(); logLine(`waiting for the other player at tick ${ls.tick}`); }
+    else if (ls.waiting === 0 && stalled) { logLine(`going again after ${((performance.now() - stalled) / 1000).toFixed(1)} s`); stalled = 0; }
+    if (ls.problem) void (match.queue === 'ranked' ? end('GAME STOPPED', ls.problem, 'problem', true) : end('GAME STOPPED', `${ls.problem} No result was recorded.`, 'problem'));
+    else if (ls.peerLeft) void end('OPPONENT LEFT', `${match.opponent.name} left the game. No result was recorded.`, 'opponent-left');
+    else if (performance.now() - ls.lastHeard > PEER_TIMEOUT_MS) void end('CONNECTION LOST', `Lost the connection to ${match.opponent.name}. No result was recorded.`, 'lost');
   }, 1000);
+
+  // Pack Battles: page and network changes go in the connection log.
+  const onVisibility = () => logLine(document.hidden ? 'page hidden' : 'page visible');
+  const onOnline = () => logLine('device online');
+  const onOffline = () => logLine('device offline');
+  if (packs) {
+    document.addEventListener('visibilitychange', onVisibility);
+    window.addEventListener('online', onOnline);
+    window.addEventListener('offline', onOffline);
+  }
+  function unlisten() {
+    document.removeEventListener('visibilitychange', onVisibility);
+    window.removeEventListener('online', onOnline);
+    window.removeEventListener('offline', onOffline);
+  }
 
   // The pre-game intro (both lineups), unless the other player's client predates it. Its end is a barrier: each side
   // says `ready`, the host says `go`, and only then does the game (and lockstep, with the same start delay) begin.
@@ -233,25 +279,28 @@ export async function playOnline(ctx: ModeContext, o: OnlineGameOptions) {
     startGame();
   }
 
+  const waitNote = o.leaveForfeits ? ' Stay in the game: leaving forfeits.' : '';
   function startGame() {
     if (over) return;
     stopIntro = () => {};
     audio.unlock();
     root.className = 'screen-game';
-    handle = playGame(root, cfg, audio, (g) => void finish(g), () => void end('LEFT GAME', 'You left the game. No result was recorded.'), {
+    handle = playGame(root, cfg, audio, (g) => void finish(g), () => void end('LEFT GAME', 'You left the game. No result was recorded.', 'left'), {
       online: {
         viewTeam: match.side,
         start: (g) => {
           const l = (ls = new Lockstep(g, link, { side: match.side, delay: startDelay, resyncLimit: resyncLimitFor(match.queue, JUDGE_AUTHORITATIVE) }));
           startedAt = performance.now();
           link.attach(l);
+          logLine('tip-off');
           // Read-only counters for the lag tests (no ids or secrets).
           Object.defineProperty(window, '__pokejamNet', { configurable: true, get: () => ({ stalls: l.stats.stalls, stallMs: Math.round(l.stats.stallMs), delay: l.delay, rtt: Math.round(link.pinger.smooth ?? 0) }) });
         },
         ping: () => link.pinger.smooth,
         advance: (intent, dt) => ls!.advance(intent, dt),
-        status: () => (ls && ls.waiting > 0.4 ? `Waiting for ${match.opponent.name}…` : null),
+        status: () => (ls && ls.waiting > 0.4 ? `Waiting for ${match.opponent.name}…${waitNote}` : null),
         idle: () => ls?.maybeSend(false),
+        quitLabel: o.leaveForfeits ? 'Leave and forfeit' : undefined,
       },
       startingFive: startingFiveEnabled('full', match.queue, true, conn.startingFive),
     });
@@ -263,6 +312,8 @@ export async function playOnline(ctx: ModeContext, o: OnlineGameOptions) {
     offExit();
     clearInterval(beat);
     clearInterval(watch);
+    unlisten();
+    logLine(`final buzzer: ${stats()}`);
     sendNetStats();
     uploadEvidence();
     const mine = g.score[match.side];
@@ -289,7 +340,7 @@ export async function playOnline(ctx: ModeContext, o: OnlineGameOptions) {
     root.className = 'screen-results';
     window.scrollTo(0, 0);
     resultsScreen(root, g, {
-      tag: match.queue === 'ranked' ? 'Ranked match' : 'Social match',
+      tag: QUEUE_TAG[match.queue],
       headline: won ? 'You win!' : `${g.teams[1 - match.side].name} win`,
       extraHtml: `<div data-outcome>${note}</div>`,
       buttons: onlineResultsButtons(match.queue),
@@ -302,6 +353,8 @@ export async function playOnline(ctx: ModeContext, o: OnlineGameOptions) {
         ctx.back();
       },
     });
+    const slot = root.querySelector<HTMLElement>('[data-outcome]');
+    if (slot && o.afterResult) o.afterResult(slot);
     // Ranked, other player not reported yet: fill in the rating change when the server has rated the match.
     void later?.then((out) => {
       const slot = root.querySelector('[data-outcome]');
@@ -310,14 +363,19 @@ export async function playOnline(ctx: ModeContext, o: OnlineGameOptions) {
   }
 }
 
-/** A dead end with a Back button, plus Report or block when there was an opponent. */
-export function message(ctx: ModeContext, title: string, note: string, who?: { service: SupabaseMatchService; match: OnlineMatch }) {
+/**
+ * A dead end with a Back button, plus Report or block when there was an opponent. `follow` (Pack Battles) gets an
+ * outcome slot under the note, to show what the judge decides.
+ */
+export function message(ctx: ModeContext, title: string, note: string, who?: { service: SupabaseMatchService; match: OnlineMatch }, follow?: (slot: HTMLElement) => void) {
   ctx.root.className = 'screen-menu';
   window.scrollTo(0, 0);
-  ctx.root.innerHTML = panel(title, note, `<div class="actions center"><button class="btn primary" data-a="back">Back</button>
+  ctx.root.innerHTML = panel(title, note, `${follow ? '<div data-outcome></div>' : ''}<div class="actions center"><button class="btn primary" data-a="back">Back</button>
     ${who ? '<button class="btn ghost" data-a="report">Report or block</button>' : ''}</div>`);
   ctx.root.querySelector('[data-a="back"]')!.addEventListener('click', ctx.back);
-  ctx.root.querySelector('[data-a="report"]')?.addEventListener('click', () => reportScreen(ctx, who!.service, who!.match, () => message(ctx, title, note, who)));
+  ctx.root.querySelector('[data-a="report"]')?.addEventListener('click', () => reportScreen(ctx, who!.service, who!.match, () => message(ctx, title, note, who, follow)));
+  const slot = ctx.root.querySelector<HTMLElement>('[data-outcome]');
+  if (slot && follow) follow(slot);
 }
 
 const REASONS: [ReportReason, string][] = [['name', 'Offensive name'], ['cheating', 'Cheating'], ['quitting', 'Quitting or stalling'], ['other', 'Something else']];

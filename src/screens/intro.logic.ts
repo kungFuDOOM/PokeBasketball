@@ -1,6 +1,6 @@
 /** Pre-game intro (lineups screen) rules, kept free of DOM so they can be tested. */
 export type IntroMode = 'full' | 'quick' | 'off';
-export type IntroCtx = 'ranked' | 'social' | 'quick' | 'cpu' | 'franchise';
+export type IntroCtx = 'ranked' | 'social' | 'pack' | 'quick' | 'cpu' | 'franchise';
 
 export const INTRO_MODES: readonly IntroMode[] = ['full', 'quick', 'off'];
 export const INTRO_LEN_MS = 6000;
@@ -11,9 +11,9 @@ export function isIntroMode(v: unknown): v is IntroMode {
   return typeof v === 'string' && (INTRO_MODES as readonly string[]).includes(v);
 }
 
-/** 'off' only turns off the offline intros; Ranked and Social always show it. */
+/** 'off' only turns off the offline intros; Ranked, Social and Pack Battles always show it. */
 export function introEnabled(mode: IntroMode, ctx: IntroCtx): boolean {
-  if (ctx === 'ranked' || ctx === 'social') return true;
+  if (ctx === 'ranked' || ctx === 'social' || ctx === 'pack') return true;
   return mode !== 'off';
 }
 
@@ -36,7 +36,7 @@ export interface IntroTiming {
 /** Online games always run the full length (both sides must agree); offline 'quick' is shorter. */
 export function introLength(ctx: IntroCtx, online: boolean, mode: IntroMode = 'full'): IntroTiming {
   if (online) return { lengthMs: INTRO_LEN_MS, capMs: INTRO_CAP_MS, instantSkip: false };
-  const lengthMs = mode === 'quick' && ctx !== 'ranked' && ctx !== 'social' ? INTRO_QUICK_LEN_MS : INTRO_LEN_MS;
+  const lengthMs = mode === 'quick' && ctx !== 'ranked' && ctx !== 'social' && ctx !== 'pack' ? INTRO_QUICK_LEN_MS : INTRO_LEN_MS;
   return { lengthMs, capMs: lengthMs, instantSkip: true };
 }
 

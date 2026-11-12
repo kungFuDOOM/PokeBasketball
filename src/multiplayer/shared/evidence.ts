@@ -5,17 +5,22 @@
 // (`g`), so the other player holds proof of exactly what was sent. After the game each player uploads everything
 // signed they hold, and judge() can replay the match from it: nobody can invent the other player's moves (no key),
 // and nobody can rewrite their own afterwards (the other player holds the originals; two versions is a forfeit).
+// A player who leaves on purpose sends a signed resignation with its goodbye (resign), and each upload carries the
+// player's own connection log, for a person looking into a disconnect.
 import type { WireInput } from '../../game/sync';
 import { MIN_DELAY, type InputRun, type NetMsg } from './lockstep';
-import { signTicks, type Evidence, type MatchKeys, type MatchSetup, type SignedInputs } from './winnerCheck';
+import { signResign, signTicks, type ConnectionLog, type Evidence, type MatchKeys, type MatchSetup, type SignedInputs, type SignedResign } from './winnerCheck';
 
 const SIG = /^[0-9a-f]{128}$/;
 /** Most signed batches kept per side (a long game sends about 10,000). */
 const MAX_BATCHES = 40_000;
 /** Most ticks one batch may cover (lockstep's HISTORY). */
 const MAX_RUN = 900;
+/** Most connection-log lines kept per game. */
+const MAX_LOG = 400;
 
 type InMsg = Extract<NetMsg, { k: 'in' }>;
+type ByeMsg = Extract<NetMsg, { k: 'bye' }>;
 
 /** An 'in' message's runs, one input per tick. */
 export const expandRuns = (r: InputRun[]): WireInput[] => r.flatMap(([n, mx, my, b]) => Array.from({ length: n }, () => ({ mx, my, b })));
@@ -25,8 +30,28 @@ export class EvidenceLog {
   readonly theirs: SignedInputs[] = [];
   private signing = 0;
   private idle: (() => void)[] = [];
+  readonly log: ConnectionLog = [];
+  /** Signed up front, so it can go out from a closing page (signing is async). */
+  private resignation: SignedResign | null = null;
+  private resigned = false;
+  private theirResignation: SignedResign | null = null;
+  private t0 = performance.now();
 
-  constructor(private key: CryptoKey, private matchId: string, readonly side: 0 | 1) {}
+  constructor(private key: CryptoKey, private matchId: string, readonly side: 0 | 1) {
+    void signResign(key, matchId, side).then((r) => { this.resignation = r; }, () => {});
+  }
+
+  /** Add a line to this player's connection log (time since tip-off). */
+  note(what: string) {
+    if (this.log.length < MAX_LOG) this.log.push([Math.round(performance.now() - this.t0), what.slice(0, 200)]);
+  }
+
+  /** We're leaving on purpose: the signature to send with the goodbye (and keep in our own upload). */
+  resign(): string | undefined {
+    this.resigned = true;
+    this.note('left the game');
+    return this.resignation?.sig;
+  }
 
   /** Sign an outgoing input batch: the same message, plus its signature (`g`). Our copy is kept. */
   async sign(m: InMsg): Promise<InMsg> {
@@ -48,6 +73,12 @@ export class EvidenceLog {
 
   /** Keep the other player's signed batch from an incoming message. Its signature is checked by the judge. */
   received(raw: unknown) {
+    const bye = raw as Partial<ByeMsg> | null;
+    if (bye?.k === 'bye') {
+      this.note(typeof bye.g === 'string' && SIG.test(bye.g) ? 'the other player left (signed)' : 'the other player said goodbye');
+      if (typeof bye.g === 'string' && SIG.test(bye.g)) this.theirResignation ??= { side: (1 - this.side) as 0 | 1, sig: bye.g };
+      return;
+    }
     const m = raw as Partial<InMsg> | null;
     if (!m || m.k !== 'in' || typeof m.g !== 'string' || !SIG.test(m.g) || !Number.isInteger(m.s) || (m.s as number) < 0) return;
     if (!Array.isArray(m.r) || !m.r.length || this.theirs.length >= MAX_BATCHES) return;
@@ -63,7 +94,12 @@ export class EvidenceLog {
 
   /** Everything to upload: both sides' signed inputs, trimmed to what the judge needs. */
   evidence(setup: MatchSetup, keys: MatchKeys): Evidence {
-    return { setup, keys, inputs: [...cover(this.mine), ...cover(this.theirs)], applied: [], lockstep: { emptyTicks: MIN_DELAY } };
+    const resigns = [this.resigned ? this.resignation : null, this.theirResignation].filter((r): r is SignedResign => !!r);
+    // Resignations and the connection log go in only when there are some (Pack Battles), so other queues' uploads are as before.
+    return {
+      setup, keys, inputs: [...cover(this.mine), ...cover(this.theirs)], applied: [], lockstep: { emptyTicks: MIN_DELAY },
+      ...(resigns.length && { resigns }), ...(this.log.length && { log: this.log }),
+    };
   }
 }
 
