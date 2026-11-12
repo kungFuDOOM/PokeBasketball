@@ -6,7 +6,7 @@ import { supabase } from '../multiplayer/shared/supabase';
 import { getPhantomProvider, type PhantomProvider } from './phantom';
 import {
   LINK_LANDING_KEY, LINK_PENDING_KEY, assertLinkForUser, beginLinkHandoff, beginLinkInBrowser, clearLinkHandoff,
-  injectedLinkMessage, loadLinkHandoff, parseLinkCallback, putLinkResult, takeLinkResult, type LinkCallback,
+  injectedLinkMessage, loadLinkHandoff, parseLinkCallback, putLinkResult, requestLinkNonce, signatureBytes, takeLinkResult, type LinkCallback,
 } from './linkFlow';
 import { linkBodyHtml, linkCode, linkSheetHtml, type LinkSheet } from './linkView';
 import {
@@ -69,10 +69,27 @@ function fail(text: string): void {
   draw({ kind: 'failed', text });
 }
 
+async function openNonce(): Promise<string> {
+  return requestLinkNonce(async (nonce) => {
+    const { data, error } = await supabase().rpc('pokejam_wallet_nonce_open', { p_nonce: nonce });
+    if (error) return false;
+    return (data as { ok?: boolean } | null)?.ok === true;
+  });
+}
+
+async function linkError(error: unknown): Promise<string> {
+  const ctx = (error as { context?: unknown } | null)?.context;
+  if (ctx instanceof Response) {
+    const body = await ctx.clone().json().catch(() => null) as { error?: unknown } | null;
+    if (typeof body?.error === 'string' && body.error) return body.error;
+  }
+  return 'Could not link the wallet. Try again.';
+}
+
 async function submit(message: string, signature: Uint8Array, userId: string): Promise<void> {
   assertLinkForUser(message, userId, Date.now());
   const { data, error } = await supabase().functions.invoke('pokejam-link-wallet', { body: { message, signature: base58Encode(signature) } });
-  if (error) throw new Error('Could not link the wallet. Try again.');
+  if (error) throw new Error(await linkError(error));
   const body = data as { ok?: boolean; error?: string } | null;
   if (!body?.ok) throw new Error(body?.error || 'Could not link the wallet. Try again.');
 }
@@ -82,19 +99,16 @@ function reloadRanked(): void {
   location.reload();
 }
 
-function bytesOf(signed: Uint8Array | { signature: Uint8Array }): Uint8Array {
-  return signed instanceof Uint8Array ? signed : signed.signature;
-}
-
 /** Injected Phantom (desktop extension or the Phantom in-app browser): sign here, no redirect. */
 export async function linkInjectedWallet(userId: string, wallet: SignWallet = getPhantomProvider() as SignWallet): Promise<void> {
   const connected = wallet.publicKey?.toBase58() ? null : await wallet.connect?.();
   const address = wallet.publicKey?.toBase58() ?? connected?.publicKey?.toBase58();
   if (!address || !wallet.signMessage) throw new Error('Phantom was not found in this browser.');
-  const { message } = injectedLinkMessage({ host: location.host, uri: `${location.origin}${location.pathname}`, address, userId, now: Date.now() });
+  const nonce = await openNonce();
+  const { message } = injectedLinkMessage({ host: location.host, uri: `${location.origin}${location.pathname}`, address, userId, nonce, now: Date.now() });
   const signed = await wallet.signMessage(new TextEncoder().encode(message), 'utf8');
-  if (!signed) throw new Error('Phantom was not found in this browser.');
-  const signature = bytesOf(signed);
+  const signature = signatureBytes(signed);
+  if (!signature) throw new Error('The wallet signature did not match.');
   await submit(message, signature, userId);
 }
 
@@ -146,7 +160,9 @@ function watchHandoff(userId: string): void {
       if (!got) return;
       clearLinkHandoff(local());
       stop?.();
-      await submit(got.message, base58Decode(got.signature), userId);
+      const handed = signatureBytes(base58Decode(got.signature));
+      if (!handed) throw new Error('The wallet signature did not match.');
+      await submit(got.message, handed, userId);
       reloadRanked();
     } catch (e) {
       clearLinkHandoff(local());
@@ -170,7 +186,8 @@ function watchPending(userId: string): void {
 
 async function applyPending(p: Pending, response: LinkCallback['response'], userId: string, key: string): Promise<void> {
   try {
-    const out = advance(local(), p, response, { ...env(), storageKey: key });
+    const nonce = p.purpose === 'link' && p.step === 'connect' ? await openNonce() : undefined;
+    const out = advance(local(), p, response, { ...env(), storageKey: key, ...(nonce ? { nonce } : {}) });
     if (out.kind === 'need-sign') {
       draw({ kind: 'sign', href: signLink(out.pending, here()), code: out.pending.handoff ? linkCode(out.pending.handoff.id) : undefined });
       return;

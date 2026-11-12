@@ -45,15 +45,24 @@ export async function walletWhole(rpc: Rpc, mint: string, wallet: string): Promi
   return wholeTokens(raw, decimals);
 }
 
-/** user id -> whole tokens, decimal string. Wallets are read a few at a time. A null wallet is zero. */
-export async function pjamWholes(rpc: Rpc, mint: string, rows: { user_id: string; wallet: string | null }[]): Promise<Record<string, string>> {
-  const out: Record<string, string> = {};
-  const pending = rows.filter((r) => r.wallet);
-  for (const r of rows) if (!r.wallet) out[r.user_id] = '0';
-  for (let i = 0; i < pending.length; i += 4) {
-    const slice = pending.slice(i, i + 4);
-    const wholes = await Promise.all(slice.map((r) => walletWhole(rpc, mint, r.wallet!)));
-    slice.forEach((r, n) => { out[r.user_id] = wholes[n]!.toString(); });
+export interface WalletRow { user_id: string; wallet: string | null; wallets?: string[] }
+
+/**
+ * user id -> whole tokens for each distinct wallet (linked, and a Phantom sign-in when it is a different address).
+ * The database caps each balance and adds the entry counts. Wallets are read a few at a time. No wallet is an empty list.
+ */
+export async function pjamWholes(rpc: Rpc, mint: string, rows: WalletRow[]): Promise<Record<string, string[]>> {
+  const lists: Record<string, string[]> = {};
+  const jobs: { user_id: string; wallet: string }[] = [];
+  for (const r of rows) {
+    const ws = [...new Set((r.wallets?.length ? r.wallets : r.wallet ? [r.wallet] : []).filter(Boolean))];
+    lists[r.user_id] = [];
+    for (const w of ws) jobs.push({ user_id: r.user_id, wallet: w });
   }
-  return out;
+  for (let i = 0; i < jobs.length; i += 4) {
+    const slice = jobs.slice(i, i + 4);
+    const wholes = await Promise.all(slice.map((r) => walletWhole(rpc, mint, r.wallet)));
+    slice.forEach((r, n) => { lists[r.user_id]!.push(wholes[n]!.toString()); });
+  }
+  return lists;
 }

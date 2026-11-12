@@ -1,6 +1,6 @@
 # Weekly challenges and the Pokémon card raffle
 
-A signed-in player who finishes every weekly challenge gets **1 base entry** in that week's drawing for a Pokémon card. Bonus entries, up to **5** (6 total), come from PJAM held in the linked wallet at draw time, or from extra play. No purchase is required. The game does not take payment and does not ship the card. A moderator draws the winner and the operator sends the prize by hand.
+A signed-in player who finishes every weekly challenge gets **1 base entry** in that week's drawing for a Pokémon card, plus up to **5** grind entries. A linked wallet that holds PJAM gets holder entries with no challenges: 1 per 1,000,000 whole tokens, counting at most 5,000,000, so 5 from one balance. The two totals add. No purchase is required. The game does not take payment and does not ship the card. A moderator draws the winner and the operator sends the prize by hand.
 
 This is not applied or deployed by the repo. Apply the migration and deploy the function yourself after review. `NET_VERSION` stays 3.
 
@@ -23,14 +23,16 @@ Offline games are not simulated on the server. The existing anonymous log (`poke
 
 Guests (`is_anonymous`) are not entered and cannot record a finish or a share.
 
-## Bonus entries
+## Entries
 
-Holder and grind entries **add**, then cap at `bonus_cap` (default 5).
+Challenge entries are unchanged when the balance is under one step, or there is no wallet: 1 after every base challenge, plus grind entries capped at `bonus_cap` (default 5).
 
-- **Holder:** 1 entry per `pjam_per_entry` whole tokens (default 1,000,000) of mint `GQe9QiBBV4G6bRUCxx2JgKrzT7G7RD17FJquBWgVpump` in `pokejam_linked_wallets`, via `pokejam_linked_wallet`. Read at draw time from Solana (`finalized`), not from the client. Decimals come from the mint account. Frozen token accounts are skipped. Classic SPL and Token-2022 are both read.
-- **Grind:** each entry takes `grind_online_per_entry` online games **past** the weekly online goal (default 10) **and** `grind_wins_per_entry` online wins that week (default 3). Both gates apply. Wins are every win that week, not only wins in the extra games.
+Holder entries need no challenges. For each balance, `floor(min(balance, pjam_counted_cap) / pjam_per_entry)`. Defaults: 1,000,000 per entry, 5,000,000 counted, so 5. The draw reads each balance and adds those counts to the challenge total.
 
-A holder of 5,000,000 PJAM is already at the bonus cap. A player with none needs 50 extra online games and 15 wins for the same 5 entries. The free route is heavy and doable.
+- **Holder:** mint `GQe9QiBBV4G6bRUCxx2JgKrzT7G7RD17FJquBWgVpump`. Wallets are `pokejam_linked_wallets` and a Phantom sign-in address (`auth.identities` provider `web3`). Read at draw time from Solana (`finalized`), and on the challenges screen by `pokejam-raffle-holder`. The browser does not call an RPC. Decimals come from the mint account. Frozen token accounts are skipped. Classic SPL and Token-2022 are both read.
+- **Grind:** each entry takes `grind_online_per_entry` online games **past** the weekly online goal (default 10) **and** `grind_wins_per_entry` online wins that week (default 3). Both gates apply. Wins are every win that week, not only wins in the extra games. Grind still requires the base challenges.
+
+A player with none of the token needs the challenges for an entry, and 50 extra online games plus 15 wins for 5 grind entries. The free route is heavy and doable.
 
 ## Config
 
@@ -43,6 +45,7 @@ One row, `pokejam_config.key = 'raffle'`. A missing or out-of-range value falls 
 | `social` | 1 |
 | `rank_steps` | 1 |
 | `pjam_per_entry` | 1000000 |
+| `pjam_counted_cap` | 5000000 |
 | `pjam_mint` | `GQe9QiBBV4G6bRUCxx2JgKrzT7G7RD17FJquBWgVpump` |
 | `grind_online_per_entry` | 10 |
 | `grind_wins_per_entry` | 3 |
@@ -66,8 +69,8 @@ To check a winner: sort the snapshot's entrants by `user_id`, walk `entries`, an
 
 ## Apply (owner, after merge)
 
-1. Run `supabase/migrations/20261210_pokejam_weekly_raffle.sql` on the project. It is additive. It does not schedule a job.
-2. Deploy the function: `supabase functions deploy pokejam-raffle-draw`.
+1. Run `supabase/migrations/20261210_pokejam_weekly_raffle.sql` if it is not already applied, then `20261218_pokejam_wallet_link_nonce.sql` and `20261219_pokejam_raffle_holders_qualify.sql`. They are additive. They do not schedule a job.
+2. Deploy `pokejam-raffle-draw`, `pokejam-raffle-holder`, and `pokejam-link-wallet`.
 3. Optional secret: `RAFFLE_RPC_URL` (defaults to `https://api.mainnet-beta.solana.com`). Optional: `RAFFLE_ALLOWED_ORIGINS`, same shape as the judge allow-list. `SUPABASE_URL`, `SUPABASE_ANON_KEY`, and `SUPABASE_SERVICE_ROLE_KEY` are already on the Edge runtime.
 4. `pgcrypto` / `extensions.gen_random_bytes` must exist (it does on Supabase). The draw uses it for the seed.
 5. Ship the site so `public/raffle-rules.html` and the challenges screen are live. No env file is required in the repo.

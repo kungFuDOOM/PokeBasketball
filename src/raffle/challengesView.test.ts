@@ -1,7 +1,7 @@
 // @ts-ignore Node's fs has no type declarations in this project.
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { challengesHtml, compactTokenAmount, modelFromDefaults, modelFromServer, resetLabel, weeklyChallengesTickerHtml, weeklyChallengesTickerText } from './challengesView';
+import { challengesHtml, compactTokenAmount, holderOfferText, modelFromDefaults, modelFromServer, resetLabel, weeklyChallengesTickerHtml, weeklyChallengesTickerText } from './challengesView';
 import { RAFFLE_DEFAULTS } from './entries';
 import { THIS_WEEK_PRIZE, prizeHtml, usd, type WeeklyCardPrize } from './prize';
 import { monByDex } from '../data/pokemon';
@@ -24,10 +24,12 @@ describe('challenges screen', () => {
   it('states both bonus routes, the cap, and that no purchase is needed', () => {
     const html = challengesHtml(modelFromServer(me()));
     expect(html).toContain('No purchase needed');
-    expect(html).toContain('1,000,000 PJAM');
+    expect(html).toContain(holderOfferText());
+    expect(html).toContain('Hold 1M $PJAM and link your wallet to enter automatically, 1 entry per 1M, up to 5M counted');
     expect(html).toContain('10 extra online games');
     expect(html).toContain('3 online wins');
     expect(html).toContain('up to 5');
+    expect(html).toContain('Checking holder entries');
     expect(html).toContain('your entries divided by');
     expect(html).toContain('raffle-rules.html');
     expect(html).toContain('AZ&#39;s Tranquility');
@@ -36,7 +38,8 @@ describe('challenges screen', () => {
     expect(html).toContain('sent by hand');
     expect(html).toContain('does not take payment');
     expect(html).toContain('5nji…q16p');
-    expect(html).toContain('Entries so far');
+    expect(html).toContain('Challenge entries so far');
+    expect(html).toContain('Your entries this week');
     expect(html).toContain('>2<');
     expect(html).not.toContain('5njibWvkiFg4LSyzq4ySFhyCsFEF4YhTqRLJo8Z9q16p</');
   });
@@ -108,12 +111,13 @@ describe('challenges screen', () => {
     expect(compactTokenAmount(2_000_000)).toBe('2M');
     expect(compactTokenAmount(2_500_000)).toBe('2,500,000');
     const text = weeklyChallengesTickerText();
-    expect(text).toBe(`Weekly Challenges are live — finish them all for a chance to win a Pokémon card! Hold ${compactTokenAmount(RAFFLE_DEFAULTS.pjamPerEntry)} PJAM for bonus entries`);
-    expect(text).toContain('1M PJAM');
+    expect(text).toBe(`Weekly Challenges are live — hold ${compactTokenAmount(RAFFLE_DEFAULTS.pjamPerEntry)} $PJAM and link your wallet to enter automatically, or finish all weekly challenges, for a chance to win a Pokémon card!`);
+    expect(text).toContain('1M $PJAM');
     expect(text).not.toMatch(/Pokémon Master/);
     expect(text).not.toContain('to win a free');
     expect(weeklyChallengesTickerHtml()).toBe(text);
-    expect(weeklyChallengesTickerText({ ...RAFFLE_DEFAULTS, pjamPerEntry: 3_000_000 })).toContain('Hold 3M PJAM');
+    expect(weeklyChallengesTickerText({ ...RAFFLE_DEFAULTS, pjamPerEntry: 3_000_000 })).toContain('hold 3M $PJAM');
+    expect(holderOfferText({ ...RAFFLE_DEFAULTS, pjamPerEntry: 2_000_000, pjamCountedCap: 8_000_000 })).toBe('Hold 2M $PJAM and link your wallet to enter automatically, 1 entry per 2M, up to 8M counted');
     const css = readFileSync(new URL('../style.css', import.meta.url), 'utf8');
     const rule = css.match(/\.ticker \{[^}]+\}/)?.[0] ?? '';
     expect(rule).toContain('safe-area-inset-left');
@@ -121,6 +125,20 @@ describe('challenges screen', () => {
     expect(rule).toContain('safe-area-inset-bottom');
     expect(css).toContain('.tk-clip');
     expect(css).toMatch(/\.ticker\.static \.tk-clip \{[^}]*safe center/);
+  });
+
+  it('offers a wallet link when none is stored, and shows holder entries once they are known', () => {
+    const open = challengesHtml(modelFromServer(me({ wallet: null, score: { ...me().score, base: false, holder: 0, bonus: 0, total: 0 } })));
+    expect(open).toContain('data-a="link-wallet"');
+    expect(open).toContain('No wallet linked yet');
+    expect(open).toContain('Link your wallet');
+    const known = challengesHtml({ ...modelFromServer(me()), holderNow: 3 });
+    expect(known).toContain('Holder entries: 3.');
+    expect(known).toContain('Your entries this week: <b>5</b>');
+    expect(known).not.toContain('data-a="link-wallet"');
+    const files = ['client.ts', 'screen.ts', 'challengesView.ts'].map((f) => readFileSync(new URL(`./${f}`, import.meta.url), 'utf8')).join('\n');
+    expect(files).toContain('pokejam-raffle-holder');
+    expect(files).not.toMatch(/getAccountInfo|getBalance|RAFFLE_RPC|\.solana\.com|jsonrpc/);
   });
 
   it('the layout keeps clear of the notch and fits a short landscape phone', () => {

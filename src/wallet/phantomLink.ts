@@ -6,7 +6,7 @@
 // random one-time id in the redirect link: it rejects unsolicited or replayed callbacks and keys the relay.
 import { base58Decode, base58Encode, isAddress, randomBytes } from '../../supabase/functions/_shared/pack/bytes.ts';
 import { boxBefore, boxOpen, boxPublicKey, boxSeal } from './nacl';
-import { buildLinkMessage, checkLinkMessage } from '../../supabase/functions/_shared/wallet/link';
+import { buildLinkMessage, checkLinkMessage, signatureBytes } from '../../supabase/functions/_shared/wallet/link';
 import { SIGN_IN_STATEMENT } from './phantom';
 import { authKey, classifyAuthError, diagMessage, keyFromRelay } from './phantomDiag';
 
@@ -279,7 +279,7 @@ export type Advance =
  * Applies Phantom's answer to the trip in progress. The id is used up first, so the same callback can't be applied twice; any
  * failure wipes the key and session. Throws PhantomLinkError.
  */
-export function advance(store: Store, p: Pending, r: PhantomResponse, o: { host: string; uri: string; now: number; storageKey?: string }): Advance {
+export function advance(store: Store, p: Pending, r: PhantomResponse, o: { host: string; uri: string; now: number; storageKey?: string; nonce?: string }): Advance {
   const key = o.storageKey ?? (p.purpose === 'link' ? LINK_PENDING_KEY : PENDING_KEY);
   clearPending(store, key);
   if (p.expiresAt <= o.now) throw stepError('EXP');
@@ -293,7 +293,7 @@ export function advance(store: Store, p: Pending, r: PhantomResponse, o: { host:
     const session = body.session;
     if (!isAddress(wallet) || typeof session !== 'string' || !session) throw stepError('CN-READ');
     const expiresAt = o.now + FLOW_TTL_MS;
-    const nonce = base58Encode(randomBytes(16));
+    const nonce = p.purpose === 'link' && o.nonce ? o.nonce : base58Encode(randomBytes(16));
     if (p.purpose === 'link' && !p.userId) throw stepError('STATE');
     const next: Pending = {
       ...p, id: newId(), step: 'sign', opened: false, expiresAt, phantomPub: r.k, session, wallet, nonce,
@@ -305,10 +305,8 @@ export function advance(store: Store, p: Pending, r: PhantomResponse, o: { host:
     return { kind: 'need-sign', pending: next };
   }
   if (!p.phantomPub || !p.message || !p.wallet || !p.nonce) throw stepError('STATE');
-  const sig = open(r, p.phantomPub, p.secret, 'SG-READ').signature;
-  let signature: Uint8Array | null = null;
-  try { signature = typeof sig === 'string' ? base58Decode(sig) : null; } catch { /* reported below */ }
-  if (!signature || signature.length !== 64) throw stepError('SG-READ');
+  const signature = signatureBytes(open(r, p.phantomPub, p.secret, 'SG-READ').signature);
+  if (!signature) throw stepError('SG-READ');
   if (p.purpose === 'link') {
     const c = checkLinkMessage(p.message, { address: p.wallet, userId: p.userId ?? '', nonce: p.nonce, now: o.now });
     if (c === 'expired') throw stepError('EXP');

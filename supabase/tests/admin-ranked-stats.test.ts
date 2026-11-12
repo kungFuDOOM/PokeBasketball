@@ -103,7 +103,7 @@ describe('pokejam_admin_ranked_stats', () => {
         ($1, $2, 'bad_upload'), ($1, $2, 'false_report'), ($1, $3, 'report_mismatch')`,
       [forfeited, a.id, b.id],
     );
-    await t.sql(`create table auth.identities (
+    await t.sql(`create table if not exists auth.identities (
       id uuid primary key default gen_random_uuid(), user_id uuid not null, provider text not null, identity_data jsonb not null)`);
     await t.sql(
       `insert into auth.identities(user_id, provider, identity_data) values

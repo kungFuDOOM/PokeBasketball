@@ -63,6 +63,7 @@ export async function linkWalletHandler(req: Request, origins: string[], deps: L
       : stored.code === 'already' ? 'This account already has a different wallet.'
       : stored.code === 'replay' ? 'That link request was already used. Try again.'
       : stored.code === 'rate' ? 'Too many link attempts. Try again in a while.'
+      : stored.code === 'nonce' ? 'That link request was not started. Try again.'
       : 'Could not link the wallet.';
     const status = stored.code === 'rate' ? 429 : stored.code === 'taken' || stored.code === 'already' ? 409 : 400;
     return json({ error: text, code: stored.code }, status);

@@ -1,7 +1,7 @@
 // Link a Phantom wallet to the account that is already signed in. Sign-in is a different path (phantomLink.ts) and is not used here.
 // Desktop and the Phantom in-app browser sign with the injected provider. Everywhere else, Phantom's universal link
 // opens Safari, so a home-screen app seals the signature back through the same relay and submits it with its own session.
-import { USER_ID_RE, buildLinkMessage, checkLinkMessage } from '../../supabase/functions/_shared/wallet/link';
+import { USER_ID_RE, buildLinkMessage, checkLinkMessage, signatureBytes } from '../../supabase/functions/_shared/wallet/link';
 import { base58Decode, base58Encode, randomBytes } from '../../supabase/functions/_shared/pack/bytes.ts';
 import { boxBefore, boxOpen, boxPublicKey, boxSeal } from './nacl';
 import {
@@ -132,9 +132,22 @@ export async function takeLinkResult(relay: RelayClient, h: LinkHandoff): Promis
   return openLinkResult(answer, h.secret);
 }
 
-/** The message an injected wallet signs. Ten minutes, same window the server allows. */
-export function injectedLinkMessage(o: { host: string; uri: string; address: string; userId: string; now: number }): { message: string; nonce: string } {
+export { signatureBytes };
+
+/**
+ * Opens a nonce on the server, then returns it. The wallet signs only after `open` has stored the nonce.
+ * `open` resolves true when the row was written.
+ */
+export async function requestLinkNonce(open: (nonce: string) => Promise<boolean>): Promise<string> {
   const nonce = base58Encode(randomBytes(16));
+  const ok = await open(nonce);
+  if (!ok) throw new Error('Could not start the wallet link. Try again.');
+  return nonce;
+}
+
+/** The message an injected wallet signs. Ten minutes, same window the server allows. Pass the nonce the server stored. */
+export function injectedLinkMessage(o: { host: string; uri: string; address: string; userId: string; now: number; nonce?: string }): { message: string; nonce: string } {
+  const nonce = o.nonce ?? base58Encode(randomBytes(16));
   const message = buildLinkMessage({ ...o, nonce, issuedAt: o.now, expiresAt: o.now + FLOW_TTL_MS });
   return { message, nonce };
 }

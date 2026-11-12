@@ -43,7 +43,19 @@ describe('whole tokens', () => {
       [rpcKey('getTokenAccountsByOwner', ['w', { programId: TOKEN_2022 }, opts])]: { value: [] },
     });
     const got = await pjamWholes(fake, MINT, [{ user_id: 'u1', wallet: 'w' }, { user_id: 'u2', wallet: null }]);
-    expect(got).toEqual({ u1: '2000000', u2: '0' });
+    expect(got).toEqual({ u1: ['2000000'], u2: [] });
+  });
+
+  it('keeps each wallet balance, so the database can cap them one by one', async () => {
+    const fake = rpc({
+      [rpcKey('getAccountInfo', [MINT, opts])]: { value: { data: { parsed: { info: { decimals: 6 } } } } },
+      [rpcKey('getTokenAccountsByOwner', ['a', { mint: MINT }, opts])]: { value: [account('A', '6000000000000')] },
+      [rpcKey('getTokenAccountsByOwner', ['a', { programId: TOKEN_2022 }, opts])]: { value: [] },
+      [rpcKey('getTokenAccountsByOwner', ['b', { mint: MINT }, opts])]: { value: [account('B', '6000000000000')] },
+      [rpcKey('getTokenAccountsByOwner', ['b', { programId: TOKEN_2022 }, opts])]: { value: [] },
+    });
+    const got = await pjamWholes(fake, MINT, [{ user_id: 'u', wallets: ['a', 'b'] }]);
+    expect(got.u).toEqual(['6000000', '6000000']);
   });
 
   it('refuses a mint the chain does not have', async () => {

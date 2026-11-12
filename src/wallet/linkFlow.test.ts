@@ -6,7 +6,7 @@ import { buildLinkMessage, checkLinkMessage } from '../../supabase/functions/_sh
 import { generateKeypair } from '../../supabase/functions/_shared/pack/ed25519.ts';
 import { boxBefore, boxPublicKey, boxSeal } from './nacl';
 import { LINK_PENDING_KEY, advance, loadPending, parseCallback, signLink, type Store } from './phantomLink';
-import { beginLinkHandoff, beginLinkInBrowser, openLinkResult, parseLinkCallback, sealLinkResult } from './linkFlow';
+import { beginLinkHandoff, beginLinkInBrowser, openLinkResult, parseLinkCallback, requestLinkNonce, sealLinkResult } from './linkFlow';
 
 const USER = '11111111-1111-4111-8111-111111111111';
 const WALLET = '7EcDhSYGxXyscszYEp35KHN8vvw3svAuLKTzXwCFLtV';
@@ -85,6 +85,21 @@ describe('linking does not look like a sign-in', () => {
     expect(home).toContain('pj_wh=');
     expect(home).not.toContain('pj_phantom');
     expect(parseCallback('?' + home.slice(home.indexOf('?')))).toBeNull();
+  });
+  it('asks the server to store the nonce before the wallet signs, and the sign step uses that nonce', async () => {
+    const opened: string[] = [];
+    const nonce = await requestLinkNonce(async (n) => { opened.push(n); return true; });
+    expect(opened).toEqual([nonce]);
+    expect(nonce).toMatch(/^[1-9A-HJ-NP-Za-km-z]{16,64}$/);
+    await expect(requestLinkNonce(async () => false)).rejects.toThrow(/start the wallet link/);
+    const s = mem();
+    const ph = fakePhantom();
+    const link = beginLinkInBrowser(s, { loc, userId: USER, now: NOW });
+    const pending = loadPending(s, NOW, LINK_PENDING_KEY).pending!;
+    const stepped = advance(s, pending, parseLinkCallback(ph.connect(link))!.response, { ...env, nonce: 'nonceNonce123456' });
+    if (stepped.kind !== 'need-sign') throw new Error('expected a sign step');
+    expect(stepped.pending.nonce).toBe('nonceNonce123456');
+    expect(stepped.pending.message).toContain('Nonce: nonceNonce123456');
   });
   it('the link screen does not sign in or sign out', () => {
     const src = readFileSync(new URL('./linkSheet.ts', import.meta.url), 'utf8').replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, '');
