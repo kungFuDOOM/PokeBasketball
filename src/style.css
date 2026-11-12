@@ -501,10 +501,25 @@ li.empty { color: var(--muted); }
 .badge-case li { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px 2px; border-radius: 8px; background: var(--bg); font-size: 0.78rem; font-weight: 700; color: var(--muted); }
 .badge-case li.got { color: var(--fg); background: color-mix(in srgb, var(--accent) 12%, var(--bg)); }
 .badge-case h3 b { color: var(--accent); }
+.champ-banners { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px; }
+.champ-banner { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; min-width: 0; padding: 8px 14px; border: 2px solid #8a5a00; border-radius: 8px; background: linear-gradient(#ffe27a, #ffcb05); color: #1a1400; }
+.champ-banner strong { font: 0.7rem var(--pixel); letter-spacing: 0.05em; text-transform: uppercase; }
+.champ-banner span { font-size: 0.85rem; font-weight: 700; }
+.region-card { border-left: 6px solid var(--tc); }
+.region-card h3 { margin: 0 0 8px; overflow-wrap: anywhere; }
+.region-reqs { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.region-reqs li { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 8px 12px; border-radius: 8px; background: var(--bg); }
+.region-reqs li b { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.region-reqs .val { font-weight: 800; white-space: nowrap; }
+.region-reqs .mark { width: 1.2em; text-align: center; font-weight: 800; color: var(--muted); }
+.region-reqs li.ok .mark, .region-reqs li.ok .val { color: var(--accent); }
 .badge-svg.locked { filter: grayscale(1) brightness(0.45); opacity: 0.6; }
 .leader { color: var(--fg) !important; font-weight: 700; margin: 0 0 4px !important; }
-.standings tbody th span { display: flex; flex-direction: column; line-height: 1.1; }
-.standings tbody th small { color: var(--muted); font-weight: 600; font-size: 0.78rem; }
+.standings tbody th span { display: flex; flex-direction: column; line-height: 1.1; min-width: 0; }
+.standings tbody th i { flex: none; }
+.standings tbody th small { color: var(--muted); font-weight: 600; font-size: 0.78rem; white-space: normal; overflow-wrap: anywhere; }
+/* Long coach labels (Johto's "Will · Koga · Bruno · Karen · Champion Lance") wrap instead of widening the page. */
+.nx-team .leader, .nx-team h3, .trade-sheet .note { overflow-wrap: anywhere; }
 .badge-won { display: flex; flex-direction: column; align-items: center; gap: 10px; text-align: center; background: #f8f8f0; color: #1c1c28; border: 4px double var(--tc, #2a3170); border-radius: 8px; padding: 18px; margin: 0 auto 22px; max-width: 640px; }
 .badge-won .badge-svg { animation: badge-pop 0.6s cubic-bezier(0.2, 1.6, 0.4, 1) both; }
 .badge-won p { margin: 0; font: 0.7rem/1.7 var(--pixel); }
@@ -794,7 +809,7 @@ li.empty { color: var(--muted); }
   transition: transform 0.18s;
 }
 .battle.show { transform: translate(-50%, 0); }
-.battle p { margin: 0; font: 0.7rem/1.7 var(--pixel); min-height: 1.7em; }
+.battle p { margin: 0; font: 0.7rem/1.7 var(--pixel); min-height: 1.7em; overflow-wrap: anywhere; }
 .game:not(.has-touch) .battle { left: auto; right: max(16px, env(safe-area-inset-right, 0px)); transform: translateY(140%); width: min(520px, calc(100vw - 300px)); }
 .game:not(.has-touch) .battle.show { transform: none; }
 
@@ -1104,6 +1119,9 @@ button.tk-item { appearance: none; -webkit-appearance: none; background: transpa
 .tk-tag { font: 0.6rem var(--pixel); background: var(--red); color: #fff !important; padding: 3px 5px; border-radius: 3px; }
 .tk-ad { text-transform: uppercase; }
 .tk-ad a { color: inherit; }
+.tk-ad a.tk-link { text-decoration: underline; text-underline-offset: 3px; cursor: pointer; padding: 8px 0; -webkit-tap-highlight-color: rgba(255,255,255,0.2); }
+.tk-track:has(a.tk-link:hover),
+.tk-track:has(a.tk-link:active) { animation-play-state: paused; }
 .tk-live-item .tk-live { color: #fff; }
 /* Center the labels when they fit. On a narrow phone they start at the safe edge and can be swiped; no auto-motion. */
 .ticker.static .tk-clip { justify-content: flex-start; justify-content: safe center; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
@@ -2510,6 +2528,17 @@ body:has(.pause-btn) .music-btn:not(.docked) {
 .ch-list strong { font: 700 0.95rem var(--sport); white-space: nowrap; }
 .ch-rules a { color: var(--accent); }
 .ch-wallet { display: block; }
+.ch-prize { margin: 0; padding: 8px 10px; border: 2px solid var(--accent); border-radius: 8px; background: rgba(0, 0, 0, 0.28); min-width: 0; }
+.ch-prize .eyebrow { margin: 0 0 6px; }
+.ch-prize-body { display: grid; grid-template-columns: minmax(96px, 132px) minmax(0, 1fr); gap: 10px; align-items: center; min-width: 0; }
+.ch-prize img { width: 100%; height: auto; max-height: 240px; object-fit: contain; border-radius: 4px; display: block; background: #07091a; }
+.ch-prize-copy { min-width: 0; }
+.ch-prize h3 { margin: 0; font: 700 1.25rem/1.1 var(--sport); overflow-wrap: anywhere; }
+.ch-prize-copy p { margin: 0; color: var(--muted); font-size: 0.88rem; overflow-wrap: anywhere; }
+.ch-prize-copy h3 + p { color: var(--fg); }
+.ch-prize-money { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 6px; color: var(--fg); }
+.ch-prize-money b { color: var(--accent); font-size: 1.2rem; }
+.ch-prize-vault { margin-top: 4px; }
 @media (orientation: landscape) and (max-height: 450px) {
   .menu:has(.ch) .title { margin-bottom: 4px; }
   .menu:has(.ch) .logo { font-size: 1.35rem; }
@@ -2517,6 +2546,13 @@ body:has(.pause-btn) .music-btn:not(.docked) {
   .menu:has(.ch) .card.setup { padding: 8px 10px; gap: 6px; }
   .ch { gap: 4px; }
   .ch-when, .ch-base, .ch-bonus, .ch-odds, .ch-last, .ch-rules, .ch .note { font-size: 0.78rem; line-height: 1.25; }
+  .ch-prize { padding: 4px 6px; }
+  .ch-prize .eyebrow { margin-bottom: 4px; }
+  .ch-prize-body { grid-template-columns: 72px minmax(0, 1fr); gap: 8px; }
+  .ch-prize img { max-height: 120px; }
+  .ch-prize h3 { font-size: 1rem; }
+  .ch-prize-copy p { font-size: 0.72rem; line-height: 1.2; }
+  .ch-prize-money b { font-size: 0.95rem; }
   .ch-list { grid-template-columns: 1fr 1fr; gap: 4px; }
   .ch-list li { padding: 3px 8px; }
   .ch-list small { display: none; }
@@ -2736,3 +2772,7 @@ body:has(.pause-btn) .music-btn:not(.docked) {
   .tp-resrow .tp-shooter img { width: 40px; height: 40px; }
   .tp-big { margin-top: 0; }
 }
+
+/* Kabuto King: limited-time special; gold name tag (text is always exactly "Kabuto King"). */
+.king-tag { background: linear-gradient(180deg, #fff2a6 0%, #ffcf2e 45%, #c98a12 100%); -webkit-background-clip: text; background-clip: text; color: transparent; -webkit-text-fill-color: transparent; font-weight: 800; letter-spacing: 0.02em; filter: drop-shadow(0 1px 0 rgba(0, 0, 0, 0.7)); }
+.tp-name .tp-badge { align-self: flex-start; margin: 2px 0 1px; }

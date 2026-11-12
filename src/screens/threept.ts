@@ -1,16 +1,20 @@
 // 3-Point Contest side mode: pick shooter -> pick money rack -> play 60s -> results. Offline, solo, personal best only.
 // Pure rules live in src/threept/*; this file is the DOM flow, threept.view.ts draws the court.
-import { POKEMON, monByDex, spriteUrl, type Mon } from '../data/pokemon';
+import { POKEMON, spriteUrl, type Mon } from '../data/pokemon';
+import { crownImg } from '../kabuto/dom';
+import { isKingKabuto, withKingKabuto } from '../kabuto/king';
 import type { Audio } from '../game/audio';
 import type { Sfx } from '../game/game';
+import type { GameEvent } from '../game/types';
 import { Input } from '../game/input';
 import { preload } from '../game/sprites';
 import { featuredShooter, rackPreview, rackSpots, summarize } from '../threept/contest';
 import { pickerRows } from '../threept/picker';
-import { ContestRun, type RunEvent } from '../threept/run';
+import { ContestRun, type RunEvent, type ShootInput } from '../threept/run';
 import { loadBest, saveIfBest } from '../threept/save';
 import { BALLS_PER_RACK, MAX_SCORE, RACKS, TOTAL_BALLS, type RackId } from '../threept/types';
 import { esc, tier } from '../util';
+import { guardStaleOnMenu } from '../wallet/staleBuild';
 import type { Settings } from './menu';
 import { CourtView } from './threept.view';
 
@@ -25,9 +29,36 @@ let lastDex: number | null = null;
 let lastRack: RackId = 2;
 
 const SPOTS = rackSpots();
+/** The picker pool: Kabuto King replaces Kabuto while his window is open, so dex lookups must go through here. */
+const pickerPool = () => withKingKabuto(POKEMON);
+const monByDex = (dex: number): Mon => pickerPool().find((m) => m.dex === dex) ?? POKEMON[0];
+/** Name markup: the gold tag for Kabuto King, escaped text for everyone else. */
+const nameHtml = (m: Mon) => (isKingKabuto(m) ? `<span class="king-tag">${esc(m.name)}</span>` : esc(m.name));
+/** Crown Kabuto King's sprites under `scope` (they start plain and swap once the crowned image is ready). */
+const crownAll = (scope: ParentNode) => scope.querySelectorAll<HTMLImageElement>('img[data-king]').forEach(crownImg);
 const DT_MAX = 0.05;
 /** Seconds between the last ball / buzzer and the results screen. */
 const RESULTS_DELAY = 0.9;
+
+/** The play step's game: the screen always builds it here (the contest Game config, noFire included, lives in ContestRun). */
+export function newContestRun(shooter: Mon, moneyRack: RackId): ContestRun {
+  return new ContestRun(shooter, moneyRack);
+}
+
+/** Where one play frame's output goes: the contest's own events, the real game's events (to the court view) and its sounds. */
+export interface FrameSinks {
+  run(ev: RunEvent): void;
+  game(events: GameEvent[]): void;
+  sfx(s: Sfx): void;
+}
+
+/** One unpaused play frame, exactly as the screen runs it: step the contest, then hand on what the real game raised. */
+export function contestFrame(run: ContestRun, dt: number, inp: ShootInput, out: FrameSinks): void {
+  for (const ev of run.step(dt, inp)) out.run(ev);
+  // The real game's own effects and sounds (shot, swish, rim, bounce, dribble).
+  out.game(run.game.events.splice(0));
+  for (const x of run.game.sfx.splice(0)) out.sfx(x);
+}
 
 export function threePtContest(root: HTMLElement, settings: Settings, audio: Audio, act: ThreePtActions): void {
   void settings; // the contest plays on the game's default difficulty: the menu difficulty does not apply
@@ -62,7 +93,12 @@ export function threePtContest(root: HTMLElement, settings: Settings, audio: Aud
     if (next === 'pick') renderPick();
     else if (next === 'rack') renderRack();
     else if (next === 'play') renderPlay();
+    crownAll(root);
+    if (next === 'pick' || next === 'rack') guardMenu();
   };
+
+  // The picker and rack steps are menus: a stale bundle reloads here (back into the contest) rather than playing old code.
+  const guardMenu = () => guardStaleOnMenu(() => alive && (step === 'pick' || step === 'rack'), 'threept');
 
   const leave = () => {
     if (!alive) return;
@@ -154,20 +190,22 @@ export function threePtContest(root: HTMLElement, settings: Settings, audio: Aud
     const q = root.querySelector<HTMLInputElement>('.tp-q')!;
     const count = root.querySelector<HTMLElement>('.tp-count')!;
     const featured = featuredShooter();
+    const pool = pickerPool();
     const draw = () => {
-      const rows = pickerRows(q.value, featured);
-      count.textContent = `${rows.length} of ${POKEMON.length}`;
+      const rows = pickerRows(q.value, featured, pool);
+      count.textContent = `${rows.length} of ${pool.length}`;
       list.innerHTML = rows.length ? rows.map((m) => {
         const sel = m.dex === shooter?.dex;
         const badge = featured && featured.dex === m.dex ? `<span class="tp-badge">${esc(featured.badge)}</span>` : '';
         return `<button class="tp-row${sel ? ' on' : ''}" role="option" aria-selected="${sel}" data-dex="${m.dex}">
-          <img src="${spriteUrl(m.dex)}" alt="" loading="lazy" width="48" height="48">
-          <span class="tp-name">${esc(m.name)}${badge}<small>#${m.dex} · ${m.pos} · ${esc(m.archetype)}</small></span>
+          <img src="${spriteUrl(m.dex)}" alt="" loading="lazy" width="48" height="48"${isKingKabuto(m) ? ' data-king' : ''}>
+          <span class="tp-name">${nameHtml(m)}${badge}<small>#${m.dex} · ${m.pos} · ${esc(m.archetype)}</small></span>
           <span class="tp-stat tp-sht t-${tier(m.r.sht)}"><small>Sht</small><b>${m.r.sht}</b></span>
           <span class="tp-stat t-${tier(m.ovr)}"><small>OVR</small><b>${m.ovr}</b></span>
           <span class="tp-go" aria-hidden="true">Pick</span>
         </button>`;
       }).join('') : '<p class="tp-empty">No Pokémon match. Try another name or number.</p>';
+      crownAll(list);
     };
     draw();
     q.addEventListener('input', draw);
@@ -199,8 +237,8 @@ export function threePtContest(root: HTMLElement, settings: Settings, audio: Aud
           <span class="tp-max">Max <b>${MAX_SCORE}</b></span>
         </header>
         <div class="tp-shooter">
-          <img src="${spriteUrl(m.dex)}" alt="" width="56" height="56">
-          <span><b>${esc(m.name)}</b><small>Sht ${m.r.sht} · OVR ${m.ovr}</small></span>
+          <img src="${spriteUrl(m.dex)}" alt="" width="56" height="56"${isKingKabuto(m) ? ' data-king' : ''}>
+          <span><b>${nameHtml(m)}</b><small>Sht ${m.r.sht} · OVR ${m.ovr}</small></span>
         </div>
         <p class="tp-sub">Every ball on your money rack is worth 2. Elsewhere only the last ball of each rack is.</p>
         <div class="tp-arc" role="group" aria-label="Money rack">
@@ -252,7 +290,7 @@ export function threePtContest(root: HTMLElement, settings: Settings, audio: Aud
   function renderPlay() {
     if (!shooter) return go('pick');
     const m = shooter;
-    const run = new ContestRun(m, moneyRack);
+    const run = newContestRun(m, moneyRack);
     root.innerHTML = `
       <div class="tp-game">
         <div class="tp-hud" role="status">
@@ -440,15 +478,12 @@ export function threePtContest(root: HTMLElement, settings: Settings, audio: Aud
       tapLatch = false;
       const pressed = held && !prevHeld;
       prevHeld = held;
-      for (const ev of run.step(dt, { pressed, held })) handle(ev);
-      // The real game's own effects and sounds (shot, swish, rim, bounce, dribble).
-      view.handle(run.game.events.splice(0), run);
-      for (const x of run.game.sfx.splice(0)) sfx(x);
+      contestFrame(run, dt, { pressed, held }, { run: handle, game: (evs) => view.handle(evs, run), sfx });
       view.draw(run, dt);
       hud();
       if (overT >= 0) {
         overT += dt;
-        if (overT >= RESULTS_DELAY) renderResults(run);
+        if (overT >= RESULTS_DELAY) { renderResults(run); crownAll(root); }
       }
     };
     hud();
@@ -501,8 +536,8 @@ export function threePtContest(root: HTMLElement, settings: Settings, audio: Aud
         </ul>
         <div class="tp-resrow">
           <div class="tp-shooter">
-            <img src="${spriteUrl(m.dex)}" alt="" width="56" height="56">
-            <span><b>${esc(m.name)}</b><small>Sht ${m.r.sht} · OVR ${m.ovr}</small></span>
+            <img src="${spriteUrl(m.dex)}" alt="" width="56" height="56"${isKingKabuto(m) ? ' data-king' : ''}>
+            <span><b>${nameHtml(m)}</b><small>Sht ${m.r.sht} · OVR ${m.ovr}</small></span>
           </div>
           <p class="tp-best">${best ? `Personal best <b>${best.score}</b> · ${esc(best.name)}${isNew && before ? ` <small>(was ${before.score})</small>` : ''}` : 'No personal best yet: score a point to set one.'}</p>
         </div>

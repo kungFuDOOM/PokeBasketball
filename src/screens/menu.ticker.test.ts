@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { weeklyChallengesTickerHtml } from '../raffle/challengesView';
+import { onLiveAdsChange, setLiveAds } from '../data/ads';
 import { tickerHtml } from './menu';
 
 describe('menu ticker', () => {
@@ -33,5 +34,31 @@ describe('menu ticker', () => {
     expect(html).toContain('>Quick Play</span>');
     expect(html).toContain('data-go="ticker-challenges">Weekly Challenges</button>');
     expect(html.match(/class="tk-item/g)?.length).toBe(4);
+  });
+
+  it('leads with paid live ads that are still running, before the $PJAM house ad', () => {
+    setLiveAds([{ text: 'RIPIT .CO', theme: 'gold', until: Date.now() + 60_000 }, { text: 'OLD', theme: 'gold', until: Date.now() - 1 }]);
+    const html = tickerHtml(false, true);
+    expect(html.indexOf('RIPIT .CO')).toBeGreaterThan(-1);
+    expect(html.indexOf('RIPIT .CO')).toBeLessThan(html.indexOf('$PJAM, the official'));
+    expect(html).not.toContain('OLD');
+    setLiveAds([]);
+    expect(tickerHtml(false, true)).not.toContain('RIPIT');
+  });
+
+  it('tells the menu when the board changes, but not on an identical refresh', () => {
+    setLiveAds([]);
+    let n = 0;
+    const off = onLiveAdsChange(() => n++);
+    const ad = { text: 'RIPIT .CO', theme: 'gold' as const, until: Date.now() + 60_000 };
+    setLiveAds([ad]);
+    setLiveAds([{ ...ad }]);
+    expect(n).toBe(1);
+    setLiveAds([]);
+    expect(n).toBe(2);
+    off();
+    setLiveAds([ad]);
+    expect(n).toBe(2);
+    setLiveAds([]);
   });
 });

@@ -1,5 +1,6 @@
 // Pure contest logic (spots, scoring, clock, phases). No DOM, no canvas.
 import type { Mon } from '../data/pokemon';
+import { kingFeatured } from '../kabuto/king';
 import { HOOP_Y, hoopX } from '../game/types';
 import {
   BALLS_PER_RACK, CONTEST_SECONDS, RACKS, TOTAL_BALLS,
@@ -130,7 +131,7 @@ export const isLastBall = (ballIndex: number) => ballIndex >= TOTAL_BALLS - 1;
 export const RACK_COUNT = RACKS;
 export { CONTEST_SECONDS };
 
-/** King Kabuto is not implemented. Future hook: return a featured shooter to badge/boost in the picker. */
-export function featuredShooter(): FeaturedShooter {
-  return null;
+/** Featured-shooter hook for the picker: Kabuto King (pinned first, badged) while his window is open, else null. */
+export function featuredShooter(now: number = Date.now()): FeaturedShooter {
+  return kingFeatured(now);
 }

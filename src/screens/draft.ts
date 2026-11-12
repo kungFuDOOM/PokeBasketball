@@ -1,4 +1,4 @@
-import { POKEMON, POSITIONS, RATING_LABELS, SPECIALS, TYPE_COLORS, spriteUrl, type Mon, type PokeType, type Pos, type Ratings } from '../data/pokemon';
+import { POSITIONS, RATING_LABELS, SPECIALS, TYPE_COLORS, spriteUrl, type Mon, type PokeType, type Pos, type Ratings } from '../data/pokemon';
 import type { Audio } from '../game/audio';
 import { bestLineup, chemistry, teamOvr } from '../game/game';
 import { isNameBlocked } from '../nameFilter';
@@ -6,6 +6,7 @@ import { abbr, esc, lettersName, showNameError, tier } from '../util';
 import { ordinal, snakePicks } from './draft.logic';
 import { monCard, summaryHtml, SWATCHES, typeChips } from './draftView';
 import { wireDraftShare } from '../season/draftShare';
+import { poolMons } from '../franchise/regions';
 
 export { monCard, typeChips };
 
@@ -116,6 +117,11 @@ export interface DraftState {
   taken: number[];
   /** Picks per team: 5 in Quick Play, 10 in franchise (older saved drafts have none and used 5). */
   rounds?: number;
+  /**
+   * Franchise drafts: the regions whose Pokémon are in the pool (see `franchise/regions.ts`), fixed when the draft
+   * starts so a resumed draft replays from the same pool. Missing: every Pokémon (Quick Play, Season Draft, older drafts).
+   */
+  regions?: string[];
 }
 
 /** Seconds you get on the clock for each pick. When it runs out, the best fit is picked for you. */
@@ -182,15 +188,15 @@ export function draftScreen(
   onDone: (rosters: Mon[][], leftovers: Mon[]) => void,
   onBack: () => void,
   onProgress: (state: DraftState) => void,
-  /** `customize: false` leaves out the rename / color picker on the draft-complete screen. */
-  opts: { customize?: boolean } = {},
+  /** `customize: false` leaves out the rename / color picker on the draft-complete screen; `pool` replaces the draftable Pokémon. */
+  opts: { customize?: boolean; pool?: readonly Mon[] } = {},
 ) {
   const { teams, order } = state;
   // Own container so listeners die with the screen.
   const host = root;
   root = document.createElement('div');
   host.replaceChildren(root);
-  const pool = [...POKEMON].sort((a, b) => b.ovr - a.ovr);
+  const pool = [...(opts.pool ?? poolMons(state.regions))].sort((a, b) => b.ovr - a.ovr);
   const rosters: Mon[][] = teams.map(() => []);
   const size = state.rounds ?? 5;
   const picks = snakePicks(order, size);

@@ -70,6 +70,8 @@
 .ad-plan strong { font: 800 1.25rem/1 var(--sport); text-transform: uppercase; }
 .ad-price { font: 800 1.35rem/1.1 var(--sport); color: var(--ember); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 .ad-price small { font-size: 0.75rem; color: var(--muted); margin-left: 4px; }
+.ad-price.bad { font-size: 1rem; color: var(--muted); }
+.ad-price-note { grid-column: 1 / -1; margin: 0; color: var(--muted); font-size: 0.8rem; font-weight: 600; line-height: 1.35; }
 .ad-plan > small { font-size: 0.8rem; color: var(--muted); font-weight: 600; line-height: 1.25; }
 .ad-plan.on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, var(--bg)); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent); }
 .ad-when { margin-bottom: 8px; }

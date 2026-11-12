@@ -1,4 +1,4 @@
-// Devnet run of the payout fail-safes (20261211_pokejam_pack_fail_safe.sql): the real Collector Crypt devnet API,
+// Devnet run of the payout fail-safes (20261214_pokejam_pack_fail_safe.sql): the real Collector Crypt devnet API,
 // the real Solana devnet RPC and the real house wallet, with a local Postgres (PGlite) running the pack migrations
 // instead of Supabase. Faults are injected only on the network, between the worker and CC: a real submit whose
 // reply is thrown away, or a submit that's never sent. Everything else (CC, the chain, the database) is real.

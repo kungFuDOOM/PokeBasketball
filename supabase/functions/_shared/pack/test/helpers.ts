@@ -12,7 +12,7 @@ import type { RpcCall } from '../store.ts';
 import { decodeTransaction } from '../tx-inspect.ts';
 import { PROGRAM } from '../tx-guard.ts';
 
-const MIGRATIONS = ['20261023_pokejam_pack_payouts.sql', '20261024_pokejam_pack_keep_or_sell.sql', '20261211_pokejam_pack_fail_safe.sql']
+const MIGRATIONS = ['20261023_pokejam_pack_payouts.sql', '20261024_pokejam_pack_keep_or_sell.sql', '20261214_pokejam_pack_fail_safe.sql']
   .map((f) => new URL(`../../../../migrations/${f}`, import.meta.url));
 
 /** Postgres with Supabase's roles and a stand-in auth schema, then the real migrations, in order. */

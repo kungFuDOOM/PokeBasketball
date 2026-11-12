@@ -25,8 +25,11 @@ async function setup() {
   let n = 0;
   const fn = async <T>(name: string, args: unknown[] = []) =>
     (await t.service(`select public.${name}(${args.map((_, i) => `$${i + 1}`).join(', ')}) as r`, args))[0].r as T;
-  const create = (plan = 'hour', wallet = WALLET) => fn<Ad>('pokejam_live_ad_create', [wallet, 'BUY MORE POTIONS', 'gold', plan, null, null, null]);
-  const pay = (ad: Ad, burned: bigint | string, sig = `burn${++n}`) => fn<Ad>('pokejam_live_ad_pay', [ad.id, sig, String(burned), ad.wallet]);
+  const LOCKED: Record<string, string> = { hour: '100000000000', day: '1500000000000', week: '7500000000000' };
+  const create = (plan = 'hour', wallet = WALLET, price = LOCKED[plan]) =>
+    fn<Ad>('pokejam_live_ad_create', price ? [wallet, 'BUY MORE POTIONS', 'gold', plan, null, price, null, price] : [wallet, 'BUY MORE POTIONS', 'gold', plan, null, null, null]);
+  const pay = (ad: Ad, burned: bigint | string, sig = `burn${++n}`, rate?: string) =>
+    fn<Ad>('pokejam_live_ad_pay', rate === undefined ? [ad.id, sig, String(burned), ad.wallet] : [ad.id, sig, String(burned), ad.wallet, rate]);
   const credit = (wallet = WALLET) => fn<string>('pokejam_live_ad_credit', [wallet]);
   const board = () => fn<{ live: unknown[] }>('pokejam_live_ad_board');
   let refN = 0;
@@ -144,8 +147,7 @@ describe('a top-up completes a booking', () => {
   it('a price fall cannot turn credit into a year of airtime: it buys the plan, and the rest stays', async () => {
     const t = await setup();
     await t.pay(await t.create('hour'), HOUR - 1n, 'rich');
-    await t.sql(`update public.pokejam_live_ad_plans set amount = 0.000002 where method = 'burn' and plan = 'hour'`);
-    const a = await t.pay(await t.create('hour'), 1n, 'tiny');
+    const a = await t.pay(await t.create('hour', WALLET, '2'), 1n, 'tiny');
     expect(Date.parse(a.ends_at!) - Date.parse(a.starts_at!)).toBe(H);
     expect(a.credit_used).toBe('1');
     expect(await t.credit()).toBe((HOUR - 2n).toString());
@@ -341,8 +343,7 @@ describe('no pro-rated airtime, and the price lock still applies', () => {
   it('a price rise after the credit applies: the old credit does not buy the new price', async () => {
     const t = await setup();
     await t.pay(await t.create('hour'), 60_000_000_000n, 'old'); // credit 60k at a 100k price
-    await t.sql(`update public.pokejam_live_ad_plans set amount = 300000 where method = 'burn' and plan = 'hour'`);
-    const b = await t.create('hour'); // locked at 300k now
+    const b = await t.create('hour', WALLET, '300000000000'); // a later quote, locked at 300k
     expect(b.price).toBe('300000000000');
     expect((await t.pay(b, 100_000_000_000n, 'new')).state).toBe('dust'); // 60k + 100k = 160k < 300k
     expect(await t.credit()).toBe('160000000000');
@@ -354,10 +355,10 @@ describe('no pro-rated airtime, and the price lock still applies', () => {
     const t = await setup();
     await t.pay(await t.create('hour'), 50_000_000_000n, 'cr');
     const old = await t.create('hour');
-    await t.sql(`update public.pokejam_live_ad_plans set amount = 300000 where method = 'burn' and plan = 'hour'`);
     await t.sql(`update public.pokejam_live_ads set created_at = now() - interval '2 days' where id = $1`, [old.id]);
-    expect((await t.pay(old, 100_000_000_000n, 'a')).state).toBe('dust'); // locked 100k would be enough; the current 300k is not
-    expect((await t.pay(old, 150_000_000_000n, 'b')).state).toBe('paid'); // 50 + 100 + 150 = 300
+    const higher = '300000000000';
+    expect((await t.pay(old, 100_000_000_000n, 'a', higher)).state).toBe('dust'); // locked 100k would be enough; the current 300k is not
+    expect((await t.pay(old, 150_000_000_000n, 'b', higher)).state).toBe('paid'); // 50 + 100 + 150 = 300
   });
 
   it('credit that fills a week books the whole week, not an hour less', async () => {
@@ -391,8 +392,7 @@ describe('amounts', () => {
   it('keeps every digit of amounts far beyond a float, as text', async () => {
     const t = await setup();
     const huge = '9007199254740993123'; // above 2^53, within a u64: a float would round it
-    await t.sql(`update public.pokejam_live_ad_plans set amount = 99999999999999 where method = 'burn' and plan = 'hour'`);
-    await t.pay(await t.create('hour'), huge, 'huge');
+    await t.pay(await t.create('hour', WALLET, '99999999999999000000'), huge, 'huge');
     expect(await t.credit()).toBe(huge);
   });
 

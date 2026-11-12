@@ -1,4 +1,4 @@
-// Pack Battles money in and out, on the chain side (migration 20261213_pokejam_pack_wallet.sql holds the books).
+// Pack Battles money in and out, on the chain side (migration 20261216_pokejam_pack_wallet.sql holds the books).
 //
 //   Proving a wallet   The player signs a one-time message (pokejam_pack_wallet_challenge) with their wallet; this
 //                      checks the Ed25519 signature and links it (pokejam_pack_wallet_link).

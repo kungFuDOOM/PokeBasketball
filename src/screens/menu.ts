@@ -4,6 +4,7 @@ import type { TeamSource } from '../season/team';
 import { isNameBlocked } from '../nameFilter';
 import { isTutorialDone } from '../tutorial/store';
 import { esc, lettersName, showNameError } from '../util';
+import { adLinkUrl, liveAdsNow, onLiveAdsChange } from '../data/ads';
 import { weeklyChallengesTickerHtml } from '../raffle/challengesView';
 import { prefersStatic, startAttract, type Attract, type AttractState } from './attract';
 import { isIntroMode, type IntroMode } from './intro.logic';
@@ -176,8 +177,15 @@ export function tickerHtml(isStatic: boolean, clickable = false): string {
     item('', `<b class="tk-tag">TIP</b>${TIPS[5]}`),
   ];
   // $PJAM first, then an open ad slot after every two content items.
+  // Paid ads running right now lead the run, ahead of the house $PJAM ad.
+  const esc = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  const paid = liveAdsNow().map((a) => {
+    const href = adLinkUrl(a.text, a.url);
+    const text = esc(a.text);
+    return ad(href ? `<a class="tk-link" href="${esc(href)}" target="_blank" rel="noopener noreferrer nofollow sponsored">${text}</a>` : text);
+  });
   const runOf = (tab: number | null) => {
-    const items = [ad(PJAM_AD)];
+    const items = [...paid, ad(PJAM_AD)];
     content(tab).forEach((c, i) => {
       items.push(c);
       if (i % 2 === 1) items.push(ad(OPEN_AD));
@@ -197,7 +205,10 @@ export function menuScreen(root: HTMLElement, settings: Settings, onChange: () =
   const isStatic = prefersStatic();
   const parade = [...POKEMON].sort(() => Math.random() - 0.5).slice(0, 14);
   let attract: Attract | null = null;
+  let offAds: (() => void) | null = null;
   const destroy = () => {
+    offAds?.();
+    offAds = null;
     attract?.stop();
     attract = null;
   };
@@ -260,7 +271,7 @@ export function menuScreen(root: HTMLElement, settings: Settings, onChange: () =
               <strong>${esc(opts.saved)}</strong>
               <button class="btn ${opts.draft ? '' : 'primary big'}" data-go="continue">Continue franchise</button>
             </div>` : ''}
-            <p class="setup-note">Draft ten Pokémon against the eight Kanto Gym Leaders and the Elite Four, then play a 9-week season and the playoffs. Starters tire and the bench steps in. Earn badges, level up and evolve, season after season.</p>
+            <p class="setup-note">Draft ten Pokémon, then play a 9-week season and the playoffs. Starters tire and the bench steps in. Earn badges, level up and evolve. Win all eight gym badges and the title in the same season to unlock Johto, then Hoenn. Win the Hoenn championship and the next season returns to Kanto: your team, levels and unlocks stay, and badges reset.</p>
             <div class="field">Start with
               <div class="seg" id="source">
                 <button data-v="draft" class="on">Draft</button>
@@ -317,12 +328,12 @@ export function menuScreen(root: HTMLElement, settings: Settings, onChange: () =
 
   // ---- attract game ----
   const canvas = $<HTMLCanvasElement>('.attract-canvas');
+  let scoreLine = '';
   if (canvas) {
     // The game plays silently behind the menu; its score only feeds the bottom ticker.
-    const live = root.querySelectorAll<HTMLElement>('.tk-live');
     const show = (s: AttractState) => {
-      const line = `${s.home} ${s.score[0]} - ${s.score[1]} ${s.away} · ${s.clock}`;
-      live.forEach((el) => (el.textContent = line));
+      scoreLine = `${s.home} ${s.score[0]} - ${s.score[1]} ${s.away} · ${s.clock}`;
+      root.querySelectorAll<HTMLElement>('.tk-live').forEach((el) => (el.textContent = scoreLine));
     };
     attract = startAttract(canvas, show);
   }
@@ -362,12 +373,23 @@ export function menuScreen(root: HTMLElement, settings: Settings, onChange: () =
   if (opts.onMultiplayer) $('[data-go="multiplayer"]')!.addEventListener('click', leave(opts.onMultiplayer));
   if (opts.onAdvertise) $('[data-go="advertise"]')!.addEventListener('click', leave(opts.onAdvertise));
   if (opts.onProfile) $('[data-go="profile"]')!.addEventListener('click', leave(opts.onProfile));
-  if (opts.onChallenges) {
-    const openChallenges = leave(opts.onChallenges);
-    $('[data-go="challenges"]')!.addEventListener('click', openChallenges);
+  const wireTicker = (open?: () => void) => {
     // Both copies of the scrolling run carry the promo; either tap opens the panel.
-    root.querySelectorAll<HTMLButtonElement>('[data-go="ticker-challenges"]').forEach((btn) => btn.addEventListener('click', openChallenges));
+    if (open) root.querySelectorAll<HTMLButtonElement>('[data-go="ticker-challenges"]').forEach((btn) => btn.addEventListener('click', open));
+  };
+  const openChallenges = opts.onChallenges ? leave(opts.onChallenges) : undefined;
+  if (openChallenges) {
+    $('[data-go="challenges"]')!.addEventListener('click', openChallenges);
+    wireTicker(openChallenges);
   }
+  // Booked ads can arrive after the menu is drawn (the board loads on its own): redraw just the ticker then.
+  offAds = onLiveAdsChange(() => {
+    const old = $('.ticker');
+    if (!old || !root.isConnected) return;
+    old.outerHTML = tickerHtml(isStatic, !!opts.onChallenges);
+    if (scoreLine) root.querySelectorAll<HTMLElement>('.tk-live').forEach((el) => (el.textContent = scoreLine));
+    wireTicker(openChallenges);
+  });
   startNew.addEventListener('click', tryNew);
   $('[data-go="continue"]')?.addEventListener('click', leave(opts.onContinue));
   $('[data-go="resume-draft"]')?.addEventListener('click', leave(opts.onResumeDraft));

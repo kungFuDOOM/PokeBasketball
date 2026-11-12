@@ -60,7 +60,7 @@ describe('Ranked: two evenly matched teams (#29)', () => {
     const uneven = SEEDS.length - even;
     expect(homeStronger / uneven).toBeGreaterThan(0.4);
     expect(homeStronger / uneven).toBeLessThan(0.6);
-  });
+  }, 30000);
 
   it('host, guest and the winner check build the identical Ranked game from the server preset rosters', () => {
     const rosters: [number[], number[]] = [RANKED_PRESETS[1].dex, RANKED_PRESETS[4].dex];

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import apiSource from './api.ts?raw';
-import { DM_CONTACTS, DM_ONLY, isPlan, offers, pickPlan, planBadges, savePercent, type BoardPlan } from './plans';
+import { DM_CONTACTS, DM_ONLY, burnOffers, isPlan, offers, pickPlan, planBadges, savePercent, type BoardPlan } from './plans';
 import plansSource from './plans.ts?raw';
 import screenSource from './screen.ts?raw';
 import usdcSource from './usdcPay.ts?raw';
@@ -28,7 +28,9 @@ describe('the plans on the Advertise page', () => {
 
   it('before the board loads, show names with no price, so nothing hardcoded can be charged', () => {
     for (const m of ['burn', 'usdc'] as const) for (const o of offers(null, m)) expect(o.amount).toBeNull();
-    expect(offers(undefined, 'usdc').map((o) => o.plan)).toEqual(['week', 'month']);
+    expect(offers(undefined, 'usdc').map((o) => o.plan)).toEqual(['hour', 'day', 'week', 'month']);
+    expect(burnOffers(undefined).map((o) => o.plan)).toEqual(['hour', 'day', 'week', 'month']);
+    expect(burnOffers(PLANS).map((o) => o.amount)).toEqual([null, null]);
   });
 
   it('ignore a row it cannot read', () => {

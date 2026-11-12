@@ -1368,7 +1368,7 @@ export class Game {
         this.events.push({ kind: 'fire', player: p, on: false });
       }
     } else if (p.streak >= 3) this.setFire(p);
-    else if (p.streak === 2) this.events.push({ kind: 'heating', player: p });
+    else if (p.streak === 2 && !this.cfg.noFire) this.events.push({ kind: 'heating', player: p });
 
     this.events.push({ kind: 'score', player: p, points: pts, how });
     if (this.clock <= 0) {

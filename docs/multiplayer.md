@@ -107,7 +107,7 @@ VITE_SUPABASE_URL=… VITE_SUPABASE_ANON_KEY=… node scripts/e2e-social.mjs
 
 ## Pack Battles (test site)
 - The flag is `VITE_MODE_PACK_BATTLES`, and the code is `src/multiplayer/packBattles/`. Matches use the `pack` queue: the same lockstep game and signed evidence as Ranked, with teams balanced from the seed (`rostersFor(seed, 'pack')`).
-- The server handles all the money: migration `20261212_pokejam_pack_battles.sql` and `supabase/functions/README.md`. The client only enters, cancels, reads its battle and prize, and picks keep or sell.
+- The server handles all the money: migration `20261215_pokejam_pack_battles.sql` and `supabase/functions/README.md`. The client only enters, cancels, reads its battle and prize, and picks keep or sell.
 - The judge is `src/multiplayer/shared/judgeMatch.ts`, run by the `pokejam-pack-judge` Edge Function. Its rules are below.
 
 ## Pack Battles winner check (what the sync has to record)

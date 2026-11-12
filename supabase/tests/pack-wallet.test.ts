@@ -1,4 +1,4 @@
-// Pack Battles money in and out (20261213_pokejam_pack_wallet.sql) on a real Postgres (PGlite) running every
+// Pack Battles money in and out (20261216_pokejam_pack_wallet.sql) on a real Postgres (PGlite) running every
 // migration in order: proving a wallet, crediting deposits once, withdrawals (debit first, limits, review, refunds),
 // fee revenue, the real-money switch, and who may call what.
 import { readFileSync, readdirSync } from 'node:fs';

@@ -11,6 +11,7 @@
 // ADS_ALERT_WEBHOOK_URL. The ADS_LIVE_* names keep the devnet function's ADS_* secrets untouched (secrets are
 // project-wide). Deploy with --no-verify-jwt: the page calls it without signing in.
 import { createClient } from 'npm:@supabase/supabase-js@2';
+import { fetchDexScreenerPrice } from '../_shared/ads/burn-price.ts';
 import { adsConfigLive } from '../_shared/ads/config.ts';
 import { adsHandler } from '../_shared/ads/handler.ts';
 import { Rpc } from '../_shared/pack/rpc.ts';
@@ -29,4 +30,6 @@ Deno.serve((req) => adsHandler(req, cfg, {
   },
   // Slack reads `text`, Discord reads `content`.
   alert: webhook ? async (text) => { await fetch(webhook, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text, content: text }) }); } : undefined,
+  // Public DexScreener price, no key. Burn tiers that also have a USDC price are quoted from it.
+  tokenPrice: (mint) => fetchDexScreenerPrice(mint),
 }));

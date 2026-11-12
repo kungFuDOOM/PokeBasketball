@@ -1,6 +1,7 @@
 // The two franchise "moments": the championship cutscene after the final, and the new-season preview after
 // the rookie draft. Everything here reads the save; nothing is invented.
-import { badgesEarned, monOf, standings, teamOvrOf, type FGame, type FTeam, type Franchise } from './league';
+import { badgesEarned, monOf, regionOf, standings, teamOvrOf, type FGame, type FTeam, type Franchise } from './league';
+import { KANTO } from './regions';
 import { ordinal } from '../screens/draft.logic';
 
 /** Season 1 starts in this year's autumn: 2025 + 1 = 2026. */
@@ -31,10 +32,12 @@ export function allBadgesEarned(f: Franchise): boolean {
 
 /**
  * The PokeJam Master cutscene: the user's own team won the title and the user beat every gym and the Elite Four
- * that season. It plays the first time only (`pokejamMaster` is set once it has), right after the championship scene.
+ * that season, in Kanto. It plays the first time only (`pokejamMaster` is set once it has), right after the
+ * championship scene. Later regions never play it.
  */
 export const shouldPlayMasterCutscene = (f: Franchise) =>
-  f.phase === 'done' && f.champion !== undefined && !!f.teams[f.champion]?.human && f.pokejamMaster === undefined && allBadgesEarned(f);
+  f.phase === 'done' && f.champion !== undefined && !!f.teams[f.champion]?.human && f.pokejamMaster === undefined
+  && regionOf(f).id === KANTO.id && allBadgesEarned(f);
 
 export const finalGame = (f: Franchise): FGame | undefined => f.games.find((g) => g.round === 'final' && g.score);
 
