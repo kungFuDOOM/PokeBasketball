@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { CollectorCrypt } from './collector-crypt.ts';
 import { MAINNET_APPROVAL, authorized, packConfig } from './config.ts';
 import { generateKeypair } from './ed25519.ts';
-import { blockedReason, machineRows, parseMachines } from './machines.ts';
+import { blockedReason, machineRows, parseMachines, tierMachines } from './machines.ts';
 import { MAX_ATTEMPTS, healthAlerts, runPayouts } from './payouts.ts';
 import { Rpc } from './rpc.ts';
 import { sqlStore } from './store.ts';
@@ -26,7 +26,7 @@ async function setup(opts: Parameters<typeof fakeCollectorCrypt>[2] & { houseUsd
   const winner = await t.user();
   const wallet = (await generateKeypair()).keypair.address;
   const deps = { store, cc, rpc: opts.houseUsdc ? rpc : null, houseUsdcAccount: opts.houseUsdc ? 'HouseUsdc' : '', fallbackAfter: 3, log: quiet,
-    onMachines: async (m: ReturnType<typeof parseMachines>) => { await t.service('pokejam_pack_upsert_machines', { p_rows: machineRows(m) }); } };
+    onMachines: async (m: ReturnType<typeof tierMachines>) => { await t.service('pokejam_pack_upsert_machines', { p_rows: machineRows(m) }); } };
   const queue = async (over: { battle?: string; tier?: string; price?: number; cash?: boolean } = {}) =>
     (await t.service('pokejam_pack_queue_prize', {
       p_battle: over.battle ?? 'b1', p_user: winner, p_wallet: wallet, p_tier: over.tier ?? 'pokemon_25',
@@ -312,8 +312,40 @@ describe('machines and config', () => {
     expect(m.get('pokemon_25')).toMatchObject({ price: 25_000_000, buyback: 0.85, ev: 27.57 });
     expect(blockedReason('pokemon_50', m.get('pokemon_50'))).toMatch(/\$55/);
     expect(blockedReason('pokemon_100', m.get('pokemon_100'))).toMatch(/out of epic/);
-    expect(blockedReason('pokemon_25', undefined)).toMatch(/isn't offering/);
-    expect(machineRows(m).map((r) => r.available)).toEqual([true, false, false]);
+    expect(blockedReason('pokemon_25', undefined)).toMatch(/isn't available/);
+    // Shown to players, so the reasons name our tier, never the supplier.
+    for (const tier of ['pokemon_25', 'pokemon_50', 'pokemon_100'] as const) expect(blockedReason(tier, m.get(tier)) ?? '').not.toMatch(/Collector Crypt/);
+    const rows = machineRows(tierMachines(m));
+    expect(rows.map((r) => r.available)).toEqual([true, false, false]);
+    expect(rows.map((r) => [r.machine_code, r.partner_fee_micro])).toEqual([['pokemon_25', 0], ['pokemon_50', 0], ['pokemon_100', 0]]);
+  });
+
+  it('buys from our own builder-fee machine when the key owns one, and records its fee', () => {
+    const odds = { common: 0.75, epic: 0.25 };
+    const house = parseMachines({ machines: [
+      { code: 'pokemon_25', price: 25, public: true, odds, stock: { common: 3, epic: 1 } },
+      { code: 'pokemon_50', price: 50, public: true, odds, stock: { common: 3, epic: 1 } },
+      { code: 'pokemon_100', price: 100, public: true, odds, stock: { common: 3, epic: 1 } },
+    ] });
+    // GET /api/v1/machines: our adopted copies (new codes, scoped to our key), one of them switched off.
+    const partner = parseMachines({ machines: [
+      { code: 'bf_poke25_pj1', name: 'Pokémon $25', price: 25, enabled: true, partnerFee: 1.25, odds, stock: { common: 3, epic: 1 } },
+      { code: 'bf_poke50_pj1', name: 'Pokémon $50', price: 50, enabled: false, partnerFee: 2.5, odds, stock: { common: 3, epic: 1 } },
+      { code: 'bf_sports100_pj1', name: 'Mixed Sports $100', price: 100, enabled: true, partnerFee: 5, odds, stock: { common: 3, epic: 1 } },
+    ] });
+    const tiers = tierMachines(house, partner);
+    expect(tiers.get('pokemon_25')).toMatchObject({ code: 'bf_poke25_pj1', partnerFee: 1_250_000, available: true });
+    // Our $50 machine is off: the tier pauses (it never silently falls back to a machine that earns nothing).
+    expect(tiers.get('pokemon_50')).toMatchObject({ code: 'bf_poke50_pj1', available: false, why: 'switched off' });
+    // A sports machine at $100 isn't a Pokémon pack: the tier keeps CC's own machine.
+    expect(tiers.get('pokemon_100')).toMatchObject({ code: 'pokemon_100', partnerFee: 0 });
+    const rows = machineRows(tiers);
+    expect(rows.map((r) => [r.code, r.machine_code, r.partner_fee_micro, r.available])).toEqual([
+      ['pokemon_25', 'bf_poke25_pj1', 1_250_000, true], ['pokemon_50', 'bf_poke50_pj1', 2_500_000, false], ['pokemon_100', 'pokemon_100', 0, true]]);
+    // CC_MACHINE_CODES names the machine outright.
+    expect(tierMachines(house, partner, { pokemon_100: 'bf_sports100_pj1' }).get('pokemon_100')?.code).toBe('bf_sports100_pj1');
+    // No key, or nothing adopted yet: CC's own machines, as before.
+    expect([...tierMachines(house).values()].map((m) => m?.code)).toEqual(['pokemon_25', 'pokemon_50', 'pokemon_100']);
   });
 
   it('runs on devnet only until kungFuDOOM approves mainnet, and only for the service key', () => {
@@ -327,7 +359,10 @@ describe('machines and config', () => {
     const mainnet = { ...base, CLUSTER: 'mainnet-beta', PACK_ALLOW_MAINNET: MAINNET_APPROVAL };
     // With real money, the house must be able to check where every payment goes.
     expect(() => packConfig(env(mainnet))).toThrow(/HOUSE_USDC_ACCOUNT and CC_SIGNER/);
-    expect(() => packConfig(env({ ...mainnet, HOUSE_USDC_ACCOUNT: 'acct' }))).toThrow(/CC_SIGNER/);
+    // Collector Crypt's mainnet gacha wallet is pinned (the owner of the gacha USDC account their docs publish).
+    expect(packConfig(env({ ...mainnet, HOUSE_USDC_ACCOUNT: 'acct', RPC_URL: 'https://paid' })).ccSigner).toBe('GachaNgyXTU3zFogQ8Z5jR2BLXs8215X2AtEH18VxJq3');
+    expect(() => packConfig(env({ ...mainnet, HOUSE_USDC_ACCOUNT: 'acct', CC_MACHINE_CODES: 'nope' , RPC_URL: 'https://paid' }))).toThrow(/CC_MACHINE_CODES/);
+    expect(packConfig(env({ ...mainnet, HOUSE_USDC_ACCOUNT: 'acct', RPC_URL: 'https://paid', CC_MACHINE_CODES: '{"pokemon_25":"bf_poke25_pj1"}' })).ccMachineCodes).toEqual({ pokemon_25: 'bf_poke25_pj1' });
     // And a paid RPC: the public endpoint rate-limits the deposit scan's history lookups.
     const checkable = { ...mainnet, HOUSE_USDC_ACCOUNT: 'acct', CC_SIGNER: 'cc' };
     expect(() => packConfig(env(checkable))).toThrow(/paid RPC/);

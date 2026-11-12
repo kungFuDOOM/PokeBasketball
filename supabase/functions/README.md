@@ -281,15 +281,24 @@ Two switches, which must agree. The workers (`pokejam-pack-payouts`, `pokejam-pa
    ```sh
    supabase secrets set CLUSTER=mainnet-beta PACK_ALLOW_MAINNET=approved-by-kungfudoom \
      RPC_URL=<a paid RPC: Helius, Triton or QuickNode> HOUSE_SECRET_KEY='[...]' HOUSE_USDC_ACCOUNT=<the house's mainnet USDC account> \
-     CC_SIGNER=<Collector Crypt's mainnet gacha wallet, confirmed with them>
+     CC_API_KEY=<our Collector Crypt partner key, once approved>
    ```
-   The functions refuse to start on mainnet without `HOUSE_USDC_ACCOUNT`, `CC_SIGNER` and a paid `RPC_URL`. The public endpoint is refused because it rate-limits the deposit scan's history lookups. `PRIORITY_MICROLAMPORTS` (default 20,000 on mainnet) is the priority fee on withdrawals.
+   The functions refuse to start on mainnet without `HOUSE_USDC_ACCOUNT`, `CC_SIGNER` and a paid `RPC_URL`. `CC_SIGNER` is pinned for mainnet in `_shared/pack/config.ts`: `GachaNgyXTU3zFogQ8Z5jR2BLXs8215X2AtEH18VxJq3`, the owner of the gacha wallet's USDC account that Collector Crypt's API docs publish (`D9CEogjHA6CpS12F8St9zpSco7pQKJB5uR1RqDsuzQZk`, read on-chain on 2026-11-12, and the same address their buyback docs list). Every purchase must pay a USDC account owned by it. Set `CC_SIGNER` only to override it, for example if Collector Crypt names a different wallet when you confirm it with them. The public endpoint is refused because it rate-limits the deposit scan's history lookups. `PRIORITY_MICROLAMPORTS` (default 20,000 on mainnet) is the priority fee on withdrawals.
 
 A mainnet worker refuses to run while `pack_real_money` is off or `pack_test_credits` is on. A devnet worker refuses to run while `pack_real_money` is on. So a test balance can never buy a real pull or be withdrawn as real USDC.
 
 **Deploy** `pokejam-pack-wallet` (players call it with their session, so keep JWT verification on): `supabase functions deploy pokejam-pack-wallet`, set `WALLET_ALLOWED_ORIGINS=<the game's sites>`, and schedule `{"action":"run"}` with the service key every minute (pg_cron + pg_net), like the payouts worker.
 
 **Rehearsed on devnet** with two real wallets, money in and out (`test/devnet-wallet.ts`, below).
+
+### The builder fee (Collector Crypt's partner API, `../migrations/20261217_pokejam_pack_builder_fee.sql`)
+
+Collector Crypt pays approved partners a fee on every pack sold from the partner's copy of a builder-fee machine (`bf_poke25`, `bf_poke50`, `bf_poke100`): half when the pack is sold and half when its card is sold back, up to 10% of the pack price. The fee comes out of the pack's expected value, not its price, so the pot a battle escrows doesn't change. Payouts are released by a Collector Crypt admin, in USDC, to the treasury wallet on our partner account.
+
+- **No double dip:** on a tier whose machine carries our partner fee, players pay no Pack Battles fee. `pokejam_pack_entry_cost` reads `pokejam_pack_machines.partner_fee_micro`, which the machines function records. Every other tier keeps `pack_fee_bps`.
+- **Which machine a tier buys from:** with `CC_API_KEY` set, `GET /api/v1/machines` lists the machines our key owns. A tier uses our adopted Pokémon machine at its price (adopting creates a new machine code scoped to our key), or the one `CC_MACHINE_CODES` names (JSON, for example `{"pokemon_25":"<our code>"}`). With no key, or nothing adopted, it uses Collector Crypt's own machine, as before. If our machine is switched off or empty, the tier pauses instead of buying from a machine that earns nothing.
+- **Setting it up:** apply for the key at https://gacha.collectorcrypt.com/partner and submit their partner form. Once approved, ask them to enable `can_adopt` on the key, adopt `bf_poke25`, `bf_poke50` and `bf_poke100` on their adoption screen with our fee, enable the adopted machines, then set `CC_API_KEY` (and `CC_MACHINE_CODES` to pin the codes, if you like). The next machines run (every 10 minutes) switches the tiers over, and the lobby shows the lower entry cost.
+- **Brand terms:** partners must not use Collector Crypt's name, logo, machine graphics or artwork, or imply any partnership or endorsement, on the site, on social media or in marketing, and must say the product is operated independently. Pack Battles' screens follow this (the notice is `INDEPENDENT` in `src/multiplayer/packBattles/index.ts`).
 
 ## Pack Battles on the test site (`../migrations/20261215_pokejam_pack_battles.sql`, `pokejam-pack-judge/`)
 
@@ -313,7 +322,7 @@ Leaving the queue refunds the entry, and so does an entry nobody has polled for 
 
 ### What the `pokejam` project (`ksvfgxodbwfntqnahukn`) needs, on kungFuDOOM's "Merge"
 
-1. **Migrations, in order:** `20261023_pokejam_pack_payouts`, `20261024_pokejam_pack_keep_or_sell`, `20261214_pokejam_pack_fail_safe` (#42), `20261215_pokejam_pack_battles`, `20261216_pokejam_pack_wallet`.
+1. **Migrations, in order:** `20261023_pokejam_pack_payouts`, `20261024_pokejam_pack_keep_or_sell`, `20261214_pokejam_pack_fail_safe` (#42), `20261215_pokejam_pack_battles`, `20261216_pokejam_pack_wallet`, `20261217_pokejam_pack_builder_fee`.
 2. **Edge Functions:** `supabase functions deploy pokejam-pack-machines pokejam-pack-payouts pokejam-pack-judge pokejam-pack-wallet`.
 3. **Schedules (pg_cron + pg_net, service key):** `pokejam-pack-machines` every 10 minutes, and `pokejam-pack-payouts`, `pokejam-pack-judge` and `pokejam-pack-wallet` (body `{"action":"run"}`) every minute.
 4. **Secrets (`supabase secrets set …`):**
@@ -323,7 +332,7 @@ Leaving the queue refunds the entry, and so does an entry nobody has polled for 
    - `WALLET_ALLOWED_ORIGINS`: the test site, for `pokejam-pack-wallet`.
    - Optional: `ALERT_WEBHOOK_URL`, `PRIZE_CHOICE_SECONDS` (default 120).
 5. **Fund the house:** a little devnet SOL (`solana airdrop`) and USDC-Dev for the pulls. Collector Crypt's devnet gacha charges USDC-Dev (mint `Gh9ZwEmdLJ8DscKNTkTqPbNwLNNBjuSzaG9Vp2KGtKJr`), which comes from spl-token-faucet.com.
-6. **Config:** `update public.pokejam_config set value = 'true' where key = 'pack_test_credits';` The fee is `pack_fee_bps` (default 500, so 5% of the pot).
+6. **Config:** `update public.pokejam_config set value = 'true' where key = 'pack_test_credits';` The fee is `pack_fee_bps` (default 500, so 5% of the pot), and it's 0 on any tier whose machine earns us Collector Crypt's builder fee (above).
 7. **Vercel `pokejam-test` only:** `VITE_MODE_PACK_BATTLES=true`. This build also lets the page show Collector Crypt's card images (CSP `img-src`).
 
 ## Online play: TURN credentials (`pokejam-ice/`)

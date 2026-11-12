@@ -139,3 +139,6 @@
 .pk-mstate { font-weight: 700; color: var(--muted); }
 .pk-mstate.s-credited, .pk-mstate.s-sent { color: var(--good); }
 .pk-mstate.s-held, .pk-mstate.s-review, .pk-mstate.s-refunded { color: var(--accent); }
+
+/* The independence notice the card supplier's partner terms ask for. */
+.pk-independent { margin-top: 14px; font-size: 0.78rem; opacity: 0.75; }

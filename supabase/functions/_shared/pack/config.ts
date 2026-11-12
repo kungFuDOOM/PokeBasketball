@@ -15,6 +15,8 @@ export interface PackConfig {
   rpcUrl: string;
   ccBaseUrl: string;
   ccApiKey: string | undefined;
+  /** Partner machine codes by tier (CC_MACHINE_CODES), when set. */
+  ccMachineCodes: Partial<Record<string, string>>;
   /** The house wallet's 64-byte secret (Solana CLI JSON array or base58). */
   houseSecret: string;
   /** The house's USDC token account, checked before every purchase. */
@@ -38,8 +40,23 @@ export interface PackConfig {
 const RPC: Record<Cluster, string> = { devnet: 'https://api.devnet.solana.com', 'mainnet-beta': 'https://api.mainnet-beta.solana.com' };
 const CC: Record<Cluster, string> = { devnet: CC_DEVNET, 'mainnet-beta': CC_PROD };
 const USDC: Record<Cluster, string> = { devnet: 'Gh9ZwEmdLJ8DscKNTkTqPbNwLNNBjuSzaG9Vp2KGtKJr', 'mainnet-beta': 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v' };
-// Read from CC's devnet transactions (2026-10-22). Mainnet's: confirm with Collector Crypt.
-const CC_SIGNER: Record<Cluster, string | undefined> = { devnet: 'A4ahkivAG4NoZAE8Sy4qv8nn2DU9yoXRQcttuCeGtTJv', 'mainnet-beta': undefined };
+// Collector Crypt's gacha wallet, which owns the USDC account every purchase pays. Devnet: read from CC's devnet
+// transactions (2026-10-22). Mainnet: the owner of D9CEogjHA6CpS12F8St9zpSco7pQKJB5uR1RqDsuzQZk, the gacha wallet's
+// USDC account that CC's API docs publish, read on-chain on 2026-11-12 (the same address the docs list as the
+// buyback rent destination). CC_SIGNER overrides it.
+const CC_SIGNER: Record<Cluster, string | undefined> = { devnet: 'A4ahkivAG4NoZAE8Sy4qv8nn2DU9yoXRQcttuCeGtTJv', 'mainnet-beta': 'GachaNgyXTU3zFogQ8Z5jR2BLXs8215X2AtEH18VxJq3' };
+
+/** CC_MACHINE_CODES: an optional JSON map from a tier to the partner machine code to buy from, e.g.
+ * {"pokemon_25":"bf_poke25_xyz"}. Without it the machines are found by price on the key's own machine list. */
+function machineCodes(raw: string | undefined): Partial<Record<string, string>> {
+  if (!raw) return {};
+  try {
+    const o = JSON.parse(raw) as Record<string, unknown>;
+    return Object.fromEntries(Object.entries(o).filter(([, v]) => typeof v === 'string' && v.trim() !== '').map(([k, v]) => [k, (v as string).trim()]));
+  } catch {
+    throw new Error('CC_MACHINE_CODES must be JSON, like {"pokemon_25":"bf_poke25"}');
+  }
+}
 
 export function packConfig(get: (k: string) => string | undefined, opts: { needHouse?: boolean } = {}): PackConfig {
   const val = (k: string) => { const v = get(k); return v === undefined || v.trim() === '' ? undefined : v.trim(); };
@@ -63,6 +80,7 @@ export function packConfig(get: (k: string) => string | undefined, opts: { needH
     rpcUrl: val('RPC_URL') ?? RPC[cluster],
     ccBaseUrl: val('CC_BASE_URL') ?? CC[cluster],
     ccApiKey: val('CC_API_KEY'),
+    ccMachineCodes: machineCodes(val('CC_MACHINE_CODES')),
     houseSecret: opts.needHouse === false ? val('HOUSE_SECRET_KEY') ?? '' : need('HOUSE_SECRET_KEY'),
     houseUsdcAccount: val('HOUSE_USDC_ACCOUNT') ?? '',
     usdcMint: val('USDC_MINT') ?? USDC[cluster],

@@ -269,6 +269,24 @@ describe('test credits and permissions', () => {
       ['pokemon_25', true, 13_125_000], ['pokemon_50', true, 26_250_000], ['pokemon_100', true, 52_500_000]]);
   });
 
+  it('no double dip: a tier on our builder-fee machine charges no Pack Battles fee, the others keep theirs', async () => {
+    const t = await testDb();
+    const a = await t.user();
+    await t.service('pokejam_pack_upsert_machines', [JSON.stringify([
+      { code: 'pokemon_25', price_micro: 25_000_000, available: true, machine_code: 'bf_poke25_pj1', partner_fee_micro: 1_250_000 },
+    ])]);
+    const lobby = await a.call<{ tiers: { code: string; cost: { stake: number; fee: number } }[] }>('pokejam_pack_lobby');
+    expect(lobby.tiers.map((x) => [x.code, Number(x.cost.stake), Number(x.cost.fee)])).toEqual([
+      ['pokemon_25', 12_500_000, 0], ['pokemon_50', 25_000_000, 1_250_000], ['pokemon_100', 50_000_000, 2_500_000]]);
+    const m = await t.sql<{ machine_code: string; partner_fee_micro: string }>("select machine_code, partner_fee_micro from public.pokejam_pack_machines where code = 'pokemon_25'");
+    expect(m[0]).toMatchObject({ machine_code: 'bf_poke25_pj1' });
+    expect(Number(m[0].partner_fee_micro)).toBe(1_250_000);
+    // Back on CC's own machine (no partner fee): our fee returns.
+    await t.service('pokejam_pack_upsert_machines', [JSON.stringify([{ code: 'pokemon_25', price_micro: 25_000_000, available: true, machine_code: 'pokemon_25', partner_fee_micro: 0 }])]);
+    const again = await a.call<{ tiers: { code: string; cost: { fee: number } }[] }>('pokejam_pack_lobby');
+    expect(Number(again.tiers[0].cost.fee)).toBe(625_000);
+  });
+
   it('players cannot settle, sweep, see the due list, or post to the ledger', async () => {
     const t = await testDb();
     const { a, mid } = await pair(t);

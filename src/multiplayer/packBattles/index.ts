@@ -1,4 +1,4 @@
-// Pack Battles: beat another player online to win a Collector Crypt pack. Devnet test USDC, or real USDC once the
+// Pack Battles: beat another player online to win a real trading card pack. Devnet test USDC, or real USDC once the
 // server's pack_real_money is on. Link a wallet by signing a message; deposit USDC from it, withdraw to it, and a card
 // you keep is sent to it (migration 20261213, the pokejam-pack-wallet Edge Function).
 // Enter a tier and your half of the pot (plus your half of the fee) is held from your balance. The game is the same
@@ -115,7 +115,7 @@ function prizeHtml(p: PrizeView, compact: boolean): string {
         <p class="pk-done">Sold back for ${usd(Number(p.cash_amount))}, added to your balance</p></div>`;
     case 'refunded':
       return `<div class="pk-prize" style="--tc:${TIERS[p.tier].color}">${packArt(p.tier, 64)}
-        <p class="pk-done">Collector Crypt couldn't sell this pack, so the ${usd(Number(p.price_micro))} pot is in your balance.</p></div>`;
+        <p class="pk-done">This pack couldn't be bought, so the ${usd(Number(p.price_micro))} pot is in your balance.</p></div>`;
     default:
       return `<div class="pk-prize" style="--tc:${TIERS[p.tier].color}">${packArt(p.tier, 64)}
         <p>Your ${esc(label)} is delayed. It's being retried, and nothing is lost.</p></div>`;
@@ -132,11 +132,14 @@ function bindPrizes(el: HTMLElement, svc: PackService, after: () => void) {
   }));
 }
 
+/** Pack Battles runs on a third-party card service's partner API, whose terms require this: no endorsement implied. */
+export const INDEPENDENT = 'Pack Battles is operated independently by Poké Jam. It is not affiliated with, endorsed by or sponsored by any card supplier.';
+
 export function openPackBattles(ctx: ModeContext) {
   const { root } = ctx;
   root.className = 'screen-menu';
   window.scrollTo(0, 0);
-  const intro = 'Beat another player to win a real graded card from a Collector Crypt pack.';
+  const intro = 'Beat another player to win a real trading card pack, with a graded card inside.';
   if (!ONLINE_CONFIGURED) {
     root.innerHTML = panel('PACK BATTLES', `${intro} Pack Battles need online play, which isn't set up in this build.`,
       `<div class="actions center"><button class="btn ghost" data-a="back">Back</button></div>`);
@@ -145,7 +148,8 @@ export function openPackBattles(ctx: ModeContext) {
   }
   root.innerHTML = panel('PACK BATTLES', intro,
     `<div data-lobby><p class="note center">Loading…</p></div>
-     <div class="actions center"><button class="btn ghost" data-a="back">Back</button></div>`);
+     <div class="actions center"><button class="btn ghost" data-a="back">Back</button></div>
+     <p class="note center pk-independent">${INDEPENDENT}</p>`);
   root.querySelector('[data-a="back"]')!.addEventListener('click', ctx.back);
   void loadLobby(ctx);
 }

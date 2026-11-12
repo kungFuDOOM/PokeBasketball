@@ -58,6 +58,8 @@ export interface BuyHooks {
   onPaid?(memo: string): Promise<void> | void;
   /** Finish a purchase that was already paid (from onPaid) instead of buying again. */
   resumeMemo?: string;
+  /** The machine to buy from (our builder-fee machine for the tier); defaults to CC's own machine for the tier. */
+  machineCode?: string;
 }
 
 export interface CollectorCryptOptions {
@@ -149,6 +151,12 @@ export class CollectorCrypt {
     return this.call('GET', '/api/machines');
   }
 
+  /** The machines our partner key owns (our adopted builder-fee machines, with their partnerFee), or none without a
+   * key. GET /api/v1/machines is the one route that refuses a missing or wrong key. */
+  partnerMachines(): Promise<unknown> {
+    return this.opts.apiKey ? this.call('GET', '/api/v1/machines') : Promise.resolve({ machines: [] });
+  }
+
   private get guard(): GuardOptions {
     if (!this.opts.guard.houseUsdc) throw new UnsafeTransaction("HOUSE_USDC_ACCOUNT is not set, so payments from the house can't be checked");
     return { ...this.opts.guard, house: this.opts.house.address };
@@ -182,7 +190,7 @@ export class CollectorCrypt {
   async buy(packType: PackTier, hooks: BuyHooks = {}): Promise<Pull> {
     let memo = hooks.resumeMemo;
     if (!memo) {
-      const p = await this.call<{ memo: string; transaction: string }>('POST', '/api/generatePack', { playerAddress: this.opts.house.address, packType, turbo: false });
+      const p = await this.call<{ memo: string; transaction: string }>('POST', '/api/generatePack', { playerAddress: this.opts.house.address, packType: hooks.machineCode ?? packType, turbo: false });
       const tx = base64Decode(p.transaction);
       const { paid } = checkCcTransaction(tx, this.guard, { kind: 'purchase', maxPrice: hooks.maxPrice ?? PACK_TIERS[packType].price });
       await this.checkTreasury(tx);

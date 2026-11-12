@@ -60,7 +60,7 @@ export function choiceHtml(p: { id: string; chooseBy: number | null; ifNoChoice:
   return `
     <div class="prize-choice ${compact ? 'compact' : ''}" data-k="choice" data-prize="${esc(p.id)}" data-by="${p.chooseBy ?? ''}" data-fallback="${p.ifNoChoice}">
       <button class="btn primary" data-choose="keep">Keep it<small>The graded card, to your wallet</small></button>
-      <button class="btn" data-choose="sell">Sell it back<small>${p.sellEstimate ? `About ${usd(p.sellEstimate)}, to your balance` : "Collector Crypt's instant buyback, to your balance"}</small></button>
+      <button class="btn" data-choose="sell">Sell it back<small>${p.sellEstimate ? `About ${usd(p.sellEstimate)}, to your balance` : 'Instant buyback, to your balance'}</small></button>
       <p class="pc-clock" data-k="clock" aria-live="polite"></p>
     </div>`;
 }

@@ -25,16 +25,16 @@
 
 import { UnsafeTransaction } from './tx-guard.ts';
 import type { CollectorCrypt, Pull } from './collector-crypt.ts';
-import { parseMachines, type MachineInfo } from './machines.ts';
+import { parseMachines, tierMachines, type MachineInfo } from './machines.ts';
 import type { Rpc } from './rpc.ts';
 import type { Health, PrizeRow, PrizeStore } from './store.ts';
-import { MICRO, PACK_TIERS, usd } from './tiers.ts';
+import { MICRO, PACK_TIERS, usd, type PackTier } from './tiers.ts';
 
 export const MAX_ATTEMPTS = 8;
 
 export interface PayoutDeps {
   store: PrizeStore;
-  cc: Pick<CollectorCrypt, 'house' | 'buy' | 'deliver' | 'ownerOf' | 'buyback' | 'txStatus' | 'machines' | 'verifyUrl' | 'vrfUrl'>;
+  cc: Pick<CollectorCrypt, 'house' | 'buy' | 'deliver' | 'ownerOf' | 'buyback' | 'txStatus' | 'machines' | 'verifyUrl' | 'vrfUrl'> & Partial<Pick<CollectorCrypt, 'partnerMachines'>>;
   /** With both set, the worker checks the house holds enough USDC before buying. */
   rpc?: Pick<Rpc, 'tokenBalance'> | null;
   houseUsdcAccount?: string;
@@ -43,7 +43,9 @@ export interface PayoutDeps {
   /** Seconds a revealed card waits for the winner's keep-or-sell pick (default 0: use their saved preference at once). */
   choiceSeconds?: number;
   /** Called with CC's machines whenever the worker reads them (to refresh the lobby's copy). */
-  onMachines?(machines: Map<string, MachineInfo>): Promise<void>;
+  onMachines?(machines: Map<PackTier, MachineInfo | null>): Promise<void>;
+  /** Partner machine codes by tier (CC_MACHINE_CODES), when set. */
+  machineCodes?: Partial<Record<string, string>>;
   log?: Pick<Console, 'info' | 'warn' | 'error'>;
 }
 
@@ -80,7 +82,11 @@ export async function runPayouts(d: PayoutDeps, limit = 10): Promise<{ id: strin
 }
 
 async function readMachines(d: PayoutDeps) {
-  const machines = parseMachines(await d.cc.machines());
+  // Our own builder-fee machines first; if the partner list can't be read, CC's own machines still work.
+  const partner = d.cc.partnerMachines
+    ? parseMachines(await d.cc.partnerMachines().catch((e) => { d.log?.warn(`payouts: couldn't read our partner machines: ${(e as Error).message}`); return null; }))
+    : new Map<string, MachineInfo>();
+  const machines = tierMachines(parseMachines(await d.cc.machines()), partner, d.machineCodes ?? {});
   await d.onMachines?.(machines).catch((e) => d.log?.warn(`payouts: couldn't save machines: ${(e as Error).message}`));
   return machines;
 }
@@ -89,9 +95,9 @@ async function readMachines(d: PayoutDeps) {
 async function preflight(d: PayoutDeps, p: PrizeRow): Promise<MachineInfo> {
   const m = (await readMachines(d)).get(p.tier);
   const name = PACK_TIERS[p.tier]?.ccName ?? p.tier;
-  if (!m) throw new Refused(`Collector Crypt isn't offering the ${name}`);
-  if (!m.available) throw new Refused(`Collector Crypt's ${name} machine is ${m.why}`);
-  if (m.price > p.price_micro) throw new Refused(`Collector Crypt's ${name} now costs ${usd(m.price)}, more than the ${usd(p.price_micro)} pot`);
+  if (!m) throw new Refused(`the ${name} isn't on sale`);
+  if (!m.available) throw new Refused(`the ${name} machine (${m.code}) is ${m.why}`);
+  if (m.price > p.price_micro) throw new Refused(`the ${name} (${m.code}) now costs ${usd(m.price)}, more than the ${usd(p.price_micro)} pot`);
   const stop = await d.store.spendCheck(m.price);
   if (stop) throw new Held(`Holding the purchase: ${stop}`, 600);
   if (d.rpc && d.houseUsdcAccount) {
@@ -151,6 +157,7 @@ async function payOne(d: PayoutDeps, p: PrizeRow): Promise<Outcome> {
       pull = await d.cc.buy(p.tier, {
         maxPrice: Number(p.price_micro),
         resumeMemo: memo ?? undefined,
+        machineCode: machine?.code,
         onSubmitting: async (s) => {
           if (!(await d.store.submitting(p.id, s))) throw new Error(`couldn't record the purchase for ${p.id}, so it wasn't submitted`);
           submitted = true;

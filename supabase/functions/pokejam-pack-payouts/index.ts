@@ -42,6 +42,7 @@ Deno.serve(async (req) => {
   await store.recover(MAX_ATTEMPTS);
   const results = await runPayouts({
     store, cc, rpc, houseUsdcAccount: cfg.houseUsdcAccount, fallbackAfter: cfg.fallbackAfter, choiceSeconds: cfg.choiceSeconds,
+    machineCodes: cfg.ccMachineCodes,
     onMachines: async (m) => { await call('pokejam_pack_upsert_machines', { p_rows: machineRows(m) }); },
   }, 5);
   // What the house owes against what it holds, and anything that needs a person: logged every run, and sent
