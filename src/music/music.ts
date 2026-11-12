@@ -59,13 +59,19 @@ class Player {
     readonly song: Song,
     /** Called when a loop ends, with the audio time it ends at. */
     private onLoop: (loops: number, endsAt: number) => void = () => {},
-    fadeIn = 1.2,
+    fadeIn = 0.25,
   ) {
     this.gain = ctx.createGain();
     this.gain.connect(dest);
     const t = ctx.currentTime;
-    this.gain.gain.setValueAtTime(0.0001, t);
-    this.gain.gain.exponentialRampToValueAtTime(1, t + fadeIn);
+    if (fadeIn < 1) {
+      // Quick start: audible immediately, no exponential run through silence.
+      this.gain.gain.setValueAtTime(0.4, t);
+      this.gain.gain.linearRampToValueAtTime(1, t + fadeIn);
+    } else {
+      this.gain.gain.setValueAtTime(0.0001, t);
+      this.gain.gain.exponentialRampToValueAtTime(1, t + fadeIn);
+    }
     this.kit = kitFor(ctx, this.gain, song);
     this.loop = byStep(song);
     this.next = t + 0.08;
@@ -184,7 +190,7 @@ export class Music {
     if (!target || !ctx || !this.bus) return;
     if (target === 'menu') {
       if (this.menuLoops >= 1) this.playlist.advance();
-      this.playMenu(ctx, this.bus, this.playlist.current, 1.2);
+      this.playMenu(ctx, this.bus, this.playlist.current, 0.25);
     } else this.player = new Player(ctx, this.bus, SONGS[target]);
   }
 
