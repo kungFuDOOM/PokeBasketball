@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { base58Encode } from '../pack/bytes.ts';
 import { generateKeypair, verifySignature } from '../pack/ed25519.ts';
-import { buildLinkMessage, checkLinkMessage } from './link.ts';
+import { buildLinkMessage, checkLinkMessage, signatureBytes } from './link.ts';
 import { linkWalletHandler, type LinkDeps, type LinkResult } from './linkHandler.ts';
 
 const USER = '11111111-1111-4111-8111-111111111111';
@@ -40,6 +40,23 @@ describe('link message', () => {
     expect(checkLinkMessage(m, { address: '7EcDhSYGxXyscszYEp35KHN8vvw3svAuLKTzXwCFLtV', userId: OTHER, nonce: 'nonceNonce123456', now: NOW })).toBe('mismatch');
     expect(checkLinkMessage(m, { address: '7EcDhSYGxXyscszYEp35KHN8vvw3svAuLKTzXwCFLtV', userId: USER, nonce: 'nonceNonce123456', now: NOW + 20 * 60_000 })).toBe('expired');
     expect(checkLinkMessage('pokejam.xyz wants you to sign in with your Solana account:\n', { address: 'x', userId: USER, nonce: 'n', now: NOW })).toBe('bad');
+    const local = buildLinkMessage({
+      host: 'localhost:5173', uri: 'http://localhost:5173/', address: '7EcDhSYGxXyscszYEp35KHN8vvw3svAuLKTzXwCFLtV', userId: USER,
+      nonce: 'nonceNonce123456', issuedAt: NOW, expiresAt: NOW + 60_000,
+    });
+    expect(checkLinkMessage(local, { address: '7EcDhSYGxXyscszYEp35KHN8vvw3svAuLKTzXwCFLtV', userId: USER, nonce: 'nonceNonce123456', now: NOW })).toBe('ok');
+  });
+  it('reads a signature whether Phantom returns bytes or base58', async () => {
+    const { keypair } = await generateKeypair();
+    const raw = await keypair.sign(new TextEncoder().encode('hello'));
+    const text = base58Encode(raw);
+    expect(signatureBytes(raw)).toEqual(raw);
+    expect(signatureBytes({ signature: raw })).toEqual(raw);
+    expect(signatureBytes(text)).toEqual(raw);
+    expect(signatureBytes({ signature: text })).toEqual(raw);
+    expect(signatureBytes({ signature: [...raw] })).toEqual(raw);
+    expect(signatureBytes('nope')).toBeNull();
+    expect(signatureBytes(raw.slice(0, 8))).toBeNull();
   });
 });
 

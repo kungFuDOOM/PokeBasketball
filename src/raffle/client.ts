@@ -78,6 +78,16 @@ export async function loadChallenges(force = false): Promise<RaffleMe | null> {
   return cache.load(force);
 }
 
+/** Holder entries for the signed-in account. The balance is read by pokejam-raffle-holder, not in the browser. */
+export async function loadHolderEntries(): Promise<{ wallet: string | null; holder: number } | null> {
+  if (!ONLINE_CONFIGURED) return null;
+  const { data, error } = await supabase().functions.invoke('pokejam-raffle-holder', { body: {} });
+  if (error) return null;
+  const body = data as { ok?: boolean; wallet?: unknown; holder?: unknown } | null;
+  if (!body?.ok || typeof body.holder !== 'number' || !Number.isInteger(body.holder) || body.holder < 0) return null;
+  return { wallet: typeof body.wallet === 'string' ? body.wallet : null, holder: body.holder };
+}
+
 async function signedIn(): Promise<boolean> {
   if (!ONLINE_CONFIGURED) return false;
   try {

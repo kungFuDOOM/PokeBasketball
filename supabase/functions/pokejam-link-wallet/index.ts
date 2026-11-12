@@ -7,7 +7,7 @@ import { linkWalletHandler, type LinkResult } from '../_shared/wallet/linkHandle
 const url = Deno.env.get('SUPABASE_URL')!;
 const service = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const admin = createClient(url, service, { auth: { persistSession: false } });
-const origins = (Deno.env.get('LINK_ALLOWED_ORIGINS') ?? 'https://pokejam.xyz').split(',').map((s) => s.trim()).filter(Boolean);
+const origins = (Deno.env.get('LINK_ALLOWED_ORIGINS') ?? 'https://pokejam.xyz,https://www.pokejam.xyz').split(',').map((s) => s.trim()).filter(Boolean);
 
 Deno.serve((req) => linkWalletHandler(req, origins, {
   async userOf(jwt) {

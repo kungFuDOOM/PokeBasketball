@@ -56,7 +56,7 @@ export function raffleHtml(s: RaffleAdmin): string {
   const drawBtn = !s.open && !drawn
     ? `<p><button class="btn primary" type="button" data-raffle="draw" data-week="${esc(s.week_start)}">Draw a winner</button></p>`
     : '';
-  const holderNote = drawn ? '' : '<p class="note">PJAM in a linked wallet is read when you draw, not on this page. The entries below do not include that bonus yet.</p>';
+  const holderNote = drawn ? '' : '<p class="note">PJAM in a linked wallet is read when you draw, not on this page. The entries below do not include holder entries yet.</p>';
   const body = rows.length ? `<div class="scroll"><table class="raffle"><thead><tr>
       <th>Player</th><th>Wallet</th><th>Offline</th><th>Online</th><th>Wins</th><th>Social</th><th>Rank</th><th>Grind</th><th>Holder</th><th>Entries</th>
     </tr></thead><tbody>${rows.map((e) => `<tr class="${drawn?.winner_id === e.user_id ? 'win' : ''}">

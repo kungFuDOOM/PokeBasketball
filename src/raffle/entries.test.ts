@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
-  DRAW_ALGORITHM, HOLDER_ENTRY_CAP, PJAM_MINT, RAFFLE_DEFAULTS, clampConfig, configFromJson, configToJson,
-  creditsOffline, pickWinner, raffleTicket, scoreRaffle, type RaffleCounts, type RaffleConfig,
+  DRAW_ALGORITHM, HOLDER_ENTRY_CAP, PJAM_COUNTED_CAP, PJAM_MINT, PJAM_PER_ENTRY, RAFFLE_DEFAULTS, clampConfig, configFromJson, configToJson,
+  creditsOffline, holderEntries, holderEntriesForWallets, pickWinner, raffleTicket, scoreRaffle, scoreRaffleWallets, type RaffleCounts, type RaffleConfig,
 } from './entries';
 
 const counts = (o: Partial<RaffleCounts> = {}): RaffleCounts => ({
@@ -12,7 +12,7 @@ describe('config', () => {
   it('defaults are the documented amounts', () => {
     expect(RAFFLE_DEFAULTS).toEqual({
       offlineGames: 3, onlineGames: 3, social: 1, rankSteps: 1,
-      pjamPerEntry: 1_000_000, pjamMint: PJAM_MINT,
+      pjamPerEntry: 1_000_000, pjamCountedCap: PJAM_COUNTED_CAP, pjamMint: PJAM_MINT,
       grindOnlinePerEntry: 10, grindWinsPerEntry: 3, bonusCap: 5,
     });
     expect(DRAW_ALGORITHM).toBe('uint64be-mod-v1');
@@ -24,8 +24,11 @@ describe('config', () => {
     expect(c.social).toBe(1);
     expect(c.rankSteps).toBe(1);
     expect(c.pjamPerEntry).toBe(9);
+    expect(c.pjamCountedCap).toBe(PJAM_COUNTED_CAP);
     expect(c.pjamMint).toBe(PJAM_MINT);
     expect(c.bonusCap).toBe(5);
+    expect(clampConfig({ pjamCountedCap: 0 }).pjamCountedCap).toBe(PJAM_COUNTED_CAP);
+    expect(clampConfig({ pjamCountedCap: 8_000_000 }).pjamCountedCap).toBe(8_000_000);
   });
   it('round-trips the json the database stores', () => {
     expect(configFromJson(configToJson(RAFFLE_DEFAULTS))).toEqual(RAFFLE_DEFAULTS);
@@ -34,9 +37,10 @@ describe('config', () => {
 
 describe('entries', () => {
   const cfg: RaffleConfig = RAFFLE_DEFAULTS;
-  it('one base entry when every challenge is done, and nothing before that', () => {
+  it('one base entry when every challenge is done, and a holder entry needs no challenges', () => {
     expect(scoreRaffle(counts(), cfg, 0n).total).toBe(1);
-    expect(scoreRaffle(counts({ offline: 2 }), cfg, 5_000_000n).total).toBe(0);
+    expect(scoreRaffle(counts({ offline: 2 }), cfg, 5_000_000n)).toMatchObject({ base: false, holder: 5, total: 5 });
+    expect(scoreRaffle(counts({ offline: 2 }), cfg, 999_999n).total).toBe(0);
     expect(scoreRaffle(counts({ shares: 0, socialMatches: 0 }), cfg, 0n).base).toBe(false);
   });
   it('a social match and a share both count, and Zenith finishes the rank challenge', () => {
@@ -56,15 +60,22 @@ describe('entries', () => {
     expect(both.grind).toBe(5);
     expect(both.holder).toBe(5);
     expect(both.bonus).toBe(5);
-    expect(both.total).toBe(6);
+    expect(both.total).toBe(11);
   });
-  it('dust below one whole entry does not count, and a huge balance clamps', () => {
+  it('counts each balance up to the cap, and dust below one step does not count', () => {
     expect(scoreRaffle(counts(), cfg, 999_999n).holder).toBe(0);
-    expect(scoreRaffle(counts(), cfg, (BigInt(HOLDER_ENTRY_CAP) + 1n) * 1_000_000n).holder).toBe(HOLDER_ENTRY_CAP);
+    expect(holderEntries(6_000_000n, cfg)).toBe(5);
+    expect(holderEntriesForWallets([1_500_000n, 1_500_000n], cfg)).toBe(2);
+    expect(holderEntriesForWallets([6_000_000n, 6_000_000n], cfg)).toBe(10);
+    expect(scoreRaffleWallets(counts({ offline: 0, online: 0, shares: 0, rankSteps: 0 }), cfg, [6_000_000n, 6_000_000n]).total).toBe(10);
+    const wide = { ...cfg, pjamCountedCap: 1_000_000_000_000_000, pjamPerEntry: 1 };
+    expect(holderEntries(BigInt(HOLDER_ENTRY_CAP) + 5n, wide)).toBe(HOLDER_ENTRY_CAP);
+    expect(PJAM_PER_ENTRY).toBe(1_000_000);
   });
-  it('a bonus cap of 0 leaves the base entry only', () => {
+  it('a bonus cap of 0 leaves the challenge entry, and holder entries still count', () => {
     const tight = { ...cfg, bonusCap: 0 };
-    expect(scoreRaffle(counts({ online: 100, onlineWins: 50 }), tight, 9_000_000n).total).toBe(1);
+    expect(scoreRaffle(counts({ online: 100, onlineWins: 50 }), tight, 0n).total).toBe(1);
+    expect(scoreRaffle(counts({ online: 100, onlineWins: 50 }), tight, 9_000_000n)).toMatchObject({ bonus: 0, holder: 5, total: 6 });
   });
 });
 

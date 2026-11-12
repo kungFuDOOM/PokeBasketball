@@ -3,8 +3,10 @@
 // pokejam_raffle_score, pokejam_raffle_ticket) mirrors these numbers. supabase/tests/weekly-raffle.test.ts
 // checks the two against each other. NET_VERSION is not involved.
 
-/** Whole PJAM tokens (not raw units) per holder bonus entry. */
+/** Whole PJAM tokens (not raw units) per holder entry. */
 export const PJAM_PER_ENTRY = 1_000_000;
+/** Whole tokens counted toward holder entries. Balance above this does not add entries. */
+export const PJAM_COUNTED_CAP = 5_000_000;
 export const PJAM_MINT = 'GQe9QiBBV4G6bRUCxx2JgKrzT7G7RD17FJquBWgVpump';
 /** postgres int4 max. Holder entries above this are clamped the same way in SQL. */
 export const HOLDER_ENTRY_CAP = 2_147_483_647;
@@ -17,6 +19,8 @@ export interface RaffleConfig {
   social: number;
   rankSteps: number;
   pjamPerEntry: number;
+  /** Whole tokens counted for holder entries. Each wallet is capped on its own before the step is applied. */
+  pjamCountedCap: number;
   pjamMint: string;
   grindOnlinePerEntry: number;
   grindWinsPerEntry: number;
@@ -29,6 +33,7 @@ export const RAFFLE_DEFAULTS: RaffleConfig = {
   social: 1,
   rankSteps: 1,
   pjamPerEntry: PJAM_PER_ENTRY,
+  pjamCountedCap: PJAM_COUNTED_CAP,
   pjamMint: PJAM_MINT,
   grindOnlinePerEntry: 10,
   grindWinsPerEntry: 3,
@@ -53,6 +58,7 @@ export function clampConfig(raw: Partial<Record<keyof RaffleConfig, unknown>> | 
     social: clampInt(n(raw?.social), 1, 20, RAFFLE_DEFAULTS.social),
     rankSteps: clampInt(n(raw?.rankSteps), 1, 24, RAFFLE_DEFAULTS.rankSteps),
     pjamPerEntry: clampInt(n(raw?.pjamPerEntry), 1, 1_000_000_000_000_000, RAFFLE_DEFAULTS.pjamPerEntry),
+    pjamCountedCap: clampInt(n(raw?.pjamCountedCap), 1, 1_000_000_000_000_000, RAFFLE_DEFAULTS.pjamCountedCap),
     pjamMint: mint,
     grindOnlinePerEntry: clampInt(n(raw?.grindOnlinePerEntry), 1, 100, RAFFLE_DEFAULTS.grindOnlinePerEntry),
     grindWinsPerEntry: clampInt(n(raw?.grindWinsPerEntry), 1, 100, RAFFLE_DEFAULTS.grindWinsPerEntry),
@@ -68,6 +74,7 @@ export function configToJson(cfg: RaffleConfig): Record<string, number | string>
     social: cfg.social,
     rank_steps: cfg.rankSteps,
     pjam_per_entry: cfg.pjamPerEntry,
+    pjam_counted_cap: cfg.pjamCountedCap,
     pjam_mint: cfg.pjamMint,
     grind_online_per_entry: cfg.grindOnlinePerEntry,
     grind_wins_per_entry: cfg.grindWinsPerEntry,
@@ -82,6 +89,7 @@ export function configFromJson(raw: Record<string, unknown> | null | undefined):
     social: raw?.social as number,
     rankSteps: raw?.rank_steps as number,
     pjamPerEntry: raw?.pjam_per_entry as number,
+    pjamCountedCap: raw?.pjam_counted_cap as number,
     pjamMint: raw?.pjam_mint as string,
     grindOnlinePerEntry: raw?.grind_online_per_entry as number,
     grindWinsPerEntry: raw?.grind_wins_per_entry as number,
@@ -122,24 +130,52 @@ export function grindEntries(c: RaffleCounts, cfg: RaffleConfig): number {
   return Math.min(fromGames, fromWins);
 }
 
-/** 1 bonus entry per `pjamPerEntry` whole tokens. Dust below one token does not count. */
+/**
+ * Holder entries for one balance: floor(min(balance, pjamCountedCap) / pjamPerEntry).
+ * Dust below one step does not count.
+ */
 export function holderEntries(wholeTokens: bigint, cfg: RaffleConfig): number {
-  if (wholeTokens <= 0n || cfg.pjamPerEntry <= 0) return 0;
-  const n = wholeTokens / BigInt(cfg.pjamPerEntry);
+  if (wholeTokens <= 0n || cfg.pjamPerEntry <= 0 || cfg.pjamCountedCap <= 0) return 0;
+  const cap = BigInt(cfg.pjamCountedCap);
+  const counted = wholeTokens > cap ? cap : wholeTokens;
+  const n = counted / BigInt(cfg.pjamPerEntry);
   return n > BigInt(HOLDER_ENTRY_CAP) ? HOLDER_ENTRY_CAP : Number(n);
+}
+
+/** Holder entries for each balance, added. The counted cap is applied to each balance. */
+export function holderEntriesForWallets(balances: readonly bigint[], cfg: RaffleConfig): number {
+  let n = 0;
+  for (const b of balances) {
+    n += holderEntries(b, cfg);
+    if (n >= HOLDER_ENTRY_CAP) return HOLDER_ENTRY_CAP;
+  }
+  return n;
 }
 
 export function baseComplete(c: RaffleCounts, cfg: RaffleConfig): boolean {
   return c.offline >= cfg.offlineGames && c.online >= cfg.onlineGames && socialHave(c) >= cfg.social && rankDone(c, cfg);
 }
 
-/** Entries for one player. 0 unless every base challenge is done or the wallet holds at least `pjamPerEntry` PJAM, then 1 plus up to `bonusCap` bonus entries. */
+/**
+ * Entries for one player.
+ * Challenge entries stay as they were: 0 until every base challenge is done, then 1 plus up to `bonusCap` grind entries.
+ * Holder entries are separate and count with no challenges: one per `pjamPerEntry`, after capping that wallet at `pjamCountedCap`.
+ * `wholeTokens` is one balance. `scoreRaffleWallets` adds holder entries from each balance to the challenge total.
+ */
 export function scoreRaffle(c: RaffleCounts, cfg: RaffleConfig, wholeTokens: bigint): RaffleScore {
   const grind = grindEntries(c, cfg);
   const holder = holderEntries(wholeTokens, cfg);
-  const bonus = Math.min(cfg.bonusCap, Math.max(0, grind) + Math.max(0, holder));
-  const base = baseComplete(c, cfg) || (cfg.pjamPerEntry > 0 && wholeTokens >= BigInt(cfg.pjamPerEntry));
-  return { base, grind, holder, bonus, total: base ? 1 + bonus : 0, socialHave: socialHave(c), rankDone: rankDone(c, cfg) };
+  const base = baseComplete(c, cfg);
+  const bonus = base ? Math.min(cfg.bonusCap, Math.max(0, grind)) : 0;
+  const challenge = base ? 1 + bonus : 0;
+  return { base, grind, holder, bonus, total: challenge + holder, socialHave: socialHave(c), rankDone: rankDone(c, cfg) };
+}
+
+/** Challenge total (no tokens) plus holder entries scored per wallet. */
+export function scoreRaffleWallets(c: RaffleCounts, cfg: RaffleConfig, balances: readonly bigint[]): RaffleScore {
+  const challenge = scoreRaffle(c, cfg, 0n);
+  const holder = holderEntriesForWallets(balances, cfg);
+  return { ...challenge, holder, total: challenge.total + holder };
 }
 
 /** First 8 bytes of the seed, unsigned big-endian, modulo total. total must be > 0. */

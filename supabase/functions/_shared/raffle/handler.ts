@@ -17,7 +17,7 @@ export interface RaffleDrawDeps {
   isAdmin(jwt: string): Promise<boolean>;
   adminId(jwt: string): Promise<string | null>;
   prep(week: string): Promise<Prep>;
-  balances(mint: string, rows: Qualifier[]): Promise<Record<string, string>>;
+  balances(mint: string, rows: Qualifier[]): Promise<Record<string, string | string[]>>;
   commit(week: string, balances: Record<string, string>, adminId: string | null): Promise<{ ok: boolean; code?: string; draw?: unknown }>;
 }
 

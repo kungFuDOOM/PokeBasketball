@@ -56,6 +56,7 @@ describe('linking a wallet keeps the account', () => {
       values ($1, $2, 'ranked', 7, 40, 5, 4)`, [a.id, season]);
     await t.sql(`insert into public.pokejam_shield_inventory(user_id, count) values ($1, 3)`, [a.id]);
     const before = (await t.sql(`select user_id, status, div_idx, points, placements_played, wins from public.pokejam_ranked_profiles where user_id = $1`, [a.id]))[0];
+    await a.call('pokejam_wallet_nonce_open', [NONCE]);
     const linked = (await t.service(`select public.pokejam_link_wallet($1, $2, $3) as r`, [a.id, WALLET, NONCE]))[0].r as { ok: boolean; wallet: string };
     expect(linked).toMatchObject({ ok: true, wallet: WALLET });
     expect((await t.sql(`select user_id, status, div_idx, points, placements_played, wins from public.pokejam_ranked_profiles where user_id = $1`, [a.id]))[0]).toEqual(before);
@@ -69,12 +70,30 @@ describe('linking a wallet keeps the account', () => {
     const t = await testDb();
     const a = await t.user('A');
     const b = await t.user('B');
+    await a.call('pokejam_wallet_nonce_open', [NONCE]);
     expect((await t.service(`select public.pokejam_link_wallet($1, $2, $3) as r`, [a.id, WALLET, NONCE]))[0].r).toMatchObject({ ok: true });
     expect((await t.service(`select public.pokejam_link_wallet($1, $2, $3) as r`, [b.id, WALLET, 'nonceNonce654321']))[0].r).toMatchObject({ ok: false, code: 'taken' });
     expect((await t.service(`select public.pokejam_link_wallet($1, $2, $3) as r`, [b.id, OTHER, NONCE]))[0].r).toMatchObject({ ok: false, code: 'replay' });
     await expect(a.sql(`select public.pokejam_link_wallet($1, $2, $3)`, [a.id, OTHER, 'freshNonce1234567'])).rejects.toThrow(/permission denied/);
     const blocked = (await t.service(`select public.pokejam_shield_usdc_intent($1, false, 'shield_3', null, 'ref', 'memo', 'Receiver11111111111111111111111111111111', 'Gh9ZwEmdLJ8DscKNTkTqPbNwLNNBjuSzaG9Vp2KGtKJr', 'devnet') as r`, [b.id]))[0].r as { code: string };
     expect(blocked.code).toBe('no_wallet');
+  });
+  it('stores the nonce before the wallet, and refuses a link that was never opened', async () => {
+    const t = await testDb();
+    const a = await t.user('A');
+    const g = await t.user('G', true);
+    expect(await g.call('pokejam_wallet_nonce_open', [NONCE])).toMatchObject({ ok: false, code: 'guest' });
+    expect(await a.call('pokejam_wallet_nonce_open', [NONCE])).toMatchObject({ ok: true, nonce: NONCE });
+    const opened = (await t.sql(`select user_id::text, consumed_at from public.pokejam_wallet_nonces where nonce = $1`, [NONCE]))[0];
+    expect(opened.user_id).toBe(a.id);
+    expect(opened.consumed_at).toBeNull();
+    expect(Number((await t.sql(`select count(*)::int as n from public.pokejam_linked_wallets`))[0].n)).toBe(0);
+    expect((await t.service(`select public.pokejam_link_wallet($1, $2, $3) as r`, [a.id, WALLET, 'freshNonceUnused1']))[0].r).toMatchObject({ ok: false, code: 'nonce' });
+    expect(Number((await t.sql(`select count(*)::int as n from public.pokejam_linked_wallets`))[0].n)).toBe(0);
+    expect((await t.service(`select public.pokejam_link_wallet($1, $2, $3) as r`, [a.id, WALLET, NONCE]))[0].r).toMatchObject({ ok: true, wallet: WALLET });
+    expect((await t.sql(`select consumed_at from public.pokejam_wallet_nonces where nonce = $1`, [NONCE]))[0].consumed_at).toBeTruthy();
+    await expect(a.sql(`insert into public.pokejam_wallet_nonces(nonce, user_id) values ('freshNonce1234567', $1)`, [a.id])).rejects.toThrow(/permission denied/);
+    await expect(a.sql(`select public.pokejam_link_wallet($1, $2, $3)`, [a.id, OTHER, 'freshNonce1234567'])).rejects.toThrow(/permission denied/);
   });
   it('the migration is additive: security definer, search_path, and no client policy', () => {
     const sql = readFileSync(new URL('../migrations/20261209_pokejam_discord_signin.sql', import.meta.url), 'utf8');

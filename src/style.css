@@ -2519,7 +2519,8 @@ body:has(.pause-btn) .music-btn:not(.docked) {
   padding-right: max(12px, env(safe-area-inset-right, 0px));
 }
 .ch { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
-.ch-when, .ch-base, .ch-bonus, .ch-odds, .ch-last, .ch-rules, .ch .note { margin: 0; font-size: 0.92rem; overflow-wrap: anywhere; }
+.ch-when, .ch-base, .ch-bonus, .ch-odds, .ch-last, .ch-rules, .ch-hold, .ch .note { margin: 0; font-size: 0.92rem; overflow-wrap: anywhere; }
+.ch-link { margin-top: 8px; }
 .ch-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
 .ch-list li { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 6px 10px; border: 2px solid var(--line); border-radius: 8px; background: rgba(0, 0, 0, 0.2); min-width: 0; }
 .ch-list li.done { border-color: var(--good, #3dd68c); }
@@ -2545,7 +2546,7 @@ body:has(.pause-btn) .music-btn:not(.docked) {
   .menu:has(.ch) .tag { margin-top: 0; font-size: 0.85rem; }
   .menu:has(.ch) .card.setup { padding: 8px 10px; gap: 6px; }
   .ch { gap: 4px; }
-  .ch-when, .ch-base, .ch-bonus, .ch-odds, .ch-last, .ch-rules, .ch .note { font-size: 0.78rem; line-height: 1.25; }
+  .ch-when, .ch-base, .ch-bonus, .ch-odds, .ch-last, .ch-rules, .ch-hold, .ch .note { font-size: 0.78rem; line-height: 1.25; }
   .ch-prize { padding: 4px 6px; }
   .ch-prize .eyebrow { margin-bottom: 4px; }
   .ch-prize-body { grid-template-columns: 72px minmax(0, 1fr); gap: 8px; }

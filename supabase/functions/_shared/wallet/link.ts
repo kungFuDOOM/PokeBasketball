@@ -2,10 +2,12 @@
 // supabase-js linkIdentity accepts OAuth and ID-token credentials only, not signInWithWeb3, so this is not a
 // Supabase identity. The edge function checks the signature; the database stores the address on this user id.
 // Rank, history and shields stay where they are because the user id does not change.
-import { isAddress } from '../pack/bytes.ts';
+import { base58Decode, isAddress } from '../pack/bytes.ts';
 
 export const USER_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const HOSTS = new Set(['pokejam.xyz', 'localhost', '127.0.0.1']);
+const HOSTS = new Set(['pokejam.xyz', 'www.pokejam.xyz', 'localhost', '127.0.0.1']);
+/** `localhost:5173` is still localhost. The URI line must match the host line, port included. */
+const hostName = (host: string) => host.replace(/:\d+$/, '');
 /** How far Issued At may be from now, either way, and how long the message may stay valid. */
 const SKEW_MS = 10 * 60_000;
 const MAX_LIFE_MS = 15 * 60_000;
@@ -39,7 +41,7 @@ export function checkLinkMessage(message: string, want: { address: string; userI
   const lines = message.split('\n');
   if (lines.length !== 9) return 'bad';
   const host = /^(\S+) wants you to link this wallet to your PokeJam account:$/.exec(lines[0]);
-  if (!host || !HOSTS.has(host[1])) return 'bad';
+  if (!host || !HOSTS.has(hostName(host[1]))) return 'bad';
   if (lines[1] !== want.address || !isAddress(lines[1])) return lines[1] && isAddress(lines[1]) ? 'mismatch' : 'bad';
   if (lines[2] !== '' || lines[4] !== '') return 'bad';
   if (lines[3] !== linkStatement(want.userId)) {
@@ -58,6 +60,28 @@ export function checkLinkMessage(message: string, want: { address: string; userI
   if (Math.abs(want.now - issued) > SKEW_MS) return 'expired';
   if (exp <= want.now || exp > issued + MAX_LIFE_MS) return 'expired';
   return 'ok';
+}
+
+/**
+ * Phantom's signMessage returns a 64-byte signature as a Uint8Array, as `{ signature }`, or already as base58.
+ * A value that is not 64 bytes is refused here, before it is sent to the server.
+ */
+export function signatureBytes(signed: unknown): Uint8Array | null {
+  const asBytes = (v: unknown): Uint8Array | null => {
+    if (v instanceof Uint8Array) return v.length === 64 ? v : null;
+    if (typeof v === 'string') {
+      try {
+        const b = base58Decode(v);
+        return b.length === 64 ? b : null;
+      } catch { return null; }
+    }
+    if (Array.isArray(v) && v.length === 64 && v.every((n) => typeof n === 'number' && n >= 0 && n <= 255)) return new Uint8Array(v);
+    return null;
+  };
+  const direct = asBytes(signed);
+  if (direct) return direct;
+  if (signed && typeof signed === 'object' && 'signature' in signed) return asBytes((signed as { signature: unknown }).signature);
+  return null;
 }
 
 /** Reads the address, account id and nonce out of a message that already passed checkLinkMessage against them. */
