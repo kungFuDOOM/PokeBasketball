@@ -96,7 +96,7 @@ export function compactTokenAmount(n: number): string {
  * fetch). The challenges screen still shows the live row if an operator changes it.
  */
 export function weeklyChallengesTickerText(cfg: RaffleConfig = RAFFLE_DEFAULTS): string {
-  return `Weekly Challenges are live — finish them all for a chance to win a Pokémon card! Hold ${compactTokenAmount(cfg.pjamPerEntry)} PJAM for bonus entries`;
+  return `Weekly Challenges are live — hold ${compactTokenAmount(cfg.pjamPerEntry)}+ $PJAM in a connected wallet to enter automatically, or finish all weekly challenges, for a chance to win a Pokémon card!`;
 }
 
 /** The ticker line as HTML. The words are the text above; the PJAM amount stays the config value. */
@@ -116,9 +116,10 @@ export function challengesHtml(m: ChallengeModel, error?: string | null): string
     <p class="ch-when">Week ends ${esc(when)}. Resets every Monday at 00:00 Pacific.</p>
     ${prizeHtml()}
     ${err}${sign}
+    <p class="ch-hold"><b>Hold ${esc(compactTokenAmount(m.pjamPer))}+ $PJAM in a connected wallet to enter automatically, or finish all weekly challenges.</b></p>
     <ul class="ch-list">${rows}</ul>
-    <p class="ch-base">${m.base ? 'Base entry earned.' : 'Finish all four for 1 base entry.'} Entries so far, before the wallet check: <b>${m.entriesNow}</b>.</p>
-    <p class="ch-bonus"><b>No purchase needed.</b> Bonus entries, up to ${m.bonusCap} (so ${m.bonusCap + 1} total): hold ${amount(m.pjamPer)} PJAM in your linked wallet at the draw (1 entry each, checked on the server), or earn the same entries by play. Each one takes ${m.gamesPer} extra online games past the weekly goal and ${m.winsPer} online wins. You have ${m.onlineExtra} extra games and ${m.wins} wins, which is ${m.grind} grind ${m.grind === 1 ? 'entry' : 'entries'}. Holding and grinding add together, then stop at ${m.bonusCap}.</p>
+    <p class="ch-base">${m.base ? 'Base entry earned.' : 'Finish all four, or hold the PJAM above, for 1 base entry.'} Entries so far, before the wallet check: <b>${m.entriesNow}</b>.</p>
+    <p class="ch-bonus"><b>No purchase needed.</b> Bonus entries, up to ${m.bonusCap} (so ${m.bonusCap + 1} total): hold ${amount(m.pjamPer)} PJAM in a connected wallet at the draw (1 entry each, checked on the server), or earn the same entries by play. Each one takes ${m.gamesPer} extra online games past the weekly goal and ${m.winsPer} online wins. You have ${m.onlineExtra} extra games and ${m.wins} wins, which is ${m.grind} grind ${m.grind === 1 ? 'entry' : 'entries'}. Holding and grinding add together, then stop at ${m.bonusCap}.</p>
     <p class="ch-odds">${wallet} Your chance is your entries divided by everyone's entries. The prize is a Pokémon card, sent by hand. The game does not take payment or a shipping address.</p>
     ${last}
     <p class="ch-rules"><a href="raffle-rules.html" target="_blank" rel="noopener">Official rules</a></p>

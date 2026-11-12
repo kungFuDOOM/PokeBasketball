@@ -76,6 +76,8 @@ describe('config and entry maths match the TypeScript', () => {
       { c: counts({ offline: 3, online: 13, onlineWins: 3, shares: 1, rankSteps: 1 }), whole: 0n },
       { c: counts({ offline: 3, online: 53, onlineWins: 15, socialMatches: 1, rankSteps: 0, zenith: true }), whole: 5_000_000n },
       { c: counts({ offline: 3, online: 3, shares: 1, rankSteps: 1 }), whole: 999_999n },
+      { c: counts(), whole: 1_000_000n },
+      { c: counts(), whole: 999_999n },
     ];
     for (const x of cases) {
       const [row] = await t.sql(
@@ -253,6 +255,64 @@ describe('the draw', () => {
     expect(prep.mint).toBe(RAFFLE_DEFAULTS.pjamMint);
     expect(prep.qualifiers).toEqual([{ user_id: a.id, wallet: WALLET }]);
     await expect(a.sql(`select public.pokejam_raffle_draw_prep('${week}')`)).rejects.toThrow(/permission denied/);
+  });
+});
+
+describe('holders qualify without challenges (migration 20261214)', () => {
+  const phantom = async (t: Db, u: User, addr: string) => {
+    await t.sql(`insert into auth.identities(user_id, provider, identity_data) values ($1, 'web3', $2::jsonb)`, [u.id, JSON.stringify({ custom_claims: { address: addr, chain: 'solana' } })]);
+  };
+  const entrantsFor = async (t: Db, week: string, balances: Record<string, string>) =>
+    (await t.sql(`select public.pokejam_raffle_entrants($1::date, $2::jsonb) as e`, [week, JSON.stringify(balances)]))[0].e as { user_id: string; entries: number; holder: number; grind: number }[];
+
+  it('1M+ PJAM with zero challenges qualifies, and the holder bonus still applies', async () => {
+    const t = await testDb();
+    const h = await t.user('H');
+    await t.service(`select public.pokejam_link_wallet($1, $2, 'nonceNonce123456')`, [h.id, WALLET]);
+    const week = await weekOf(t, `interval '7 days'`);
+    const e = await entrantsFor(t, week, { [h.id]: '1000000' });
+    expect(e).toHaveLength(1);
+    expect(e[0]).toMatchObject({ user_id: h.id, holder: 1, grind: 0, entries: 2 });
+  });
+
+  it('999,999 PJAM with zero challenges does not qualify', async () => {
+    const t = await testDb();
+    const h = await t.user('H');
+    await t.service(`select public.pokejam_link_wallet($1, $2, 'nonceNonce123456')`, [h.id, WALLET]);
+    const week = await weekOf(t, `interval '7 days'`);
+    expect(await entrantsFor(t, week, { [h.id]: '999999' })).toEqual([]);
+  });
+
+  it('a non-holder who finishes every challenge still qualifies, and keeps the grind bonus', async () => {
+    const t = await testDb();
+    const a = await t.user('A');
+    const opp = await t.user('O');
+    const week = await weekOf(t, `interval '7 days'`);
+    await qualify(t, week, a, opp, 10);
+    const e = await entrantsFor(t, week, {});
+    expect(e.map((x) => x.user_id)).toEqual([a.id]);
+    expect(e[0]).toMatchObject({ holder: 0, grind: 1, entries: 2 });
+  });
+
+  it('counts a Phantom (web3) sign-in wallet, and prep hands its address to the balance reader', async () => {
+    const t = await testDb();
+    const p = await t.user('P');
+    await phantom(t, p, WALLET);
+    const week = await weekOf(t, `interval '7 days'`);
+    const prep = (await t.service(`select public.pokejam_raffle_draw_prep($1::date) as r`, [week]))[0].r as { qualifiers: { user_id: string; wallet: string; wallets: string[] }[] };
+    expect(prep.qualifiers).toEqual([{ user_id: p.id, wallet: WALLET, wallets: [WALLET] }]);
+    const e = await entrantsFor(t, week, { [p.id]: '3000000' });
+    expect(e[0]).toMatchObject({ user_id: p.id, holder: 3, entries: 4 });
+    const me = await p.call<{ wallet: string | null }>('pokejam_raffle_me');
+    expect(me.wallet).toBe(WALLET);
+  });
+
+  it('a guest holder is still left out', async () => {
+    const t = await testDb();
+    const g = await t.user('G', true);
+    await phantom(t, g, WALLET);
+    const week = await weekOf(t, `interval '7 days'`);
+    expect(await entrantsFor(t, week, { [g.id]: '5000000' })).toEqual([]);
   });
 });
 

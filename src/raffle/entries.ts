@@ -133,12 +133,12 @@ export function baseComplete(c: RaffleCounts, cfg: RaffleConfig): boolean {
   return c.offline >= cfg.offlineGames && c.online >= cfg.onlineGames && socialHave(c) >= cfg.social && rankDone(c, cfg);
 }
 
-/** Entries for one player. 0 unless every base challenge is done, then 1 plus up to `bonusCap` bonus entries. */
+/** Entries for one player. 0 unless every base challenge is done or the wallet holds at least `pjamPerEntry` PJAM, then 1 plus up to `bonusCap` bonus entries. */
 export function scoreRaffle(c: RaffleCounts, cfg: RaffleConfig, wholeTokens: bigint): RaffleScore {
   const grind = grindEntries(c, cfg);
   const holder = holderEntries(wholeTokens, cfg);
   const bonus = Math.min(cfg.bonusCap, Math.max(0, grind) + Math.max(0, holder));
-  const base = baseComplete(c, cfg);
+  const base = baseComplete(c, cfg) || (cfg.pjamPerEntry > 0 && wholeTokens >= BigInt(cfg.pjamPerEntry));
   return { base, grind, holder, bonus, total: base ? 1 + bonus : 0, socialHave: socialHave(c), rankDone: rankDone(c, cfg) };
 }
 

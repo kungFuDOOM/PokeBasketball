@@ -45,15 +45,22 @@ export async function walletWhole(rpc: Rpc, mint: string, wallet: string): Promi
   return wholeTokens(raw, decimals);
 }
 
-/** user id -> whole tokens, decimal string. Wallets are read a few at a time. A null wallet is zero. */
-export async function pjamWholes(rpc: Rpc, mint: string, rows: { user_id: string; wallet: string | null }[]): Promise<Record<string, string>> {
+export interface WalletRow { user_id: string; wallet: string | null; wallets?: string[] }
+
+/** user id -> whole tokens, decimal string. A player's distinct wallets (linked and Phantom sign-in) are added together.
+ * Wallets are read a few at a time. No wallet is zero. */
+export async function pjamWholes(rpc: Rpc, mint: string, rows: WalletRow[]): Promise<Record<string, string>> {
   const out: Record<string, string> = {};
-  const pending = rows.filter((r) => r.wallet);
-  for (const r of rows) if (!r.wallet) out[r.user_id] = '0';
-  for (let i = 0; i < pending.length; i += 4) {
-    const slice = pending.slice(i, i + 4);
-    const wholes = await Promise.all(slice.map((r) => walletWhole(rpc, mint, r.wallet!)));
-    slice.forEach((r, n) => { out[r.user_id] = wholes[n]!.toString(); });
+  const jobs: { user_id: string; wallet: string }[] = [];
+  for (const r of rows) {
+    const ws = [...new Set((r.wallets?.length ? r.wallets : r.wallet ? [r.wallet] : []).filter(Boolean))];
+    out[r.user_id] = '0';
+    for (const w of ws) jobs.push({ user_id: r.user_id, wallet: w });
+  }
+  for (let i = 0; i < jobs.length; i += 4) {
+    const slice = jobs.slice(i, i + 4);
+    const wholes = await Promise.all(slice.map((r) => walletWhole(rpc, mint, r.wallet)));
+    slice.forEach((r, n) => { out[r.user_id] = (BigInt(out[r.user_id]!) + wholes[n]!).toString(); });
   }
   return out;
 }

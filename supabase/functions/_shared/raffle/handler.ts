@@ -1,7 +1,7 @@
 // pokejam-raffle-draw: a moderator draws one closed week. This function reads PJAM balances. The database
 // generates the seed and picks the winner, so this function cannot choose who wins.
 
-export interface Qualifier { user_id: string; wallet: string | null }
+export interface Qualifier { user_id: string; wallet: string | null; wallets?: string[] }
 
 export interface Prep {
   ok: boolean;

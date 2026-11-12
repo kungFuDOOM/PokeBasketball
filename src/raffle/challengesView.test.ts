@@ -24,6 +24,7 @@ describe('challenges screen', () => {
   it('states both bonus routes, the cap, and that no purchase is needed', () => {
     const html = challengesHtml(modelFromServer(me()));
     expect(html).toContain('No purchase needed');
+    expect(html).toContain('Hold 1M+ $PJAM in a connected wallet to enter automatically, or finish all weekly challenges.');
     expect(html).toContain('1,000,000 PJAM');
     expect(html).toContain('10 extra online games');
     expect(html).toContain('3 online wins');
@@ -108,12 +109,12 @@ describe('challenges screen', () => {
     expect(compactTokenAmount(2_000_000)).toBe('2M');
     expect(compactTokenAmount(2_500_000)).toBe('2,500,000');
     const text = weeklyChallengesTickerText();
-    expect(text).toBe(`Weekly Challenges are live — finish them all for a chance to win a Pokémon card! Hold ${compactTokenAmount(RAFFLE_DEFAULTS.pjamPerEntry)} PJAM for bonus entries`);
-    expect(text).toContain('1M PJAM');
+    expect(text).toBe(`Weekly Challenges are live — hold ${compactTokenAmount(RAFFLE_DEFAULTS.pjamPerEntry)}+ $PJAM in a connected wallet to enter automatically, or finish all weekly challenges, for a chance to win a Pokémon card!`);
+    expect(text).toContain('1M+ $PJAM');
     expect(text).not.toMatch(/Pokémon Master/);
     expect(text).not.toContain('to win a free');
     expect(weeklyChallengesTickerHtml()).toBe(text);
-    expect(weeklyChallengesTickerText({ ...RAFFLE_DEFAULTS, pjamPerEntry: 3_000_000 })).toContain('Hold 3M PJAM');
+    expect(weeklyChallengesTickerText({ ...RAFFLE_DEFAULTS, pjamPerEntry: 3_000_000 })).toContain('hold 3M+ $PJAM');
     const css = readFileSync(new URL('../style.css', import.meta.url), 'utf8');
     const rule = css.match(/\.ticker \{[^}]+\}/)?.[0] ?? '';
     expect(rule).toContain('safe-area-inset-left');
