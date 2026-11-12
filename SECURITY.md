@@ -19,6 +19,10 @@ maintainer listed in `public/privacy.html`. Please don't open a public issue for
   it isn't in the meta. Instead every page loads `public/framebust.js` as its first script: inside another
   site's frame it tries to send the top window to the game, and if that is blocked it hides the page behind a
   "Play at pokejam.xyz" link.
+  Both `framebust.js` and the entry code (`src/framed.ts`) refuse to boot on any hostname outside pokejam.xyz,
+  www.pokejam.xyz, kungfudoom.github.io, localhost, 127.0.0.1 and ::1, and inside a frame unless every
+  ancestor origin (or the referrer's origin) is pokejam.xyz, www.pokejam.xyz or the page's own origin;
+  pokejam-test.vercel.app and Vercel previews are deliberately not allowed.
 - **No referrer.** `<meta name="referrer" content="no-referrer">`: links out don't reveal the page.
 - **Output escaping.** Every name that reaches the page (your team name, saved data) goes through `esc()` or
   `textContent`; nothing is built with `eval` or `new Function`.
