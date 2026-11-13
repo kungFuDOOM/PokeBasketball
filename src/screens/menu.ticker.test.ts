@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import { weeklyChallengesTickerHtml } from '../raffle/challengesView';
 import { onLiveAdsChange, setLiveAds } from '../data/ads';
 import { tickerHtml } from './menu';
-import { TICKER_TIP_RATIO } from './tickerRotation';
 
 describe('menu ticker', () => {
   it('adds one weekly-challenges line and leaves the other items in place', () => {
@@ -45,9 +44,20 @@ describe('menu ticker', () => {
     const html = tickerHtml(false, true);
     const run = html.slice(0, html.indexOf('aria-hidden'));
     const tips = run.match(/<b class="tk-tag">TIP<\/b>/g)?.length ?? 0;
-    const paid = (run.split('RIPIT .CO').length - 1) + (run.split('SECOND AD').length - 1);
+    const head = run.slice(0, run.indexOf('<b class="tk-tag">TIP</b>'));
     expect(tips).toBeGreaterThan(0);
-    expect(paid / tips).toBeCloseTo((1 - TICKER_TIP_RATIO) / TICKER_TIP_RATIO, 5);
+    expect(head.match(/<b class="tk-tag">AD<\/b>/g)?.length).toBe(5);
+    const at = (text: string, from: number) => head.indexOf(text, from);
+    const ripit = at('RIPIT .CO', 0);
+    const pjam = at('$PJAM, the official', ripit + 1);
+    const second = at('SECOND AD', pjam + 1);
+    const open = at('Your ad here', second + 1);
+    const ripitAgain = at('RIPIT .CO', open + 1);
+    expect(ripit).toBeGreaterThan(-1);
+    expect(pjam).toBeGreaterThan(ripit);
+    expect(second).toBeGreaterThan(pjam);
+    expect(open).toBeGreaterThan(second);
+    expect(ripitAgain).toBeGreaterThan(open);
     expect(run.indexOf('RIPIT .CO')).toBeLessThan(run.indexOf('<b class="tk-tag">TIP</b>'));
     expect(run.indexOf('RIPIT .CO')).toBeLessThan(run.indexOf('SECOND AD'));
     expect(run).toContain('href="https://ripit.co"');
@@ -63,6 +73,22 @@ describe('menu ticker', () => {
     expect(fallback).not.toContain('RIPIT');
     expect(fallback).not.toContain('SECOND AD');
     expect((fallback.match(/<b class="tk-tag">TIP<\/b>/g) ?? []).length).toBe(tips * 2);
+  });
+
+  it('does not repeat the only paid ad: RIPIT, $PJAM, RIPIT, Your ad here, RIPIT', () => {
+    setLiveAds([{ text: 'RIPIT .CO', theme: 'gold', until: Date.now() + 60_000 }]);
+    const html = tickerHtml(false, true);
+    const run = html.slice(0, html.indexOf('aria-hidden'));
+    const head = run.slice(0, run.indexOf('<b class="tk-tag">TIP</b>'));
+    const order = ['RIPIT .CO', '$PJAM, the official', 'RIPIT .CO', 'Your ad here', 'RIPIT .CO'];
+    let from = 0;
+    for (const text of order) {
+      const at = head.indexOf(text, from);
+      expect(at).toBeGreaterThan(-1);
+      from = at + text.length;
+    }
+    expect(head.match(/<b class="tk-tag">AD<\/b>/g)?.length).toBe(5);
+    setLiveAds([]);
   });
 
   it('leads with paid live ads that are still running, before the $PJAM house ad', () => {
