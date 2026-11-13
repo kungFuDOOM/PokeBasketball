@@ -125,6 +125,11 @@ export interface TitleOptions {
   onAdvertise?: () => void;
   /** Opens the player profile. */
   onProfile?: () => void;
+  /**
+   * A real account is signed in (not a guest). Omitted: read the stored session.
+   * Guests and a missing session count as signed out.
+   */
+  signedIn?: boolean;
   /** Weekly challenges and the card raffle. */
   onChallenges?: () => void;
 }
@@ -218,8 +223,42 @@ export function tickerHtml(isStatic: boolean, clickable = false): string {
   return `<div class="ticker" role="marquee" aria-label="Live score, tips, weekly challenges and game modes"><div class="tk-clip"><div class="tk-track" style="animation-duration:${seconds}s"><div class="tk-run">${run}</div><div class="tk-run" aria-hidden="true">${hidden}</div></div></div></div>`;
 }
 
+const AUTH_KEY = 'pokejam.auth';
+
+/** The stored Supabase session, or null. No network: the menu only reads what is already on this device. */
+function readStoredSession(): string | null {
+  try {
+    return typeof localStorage === 'undefined' ? null : localStorage.getItem(AUTH_KEY);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Whether the stored session is a real account. A guest (anonymous) session and anything unreadable count as signed out.
+ * `raw` is the `pokejam.auth` value; omitted, it is read from storage.
+ */
+export function menuSignedIn(raw: string | null | undefined = readStoredSession()): boolean {
+  if (!raw) return false;
+  try {
+    const user = (JSON.parse(raw) as { user?: { is_anonymous?: boolean } | null }).user;
+    return !!user && user.is_anonymous !== true;
+  } catch {
+    return false;
+  }
+}
+
+/** Profile entry on the title menu. Signed out, it is the way to create a profile. */
+export function profileButtonHtml(signedIn: boolean): string {
+  if (signedIn) {
+    return `<button class="btn ghost profile-btn" data-go="profile" aria-label="Your profile and stats">Profile</button>`;
+  }
+  return `<button class="btn ghost profile-btn" data-go="profile" aria-label="Sign in. Use your wallet or Discord to create a profile">Sign in<small>Use your wallet or Discord to create a profile</small></button>`;
+}
+
 /** Title screen: a silent CPU game behind the menu, Season Draft as the big call to action, then the other modes. */
 export function menuScreen(root: HTMLElement, settings: Settings, onChange: () => void, opts: TitleOptions) {
+  const signedIn = opts.signedIn ?? menuSignedIn();
   const isStatic = prefersStatic();
   const parade = [...POKEMON].sort(() => Math.random() - 0.5).slice(0, 14);
   let attract: Attract | null = null;
@@ -262,7 +301,7 @@ export function menuScreen(root: HTMLElement, settings: Settings, onChange: () =
           </label>
           <button class="btn play-btn" data-go="season" aria-label="Season Draft: draft 10, sim a season, get your grade">DRAFT &amp; GET GRADED<small>Draft 10 · sim a season · get your grade</small></button>
           ${opts.onMultiplayer ? `<button class="btn online-btn" data-go="multiplayer" aria-label="Play online: quick match or a room code with a friend">PLAY ONLINE<small>Quick match · room code</small></button>` : ''}
-          ${opts.onProfile ? `<button class="btn ghost profile-btn" data-go="profile" aria-label="Your profile and stats">Profile</button>` : ''}
+          ${opts.onProfile ? profileButtonHtml(signedIn) : ''}
         </div>
         ${opts.drafted ? `<p class="mode-saved hero-saved"><span class="lbl">My drafted team</span> ${esc(opts.drafted)}</p>` : ''}
         <div class="mode-grid">

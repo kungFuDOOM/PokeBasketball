@@ -58,7 +58,7 @@ export function profileHtml(m: ProfileModel, phantom: PhantomAction, o: { error?
   const left = [id];
   if (showRanked && m.username) left.push(rankChipHtml(m.me, { badge: false }));
   if (m.rankedOn && guest && m.onlineAvailable) {
-    left.push(`<div class="pf-signin" data-signin>${signInPanelHtml(phantom, { ...o, why: 'Sign in to get a username and a rank that follow you. Guests can still play and keep the stats below.' })}</div>`);
+    left.push(`<div class="pf-signin" data-signin>${signInPanelHtml(phantom, { ...o, why: 'Sign in with your wallet or Discord to create a profile to get a username and a rank that follow you. Guests can still play and keep the stats below.' })}</div>`);
   }
   const rows: string[] = [];
   if (showRanked && m.username) rows.push(rankedRows(m.me));
