@@ -36,8 +36,8 @@ export const FPS = 30;
  * (an 18-second spot for the Training drills and the new Alley-Oop drill, filmed on real practice games with
  * their floor markers) or 'ranked' (a 20-second Season 1 launch spot: placements, the real tier badges up to Zenith).
  */
-type Cut = 'main' | 'vertical' | 'franchise' | 'top5' | 'online' | 'watch' | 'training' | 'ranked' | 'challenges' | 'packs' | 'regions' | 'regionslive' | 'threept' | 'kabuto' | 'ads';
-const CUT: Cut = (['vertical', 'franchise', 'top5', 'online', 'watch', 'training', 'ranked', 'challenges', 'packs', 'regions', 'regionslive', 'threept', 'kabuto', 'ads'] as const).find((c) => c === new URLSearchParams(location.search).get('cut')) ?? 'main';
+type Cut = 'main' | 'vertical' | 'franchise' | 'top5' | 'online' | 'watch' | 'training' | 'ranked' | 'challenges' | 'packs' | 'regions' | 'regionslive' | 'threept' | 'kabuto' | 'ads' | 'holders';
+const CUT: Cut = (['vertical', 'franchise', 'top5', 'online', 'watch', 'training', 'ranked', 'challenges', 'packs', 'regions', 'regionslive', 'threept', 'kabuto', 'ads', 'holders'] as const).find((c) => c === new URLSearchParams(location.search).get('cut')) ?? 'main';
 const VERTICAL = CUT === 'vertical';
 /** The top 5 cut is dressed as a 90s sports highlight show ("POKé CENTER"). */
 const RETRO = CUT === 'top5';
@@ -118,6 +118,7 @@ const MATCHUPS: Record<Cut, { home: TeamDef; away: TeamDef; court: CourtStyle }>
     away: { name: 'Rival', abbr: 'RVL', color: '#e3350d', color2: '#4a0d04', human: false, roster: mons(ONLINE_PICKS.rival) },
     court: COURTS['Indigo Elite'],
   },
+  holders: { home: pallet([25, 6, 9, 3, 143]), away: gym('Indigo Elite', [151, 94, 150, 383, 149]), court: COURTS['Pallet Town'] },
   ads: { home: pallet([25, 6, 9, 3, 143]), away: gym('Indigo Elite', [151, 94, 150, 383, 149]), court: COURTS['Indigo Elite'] },
   kabuto: { home: pallet([25, 6, 9, 3, 143]), away: gym('Indigo Elite', [151, 94, 150, 383, 149]), court: COURTS['Pewter Boulders'] },
   threept: { home: pallet([25, 6, 9, 3, 143]), away: gym('Indigo Elite', [151, 94, 150, 383, 149]), court: COURTS['Pallet Town'] },
@@ -214,7 +215,8 @@ type Scene = 'tipoff' | 'logo' | 'wall' | 'clock' | 'legends' | 'badges' | 'evol
   | 'r-hook' | 'r-johto' | 'r-hoenn' | 'r-wall' | 'r-unlock'
   | 'tp-hook' | 'tp-rules' | 'tp-score'
   | 'k-hook' | 'k-card' | 'k-where'
-  | 'ad-hook' | 'ad-board' | 'ad-tiers' | 'ad-burn' | 'ad-steps';
+  | 'ad-hook' | 'ad-board' | 'ad-tiers' | 'ad-burn' | 'ad-steps'
+  | 'h-hook' | 'h-signin' | 'h-hold' | 'h-free';
 type Segment =
   | { kind: Scene; t0: number; t1: number }
   | { kind: 'tp-clip'; t0: number; t1: number; from: number; label?: string }
@@ -945,11 +947,11 @@ function renderOutro(seg: Segment, t: number, a: number) {
   renderBackground(t, 0.66);
   const k = clamp01(a / 0.25);
   once('outro-hit', t, seg.t0 + 0.25, () => { flash = 0.3; cue(t, 'slam'); cue(t, 'crowd_big'); });
-  const pjAt = CUT === 'online' || CUT === 'watch' || CUT === 'training' || CUT === 'ranked' || CUT === 'challenges' ? 1.6 : CUT === 'packs' ? 1.7 : CUT === 'regions' || CUT === 'regionslive' || CUT === 'threept' || CUT === 'kabuto' || CUT === 'ads' ? 1.6 : 2.2;
+  const pjAt = CUT === 'online' || CUT === 'watch' || CUT === 'training' || CUT === 'ranked' || CUT === 'challenges' ? 1.6 : CUT === 'packs' ? 1.7 : CUT === 'regions' || CUT === 'regionslive' || CUT === 'threept' || CUT === 'kabuto' || CUT === 'ads' || CUT === 'holders' ? 1.6 : 2.2;
   const pj = a - pjAt;
   if (pj < 0) {
     logo(W / 2, H / 2 - 150, 170, a < 0.25 ? 3 - 2 * k * k : 1);
-    if (a > 0.6) jamText(CUT === 'online' ? 'PLAY ONLINE NOW. FREE.' : CUT === 'watch' ? 'PLAY IT. WATCH IT. SIM IT.' : CUT === 'training' ? 'TRAIN UP. THEN JAM.' : CUT === 'ranked' ? 'RANKED IS LIVE. CLIMB NOW.' : CUT === 'challenges' ? 'PLAY. CLIMB. ENTER.' : CUT === 'packs' ? 'PACK BATTLES. COMING SOON.' : CUT === 'regions' ? 'NEW REGIONS. COMING SOON.' : CUT === 'regionslive' ? 'JOHTO + HOENN. OUT NOW.' : CUT === 'threept' ? '3-POINT CONTEST. PLAY NOW.' : CUT === 'kabuto' ? 'KABUTO KING. LIMITED TIME.' : CUT === 'ads' ? 'COURTSIDE ADS. BOOK NOW.' : 'PLAY FREE IN YOUR BROWSER', W / 2, H / 2 + 40, 64, { fill: '#f8f8f0' });
+    if (a > 0.6) jamText(CUT === 'online' ? 'PLAY ONLINE NOW. FREE.' : CUT === 'watch' ? 'PLAY IT. WATCH IT. SIM IT.' : CUT === 'training' ? 'TRAIN UP. THEN JAM.' : CUT === 'ranked' ? 'RANKED IS LIVE. CLIMB NOW.' : CUT === 'challenges' ? 'PLAY. CLIMB. ENTER.' : CUT === 'packs' ? 'PACK BATTLES. COMING SOON.' : CUT === 'regions' ? 'NEW REGIONS. COMING SOON.' : CUT === 'regionslive' ? 'JOHTO + HOENN. OUT NOW.' : CUT === 'threept' ? '3-POINT CONTEST. PLAY NOW.' : CUT === 'kabuto' ? 'KABUTO KING. LIMITED TIME.' : CUT === 'ads' ? 'COURTSIDE ADS. BOOK NOW.' : CUT === 'holders' ? 'SIGN IN. LINK. HOLD.' : 'PLAY FREE IN YOUR BROWSER', W / 2, H / 2 + 40, 64, { fill: '#f8f8f0' });
     if (a > 1.0) plainText(CUT === 'ads' ? 'pokejam.xyz/#advertise' : 'pokejam.xyz', W / 2, H / 2 + 170, 80, '#ffcb05');
   } else {
     // $PJAM: gold, glinting, center stage.
@@ -2437,6 +2439,125 @@ function renderRkSeason(seg: Segment, t: number, a: number) {
   if (a > 1.0) plainText("DON'T RAGE QUIT. QUITTERS GET BANNED.", W / 2, 700, 64, '#ff7a59');
 }
 
+// ---------- cut: holders ----------
+
+/** GOT $PJAM? Then sign in with the wallet that holds it. */
+function renderHHook(seg: Segment, t: number, a: number) {
+  renderBackground(t, 0.72);
+  const pop = (at: number) => 0.3 + 0.7 * easeOutBack(clamp01((a - at) / 0.22));
+  once('hh1', t, seg.t0 + 0.05, () => { flash = 0.2; cue(t, 'slam'); cue(t, 'coin'); cue(t, 'crowd_low'); });
+  jamText('GOT', W / 2, 200, 130, { fill: '#f8f8f0', scale: pop(0.05) });
+  if (a > 0.3) pjam(W / 2, 400, 220, a - 0.3);
+  if (a > 1.0) {
+    once('hh2', t, seg.t0 + 1.0, () => { flash = 0.15; cue(t, 'slam'); });
+    const s = pop(1.0);
+    ctx.save();
+    ctx.translate(W / 2, 700);
+    ctx.scale(s, s);
+    roundRect(-560, -80, 1120, 160, 80, '#7c5cff', '#fff', 8);
+    ctx.font = `800 72px ${SPORT}`;
+    ctx.fillStyle = '#fff';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('SIGN IN WITH YOUR WALLET', 0, 4);
+    ctx.restore();
+  }
+}
+
+/** Sign in, link the wallet, and the profile is made. */
+function renderHSignin(seg: Segment, t: number, a: number) {
+  renderBackground(t, 0.88);
+  jamText('MAKE YOUR PROFILE', W / 2, 120, 110, { scale: a < 0.2 ? easeOutBack(a / 0.2) : 1 });
+  // A profile card building itself (placeholder trainer and wallet).
+  const k = easeOutBack(clamp01((a - 0.2) / 0.3));
+  ctx.save();
+  ctx.translate(W / 2 - 360, 560);
+  ctx.scale(k, k);
+  roundRect(-300, -260, 600, 520, 28, 'rgba(10,13,31,0.96)', '#7c5cff', 6);
+  ctx.restore();
+  if (k > 0.5) sprite(25, W / 2 - 360, 500, 220);
+  if (a > 0.6) plainText('TRAINER', W / 2 - 360, 560, 60, '#f8f8f0');
+  if (a > 0.9) plainText('WALLET 7xKX…9fQ2', W / 2 - 360, 640, 44, '#aab0d8');
+  if (a > 1.3) {
+    once('hs-ok', t, seg.t0 + 1.3, () => { flash = 0.15; cue(t, 'card'); cue(t, 'crowd'); });
+    roundRect(W / 2 - 560, 690, 400, 70, 35, '#21a366', '#fff', 4);
+    plainText('PROFILE MADE!', W / 2 - 360, 726, 44, '#fff');
+  }
+  const steps = ['SIGN IN (NOT AS A GUEST)', 'LINK YOUR WALLET', "YOUR GAMES COUNT"];
+  steps.forEach((label, i) => {
+    const at = 0.4 + i * 0.4;
+    if (a < at) return;
+    once(`hs${i}`, t, seg.t0 + at, () => cue(t, 'tick'));
+    const kk = easeOutBack(clamp01((a - at) / 0.22));
+    const y = 330 + i * 170;
+    ctx.save();
+    ctx.translate((1 - kk) * 300, 0);
+    roundRect(W / 2 + 20, y - 60, 760, 120, 22, 'rgba(10,13,31,0.95)', '#ffcb05', 5);
+    ctx.beginPath();
+    ctx.arc(W / 2 + 100, y, 40, 0, Math.PI * 2);
+    ctx.fillStyle = '#ffcb05';
+    ctx.fill();
+    ctx.font = `48px ${PIXEL}`;
+    ctx.fillStyle = '#14122a';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(String(i + 1), W / 2 + 104, y + 3);
+    ctx.font = `800 ${label.length > 18 ? 46 : 54}px ${SPORT}`;
+    ctx.fillStyle = '#f8f8f0';
+    ctx.textAlign = 'left';
+    ctx.fillText(label, W / 2 + 165, y + 3);
+    ctx.restore();
+  });
+}
+
+/** Hold 1M: auto-entered every week. 1 entry per 1M, up to 5M counted. */
+function renderHHold(seg: Segment, t: number, a: number) {
+  ctx.fillStyle = '#0a0612';
+  ctx.fillRect(0, 0, W, H);
+  goldRays(a, 460);
+  once('hd', t, seg.t0 + 0.05, () => { flash = 0.2; cue(t, 'slam'); cue(t, 'coin'); say(t, 'heating_1', true); });
+  jamText('HOLD 1M $PJAM', W / 2, 120, 130, { scale: a < 0.22 ? 0.3 + 0.7 * easeOutBack(a / 0.22) : 1, maxW: W - 120 });
+  if (a > 0.4) plainText('AUTO-ENTERED IN THE WEEKLY RAFFLE. NO CHALLENGES NEEDED.', W / 2, 250, 54, '#f8f8f0');
+  // 1M .. 5M, a ticket for each.
+  for (let i = 0; i < 5; i++) {
+    const at = 0.8 + i * 0.3;
+    if (a < at) continue;
+    once(`hdt${i}`, t, seg.t0 + at, () => cue(t, i === 4 ? 'slam' : 'card'));
+    const k = easeOutBack(clamp01((a - at) / 0.2));
+    const x = W / 2 + (i - 2) * 220;
+    ctx.save();
+    ctx.translate(x, 540);
+    ctx.scale(k, k);
+    roundRect(-95, -150, 190, 300, 18, '#ffcb05', '#fff', 6);
+    ctx.font = `800 34px ${SPORT}`;
+    ctx.fillStyle = '#14122a';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('ENTRY', 0, -90);
+    ctx.font = `110px ${PIXEL}`;
+    ctx.fillText(String(i + 1), 6, 10);
+    ctx.font = `800 40px ${SPORT}`;
+    ctx.fillText(`${i + 1}M`, 0, 100);
+    ctx.restore();
+  }
+  if (a > 2.4) jamText('UP TO 5 ENTRIES', W / 2, 820, 100, { fill: '#ffe27a', scale: 0.3 + 0.7 * easeOutBack(clamp01((a - 2.4) / 0.22)) });
+  if (a > 2.8) plainText('1 ENTRY PER 1M · 5M COUNTED · PLUS YOUR CHALLENGE ENTRIES', W / 2, 950, 48, '#aab0d8');
+}
+
+/** No purchase needed: the challenges still get you in. */
+function renderHFree(seg: Segment, t: number, a: number) {
+  renderBackground(t, 0.88);
+  const pop = (at: number) => 0.3 + 0.7 * easeOutBack(clamp01((a - at) / 0.22));
+  once('hf', t, seg.t0 + 0.05, () => { flash = 0.15; cue(t, 'slam'); });
+  jamText('NO $PJAM?', W / 2, 260, 150, { fill: '#f8f8f0', scale: pop(0.05) });
+  if (a > 0.4) {
+    once('hf2', t, seg.t0 + 0.4, () => cue(t, 'slam'));
+    jamText('NO PROBLEM.', W / 2, 450, 150, { scale: pop(0.4) });
+  }
+  if (a > 0.9) plainText('FINISH THE WEEKLY CHALLENGES TO ENTER. NO PURCHASE NEEDED.', W / 2, 650, 54, '#ffcb05');
+  if (a > 1.3) plainText('RULES AT POKEJAM.XYZ', W / 2, 760, 54, '#f8f8f0');
+}
+
 // ---------- cut: ads ----------
 
 /** Placeholder bookings for the trailer's boards: generic copy only, never a real brand. */
@@ -3316,6 +3437,10 @@ function renderSegment(seg: Segment, t: number, first: boolean) {
     case 'ad-tiers': renderAdTiers(seg, t, a); break;
     case 'ad-burn': renderAdBurn(seg, t, a); break;
     case 'ad-steps': renderAdSteps(seg, t, a); break;
+    case 'h-hook': renderHHook(seg, t, a); break;
+    case 'h-signin': renderHSignin(seg, t, a); break;
+    case 'h-hold': renderHHold(seg, t, a); break;
+    case 'h-free': renderHFree(seg, t, a); break;
     case 'clip': renderClip(seg, t, first); break;
   }
 }
@@ -3452,6 +3577,16 @@ export async function prepare(): Promise<{ frames: number; fps: number }> {
     add({ kind: 'o-packs', t0: t, t1: t + 3.4 });
     for (let i = 0; i < 2; i++) clip([['dunk']], 0.9, 0.6, false, 'montage');
     add({ kind: 'outro', t0: t, t1: t + 4.2 });
+    musicEnd = s[s.length - 1].t0 + 1.6;
+  } else if (CUT === 'holders') {
+    add({ kind: 'h-hook', t0: t, t1: t + 2.2 });
+    musicStart = 0.1;
+    add({ kind: 'h-signin', t0: t, t1: t + 3.2 });
+    add({ kind: 'h-hold', t0: t, t1: t + 3.6 });
+    clip([['dunk']], 1.6, 1.1, false, 'montage');
+    add({ kind: 'c-prize', t0: t, t1: t + 2.6 });
+    add({ kind: 'h-free', t0: t, t1: t + 2.4 });
+    add({ kind: 'outro', t0: t, t1: t + 3.4 });
     musicEnd = s[s.length - 1].t0 + 1.6;
   } else if (CUT === 'ads') {
     add({ kind: 'ad-hook', t0: t, t1: t + 2.0 });

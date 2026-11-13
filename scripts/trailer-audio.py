@@ -92,6 +92,8 @@ STYLES['threept'] = STYLES['vertical']
 STYLES['kabuto'] = STYLES['top5']
 # Ads: the driving minor-key anthem, for a hard push.
 STYLES['ads'] = STYLES['online']
+# Holders: the 90s fanfare, gold and loud.
+STYLES['holders'] = STYLES['top5']
 rng = np.random.default_rng(7)
 
 
