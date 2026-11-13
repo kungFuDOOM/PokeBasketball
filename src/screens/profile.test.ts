@@ -33,6 +33,7 @@ describe('profileHtml', () => {
   it('gives a guest the sign-in panel and their local stats, no ranked sections', () => {
     const h = profileHtml(model({ signedIn: false, username: null, me: null }), phantom);
     expect(h).toContain('data-rk="signin"');
+    expect(h).toContain('Sign in with your wallet or Discord to create a profile to get a username and a rank that follow you. Guests can still play and keep the stats below.');
     expect(h).toContain('Guest');
     expect(h).toContain('Franchise');
     expect(h).not.toContain('Ranked record');

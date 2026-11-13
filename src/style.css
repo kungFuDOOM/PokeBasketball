@@ -2149,9 +2149,10 @@ body:has(.pause-btn) .music-btn:not(.docked) {
 @media (max-height: 500px) { .share { margin: -10px auto 12px; } .share-menu { flex-direction: row; min-width: 0; } }
 
 /* Profile button on the title screen: last item of the play row, same width as the other buttons. */
-.profile-btn { min-height: 44px; }
+.profile-btn { min-height: 44px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; white-space: normal; text-transform: none; line-height: 1.2; }
+.profile-btn small { font: 600 0.72rem/1.25 var(--sport); letter-spacing: 0.02em; text-transform: none; white-space: normal; }
 .play-row .profile-btn { width: min(100%, 400px); min-width: 0; box-sizing: border-box; }
-@media (min-width: 761px) { .play-row .profile-btn { width: auto; min-width: 120px; } }
+@media (min-width: 761px) { .play-row .profile-btn { width: auto; min-width: 120px; max-width: min(100%, 400px); } }
 @media (max-height: 480px) { .profile-btn { min-height: 36px; padding-top: 4px; padding-bottom: 4px; } }
 
 /* Profile screen */
