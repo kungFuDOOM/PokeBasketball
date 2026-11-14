@@ -94,6 +94,8 @@ STYLES['kabuto'] = STYLES['top5']
 STYLES['ads'] = STYLES['online']
 # Holders: the 90s fanfare, gold and loud.
 STYLES['holders'] = STYLES['top5']
+# Hype: the launch trailer's anthem.
+STYLES['hype'] = STYLES['main']
 rng = np.random.default_rng(7)
 
 
