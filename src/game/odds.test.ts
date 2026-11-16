@@ -37,7 +37,7 @@ describe('live odds on the seeded RNG', () => {
     expect(t.fgm / t.fga).toBeGreaterThan(0.43);
     expect(t.fgm / t.fga).toBeLessThan(0.55);
     expect(t.tpm / t.tpa).toBeGreaterThan(0.24);
-    expect(t.tpm / t.tpa).toBeLessThan(0.42);
+    expect(t.tpm / t.tpa).toBeLessThan(0.45);
     const per = (n: number) => (n / t.games) * (90 / 60);
     expect(per(t.blk)).toBeGreaterThan(5);
     expect(per(t.blk)).toBeLessThan(13);

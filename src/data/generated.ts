@@ -296,6 +296,86 @@ export const GENERATED_ROWS: Row[] = [
   [379, 'Registeel', ['Steel'], 'C', 55, 67, 74, 79, 83, 99, 81, 66],
   [385, 'Jirachi', ['Steel', 'Psychic'], 'PG', 83, 78, 81, 76, 83, 71, 78, 77],
   [386, 'Deoxys', ['Psychic'], 'SG', 99, 97, 99, 76, 85, 54, 64, 91],
+  [396, 'Starly', ['Normal', 'Flying'], 'PG', 60, 53, 59, 48, 60, 34, 46, 54],
+  [397, 'Staravia', ['Normal', 'Flying'], 'PG', 71, 57, 68, 53, 68, 45, 56, 61],
+  [398, 'Staraptor', ['Normal', 'Flying'], 'PF', 83, 62, 89, 60, 79, 61, 73, 69],
+  [399, 'Bidoof', ['Normal'], 'SF', 44, 53, 57, 48, 57, 41, 53, 48],
+  [400, 'Bibarel', ['Normal', 'Water'], 'SF', 66, 62, 75, 59, 70, 56, 67, 62],
+  [401, 'Kricketot', ['Bug'], 'SF', 41, 49, 47, 47, 54, 39, 43, 45],
+  [402, 'Kricketune', ['Bug'], 'SF', 63, 61, 75, 56, 67, 51, 65, 60],
+  [403, 'Shinx', ['Electric'], 'SG', 52, 55, 63, 49, 59, 37, 50, 51],
+  [404, 'Luxio', ['Electric'], 'SG', 60, 63, 73, 56, 66, 48, 59, 59],
+  [406, 'Budew', ['Grass', 'Poison'], 'PG', 57, 59, 49, 59, 58, 40, 44, 58],
+  [407, 'Roserade', ['Grass', 'Poison'], 'PG', 77, 86, 68, 79, 72, 61, 59, 77],
+  [408, 'Cranidos', ['Rock'], 'PF', 59, 53, 89, 48, 67, 43, 65, 54],
+  [409, 'Rampardos', ['Rock'], 'PF', 59, 64, 99, 57, 74, 60, 83, 59],
+  [410, 'Shieldon', ['Rock', 'Steel'], 'SF', 43, 55, 53, 59, 71, 72, 53, 52],
+  [411, 'Bastiodon', ['Rock', 'Steel'], 'C', 43, 57, 62, 71, 81, 99, 72, 57],
+  [412, 'Burmy', ['Bug'], 'PG', 47, 51, 49, 49, 57, 40, 45, 49],
+  [413, 'Wormadam', ['Bug', 'Grass'], 'SG', 47, 68, 62, 68, 67, 65, 59, 59],
+  [414, 'Mothim', ['Bug', 'Flying'], 'SG', 64, 74, 78, 61, 68, 50, 63, 63],
+  [415, 'Combee', ['Bug', 'Flying'], 'PG', 66, 53, 48, 51, 61, 39, 42, 58],
+  [416, 'Vespiquen', ['Bug', 'Flying'], 'PF', 49, 68, 73, 68, 73, 76, 68, 60],
+  [417, 'Pachirisu', ['Electric'], 'PG', 80, 60, 57, 66, 72, 57, 56, 70],
+  [418, 'Buizel', ['Water'], 'SG', 74, 64, 65, 54, 65, 39, 54, 64],
+  [419, 'Floatzel', ['Water'], 'SG', 91, 74, 84, 64, 77, 54, 70, 76],
+  [420, 'Cherubi', ['Grass'], 'SG', 46, 62, 52, 55, 57, 43, 47, 52],
+  [421, 'Cherrim', ['Grass'], 'PG', 74, 73, 64, 68, 71, 57, 61, 70],
+  [422, 'Shellos', ['Water'], 'SG', 46, 60, 59, 56, 59, 47, 59, 52],
+  [423, 'Gastrodon', ['Water', 'Ground'], 'PF', 48, 72, 77, 65, 66, 63, 78, 59],
+  [424, 'Ambipom', ['Normal'], 'SF', 91, 66, 81, 64, 79, 60, 67, 75],
+  [425, 'Drifloon', ['Ghost', 'Flying'], 'PG', 66, 63, 62, 56, 62, 41, 62, 61],
+  [426, 'Drifblim', ['Ghost', 'Flying'], 'PF', 71, 74, 81, 63, 67, 56, 87, 67],
+  [427, 'Buneary', ['Normal'], 'PG', 74, 59, 64, 58, 67, 44, 54, 64],
+  [428, 'Lopunny', ['Normal'], 'SF', 85, 63, 71, 69, 78, 69, 64, 74],
+  [429, 'Mismagius', ['Ghost'], 'PG', 85, 80, 64, 78, 73, 60, 57, 80],
+  [430, 'Honchkrow', ['Dark', 'Flying'], 'SF', 66, 78, 92, 63, 71, 53, 77, 66],
+  [431, 'Glameow', ['Normal'], 'PG', 74, 58, 60, 53, 66, 41, 51, 63],
+  [432, 'Purugly', ['Normal'], 'PG', 89, 67, 73, 63, 76, 56, 64, 74],
+  [433, 'Chingling', ['Psychic'], 'PG', 52, 63, 49, 56, 59, 43, 47, 55],
+  [434, 'Stunky', ['Poison', 'Dark'], 'PG', 68, 57, 64, 53, 66, 43, 57, 60],
+  [435, 'Skuntank', ['Poison', 'Dark'], 'SF', 74, 68, 81, 62, 74, 60, 76, 67],
+  [436, 'Bronzor', ['Steel', 'Psychic'], 'SF', 39, 49, 49, 56, 62, 63, 56, 49],
+  [438, 'Bonsly', ['Rock'], 'PF', 32, 43, 69, 44, 67, 60, 60, 40],
+  [439, 'Mime Jr.', ['Psychic', 'Fairy'], 'PG', 60, 66, 46, 66, 60, 48, 38, 63],
+  [440, 'Happiny', ['Normal'], 'SF', 43, 46, 46, 51, 46, 36, 58, 48],
+  [441, 'Chatot', ['Normal', 'Flying'], 'PG', 78, 75, 66, 61, 68, 44, 61, 69],
+  [442, 'Spiritomb', ['Ghost', 'Dark'], 'SF', 46, 72, 75, 71, 74, 76, 66, 60],
+  [443, 'Gible', ['Dragon', 'Ground'], 'SF', 50, 55, 67, 51, 61, 45, 56, 52],
+  [444, 'Gabite', ['Dragon', 'Ground'], 'SF', 73, 61, 77, 58, 73, 59, 65, 64],
+  [446, 'Munchlax', ['Normal'], 'PF', 29, 53, 79, 56, 56, 53, 85, 45],
+  [447, 'Riolu', ['Fighting'], 'SG', 60, 55, 65, 51, 63, 41, 50, 55],
+  [449, 'Hippopotas', ['Ground'], 'PF', 44, 54, 69, 49, 66, 57, 64, 48],
+  [450, 'Hippowdon', ['Ground'], 'C', 53, 65, 91, 61, 79, 86, 94, 58],
+  [451, 'Skorupi', ['Poison', 'Bug'], 'SF', 63, 53, 58, 54, 71, 61, 53, 58],
+  [452, 'Drapion', ['Poison', 'Dark'], 'PF', 80, 65, 77, 65, 83, 76, 71, 70],
+  [453, 'Croagunk', ['Poison', 'Fighting'], 'SG', 55, 62, 63, 53, 61, 42, 51, 55],
+  [455, 'Carnivine', ['Grass'], 'PF', 52, 72, 81, 64, 69, 64, 68, 60],
+  [456, 'Finneon', ['Water'], 'PG', 64, 59, 57, 58, 65, 48, 52, 60],
+  [457, 'Lumineon', ['Water'], 'SF', 78, 67, 69, 68, 74, 65, 63, 71],
+  [458, 'Mantyke', ['Water', 'Flying'], 'PG', 55, 62, 48, 70, 59, 58, 48, 62],
+  [459, 'Snover', ['Grass', 'Ice'], 'SG', 49, 62, 65, 57, 61, 51, 57, 54],
+  [460, 'Abomasnow', ['Grass', 'Ice'], 'C', 60, 73, 81, 68, 71, 74, 76, 65],
+  [463, 'Lickilicky', ['Normal'], 'C', 55, 69, 80, 68, 73, 80, 84, 62],
+  [467, 'Magmortar', ['Fire'], 'SG', 73, 85, 80, 76, 74, 67, 68, 75],
+  [469, 'Yanmega', ['Bug', 'Flying'], 'SF', 80, 83, 75, 68, 77, 71, 71, 74],
+  [471, 'Glaceon', ['Ice'], 'SG', 63, 86, 64, 75, 76, 75, 64, 70],
+  [472, 'Gliscor', ['Ground', 'Flying'], 'C', 80, 60, 81, 63, 86, 87, 74, 69],
+  [474, 'Porygon-Z', ['Normal'], 'SG', 77, 89, 74, 74, 74, 61, 69, 76],
+  [476, 'Probopass', ['Rock', 'Steel'], 'C', 49, 66, 63, 78, 79, 98, 76, 64],
+  [477, 'Dusknoir', ['Ghost'], 'C', 52, 63, 80, 74, 81, 98, 68, 63],
+  [478, 'Froslass', ['Ice', 'Ghost'], 'SF', 88, 72, 73, 67, 77, 62, 64, 76],
+  [479, 'Rotom', ['Electric', 'Ghost'], 'PG', 78, 76, 58, 69, 73, 57, 54, 73],
+  [480, 'Uxie', ['Psychic'], 'PG', 80, 70, 69, 78, 86, 83, 71, 77],
+  [481, 'Mesprit', ['Psychic'], 'SG', 71, 79, 81, 76, 81, 72, 73, 73],
+  [482, 'Azelf', ['Psychic'], 'SG', 91, 87, 88, 74, 81, 55, 70, 81],
+  [484, 'Palkia', ['Water', 'Dragon'], 'C', 83, 94, 92, 86, 85, 93, 88, 84],
+  [485, 'Heatran', ['Fire', 'Steel'], 'C', 70, 87, 80, 79, 80, 83, 89, 74],
+  [488, 'Cresselia', ['Psychic'], 'C', 74, 69, 75, 75, 80, 87, 86, 73],
+  [489, 'Phione', ['Water'], 'PG', 71, 70, 72, 67, 74, 61, 68, 68],
+  [490, 'Manaphy', ['Water'], 'PG', 83, 78, 81, 76, 83, 71, 78, 77],
+  [491, 'Darkrai', ['Dark'], 'SG', 97, 91, 78, 80, 84, 73, 68, 86],
+  [492, 'Shaymin', ['Grass'], 'PG', 83, 78, 81, 76, 83, 70, 78, 77],
 ];
 
 /** Evolutions by franchise level. `to` lists candidates; one is picked at random. */
@@ -362,6 +442,7 @@ export const GENERATED_EVOLUTIONS: Record<number, { level: number; to: number[] 
   100: { level: 4, to: [101] }, // Voltorb -> Electrode
   102: { level: 4, to: [103] }, // Exeggcute -> Exeggutor
   104: { level: 4, to: [105] }, // Cubone -> Marowak
+  108: { level: 4, to: [463] }, // Lickitung -> Lickilicky
   109: { level: 4, to: [110] }, // Koffing -> Weezing
   111: { level: 5, to: [112] }, // Rhyhorn -> Rhydon
   112: { level: 4, to: [464] }, // Rhydon -> Rhyperior
@@ -373,8 +454,9 @@ export const GENERATED_EVOLUTIONS: Record<number, { level: number; to: number[] 
   120: { level: 4, to: [121] }, // Staryu -> Starmie
   123: { level: 4, to: [212] }, // Scyther -> Scizor
   125: { level: 4, to: [466] }, // Electabuzz -> Electivire
+  126: { level: 4, to: [467] }, // Magmar -> Magmortar
   129: { level: 3, to: [130] }, // Magikarp -> Gyarados
-  133: { level: 4, to: [134, 135, 136, 196, 197, 470] }, // Eevee -> Vaporeon / Jolteon / Flareon / Espeon / Umbreon / Leafeon
+  133: { level: 4, to: [134, 135, 136, 196, 197, 470, 471] }, // Eevee -> Vaporeon / Jolteon / Flareon / Espeon / Umbreon / Leafeon / Glaceon
   137: { level: 4, to: [233] }, // Porygon -> Porygon2
   138: { level: 5, to: [139] }, // Omanyte -> Omastar
   140: { level: 5, to: [141] }, // Kabuto -> Kabutops
@@ -402,9 +484,14 @@ export const GENERATED_EVOLUTIONS: Record<number, { level: number; to: number[] 
   183: { level: 2, to: [184] }, // Marill -> Azumarill
   187: { level: 2, to: [188] }, // Hoppip -> Skiploom
   188: { level: 3, to: [189] }, // Skiploom -> Jumpluff
+  190: { level: 4, to: [424] }, // Aipom -> Ambipom
   191: { level: 4, to: [192] }, // Sunkern -> Sunflora
+  193: { level: 4, to: [469] }, // Yanma -> Yanmega
   194: { level: 3, to: [195] }, // Wooper -> Quagsire
+  198: { level: 4, to: [430] }, // Murkrow -> Honchkrow
+  200: { level: 4, to: [429] }, // Misdreavus -> Mismagius
   204: { level: 4, to: [205] }, // Pineco -> Forretress
+  207: { level: 4, to: [472] }, // Gligar -> Gliscor
   209: { level: 3, to: [210] }, // Snubbull -> Granbull
   215: { level: 4, to: [461] }, // Sneasel -> Weavile
   216: { level: 4, to: [217] }, // Teddiursa -> Ursaring
@@ -414,6 +501,7 @@ export const GENERATED_EVOLUTIONS: Record<number, { level: number; to: number[] 
   223: { level: 3, to: [224] }, // Remoraid -> Octillery
   228: { level: 3, to: [229] }, // Houndour -> Houndoom
   231: { level: 3, to: [232] }, // Phanpy -> Donphan
+  233: { level: 4, to: [474] }, // Porygon2 -> Porygon-Z
   236: { level: 3, to: [106, 107, 237] }, // Tyrogue -> Hitmonlee / Hitmonchan / Hitmontop
   238: { level: 4, to: [124] }, // Smoochum -> Jynx
   239: { level: 4, to: [125] }, // Elekid -> Electabuzz
@@ -448,11 +536,13 @@ export const GENERATED_EVOLUTIONS: Record<number, { level: number; to: number[] 
   294: { level: 5, to: [295] }, // Loudred -> Exploud
   296: { level: 3, to: [297] }, // Makuhita -> Hariyama
   298: { level: 4, to: [183] }, // Azurill -> Marill
+  299: { level: 4, to: [476] }, // Nosepass -> Probopass
   300: { level: 4, to: [301] }, // Skitty -> Delcatty
   304: { level: 4, to: [305] }, // Aron -> Lairon
   305: { level: 5, to: [306] }, // Lairon -> Aggron
   307: { level: 5, to: [308] }, // Meditite -> Medicham
   309: { level: 3, to: [310] }, // Electrike -> Manectric
+  315: { level: 4, to: [407] }, // Roselia -> Roserade
   316: { level: 3, to: [317] }, // Gulpin -> Swalot
   318: { level: 4, to: [319] }, // Carvanha -> Sharpedo
   320: { level: 5, to: [321] }, // Wailmer -> Wailord
@@ -470,8 +560,9 @@ export const GENERATED_EVOLUTIONS: Record<number, { level: number; to: number[] 
   349: { level: 4, to: [350] }, // Feebas -> Milotic
   353: { level: 5, to: [354] }, // Shuppet -> Banette
   355: { level: 5, to: [356] }, // Duskull -> Dusclops
+  356: { level: 4, to: [477] }, // Dusclops -> Dusknoir
   360: { level: 2, to: [202] }, // Wynaut -> Wobbuffet
-  361: { level: 5, to: [362] }, // Snorunt -> Glalie
+  361: { level: 4, to: [362, 478] }, // Snorunt -> Glalie / Froslass
   363: { level: 4, to: [364] }, // Spheal -> Sealeo
   364: { level: 5, to: [365] }, // Sealeo -> Walrein
   366: { level: 4, to: [367, 368] }, // Clamperl -> Huntail / Gorebyss
@@ -479,6 +570,45 @@ export const GENERATED_EVOLUTIONS: Record<number, { level: number; to: number[] 
   372: { level: 6, to: [373] }, // Shelgon -> Salamence
   374: { level: 3, to: [375] }, // Beldum -> Metang
   375: { level: 5, to: [376] }, // Metang -> Metagross
+  387: { level: 2, to: [388] }, // Turtwig -> Grotle
+  388: { level: 4, to: [389] }, // Grotle -> Torterra
+  390: { level: 2, to: [391] }, // Chimchar -> Monferno
+  391: { level: 4, to: [392] }, // Monferno -> Infernape
+  393: { level: 2, to: [394] }, // Piplup -> Prinplup
+  394: { level: 4, to: [395] }, // Prinplup -> Empoleon
+  396: { level: 2, to: [397] }, // Starly -> Staravia
+  397: { level: 4, to: [398] }, // Staravia -> Staraptor
+  399: { level: 2, to: [400] }, // Bidoof -> Bibarel
+  401: { level: 2, to: [402] }, // Kricketot -> Kricketune
+  403: { level: 2, to: [404] }, // Shinx -> Luxio
+  404: { level: 4, to: [405] }, // Luxio -> Luxray
+  406: { level: 4, to: [315] }, // Budew -> Roselia
+  408: { level: 4, to: [409] }, // Cranidos -> Rampardos
+  410: { level: 4, to: [411] }, // Shieldon -> Bastiodon
+  412: { level: 3, to: [413, 414] }, // Burmy -> Wormadam / Mothim
+  415: { level: 3, to: [416] }, // Combee -> Vespiquen
+  418: { level: 3, to: [419] }, // Buizel -> Floatzel
+  420: { level: 3, to: [421] }, // Cherubi -> Cherrim
+  422: { level: 4, to: [423] }, // Shellos -> Gastrodon
+  425: { level: 4, to: [426] }, // Drifloon -> Drifblim
+  427: { level: 4, to: [428] }, // Buneary -> Lopunny
+  431: { level: 5, to: [432] }, // Glameow -> Purugly
+  433: { level: 4, to: [358] }, // Chingling -> Chimecho
+  434: { level: 4, to: [435] }, // Stunky -> Skuntank
+  436: { level: 4, to: [437] }, // Bronzor -> Bronzong
+  438: { level: 4, to: [185] }, // Bonsly -> Sudowoodo
+  439: { level: 4, to: [122] }, // Mime Jr. -> Mr. Mime
+  440: { level: 4, to: [113] }, // Happiny -> Chansey
+  443: { level: 3, to: [444] }, // Gible -> Gabite
+  444: { level: 6, to: [445] }, // Gabite -> Garchomp
+  446: { level: 4, to: [143] }, // Munchlax -> Snorlax
+  447: { level: 4, to: [448] }, // Riolu -> Lucario
+  449: { level: 4, to: [450] }, // Hippopotas -> Hippowdon
+  451: { level: 5, to: [452] }, // Skorupi -> Drapion
+  453: { level: 5, to: [454] }, // Croagunk -> Toxicroak
+  456: { level: 4, to: [457] }, // Finneon -> Lumineon
+  458: { level: 4, to: [226] }, // Mantyke -> Mantine
+  459: { level: 5, to: [460] }, // Snover -> Abomasnow
 };
 
 /** Height in meters and weight in kg, by dex number. */
@@ -546,9 +676,24 @@ export const GENERATED_BODY: Record<number, [number, number]> = {
   368: [1.8, 22.6], 369: [1, 23.4], 370: [0.6, 8.7], 371: [0.6, 42.1], 372: [1.1, 110.5], 373: [1.5, 102.6],
   374: [0.6, 95.2], 375: [1.2, 202.5], 376: [1.6, 550], 377: [1.7, 230], 378: [1.8, 175], 379: [1.9, 205],
   380: [1.4, 40], 381: [2, 60], 382: [4.5, 352], 383: [3.5, 950], 384: [7, 206.5], 385: [0.3, 1.1],
-  386: [1.7, 60.8], 392: [1.2, 55], 405: [1.4, 42], 437: [1.3, 187], 445: [1.9, 95], 448: [1.2, 54],
-  454: [1.3, 44.4], 461: [1.1, 34], 462: [1.2, 180], 464: [2.4, 282.8], 465: [2, 128.6], 466: [1.8, 138.6],
-  468: [1.5, 38], 470: [1, 25.5], 473: [2.5, 291], 475: [1.6, 52], 530: [0.7, 40.4], 534: [1.4, 87],
-  553: [1.5, 96.3], 571: [1.6, 81.1], 609: [1, 34.3], 612: [1.8, 105.5], 628: [1.5, 41], 635: [1.8, 160],
-  637: [1.6, 46], 697: [2.5, 270], 959: [0.7, 112.8],
+  386: [1.7, 60.8], 387: [0.4, 10.2], 388: [1.1, 97], 389: [2.2, 310], 390: [0.5, 6.2], 391: [0.9, 22],
+  392: [1.2, 55], 393: [0.4, 5.2], 394: [0.8, 23], 395: [1.7, 84.5], 396: [0.3, 2], 397: [0.6, 15.5],
+  398: [1.2, 24.9], 399: [0.5, 20], 400: [1, 31.5], 401: [0.3, 2.2], 402: [1, 25.5], 403: [0.5, 9.5],
+  404: [0.9, 30.5], 405: [1.4, 42], 406: [0.2, 1.2], 407: [0.9, 14.5], 408: [0.9, 31.5], 409: [1.6, 102.5],
+  410: [0.5, 57], 411: [1.3, 149.5], 412: [0.2, 3.4], 413: [0.5, 6.5], 414: [0.9, 23.3], 415: [0.3, 5.5],
+  416: [1.2, 38.5], 417: [0.4, 3.9], 418: [0.7, 29.5], 419: [1.1, 33.5], 420: [0.4, 3.3], 421: [0.5, 9.3],
+  422: [0.3, 6.3], 423: [0.9, 29.9], 424: [1.2, 20.3], 425: [0.4, 1.2], 426: [1.2, 15], 427: [0.4, 5.5],
+  428: [1.2, 33.3], 429: [0.9, 4.4], 430: [0.9, 27.3], 431: [0.5, 3.9], 432: [1, 43.8], 433: [0.2, 0.6],
+  434: [0.4, 19.2], 435: [1, 38], 436: [0.5, 60.5], 437: [1.3, 187], 438: [0.5, 15], 439: [0.6, 13],
+  440: [0.6, 24.4], 441: [0.5, 1.9], 442: [1, 108], 443: [0.7, 20.5], 444: [1.4, 56], 445: [1.9, 95],
+  446: [0.6, 105], 447: [0.7, 20.2], 448: [1.2, 54], 449: [0.8, 49.5], 450: [2, 300], 451: [0.8, 12],
+  452: [1.3, 61.5], 453: [0.7, 23], 454: [1.3, 44.4], 455: [1.4, 27], 456: [0.4, 7], 457: [1.2, 24],
+  458: [1, 65], 459: [1, 50.5], 460: [2.2, 135.5], 461: [1.1, 34], 462: [1.2, 180], 463: [1.7, 140],
+  464: [2.4, 282.8], 465: [2, 128.6], 466: [1.8, 138.6], 467: [1.6, 68], 468: [1.5, 38], 469: [1.9, 51.5],
+  470: [1, 25.5], 471: [0.8, 25.9], 472: [2, 42.5], 473: [2.5, 291], 474: [0.9, 34], 475: [1.6, 52],
+  476: [1.4, 340], 477: [2.2, 106.6], 478: [1.3, 26.6], 479: [0.3, 0.3], 480: [0.3, 0.3], 481: [0.3, 0.3],
+  482: [0.3, 0.3], 483: [5.4, 683], 484: [4.2, 336], 485: [1.7, 430], 486: [3.7, 420], 487: [4.5, 750],
+  488: [1.5, 85.6], 489: [0.4, 3.1], 490: [0.3, 1.4], 491: [1.5, 50.5], 492: [0.2, 2.1], 493: [3.2, 320],
+  530: [0.7, 40.4], 534: [1.4, 87], 553: [1.5, 96.3], 571: [1.6, 81.1], 609: [1, 34.3], 612: [1.8, 105.5],
+  628: [1.5, 41], 635: [1.8, 160], 637: [1.6, 46], 697: [2.5, 270], 959: [0.7, 112.8],
 };

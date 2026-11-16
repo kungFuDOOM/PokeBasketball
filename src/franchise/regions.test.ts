@@ -10,7 +10,7 @@ import {
   seasonWeeks, sign, simulate, startRookieDraft, venueOf, weekGames, type Franchise,
 } from './league';
 import { shouldPlayMasterCutscene } from './moments';
-import { HOENN, JOHTO, KANTO, REGIONS, inPool, nextRegion, openRegionIds, poolMons, regionTeams } from './regions';
+import { HOENN, JOHTO, KANTO, REGIONS, SINNOH, inPool, nextRegion, openRegionIds, poolMons, regionTeams } from './regions';
 
 const store = new Map<string, string>();
 vi.stubGlobal('localStorage', {
@@ -112,8 +112,9 @@ describe('region data', () => {
     });
     expect(nextRegion(KANTO)).toBe(JOHTO);
     expect(nextRegion(JOHTO)).toBe(HOENN);
-    expect(nextRegion(HOENN)).toBeUndefined();
-    expect(REGIONS.map((r) => r.id)).toEqual(['kanto', 'johto', 'hoenn']);
+    expect(nextRegion(HOENN)).toBe(SINNOH);
+    expect(nextRegion(SINNOH)).toBeUndefined();
+    expect(REGIONS.map((r) => r.id)).toEqual(['kanto', 'johto', 'hoenn', 'sinnoh']);
   });
 
   it('Johto: Falkner to Clair with the canonical badges, then the Johto Elite Four & Champion Lance', () => {
