@@ -1,4 +1,4 @@
-// Franchise regions, in the order they unlock: Kanto, then Johto, then Hoenn. Each region is plain data: its dex
+// Franchise regions, in the order they unlock: Kanto, then Johto, then Hoenn, then Sinnoh. Each region is plain data: its dex
 // range, eight gyms in badge order and one final opponent. A later region is a new entry here, not new season code
 // (see "Franchise regions" in the README).
 import { POKEMON, type Mon, type PokeType } from '../data/pokemon';
@@ -157,8 +157,51 @@ export const HOENN: RegionDef = {
     ace: 376, roster: [376, 303, 284, 319, 373, 306, 330, 365, 275, 359] },
 };
 
+/**
+ * Sinnoh: each roster is ten fully evolved Pokémon, the region's own Gen 4 (#387-493, no starters, no legendaries)
+ * plus at most two on-type stars from Gens 1-3, never a later generation; the finale stays all Gen 4. The five who
+ * start come from the same `bestLineup` the games use, so each roster is built to play five natural positions (the +2
+ * chemistry) with every starter 70+ OVR. Gen 4 is thin in places (no Rock point guard, no Electric point guard worth
+ * the name, few Ghost or Water big men), so the strongest Gen 4 Pokémon of another type fills the gap, and strong
+ * off-type Pokémon are left off a roster that would let them take a starting spot from the gym's own. The stars are
+ * the best on-type picks: Roark's Aerodactyl and Kabutops, Gardenia's Victreebel, Maylene's Machamp and Hariyama,
+ * Crasher Wake's Starmie and Milotic, Fantina's Gengar, Byron's Scizor and Steelix, Volkner's Jolteon; Candice and
+ * the Elite are all Gen 4. The boosts then ramp the starting fives to a Kanto-like climb, as in Johto and Hoenn.
+ */
+export const SINNOH: RegionDef = {
+  id: 'sinnoh',
+  index: 3,
+  name: 'Sinnoh',
+  generation: 4,
+  dex: [387, 493],
+  // The fifteen Sinnoh Pokémon hand-tuned before the region existed.
+  open: [392, 405, 437, 445, 448, 454, 461, 462, 464, 465, 466, 468, 470, 473, 475],
+  gyms: [
+    { name: 'Oreburgh Miners', abbr: 'ORE', city: 'Oreburgh City', color: '#8a8f99', color2: '#22252b', leader: 'Roark', types: ['Rock'], boost: 3, gym: 1, badge: 'Coal',
+      ace: 464, roster: [464, 429, 409, 142, 141, 476, 411, 398, 467, 437] },
+    { name: 'Eterna Blooms', abbr: 'ETE', city: 'Eterna City', color: '#5fb05a', color2: '#143018', leader: 'Gardenia', types: ['Grass'], boost: 4, gym: 2, badge: 'Forest',
+      ace: 465, roster: [465, 407, 470, 71, 460, 455, 471, 421, 424, 452] },
+    { name: 'Veilstone Brawlers', abbr: 'VEI', city: 'Veilstone City', color: '#c8553d', color2: '#34120b', leader: 'Maylene', types: ['Fighting'], boost: 2, gym: 3, badge: 'Cobble',
+      ace: 448, roster: [448, 68, 297, 475, 454, 468, 429, 452, 424, 477] },
+    { name: 'Pastoria Marshes', abbr: 'PAS', city: 'Pastoria City', color: '#3f9bd6', color2: '#0d2a40', leader: 'Crasher Wake', types: ['Water'], boost: 5, gym: 4, badge: 'Fen',
+      ace: 419, roster: [419, 121, 350, 457, 472, 423, 424, 430, 468, 452] },
+    { name: 'Hearthome Phantoms', abbr: 'HEA', city: 'Hearthome City', color: '#8a5ec4', color2: '#22123a', leader: 'Fantina', types: ['Ghost'], boost: 7, gym: 5, badge: 'Relic',
+      ace: 429, roster: [429, 477, 426, 478, 94, 467, 479, 442, 424, 430] },
+    { name: 'Canalave Anchors', abbr: 'CAN', city: 'Canalave City', color: '#7d8fa3', color2: '#1a222b', leader: 'Byron', types: ['Steel'], boost: 3, gym: 6, badge: 'Mine',
+      ace: 448, roster: [448, 462, 437, 212, 208, 476, 411, 468, 429, 424] },
+    { name: 'Snowpoint Blizzards', abbr: 'SNO', city: 'Snowpoint City', color: '#9fdcf2', color2: '#10303d', leader: 'Candice', types: ['Ice'], boost: 9, gym: 7, badge: 'Icicle',
+      ace: 461, roster: [461, 471, 478, 473, 460, 452, 424, 468, 477, 463] },
+    { name: 'Sunyshore Voltage', abbr: 'SUN', city: 'Sunyshore City', color: '#f2cf2f', color2: '#3a3006', leader: 'Volkner', types: ['Electric'], boost: 6, gym: 8, badge: 'Beacon',
+      ace: 466, roster: [466, 405, 462, 135, 465, 467, 479, 468, 463, 424] },
+  ],
+  // All Gen 4. Cynthia's Garchomp leads; Aaron's Yanmega, Bertha's Hippowdon, Flint's Magmortar and Lucian's Gallade.
+  finale: { name: 'Sinnoh Elite', abbr: 'SNL', city: 'Sinnoh League', title: 'Sinnoh Elite Four & Champion Cynthia', color: '#6a5acd', color2: '#16123a',
+    leader: 'Aaron · Bertha · Flint · Lucian · Champion Cynthia', types: ['Bug', 'Ground', 'Fire', 'Psychic', 'Dragon'], boost: 7, elite: true,
+    ace: 445, roster: [445, 450, 467, 475, 469, 468, 437, 472, 464, 429] },
+};
+
 /** Every region, in unlock order. */
-export const REGIONS: RegionDef[] = [KANTO, JOHTO, HOENN];
+export const REGIONS: RegionDef[] = [KANTO, JOHTO, HOENN, SINNOH];
 
 export const regionById = (id: unknown): RegionDef | undefined => REGIONS.find((r) => r.id === id);
 

@@ -12,7 +12,7 @@ import {
   type Franchise,
 } from './league';
 import { shouldPlayMasterCutscene } from './moments';
-import { HOENN, JOHTO, REGIONS, inPool, openRegionIds, poolMons, regionTeams } from './regions';
+import { HOENN, JOHTO, REGIONS, SINNOH, inPool, openRegionIds, poolMons, regionTeams } from './regions';
 import type { Game } from '../game/game';
 
 vi.stubGlobal('window', {});
@@ -25,6 +25,9 @@ vi.stubGlobal('localStorage', {
 beforeEach(() => store.clear());
 
 const gen3 = (dex: number) => dex >= 252 && dex <= 386;
+/** The 92 Sinnoh Pokémon added after Hoenn (#387-493), apart from the fifteen that were hand-tuned before. */
+const SINNOH_LEGACY = [392, 405, 437, 445, 448, 454, 461, 462, 464, 465, 466, 468, 470, 473, 475];
+const newGen4 = (dex: number) => dex >= 387 && dex <= 493 && SINNOH_LEGACY.indexOf(dex) < 0;
 /** The fourteen Hoenn Pokémon hand-tuned before Hoenn was added. */
 const LEGACY = [254, 257, 260, 282, 303, 310, 350, 373, 376, 380, 381, 382, 383, 384];
 const fresh = (dex: number) => gen3(dex) && LEGACY.indexOf(dex) < 0;
@@ -87,23 +90,26 @@ function playWeek(f: Franchise, userWins: (opp: number) => boolean) {
 
 describe('Gen 3 data (#252-386)', () => {
   it('adds exactly 121 generated Pokémon: 135 in Hoenn = the 14 hand-tuned + 121 new', () => {
-    expect(POKEMON).toHaveLength(291 + 121);
+    expect(POKEMON).toHaveLength(291 + 121 + 92); // plus Sinnoh's 92 new Pokémon, added later
     const hoenn = POKEMON.filter((m) => gen3(m.dex));
     expect(hoenn.map((m) => m.dex)).toEqual(Array.from({ length: 135 }, (_, i) => 252 + i));
     const generated = GENERATED_ROWS.filter((r) => gen3(r[0])).map((r) => r[0]);
     expect(generated).toHaveLength(121);
     expect(generated.some((d) => LEGACY.indexOf(d) >= 0)).toBe(false);
     expect(HOENN.open).toEqual(LEGACY);
-    // Every generated row is #1-386; later generations stay hand-tuned only.
-    expect(GENERATED_ROWS.every((r) => r[0] >= 1 && r[0] <= 386)).toBe(true);
+    // Every generated row is #1-493; later generations stay hand-tuned only.
+    expect(GENERATED_ROWS.every((r) => r[0] >= 1 && r[0] <= 493)).toBe(true);
     expect(new Set(POKEMON.map((m) => m.dex)).size).toBe(POKEMON.length);
   });
 
   it('leaves every other Pokémon exactly as it was (digests pinned from the Johto branch)', () => {
-    const others = POKEMON.filter((m) => !gen3(m.dex));
+    const others = POKEMON.filter((m) => !gen3(m.dex) && !newGen4(m.dex));
     expect(others).toHaveLength(277);
     expect(fnv(JSON.stringify(others))).toBe('931199c9');
-    expect(fnv(JSON.stringify(Object.entries(EVOLUTIONS).filter(([k]) => !gen3(Number(k)))))).toBe('922c9a81');
+    // Evolutions of the Pokémon that were in the game before Sinnoh, leaving out the new Sinnoh forms they gained (Eevee -> Glaceon).
+    const before = Object.entries(EVOLUTIONS).filter(([k]) => !gen3(Number(k)) && !newGen4(Number(k)))
+      .map(([k, e]) => [k, { level: e.level, to: e.to.filter((d) => !newGen4(d)) }]).filter(([, e]) => (e as { to: number[] }).to.length);
+    expect(fnv(JSON.stringify(before))).toBe('922c9a81');
     // Hoenn hand-tuned cards. Sceptile, Blaziken and Swampert were buffed with the other Gen 3 starters.
     expect(fnv(JSON.stringify(POKEMON.filter((m) => LEGACY.indexOf(m.dex) >= 0)))).toBe('9c11d760');
     expect(monByDex(376)).toMatchObject({ name: 'Metagross', pos: 'C', types: ['Steel', 'Psychic'], r: { spd: 58, sht: 64, ins: 90, pas: 70, def: 84, blk: 94, reb: 90, hnd: 60 } });
@@ -396,9 +402,9 @@ describe('entering and playing Hoenn', () => {
       .toEqual(['Roxanne', 'Brawly', 'Wattson', 'Flannery', 'Norman', 'Winona', 'Tate & Liza', 'Juan', 'Sidney · Phoebe · Glacia · Drake · Champion Steven']);
     expect(venueOf(f, 1)).toMatchObject({ venue: 'Rustboro City Gym', logo: 'Stone' });
     expect(venueOf(f, 9)).toMatchObject({ venue: 'Ever Grande City', logo: 'Elite' });
-    // There is no region after Hoenn yet: no card, nothing to enter.
-    expect(regionStatus(f).next).toBeUndefined();
-    expect(regionCardHtml(f)).toBe('');
+    // Sinnoh is next, and locked until Hoenn is won.
+    expect(regionStatus(f)).toMatchObject({ next: SINNOH, unlocked: false, canEnter: false });
+    expect(text(regionCardHtml(f))).toContain('Sinnoh is locked');
     // New Gen 3 free agents are open now.
     const newFa = f.freeAgents.find((u) => fresh(f.players[u].dex))!;
     expect(canAcquire(f, newFa)).toBe(true);
@@ -424,11 +430,11 @@ describe('entering and playing Hoenn', () => {
     expect(shouldPlayMasterCutscene(g)).toBe(false);
     delete g.pokejamMaster;
     expect(shouldPlayMasterCutscene(g)).toBe(false);
-    expect(g.unlockedRegions).toEqual(['johto', 'hoenn']);
+    expect(g.unlockedRegions).toEqual(['johto', 'hoenn', 'sinnoh']);
     rookieDraft(g);
-    // The Hoenn title sends the next season back to Kanto. The banner above was already recorded.
-    expect(g.region).toBe('kanto');
-    expect(g.teams.slice(1).map((t) => t.name)).toEqual(regionTeams(REGIONS[0]).map((t) => t.name));
+    // The Hoenn title no longer closes the cycle: Sinnoh is next, and the league stays in Hoenn until the user enters it.
+    expect(g.region).toBe('hoenn');
+    expect(regionStatus(g)).toMatchObject({ next: SINNOH, unlocked: true, canEnter: true });
     expect(g.titles).toEqual([{ regionId: 'kanto', season: 1 }, { regionId: 'johto', season: 2 }, { regionId: 'hoenn', season: 3 }]);
   }, 60000);
 

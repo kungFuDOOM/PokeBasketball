@@ -25,9 +25,15 @@ export const RANKED_EXCLUDED: readonly number[] = [
   382, // Kyogre, C 92
   380, // Latias, SF 91
   386, // Deoxys, SG 97
+  483, // Dialga, C 97
+  484, // Palkia, C 95
+  487, // Giratina, C 95
+  486, // Regigigas, C 94
+  493, // Arceus, C 97
+  491, // Darkrai, SG 92
 ];
 
-/** Every lore legendary in the dex: the RANKED_EXCLUDED ten plus the birds, beasts, Celebi, the Regis and Jirachi. None may be on a
+/** Every lore legendary in the dex: the RANKED_EXCLUDED sixteen plus the birds, beasts, Celebi, the Regis, Jirachi, the lake trio, Heatran, Cresselia, Manaphy and Shaymin. None may be on a
  * Ranked preset team. */
 export const RANKED_LEGENDARIES: readonly number[] = [
   ...RANKED_EXCLUDED,
@@ -42,6 +48,13 @@ export const RANKED_LEGENDARIES: readonly number[] = [
   378, // Regice
   379, // Registeel
   385, // Jirachi
+  480, // Uxie
+  481, // Mesprit
+  482, // Azelf
+  485, // Heatran
+  488, // Cresselia
+  490, // Manaphy
+  492, // Shaymin
 ];
 
 /** No Ranked preset member may be rated above this. */

@@ -7,7 +7,7 @@ import {
   loadFranchise, recordGame, regionOf, regionStatus, rookieOnClock, rookiePick, saveFranchise, shouldReturnToKanto,
   startRookieDraft, weekGames, type Franchise,
 } from './league';
-import { HOENN, JOHTO, KANTO, openRegionIds, poolMons, regionTeams } from './regions';
+import { HOENN, JOHTO, KANTO, SINNOH, openRegionIds, poolMons, regionTeams } from './regions';
 
 const store = new Map<string, string>();
 vi.stubGlobal('localStorage', {
@@ -76,13 +76,23 @@ function reachHoenn(): Franchise {
   return f;
 }
 
+/** Kanto, Johto and Hoenn already beaten, sitting at the start of a Sinnoh season. */
+function reachSinnoh(): Franchise {
+  const f = reachHoenn();
+  finish(f, gymIds(f), 0);
+  rookieDraft(f);
+  expect(enterRegion(f, 'sinnoh')).toBe(true);
+  return f;
+}
+
 const cpuDex = (f: Franchise) => f.teams.slice(1).map((t) => t.roster.map((u) => f.players[u].dex));
 
-describe('Hoenn championship cycle', () => {
-  it('a Hoenn win returns the next season to a drafted Kanto league and keeps the user team', () => {
-    const f = reachHoenn();
+describe('Sinnoh championship cycle', () => {
+  it('a Sinnoh win returns the next season to a drafted Kanto league and keeps the user team', () => {
+    const f = reachSinnoh();
     expect(regionStatus(f).next).toBeUndefined();
     expect(enterRegion(f, 'kanto')).toBe(false);
+    expect(regionOf(f)).toBe(SINNOH);
     expect(regionTeams(KANTO).every((t) => !t.roster)).toBe(true);
 
     const me = f.teams[0];
@@ -95,14 +105,14 @@ describe('Hoenn championship cycle', () => {
     const oldCpu = f.teams[3].roster[0];
     Object.assign(f.players[oldCpu], { level: 5, bonus: { def: 2 } });
     f.pokejamMaster = 1;
-    const hoennDexes = cpuDex(f);
+    const sinnohDexes = cpuDex(f);
     const owned = [...me.roster];
 
     playOut(f, () => true);
     expect(f.champion).toBe(0);
-    expect(f.history[f.history.length - 1]).toMatchObject({ season: f.season, champion: 'Pallet Town', region: 'hoenn' });
-    expect(f.titles).toEqual([{ regionId: 'kanto', season: 1 }, { regionId: 'johto', season: 2 }, { regionId: 'hoenn', season: 3 }]);
-    expect(f.completedRegions).toEqual([{ regionId: 'kanto', season: 1 }, { regionId: 'johto', season: 2 }, { regionId: 'hoenn', season: 3 }]);
+    expect(f.history[f.history.length - 1]).toMatchObject({ season: f.season, champion: 'Pallet Town', region: 'sinnoh' });
+    expect(f.titles).toEqual([{ regionId: 'kanto', season: 1 }, { regionId: 'johto', season: 2 }, { regionId: 'hoenn', season: 3 }, { regionId: 'sinnoh', season: 4 }]);
+    expect(f.completedRegions).toEqual([{ regionId: 'kanto', season: 1 }, { regionId: 'johto', season: 2 }, { regionId: 'hoenn', season: 3 }, { regionId: 'sinnoh', season: 4 }]);
     expect(gymBadgeCount(f)).toBe(8);
     expect(shouldReturnToKanto(f)).toBe(true);
 
@@ -128,8 +138,8 @@ describe('Hoenn championship cycle', () => {
     expect(f.players[oldCpu]).toMatchObject({ level: 5, bonus: { def: 2 } });
     expect(f.teams.some((t) => t.roster.includes(oldCpu))).toBe(false);
     expect(f.history).toEqual(history);
-    expect(f.titles).toEqual([{ regionId: 'kanto', season: 1 }, { regionId: 'johto', season: 2 }, { regionId: 'hoenn', season: 3 }]);
-    expect(f.unlockedRegions).toEqual(['johto', 'hoenn']);
+    expect(f.titles).toEqual([{ regionId: 'kanto', season: 1 }, { regionId: 'johto', season: 2 }, { regionId: 'hoenn', season: 3 }, { regionId: 'sinnoh', season: 4 }]);
+    expect(f.unlockedRegions).toEqual(['johto', 'hoenn', 'sinnoh']);
     expect(f.pokejamMaster).toBe(1);
     expect(f.news[0]).toContain('returns to the Kanto League');
 
@@ -137,7 +147,7 @@ describe('Hoenn championship cycle', () => {
     expect(f.teams.slice(1).map((t) => t.boost)).toEqual(regionTeams(KANTO).map((t) => t.boost));
     expect(f.teams.slice(1).map((t) => t.badge ?? 'Elite')).toEqual(['Boulder', 'Cascade', 'Thunder', 'Rainbow', 'Soul', 'Marsh', 'Volcano', 'Earth', 'Elite']);
     const drafted = cpuDex(f);
-    expect(drafted).not.toEqual(hoennDexes);
+    expect(drafted).not.toEqual(sinnohDexes);
     const flat = drafted.flat();
     expect(flat).toHaveLength(90);
     expect(new Set(flat).size).toBe(90);
@@ -165,7 +175,7 @@ describe('Hoenn championship cycle', () => {
     expect(loaded.teams[0].roster).toEqual(owned);
     expect(loaded.players[star]).toMatchObject({ level: 8, xp: 17, bonus: { sht: 3, spd: 1 } });
     expect(loaded.players[kept].king).toBe(true);
-    expect(loaded.unlockedRegions).toEqual(['johto', 'hoenn']);
+    expect(loaded.unlockedRegions).toEqual(['johto', 'hoenn', 'sinnoh']);
     expect(loaded.history).toEqual(history);
 
     playWeek(loaded, () => true);
@@ -174,20 +184,20 @@ describe('Hoenn championship cycle', () => {
     expect(loaded.region).toBe('kanto');
   });
 
-  it('a Hoenn title with fewer than eight badges still returns, and does not complete the region', () => {
-    const f = reachHoenn();
+  it('a Sinnoh title with fewer than eight badges still returns, and does not complete the region', () => {
+    const f = reachSinnoh();
     finish(f, gymIds(f).slice(0, 4), 0);
-    expect(f.titles?.filter((t) => t.regionId === 'hoenn')).toEqual([{ regionId: 'hoenn', season: f.season }]);
-    expect(f.completedRegions?.some((t) => t.regionId === 'hoenn')).toBe(false);
+    expect(f.titles?.filter((t) => t.regionId === 'sinnoh')).toEqual([{ regionId: 'sinnoh', season: f.season }]);
+    expect(f.completedRegions?.some((t) => t.regionId === 'sinnoh')).toBe(false);
     expect(shouldReturnToKanto(f)).toBe(true);
     rookieDraft(f);
     expect(f.region).toBe('kanto');
     expect(f.teams.slice(1).every((t) => t.roster.length === 10)).toBe(true);
-    expect(f.completedRegions?.some((t) => t.regionId === 'hoenn')).toBe(false);
+    expect(f.completedRegions?.some((t) => t.regionId === 'sinnoh')).toBe(false);
   });
 
-  it('a Hoenn loss stays in Hoenn with the same teams and the real champion', () => {
-    const f = reachHoenn();
+  it('a Sinnoh loss stays in Sinnoh with the same teams and the real champion', () => {
+    const f = reachSinnoh();
     while (f.phase !== 'done') {
       const losingFinal = f.phase === 'playoffs' && f.week === finalWeek(f);
       playWeek(f, () => !losingFinal);
@@ -195,24 +205,24 @@ describe('Hoenn championship cycle', () => {
     expect(f.champion).not.toBe(0);
     expect(shouldReturnToKanto(f)).toBe(false);
     const champ = f.teams[f.champion ?? -1]?.name;
-    expect(f.history[f.history.length - 1]).toMatchObject({ champion: champ, region: 'hoenn' });
-    expect(f.titles?.some((t) => t.regionId === 'hoenn')).toBe(false);
-    expect(f.completedRegions?.some((t) => t.regionId === 'hoenn')).toBe(false);
+    expect(f.history[f.history.length - 1]).toMatchObject({ champion: champ, region: 'sinnoh' });
+    expect(f.titles?.some((t) => t.regionId === 'sinnoh')).toBe(false);
+    expect(f.completedRegions?.some((t) => t.regionId === 'sinnoh')).toBe(false);
     const names = f.teams.slice(1).map((t) => t.name);
     const rosters = f.teams.slice(1).map((t) => [...t.roster]);
     rookieDraft(f);
-    expect(f.region).toBe('hoenn');
-    expect(regionOf(f)).toBe(HOENN);
+    expect(f.region).toBe('sinnoh');
+    expect(regionOf(f)).toBe(SINNOH);
     expect(f.teams.slice(1).map((t) => t.name)).toEqual(names);
     f.teams.slice(1).forEach((t, i) => {
       expect(t.roster.filter((u) => rosters[i].includes(u)).length).toBeGreaterThanOrEqual(9);
     });
-    expect(f.history[f.history.length - 1]).toMatchObject({ champion: champ, region: 'hoenn' });
+    expect(f.history[f.history.length - 1]).toMatchObject({ champion: champ, region: 'sinnoh' });
     expect(f.news.join(' ')).not.toContain('returns to the Kanto League');
   });
 
-  it('plays Kanto, then Johto, then Hoenn, and a second Hoenn win returns again', () => {
-    const f = reachHoenn();
+  it('plays Kanto, then Johto, Hoenn and Sinnoh, and a second Sinnoh win returns again', () => {
+    const f = reachSinnoh();
     const star = f.teams[0].roster[0];
     f.players[star].level = 6;
     playOut(f, () => true);
@@ -237,6 +247,14 @@ describe('Hoenn championship cycle', () => {
 
     playOut(f, () => true);
     expect(f.champion).toBe(0);
+    expect(regionOf(f)).toBe(HOENN);
+    expect(shouldReturnToKanto(f)).toBe(false);
+    rookieDraft(f);
+    expect(regionOf(f)).toBe(HOENN);
+    expect(enterRegion(f, 'sinnoh')).toBe(true);
+
+    playOut(f, () => true);
+    expect(f.champion).toBe(0);
     expect(shouldReturnToKanto(f)).toBe(true);
     rookieDraft(f);
     expect(f.region).toBe('kanto');
@@ -244,15 +262,31 @@ describe('Hoenn championship cycle', () => {
     expect(f.teams.slice(1).every((t) => t.roster.length === 10)).toBe(true);
     expect(f.teams[0].roster).toContain(star);
     expect(f.players[star].level).toBe(6);
-    expect(f.unlockedRegions).toEqual(['johto', 'hoenn']);
-    expect(f.titles?.filter((t) => t.regionId === 'hoenn')).toHaveLength(2);
-    expect(f.history.filter((h) => h.region === 'hoenn').map((h) => h.champion)).toEqual(['Pallet Town', 'Pallet Town']);
+    expect(f.unlockedRegions).toEqual(['johto', 'hoenn', 'sinnoh']);
+    expect(f.titles?.filter((t) => t.regionId === 'sinnoh')).toHaveLength(2);
+    expect(f.history.filter((h) => h.region === 'sinnoh').map((h) => h.champion)).toEqual(['Pallet Town', 'Pallet Town']);
 
     saveFranchise(f);
     const again = loadFranchise()!;
     expect(again.region).toBe('kanto');
     expect(again.players[star].level).toBe(6);
-    expect(again.titles?.filter((t) => t.regionId === 'hoenn')).toHaveLength(2);
+    expect(again.titles?.filter((t) => t.regionId === 'sinnoh')).toHaveLength(2);
+  });
+
+  it('a Hoenn win does not return to Kanto: Sinnoh unlocks and the league stays in Hoenn until the user enters it', () => {
+    const f = reachHoenn();
+    playOut(f, () => true);
+    expect(f.champion).toBe(0);
+    expect(f.unlockedRegions).toEqual(['johto', 'hoenn', 'sinnoh']);
+    expect(shouldReturnToKanto(f)).toBe(false);
+    const names = f.teams.slice(1).map((t) => t.name);
+    rookieDraft(f);
+    expect(regionOf(f)).toBe(HOENN);
+    expect(f.teams.slice(1).map((t) => t.name)).toEqual(names);
+    expect(f.news.join(' ')).not.toContain('returns to the Kanto League');
+    expect(regionStatus(f)).toMatchObject({ next: SINNOH, unlocked: true, canEnter: true });
+    expect(enterRegion(f, 'sinnoh')).toBe(true);
+    expect(regionOf(f)).toBe(SINNOH);
   });
 
   it('Kanto and Johto still need eight badges and the title in one season, and a win there does not return', () => {
