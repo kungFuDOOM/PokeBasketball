@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' https://static.cloudflareinsights.com https://www.googletagmanager.com https://*.google-analytics.com https://*.analytics.google.com; style-src 'unsafe-inline'; img-src 'self' https://www.googletagmanager.com https://*.google-analytics.com https://*.analytics.google.com; connect-src https://cloudflareinsights.com https://www.googletagmanager.com https://*.google-analytics.com https://*.analytics.google.com; base-uri 'none'; form-action 'none'; object-src 'none'">
+  <script src="/framebust.js"></script>
+  <script src="/ga.js"></script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="description" content="Every Poké Jam control: keyboard, touch screen and gamepad buttons for moving, shooting, passing, stealing, turbo and special moves in the free Pokémon basketball game.">
+  <link rel="canonical" href="https://pokejam.xyz/controls/">
+  <link rel="icon" href="/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Poké Jam">
+  <meta property="og:title" content="Poké Jam controls – keyboard, touch and gamepad">
+  <meta property="og:description" content="Every Poké Jam control: keyboard, touch screen and gamepad buttons for moving, shooting, passing, stealing, turbo and special moves in the free Pokémon basketball game.">
+  <meta property="og:url" content="https://pokejam.xyz/controls/">
+  <meta property="og:image" content="https://pokejam.xyz/og.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Poké Jam controls – keyboard, touch and gamepad">
+  <meta name="twitter:description" content="Every Poké Jam control: keyboard, touch screen and gamepad buttons for moving, shooting, passing, stealing, turbo and special moves in the free Pokémon basketball game.">
+  <meta name="twitter:image" content="https://pokejam.xyz/og.png">
+  <title>Poké Jam controls – keyboard, touch and gamepad</title>
+  <style>
+    :root { --bg: #0a0d1f; --panel: #121736; --line: #2a3170; --fg: #f2f0e6; --muted: #a9aed3; --accent: #ffcb05; color-scheme: dark; }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--fg); font: 17px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+    main { max-width: 720px; margin: 0 auto; padding-block: 32px 64px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+    a { color: var(--accent); }
+    h1 { font-size: 2rem; line-height: 1.2; margin: 0 0 8px; text-wrap: balance; }
+    h2 { font-size: 1.3rem; margin: 32px 0 8px; padding-top: 16px; border-top: 1px solid var(--line); }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { text-align: left; padding: 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+    th { white-space: nowrap; color: var(--muted); font-weight: 600; }
+    kbd { background: var(--panel); border: 1px solid var(--line); border-radius: 4px; padding: 1px 6px; font: inherit; font-size: 0.9em; }
+    li { margin: 8px 0; }
+    .fine { color: var(--muted); font-size: 0.9rem; margin-top: 32px; }
+    main, li, p, td { overflow-wrap: anywhere; }
+  </style>
+</head>
+<body>
+<main>
+  <p><a href="/">← Back to the game</a></p>
+  <h1>Poké Jam controls</h1>
+  <p>Every control for Poké Jam, the free Pokémon basketball game in your browser: keyboard, touch screen and gamepad. For tips and modes, see <a href="/how-to-play/">how to play</a>.</p>
+  <h2>Keyboard</h2>
+  <table>
+    <tr><th>Move</th><td><kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd> or arrow keys</td></tr>
+    <tr><th>Shoot / Jump</th><td><kbd>J</kbd> or <kbd>Space</kbd>. Hold, then release when the meter hits green. On defense it jumps to block</td></tr>
+    <tr><th>Pass / Switch</th><td><kbd>K</kbd>. On defense it switches the Pokémon you control</td></tr>
+    <tr><th>Steal</th><td><kbd>L</kbd></td></tr>
+    <tr><th>Turbo</th><td>Hold <kbd>Shift</kbd> (left or right)</td></tr>
+    <tr><th>Special move</th><td><kbd>I</kbd> or <kbd>E</kbd> when the special bar is full</td></tr>
+    <tr><th>Pause</th><td><kbd>P</kbd> or <kbd>Esc</kbd></td></tr>
+  </table>
+  <p>Combine <kbd>Shift</kbd> with the shoot, pass and steal keys for a dunk, an alley-oop pass or a shove.</p>
+  <h2>Touch screen</h2>
+  <p>On phones and tablets, an on-screen stick on the left moves your Pokémon. The buttons on the right match a gamepad:</p>
+  <table>
+    <tr><th>Stick</th><td>Move</td></tr>
+    <tr><th>X</th><td>Shoot (Jump on defense)</td></tr>
+    <tr><th>A</th><td>Pass (Switch on defense)</td></tr>
+    <tr><th>B</th><td>Steal</td></tr>
+    <tr><th>Y</th><td>Special move</td></tr>
+    <tr><th>RB</th><td>Turbo</td></tr>
+  </table>
+  <h2>Gamepad</h2>
+  <p>Any controller your browser recognizes works. Plug it in or pair it, then press a button. Button names below use the Xbox-style layout.</p>
+  <table>
+    <tr><th>Move</th><td>Left stick or D-pad</td></tr>
+    <tr><th>Shoot / Jump</th><td><kbd>X</kbd></td></tr>
+    <tr><th>Pass / Switch</th><td><kbd>A</kbd></td></tr>
+    <tr><th>Steal</th><td><kbd>B</kbd></td></tr>
+    <tr><th>Special move</th><td><kbd>Y</kbd></td></tr>
+    <tr><th>Turbo</th><td>Either bumper or either trigger</td></tr>
+    <tr><th>Pause</th><td><kbd>Start</kbd></td></tr>
+  </table>
+  <p><a href="/">Play Poké Jam</a> · <a href="/how-to-play/">How to play</a> · <a href="/controls/">Controls</a> · <a href="/faq/">FAQ</a> · <a href="/ranked/">Ranked</a> · <a href="/press/">Press</a> · <a href="/patch-notes.html">Patch notes</a> · <a href="/contact.html">Contact</a></p>
+  <p class="fine">Fan-made game. Pokémon and its characters are trademarks of Nintendo, Game Freak and The Pokémon Company.</p>
+</main>
+<script defer src="https://static.cloudflareinsights.com/beacon.min.js" data-cf-beacon='{"token": "0d24cfccef614409a0d8550405af103b"}'></script>
+</body>
+</html>
