@@ -9,6 +9,7 @@ import { gameConfigFor } from './winnerCheck';
 import migration from '../../../supabase/migrations/20261101_pokejam_social_draft.sql?raw';
 import monsSync from '../../../supabase/migrations/20261102_pokejam_mons_sync.sql?raw';
 import monsHoenn from '../../../supabase/migrations/20261211_pokejam_mons_hoenn.sql?raw';
+import monsSinnoh from '../../../supabase/migrations/20261220_pokejam_mons_sinnoh.sql?raw';
 
 const view = (over: Partial<DraftView> = {}): DraftView => ({
   pool: [{ dex: 25, pos: 'PG' }, { dex: 26, pos: 'PG' }, { dex: 6, pos: 'SF' }, { dex: 9, pos: 'PF' }],
@@ -57,10 +58,10 @@ describe('the Social draft, client side (#28)', () => {
     expect(games[0].players.filter((p) => p.team === 0).map((p) => p.mon.dex).sort()).toEqual([...rosters[0]].sort());
   });
 
-  it("the server's Pokémon list (migrations 20261101, 20261102, then 20261211) matches the game's, dex and position", () => {
+  it("the server's Pokémon list (migrations 20261101, 20261102, 20261211, then 20261220) matches the game's, dex and position", () => {
     // Later migrations upsert over earlier ones.
     const byDex = new Map<number, string>();
-    for (const m of (migration + monsSync + monsHoenn).matchAll(/\((\d+),'(PG|SG|SF|PF|C)'\)/g)) byDex.set(Number(m[1]), m[2]);
+    for (const m of (migration + monsSync + monsHoenn + monsSinnoh).matchAll(/\((\d+),'(PG|SG|SF|PF|C)'\)/g)) byDex.set(Number(m[1]), m[2]);
     const rows = [...byDex].sort((a, b) => a[0] - b[0]);
     const game = [...POKEMON].sort((a, b) => a.dex - b.dex).map((m) => [m.dex, m.pos]);
     expect(rows).toEqual(game);

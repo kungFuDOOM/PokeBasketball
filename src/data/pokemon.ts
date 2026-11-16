@@ -269,6 +269,22 @@ const ROWS: Row[] = [
   [256, 'Combusken', ['Fire', 'Fighting'], 'SG', 60, 74, 76, 64, 70, 57, 63, 63],
   [258, 'Mudkip', ['Water'], 'SG', 51, 60, 67, 55, 64, 47, 56, 54],
   [259, 'Marshtomp', ['Water', 'Ground'], 'SF', 58, 65, 77, 63, 71, 61, 68, 61],
+  // Sinnoh starter lines (Infernape above is unchanged). Same recipe: basics +2, middle stages +2 or +3, finals pushed
+  // toward the Kanto finals but under Charizard (91), Venusaur and Blastoise (88). Torterra is a Glass Cleaner with
+  // block under 90; Empoleon a water-and-steel big under Blastoise.
+  [387, 'Turtwig', ['Grass'], 'SF', 46, 58, 67, 55, 65, 52, 59, 52],
+  [388, 'Grotle', ['Grass'], 'PF', 50, 62, 79, 60, 72, 67, 72, 56],
+  [389, 'Torterra', ['Grass', 'Ground'], 'C', 60, 68, 90, 66, 80, 86, 90, 64],
+  [390, 'Chimchar', ['Fire'], 'PG', 63, 64, 63, 57, 65, 44, 52, 60],
+  [391, 'Monferno', ['Fire', 'Fighting'], 'SG', 75, 73, 74, 64, 72, 53, 63, 69],
+  [393, 'Piplup', ['Water'], 'SG', 51, 64, 61, 58, 63, 49, 55, 56],
+  [394, 'Prinplup', ['Water'], 'SG', 58, 72, 69, 67, 69, 61, 63, 63],
+  [395, 'Empoleon', ['Water', 'Steel'], 'C', 62, 82, 84, 78, 80, 84, 82, 72],
+  // Sinnoh legendaries, held to the 97 ceiling Mewtwo, Rayquaza and Deoxys set (generated ratings had four at 98-99).
+  [483, 'Dialga', ['Steel', 'Dragon'], 'C', 77, 92, 91, 80, 86, 96, 96, 78],
+  [486, 'Regigigas', ['Normal'], 'C', 80, 70, 95, 74, 88, 90, 95, 74],
+  [487, 'Giratina', ['Ghost', 'Dragon'], 'C', 77, 76, 88, 78, 84, 96, 97, 76],
+  [493, 'Arceus', ['Normal'], 'C', 90, 82, 91, 80, 87, 95, 95, 82],
 ];
 
 /**
@@ -337,7 +353,7 @@ function buildMon([dex, name, types, pos, spd, sht, ins, pas, def, blk, reb, hnd
 const HAND = new Set(ROWS.map((r) => r[0]));
 
 /**
- * The draft pool: every Gen 1-3 Pokémon plus favorites from Gens 4-5 and a few requested later picks (Tyrantrum,
+ * The draft pool: every Gen 1-4 Pokémon plus favorites from Gen 5 and a few requested later picks (Tyrantrum,
  * Tinkaton). Franchises hold back locked regions (`franchise/regions.ts`). Hand-tuned rows win over generated ones.
  */
 export const POKEMON: Mon[] = [...ROWS, ...GENERATED_ROWS.filter((r) => !HAND.has(r[0]))]

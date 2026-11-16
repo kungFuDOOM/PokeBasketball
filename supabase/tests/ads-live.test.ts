@@ -20,6 +20,7 @@ const QUIT_BAN_FILE = '20261207_pokejam_ranked_quit_bans.sql';
 const DISCORD_FILE = '20261209_pokejam_discord_signin.sql';
 const RAFFLE_FILE = '20261210_pokejam_weekly_raffle.sql';
 const HOENN_MONS_FILE = '20261211_pokejam_mons_hoenn.sql';
+const SINNOH_MONS_FILE = '20261220_pokejam_mons_sinnoh.sql';
 const BURN_PRICE_FILE = '20261212_pokejam_ads_live_burn_price.sql';
 const USDC_TIERS_FILE = '20261213_pokejam_ads_usdc_tiers.sql';
 // Pack Battles, from pokejam-test (20261102, 20261103, 20261105 there), renumbered to follow live's latest migrations.
@@ -133,7 +134,7 @@ describe('the migration is additive', () => {
   });
 
   it('sorts after every other migration, keeping the devnet file first', () => {
-    expect(FILES.slice(-16)).toEqual([...MIGRATION_TAIL, QUIT_BAN_FILE, DISCORD_FILE, RAFFLE_FILE, HOENN_MONS_FILE, BURN_PRICE_FILE, USDC_TIERS_FILE, ...PACK_FILES, WALLET_NONCE_FILE, HOLDER_FILE]);
+    expect(FILES.slice(-17)).toEqual([...MIGRATION_TAIL, QUIT_BAN_FILE, DISCORD_FILE, RAFFLE_FILE, HOENN_MONS_FILE, BURN_PRICE_FILE, USDC_TIERS_FILE, ...PACK_FILES, WALLET_NONCE_FILE, HOLDER_FILE, SINNOH_MONS_FILE]);
     expect(FILES).toContain('20261201_pokejam_judge_decides.sql');
     expect(new Set(FILES.map((f) => f.slice(0, 8))).size).toBe(FILES.length);
   });
@@ -155,7 +156,7 @@ describe('the migration is additive', () => {
     const list = readFileSync(new URL('./testDb.ts', import.meta.url), 'utf8').match(/const MIGRATIONS = \[[^\]]*\]/)![0];
     const listed = [...list.matchAll(/'([^']+\.sql)'/g)].map((m) => m[1]);
     expect(listed).toEqual([...listed].sort());
-    expect(listed.slice(-12)).toEqual([...MIGRATION_TAIL, QUIT_BAN_FILE, DISCORD_FILE, RAFFLE_FILE, HOENN_MONS_FILE, BURN_PRICE_FILE, USDC_TIERS_FILE, WALLET_NONCE_FILE, HOLDER_FILE]);
+    expect(listed.slice(-13)).toEqual([...MIGRATION_TAIL, QUIT_BAN_FILE, DISCORD_FILE, RAFFLE_FILE, HOENN_MONS_FILE, BURN_PRICE_FILE, USDC_TIERS_FILE, WALLET_NONCE_FILE, HOLDER_FILE, SINNOH_MONS_FILE]);
   });
 });
 

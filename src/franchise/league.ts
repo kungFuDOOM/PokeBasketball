@@ -8,7 +8,7 @@ import { safeName } from '../nameFilter';
 import { fixAbbr } from '../util';
 import { USER_STYLE, contrastAway } from '../multiplayer/shared/matchSetup';
 import { autoDraft } from '../season/team';
-import { HOENN, KANTO, REGIONS, inPool, nextRegion, openRegionIds, poolMons, regionById, regionTeams, type LeagueTeam, type RegionDef } from './regions';
+import { KANTO, REGIONS, inPool, nextRegion, openRegionIds, poolMons, regionById, regionTeams, type LeagueTeam, type RegionDef } from './regions';
 
 const SAVE_KEY = 'pokejam.franchise.v1';
 /** XP needed to go from `level` to the next one; each level costs a bit more. */
@@ -421,8 +421,11 @@ export function gymBadgeCount(f: Franchise): number {
 /** The user's team won this season's title (the final is over). */
 export const wonTitle = (f: Franchise) => f.phase === 'done' && f.champion === 0 && !!f.teams[0]?.human;
 
-/** A Hoenn championship by the user's team. The next season returns to Kanto. A loss does not. */
-export const shouldReturnToKanto = (f: Franchise) => regionOf(f).id === HOENN.id && wonTitle(f);
+/** The last region in the unlock order (Sinnoh): the one whose championship closes the cycle. */
+const LAST_REGION = REGIONS[REGIONS.length - 1];
+
+/** A championship by the user's team in the last region (Sinnoh). The next season returns to Kanto. A loss does not. */
+export const shouldReturnToKanto = (f: Franchise) => regionOf(f).id === LAST_REGION.id && wonTitle(f);
 
 const addRecord = (list: RegionRecord[], regionId: string, season: number) => {
   if (!list.some((r) => r.regionId === regionId && r.season === season)) list.push({ regionId, season });
@@ -883,9 +886,10 @@ function bringBackKanto(f: Franchise): void {
   delete f.introShown;
 }
 
-/** Same rosters and levels, fresh schedule and records. A Hoenn title first brings the league back to Kanto. */
+/** Same rosters and levels, fresh schedule and records. A title in the last region (Sinnoh) first brings the league back to Kanto. */
 export function nextSeason(f: Franchise) {
   const cycle = shouldReturnToKanto(f);
+  const leaving = regionOf(f).name;
   if (cycle) bringBackKanto(f);
   f.season++;
   f.week = 1;
@@ -903,7 +907,7 @@ export function nextSeason(f: Franchise) {
   f.awards = undefined;
   const first = regionTeams(KANTO)[0];
   f.news = cycle
-    ? [`Season ${f.season} returns to the Kanto League. ${first.leader} and the ${first.name} are first.`, `The Hoenn teams' players are now free agents.`]
+    ? [`Season ${f.season} returns to the Kanto League. ${first.leader} and the ${first.name} are first.`, `The ${leaving} teams' players are now free agents.`]
     : [`Season ${f.season} tips off.`];
 }
 
