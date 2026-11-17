@@ -17,6 +17,8 @@ import { bindSettings, settingsHtml, type Settings } from './menu';
 import { withIntro } from './intro';
 import { startingFiveEnabled } from './intro.logic';
 import { playGame } from './play';
+import { rememberBest } from './potg';
+import { ReplayRecorder } from '../game/replay';
 import { resultsScreen } from './results';
 import { notePlayedOffline, noteShared } from '../raffle/notify';
 import { offlineStats } from '../telemetry/offlineStats';
@@ -230,7 +232,9 @@ export function quickPlay(root: HTMLElement, settings: Settings, audio: Audio, a
     };
     if (mode === 'simmed') {
       const close = act.overlay('Simulating your game…');
-      void simulate(cfg).then((g) => { close(); done(g); });
+      // A simulated game is recorded too, so its play of the game can be watched and shared from the results.
+      let rec: ReplayRecorder | undefined;
+      void simulate(cfg, (g) => (rec = new ReplayRecorder(cfg, g.seed))).then((g) => { close(); if (rec) rememberBest(g, rec, audio); done(g); });
     } else {
       const ctx = cpu ? 'cpu' : 'quick';
       const startingFive = startingFiveEnabled(settings.introMode ?? 'full', ctx, false, false);

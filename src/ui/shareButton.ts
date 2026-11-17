@@ -1,8 +1,8 @@
 import { copyText, SHARE_URL, xIntentUrl } from './share';
 
-export const shareButtonHtml = () => `
+export const shareButtonHtml = (label = 'Share') => `
   <div class="share" data-share>
-    <button class="btn share-btn" type="button" data-share-btn aria-haspopup="menu" aria-expanded="false">Share</button>
+    <button class="btn share-btn" type="button" data-share-btn aria-haspopup="menu" aria-expanded="false">${label}</button>
     <div class="share-menu" role="menu" data-share-menu hidden>
       <a class="btn" role="menuitem" data-share-x target="_blank" rel="noopener noreferrer">Post on X</a>
       <button class="btn" role="menuitem" type="button" data-share-copy>Copy link</button>
