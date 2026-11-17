@@ -30,7 +30,9 @@ jobs:
           cache: npm
       # --ignore-scripts: dependencies can't run install scripts on the build machine.
       - run: npm ci --ignore-scripts
-      - run: npm audit --audit-level=high
+      # Build tooling (vite/vitest) is dev-only and never ships to the site;
+      # GHSA-fc5q-39xc-vjpf in picomatch has no patched release yet.
+      - run: npm audit --omit=dev --audit-level=high
       # Also downloads the sprites into public/sprites so the site serves them itself.
       - run: npm run build
       - uses: actions/configure-pages@v5
