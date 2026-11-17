@@ -1338,7 +1338,7 @@ function defend(g, p, it, dt) {
     const aggro = g.aggro(p);
     if (g.phase === "live" && d < 4.2) {
       if (g.rng() < dt * 0.3 * aggro * (p.r.def / 100)) it.steal = true;
-      else if (p.turbo > 0.6 && g.rng() < dt * 0.07 * aggro) {
+      else if (p.turbo > 0.6 && p.shoveCd <= 0 && g.rng() < dt * 0.07 * aggro) {
         it.steal = true;
         it.turbo = true;
       }
@@ -1456,6 +1456,7 @@ function makePlayer(id, team, slot, mon, boost, rng) {
     fireMakes: 0,
     streak: 0,
     stealCd: 0,
+    shoveCd: 0,
     meter: 0,
     releaseAt: IDEAL_RELEASE,
     dunk: null,
@@ -1473,6 +1474,11 @@ function makePlayer(id, team, slot, mon, boost, rng) {
     hurt: 0
   };
 }
+var SHOVE_BASE = 0.25;
+var SHOVE_MAX = 0.45;
+var SHOVE_CD = 1.5;
+var SHOVE_REACH = 4.8;
+var SHOVE_BALL_R = 2.5;
 var Game = class {
   constructor(cfg) {
     /** The ten Pokémon on the floor. */
@@ -2578,34 +2584,42 @@ var Game = class {
     to.ai.think = 0;
     this.sfx.push("pass");
   }
+  /** Who a turbo shove from `p` can knock down: the ball handler, or an opponent within SHOVE_BALL_R of the ball. */
+  shoveTarget(p) {
+    const b = this.ball;
+    const owner = b.mode === "held" ? b.owner : null;
+    const ok = (q2) => q2.team !== p.team && q2.state !== "stun" && q2.state !== "dunk" && dist(p.x, p.y, q2.x, q2.y) < SHOVE_REACH;
+    if (owner && ok(owner)) return owner;
+    let target = null;
+    let bd = SHOVE_REACH;
+    for (const q2 of this.players) {
+      if (!ok(q2) || dist(q2.x, q2.y, b.x, b.y) > SHOVE_BALL_R) continue;
+      const d = dist(p.x, p.y, q2.x, q2.y);
+      if (d < bd) {
+        bd = d;
+        target = q2;
+      }
+    }
+    return target;
+  }
   trySteal(p) {
     if (p.stealCd > 0 || p.z > 0.5) return;
-    p.stealCd = 0.6;
-    p.state = "swipe";
-    p.stateT = 0.25;
     const owner = this.ball.mode === "held" ? this.ball.owner : null;
     const turbo = p.intent.turbo && (p.turbo > 0.25 || p.fx.surge > 0 || p.fire);
     if (turbo) {
-      let target = null;
-      if (owner && owner.team !== p.team && dist(p.x, p.y, owner.x, owner.y) < 4.8 && owner.state !== "dunk") target = owner;
-      else {
-        let bd = 4.8;
-        for (const q2 of this.players) {
-          if (q2.team === p.team || q2.state === "stun" || q2.state === "dunk") continue;
-          const d = dist(p.x, p.y, q2.x, q2.y);
-          if (d < bd) {
-            bd = d;
-            target = q2;
-          }
-        }
-      }
+      if (p.shoveCd > 0) return;
+      const target = this.shoveTarget(p);
       if (!target) return;
+      p.shoveCd = SHOVE_CD;
+      p.stealCd = 0.6;
+      p.state = "swipe";
+      p.stateT = 0.25;
       if (!(p.fx.surge > 0 || p.fire)) p.turbo = Math.max(0, p.turbo - 0.35);
       const mult = bestEffectiveness(p.mon.types, target.mon.types);
-      let chance2 = 0.55 + (p.size - target.size) * 0.8 + (p.r.def - target.r.hnd) / 250;
+      let chance2 = SHOVE_BASE + (p.size - target.size) * 0.8 + (p.r.def - target.r.hnd) / 250;
       chance2 *= mult === 0 ? 0 : mult >= 2 ? 1.5 : mult < 1 ? 0.6 : 1;
       if (target.fx.phase > 0) chance2 = 0;
-      const ok = this.rng() < clamp(chance2, 0, 0.95);
+      const ok = this.rng() < clamp(chance2, 0, SHOVE_MAX);
       const l = dist(p.x, p.y, target.x, target.y) || 1;
       p.vx += (target.x - p.x) / l * 8;
       p.vy += (target.y - p.y) / l * 8;
@@ -2614,6 +2628,9 @@ var Game = class {
       this.sfx.push("shove");
       return;
     }
+    p.stealCd = 0.6;
+    p.state = "swipe";
+    p.stateT = 0.25;
     if (!owner || owner.team === p.team || owner.state === "dunk") return;
     if (dist(p.x, p.y, owner.x, owner.y) > 4.6) return;
     let chance = clamp(0.1 + (p.r.def - owner.r.hnd) / 220, 0.03, 0.38);
@@ -2748,6 +2765,7 @@ var Game = class {
   // ---------- movement ----------
   movePlayer(p, dt) {
     p.stealCd = Math.max(0, p.stealCd - dt);
+    p.shoveCd = Math.max(0, p.shoveCd - dt);
     p.fx.surge = Math.max(0, p.fx.surge - dt);
     p.fx.phase = Math.max(0, p.fx.phase - dt);
     p.fx.slow = Math.max(0, p.fx.slow - dt);

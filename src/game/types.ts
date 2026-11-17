@@ -187,6 +187,8 @@ export interface Player {
   fireMakes: number;
   streak: number;
   stealCd: number;
+  /** Seconds until this player can turbo-shove again (separate from the 0.6s steal swipe cooldown). */
+  shoveCd: number;
   meter: number; // shot meter 0..1.25
   releaseAt: number; // AI shot release target
   dunk: DunkPath | null;

@@ -57,7 +57,7 @@ Poké Jam has two modes.
 | Shoot, or jump to block | J / Space: hold, release when the meter is in the green | X |
 | Dunk | Hold Shift and shoot near the rim | |
 | Pass, or switch defender | K. Hold Shift while passing to a teammate near the rim for an alley-oop | A |
-| Steal | L. Hold Shift to shove | B |
+| Steal | L. Hold Shift to shove the ball handler (1.5s cooldown) | B |
 | Turbo | Shift | Bumpers / triggers |
 | Special move | I / E when the bar is full | Y |
 | Pause | P / Esc | Start |
