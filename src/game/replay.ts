@@ -44,7 +44,13 @@ const TITLES: Record<HighlightKind, string> = {
 const BASE: Record<HighlightKind, number> = { buzzer: 90, oop: 55, fire: 38, dunk: 32, three: 28, block: 26, special: 22, steal: 14 };
 
 /** What the replay needs to step one tick the way the live game did. */
-interface TickLog { input: WireInput; subs: [number, number][]; autoSubs?: boolean }
+interface TickLog {
+  input: WireInput;
+  /** Online games: both teams' inputs for the tick (home, away); `input` is then unused. */
+  both?: [WireInput | null, WireInput | null];
+  subs: [number, number][];
+  autoSubs?: boolean;
+}
 
 export class ReplayRecorder {
   /** Ticks simulated so far. */
@@ -61,7 +67,11 @@ export class ReplayRecorder {
   private leader: TeamId | null = null;
   private lastLeadChange = -1;
 
-  constructor(private cfg: GameConfig, private seed: number) {}
+  /**
+   * `view`: for an online game, the team this player controls. Online games log both players' inputs (see `beforeBoth`)
+   * and the play of the game favours this player's team.
+   */
+  constructor(private cfg: GameConfig, private seed: number, private view?: TeamId) {}
 
   /** Call before each tick with the player's input; returns the input to give the game (quantized). */
   before(g: Game, intent: Intent): Intent {
@@ -70,6 +80,13 @@ export class ReplayRecorder {
     this.log[this.tick] = { input: w, subs: this.pendingSubs.splice(0), autoSubs: this.pendingAuto };
     this.pendingAuto = undefined;
     return unpackInput(w);
+  }
+
+  /** Online games: call before each tick with both teams' inputs, as the lockstep feeds them to the game. */
+  beforeBoth(g: Game, inputs: [WireInput | null, WireInput | null]) {
+    if (this.tick % SNAP_EVERY === 0) this.snaps.set(this.tick, { s: snapshot(g), autoSubs: g.cfg.userAutoSubs });
+    this.log[this.tick] = { input: inputs[this.view ?? 0] ?? { mx: 0, my: 0, b: 0 }, both: inputs, subs: this.pendingSubs.splice(0), autoSubs: this.pendingAuto };
+    this.pendingAuto = undefined;
   }
 
   /** The player asked for a sub (it takes effect inside the next tick, as it does live). */
@@ -120,7 +137,7 @@ export class ReplayRecorder {
   /** The play of the game, once it's over: the best moment, favouring the player's own team and late drama. */
   best(g: Game): Highlight | null {
     const winner: TeamId | null = g.score[0] === g.score[1] ? null : g.score[0] > g.score[1] ? 0 : 1;
-    const human = ([0, 1] as TeamId[]).find((t) => g.isHumanTeam(t));
+    const human = this.view ?? ([0, 1] as TeamId[]).find((t) => g.isHumanTeam(t));
     // The game winner: the basket that put the winners ahead for good, in the last 30 seconds.
     const isWinner = (c: Candidate) => c.late && c.team === winner && c.tick === this.lastLeadChange
       && c.kind !== 'block' && c.kind !== 'steal' && c.kind !== 'fire';
@@ -151,6 +168,7 @@ export class ReplayRecorder {
     try {
       const g = new Game({ ...this.cfg, seed: this.seed, userAutoSubs: snap.autoSubs });
       restore(g, JSON.parse(JSON.stringify(snap.s)) as Snapshot);
+      if (this.view !== undefined) g.viewTeam = this.view;
       const clip = new ReplayClip(g, this.log, this.hashes, from, start, h.tick, end);
       while (clip.tick < start) clip.step();
       g.events.length = 0;
@@ -186,7 +204,8 @@ export class ReplayClip {
       const inn = all.find((p) => p.id === inId);
       if (out && inn) g.requestSub(out, inn);
     }
-    g.userInput = unpackInput(entry.input);
+    if (entry.both) g.inputs = [unpackInput(entry.both[0]), unpackInput(entry.both[1])];
+    else g.userInput = unpackInput(entry.input);
     g.update(TICK);
     this.tick++;
     const want = this.hashes.get(this.tick);

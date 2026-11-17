@@ -27,3 +27,12 @@ export const xIntentUrl = (text: string): string =>
 
 /** What "Copy link" puts on the clipboard. */
 export const copyText = (text: string): string => `${text} ${SHARE_URL}`;
+
+/**
+ * Share text for the play of the game. Only the player's name and the play's title go in: no scores, no opponent,
+ * nothing about wagers, wallets or prizes, so it is safe from every mode (Pack Battles included).
+ */
+export function potgShareText(h: { name: string; title: string }): string {
+  const name = h.name.trim() || 'A Pokémon';
+  return `${name}: ${h.title.trim() || 'Play of the Game'}! My Play of the Game on PokeJam 🏀`;
+}

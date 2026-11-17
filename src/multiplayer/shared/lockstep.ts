@@ -24,7 +24,7 @@
 
 import type { Game, Phase } from '../../game/game';
 import { TICK, packInput, restore, snapshot, stateHash, stepGame, type Snapshot, type WireInput } from '../../game/sync';
-import { quarterClock, type Intent } from '../../game/types';
+import { quarterClock, type GameEvent, type Intent } from '../../game/types';
 import { LEAD_WINDOW_MS, MAX_DELAY, MIN_DELAY, adapt } from './netDelay';
 
 export { MAX_DELAY, MIN_DELAY };
@@ -272,9 +272,16 @@ export class Lockstep {
     return this.side === 0 ? [mine, theirs] : [theirs, mine];
   }
 
+  /** Called around every live tick with both teams' inputs and the events the tick produced (the replay recorder). */
+  tap?: { before(g: Game, inputs: [WireInput, WireInput]): void; after(g: Game, events: GameEvent[]): void };
+
   private stepOnce() {
     const t = this.tick;
-    stepGame(this.g, this.inputsFor(t));
+    const inputs = this.inputsFor(t);
+    this.tap?.before(this.g, inputs);
+    const n = this.g.events.length;
+    stepGame(this.g, inputs);
+    this.tap?.after(this.g, this.g.events.slice(n));
     this.tick++;
     if ((t + 1) % HASH_EVERY === 0) {
       const h = stateHash(this.g);

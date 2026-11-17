@@ -296,6 +296,7 @@ export async function playOnline(ctx: ModeContext, o: OnlineGameOptions) {
           // Read-only counters for the lag tests (no ids or secrets).
           Object.defineProperty(window, '__pokejamNet', { configurable: true, get: () => ({ stalls: l.stats.stalls, stallMs: Math.round(l.stats.stallMs), delay: l.delay, rtt: Math.round(link.pinger.smooth ?? 0) }) });
         },
+        record: (tap) => { if (ls) ls.tap = tap; },
         ping: () => link.pinger.smooth,
         advance: (intent, dt) => ls!.advance(intent, dt),
         status: () => (ls && ls.waiting > 0.4 ? `Waiting for ${match.opponent.name}…${waitNote}` : null),

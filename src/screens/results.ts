@@ -1,9 +1,10 @@
 import { spriteUrl, type Pos } from '../data/pokemon';
 import { replayOf, watchAgain } from './potg';
+import { clipSupported, recordPlayClip } from './potgClip';
 import type { Game } from '../game/game';
 import type { Player, TeamId } from '../game/types';
 import { esc } from '../util';
-import { shareText } from '../ui/share';
+import { potgShareText, shareText } from '../ui/share';
 import { bindShare, shareButtonHtml } from '../ui/shareButton';
 
 const gameScore = (p: Player) => {
@@ -86,7 +87,7 @@ export function resultsScreen(root: HTMLElement, g: Game, opts: ResultsOptions) 
         <span class="dash">–</span>
         <span style="--tc:${a.color}"><b>${g.score[1]}</b> ${esc(a.abbr)}</span>
       </div>
-      ${h.human ? shareButtonHtml() : ''}
+      ${h.human ? `<div data-share-result>${shareButtonHtml()}</div>` : ''}
       <div class="pog">
         <img src="${spriteUrl(pog.mon.dex)}" alt="">
         <div>
@@ -98,7 +99,8 @@ export function resultsScreen(root: HTMLElement, g: Game, opts: ResultsOptions) 
       ${play ? `<button class="potg-again" type="button" data-replay>
         <span class="lbl">▶ Watch the play of the game</span>
         <strong>${esc(play.name)}</strong><span>${esc(play.title)}</span>
-      </button>` : ''}
+      </button>
+      <div class="potg-share" data-share-potg>${shareButtonHtml('Share this play')}</div>` : ''}
       ${opts.extraHtml ?? ''}
       <div class="boxes">${table(0)}${table(1)}</div>
       <div class="actions center">
@@ -108,12 +110,14 @@ export function resultsScreen(root: HTMLElement, g: Game, opts: ResultsOptions) 
   root.querySelectorAll<HTMLButtonElement>('[data-a]').forEach((b) =>
     b.addEventListener('click', () => opts.onAction(b.dataset.a!)));
   if (h.human) {
-    bindShare(root, shareText({
+    bindShare(root.querySelector<HTMLElement>('[data-share-result]')!, shareText({
       opponent: opts.shareOpponent ?? a.name,
       userScore: g.score[0],
       oppScore: g.score[1],
       potg: { name: pog.mon.name, pts: pog.stats.pts },
     }), opts.onShare);
   }
+  const potgBox = root.querySelector<HTMLElement>('[data-share-potg]');
+  if (potgBox && play) bindShare(potgBox, potgShareText(play), opts.onShare, { supported: () => clipSupported(g), start: () => recordPlayClip(g) });
   root.querySelector('[data-replay]')?.addEventListener('click', () => watchAgain(g));
 }

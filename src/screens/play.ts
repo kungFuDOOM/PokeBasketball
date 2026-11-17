@@ -6,12 +6,13 @@ import { ReplayRecorder } from '../game/replay';
 import { Input } from '../game/input';
 import { Renderer } from '../game/render';
 import { preload } from '../game/sprites';
+import type { WireInput } from '../game/sync';
 import { emptyIntent, type GameConfig, type GameEvent, type Intent, type Player, type TeamId } from '../game/types';
 import { spriteUrl } from '../data/pokemon';
 import { esc } from '../util';
 import { Voice, sharedVoice } from '../game/voice';
 import { controlsHtml } from './menu';
-import { playOfTheGame, rememberReplay, type PlayOfTheGame } from './potg';
+import { playOfTheGame, rememberBest, type PlayOfTheGame } from './potg';
 import { nextSpeed, stepHeadless } from './watch';
 import { startingFive, type StartingFive } from './startingFive';
 
@@ -42,6 +43,8 @@ export interface OnlineDriver {
   ping?(): number | null;
   /** Called every frame before tip-off (loading, then the starting-five intro), to keep the link to the other player alive. */
   idle?(): void;
+  /** Hands the driver a tap to call around every live tick, so the game can be recorded for the Play of the Game. */
+  record?(tap: { before(g: Game, inputs: [WireInput, WireInput]): void; after(g: Game, events: GameEvent[]): void }): void;
   /** The pause menu's quit button, when leaving means more than usual (Pack Battles: "Leave and forfeit"). */
   quitLabel?: string;
 }
@@ -110,7 +113,10 @@ export function playGame(
   // Play of the Game: offline games are recorded so the best moment can be replayed after the final buzzer.
   const spectator = !!opts.spectator && !online;
   gameEl.classList.toggle('spectator', spectator);
-  const rec = online || spectator || opts.record === false ? null : new ReplayRecorder(cfg, g.seed);
+  // Watched (CPU vs CPU) games are not recorded. Online games record both players' inputs through the lockstep (the clip is offered on the results screen, not
+  // played before the result goes in: the other player must not wait on a replay).
+  const rec = spectator || opts.record === false ? null : new ReplayRecorder(cfg, g.seed, online?.viewTeam);
+  if (rec && online) online.record?.({ before: (gm, inputs) => rec.beforeBoth(gm, inputs), after: (gm, ev) => rec.after(gm, ev) });
   let potg: PlayOfTheGame | null = null;
   let intro: StartingFive | null = null;
   const input = new Input();
@@ -343,10 +349,9 @@ export function playGame(
         if (finalT < 0) finalT = 3;
         finalT -= dt;
         if (finalT <= 0) {
-          const best = rec?.best(g);
-          const clip = best && rec!.clip(best);
-          if (best && clip) {
-            rememberReplay(g, { rec: rec!, best, teamName: g.teams[best.team].name, audio, voice });
+          const found = rec ? rememberBest(g, rec, audio) : null;
+          if (found && !online) {
+            const { best, clip } = found;
             hud.el.hidden = true;
             root.querySelector<HTMLElement>('.pause-btn')!.hidden = true;
             potg = playOfTheGame(gameEl, canvas, clip, best, g.teams[best.team].name, audio, voice);

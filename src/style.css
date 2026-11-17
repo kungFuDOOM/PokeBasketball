@@ -2778,3 +2778,16 @@ body:has(.pause-btn) .music-btn:not(.docked) {
 /* Kabuto King: limited-time special; gold name tag (text is always exactly "Kabuto King"). */
 .king-tag { background: linear-gradient(180deg, #fff2a6 0%, #ffcf2e 45%, #c98a12 100%); -webkit-background-clip: text; background-clip: text; color: transparent; -webkit-text-fill-color: transparent; font-weight: 800; letter-spacing: 0.02em; filter: drop-shadow(0 1px 0 rgba(0, 0, 0, 0.7)); }
 .tp-name .tp-badge { align-self: flex-start; margin: 2px 0 1px; }
+.potg-share { display: flex; justify-content: center; margin: 0 auto 14px; }
+.potg-share .share { margin: 0 auto; }
+
+/* Share this play: the finished clip */
+.clip-panel { position: fixed; inset: 0; z-index: 400; display: flex; align-items: center; justify-content: center; padding: 12px; background: rgba(0, 0, 0, 0.78); }
+.clip-card { position: relative; display: flex; flex-direction: column; gap: 10px; width: min(560px, 100%); max-height: 100%; padding: 10px; background: var(--panel); border: 2px solid var(--accent); border-radius: 8px; }
+.clip-card video { width: 100%; max-height: 55vh; background: #000; border-radius: 4px; }
+.clip-actions { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
+.clip-actions .btn { min-height: 44px; display: inline-flex; align-items: center; justify-content: center; font: 0.62rem var(--pixel); text-decoration: none; color: var(--fg); }
+.clip-actions .btn[hidden] { display: none; }
+.clip-toast { top: 8px; }
+/* the replay that is being recorded sits under a "Making your clip" card (the share button), out of sight */
+.potg-clip { position: fixed; left: -200vw; top: 0; width: 100vw; height: 100vh; pointer-events: none; }
