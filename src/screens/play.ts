@@ -113,9 +113,9 @@ export function playGame(
   // Play of the Game: offline games are recorded so the best moment can be replayed after the final buzzer.
   const spectator = !!opts.spectator && !online;
   gameEl.classList.toggle('spectator', spectator);
-  // Online games record both players' inputs through the lockstep (the clip is offered on the results screen, not
+  // Watched (CPU vs CPU) games are not recorded. Online games record both players' inputs through the lockstep (the clip is offered on the results screen, not
   // played before the result goes in: the other player must not wait on a replay).
-  const rec = opts.record === false ? null : new ReplayRecorder(cfg, g.seed, online?.viewTeam);
+  const rec = spectator || opts.record === false ? null : new ReplayRecorder(cfg, g.seed, online?.viewTeam);
   if (rec && online) online.record?.({ before: (gm, inputs) => rec.beforeBoth(gm, inputs), after: (gm, ev) => rec.after(gm, ev) });
   let potg: PlayOfTheGame | null = null;
   let intro: StartingFive | null = null;

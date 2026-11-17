@@ -21,15 +21,14 @@ describe('every mode that ends in a results screen offers the play of the game a
 
   it('each mode reaches that screen with a recorded game', () => {
     const play = read('./play.ts');
-    // Played games (practice/CPU, Quick Play, franchise, gyms, tournaments, watched, Social, Ranked, Pack Battles):
-    // only the tutorial's drills opt out of recording, and online games record through the lockstep tap.
-    expect(play).toMatch(/opts\.record === false \? null : new ReplayRecorder/);
+    // Played games (practice/CPU, Quick Play, franchise, gyms, tournaments, Social, Ranked, Pack Battles):
+    // the tutorial's drills opt out, watched (spectator) games are not recorded, and online games record through the lockstep tap.
+    expect(play).toMatch(/spectator \|\| opts\.record === false \? null : new ReplayRecorder/);
     expect(play).toContain('online.record?.(');
     expect(read('../multiplayer/shared/onlineGame.ts')).toContain('ls.tap = tap');
     expect(read('./tutorial.ts')).toContain('record: false');
-    // Simulated games record headlessly.
-    expect(read('./quick.ts')).toMatch(/simulate\(cfg, \(g\) => \(rec = new ReplayRecorder/);
-    expect(read('../main.ts')).toMatch(/simulate\(cfg, \(g\) => \(rec = new ReplayRecorder/);
+    // Simulated games (Sim) are not recorded.
+    for (const f of ['./quick.ts', '../main.ts', '../franchise/league.ts']) expect(read(f), f).not.toContain('ReplayRecorder');
   });
 
   it('every results caller goes through resultsScreen', () => {

@@ -1,7 +1,6 @@
 import { EVOLUTIONS, RATING_LABELS, isRetired, monByDex, positionWeights, withBonus, type Mon, type PokeType, type Ratings } from '../data/pokemon';
 import { isKingKabuto, kingKabutoCard, withKingKabuto } from '../kabuto/king';
 import { Game, bestLineup, chemistry } from '../game/game';
-import type { ReplayRecorder } from '../game/replay';
 import { courtFor, userCourt } from '../data/courts';
 import type { Difficulty, GameConfig, PStats, TeamDef } from '../game/types';
 import type { DraftState } from '../screens/draft';
@@ -664,24 +663,15 @@ export function gameConfig(f: Franchise, game: FGame, humanPlays: boolean, quart
 }
 
 /** Plays a CPU-controlled game with the real engine, yielding to the browser between slices. */
-export function simulate(cfg: ConstructorParameters<typeof Game>[0], record?: (g: Game) => ReplayRecorder): Promise<Game> {
+export function simulate(cfg: ConstructorParameters<typeof Game>[0]): Promise<Game> {
   return new Promise((resolve) => {
     const g = new Game(cfg);
-    const rec = record?.(g);
     let steps = 0;
     const over = () => g.phase === 'final' || steps >= 400000;
     const slice = () => {
       const t0 = performance.now();
       while (!over() && performance.now() - t0 < 14) {
-        for (let i = 0; i < 120 && !over(); i++, steps++) {
-          if (rec) {
-            // Recorded (for the play of the game): the same tick, with its input quantized as in play.
-            g.userInput = rec.before(g, g.userInput);
-            const n = g.events.length;
-            g.update(1 / 60);
-            rec.after(g, g.events.slice(n));
-          } else g.update(1 / 60);
-        }
+        for (let i = 0; i < 120 && !over(); i++, steps++) g.update(1 / 60);
         g.events.length = 0;
         g.sfx.length = 0;
       }
