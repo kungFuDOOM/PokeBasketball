@@ -242,7 +242,7 @@ function defend(g: Game, p: Player, it: Intent, dt: number) {
     const aggro = g.aggro(p);
     if (g.phase === 'live' && d < 4.2) {
       if (g.rng() < dt * 0.3 * aggro * (p.r.def / 100)) it.steal = true;
-      else if (p.turbo > 0.6 && g.rng() < dt * 0.07 * aggro) { it.steal = true; it.turbo = true; }
+      else if (p.turbo > 0.6 && p.shoveCd <= 0 && g.rng() < dt * 0.07 * aggro) { it.steal = true; it.turbo = true; }
     }
   } else {
     const l = dist(man.x, man.y, hx, HOOP_Y) || 1;
