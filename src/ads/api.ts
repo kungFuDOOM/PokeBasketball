@@ -75,6 +75,8 @@ const URL_ = adsUrl(import.meta.env);
 const KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
 export const ADS_CONFIGURED = !!URL_;
+/** The ads endpoint (pokejam-ads-live), for fire-and-forget calls that must not throw (click logging). */
+export const ADS_ENDPOINT = URL_;
 
 async function call<T>(body: Record<string, unknown> | null): Promise<T> {
   const headers: Record<string, string> = {};

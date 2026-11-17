@@ -14,6 +14,7 @@
 //   POST {action:'replace', id, text, theme, signature}
 //                                             new text for an ad moderators took down, signed by its wallet
 //   POST {action:'report', id, reason}        flag a live ad for moderators
+//   POST {action:'click', id, url}            live only: count a click on a paid ad (deduped per caller, 30 s)
 //   POST {action:'faucet', wallet}            devnet only: test $PJAM and a little test SOL, once a day
 //   POST {action:'sweep'}                     cron (service key): pay every burn on-chain that names a booking
 //                                             (live: also book USDC payments whose page closed; usdcSweep)
@@ -109,7 +110,7 @@ export const VERDICTS: Record<string, string> = {
 const LIMITS: Record<string, [number, number]> = {
   check: [120, 60], quote: [60, 60], wallet: [30, 60], prepare: [30, 3600], confirm: [120, 60], mine: [30, 60],
   credit: [60, 60], replace: [10, 3600], report: [10, 3600], faucet: [3, 86_400], 'usdc-intent': [30, 3600], 'usdc-confirm': [120, 60],
-  'pjam-price': [60, 60],
+  'pjam-price': [60, 60], click: [60, 60],
 };
 
 /** A mistake the caller can fix: shown to them as-is. */
@@ -331,7 +332,7 @@ export async function adsHandler(req: Request, cfg: AdsConfig, rawDeps: AdsDeps)
 
   try {
     // The USDC actions don't exist on the devnet function: not even a rate-limit row for them there.
-    const limit = action.startsWith('usdc-') && !cfg.usdc ? undefined : LIMITS[action];
+    const limit = (action.startsWith('usdc-') || action === 'click') && !cfg.usdc ? undefined : LIMITS[action];
     if (limit && !(await deps.db<boolean>('pokejam_ad_allow', { p_key: `${action}:${caller}`, p_max: limit[0], p_seconds: limit[1] }))) {
       return json({ error: 'Too many requests. Wait a minute and try again.' }, 429);
     }
@@ -539,6 +540,14 @@ export async function adsHandler(req: Request, cfg: AdsConfig, rawDeps: AdsDeps)
           await deps.alert(`PokeJam ad reported (${n} ${n === 1 ? 'person' : 'people'}, ${reason}): "${b?.text}" by ${b?.wallet}. Moderate it in admin.html.`).catch(() => {});
         }
         return json({ ok: true });
+      }
+      case 'click': {
+        // Live only (the devnet function has no click table). Fire-and-forget from the page: a bad id or repeat is just ok:false.
+        if (!cfg.usdc) return json({ error: 'unknown action' }, 400);
+        const id = str('id');
+        if (!/^[0-9a-f-]{36}$/.test(id)) return json({ ok: false });
+        const counted = await deps.db<boolean>('pokejam_ad_click', { p_id: id, p_url: str('url', 300), p_ip_hash: caller, p_referrer: req.headers.get('origin')?.slice(0, 300) ?? null });
+        return json({ ok: !!counted });
       }
       case 'faucet': {
         const w = wallet();

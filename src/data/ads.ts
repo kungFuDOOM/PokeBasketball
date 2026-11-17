@@ -18,7 +18,8 @@ export const AD_THEMES: Record<AdTheme, ThemeStyle> = {
 export const THEME_ORDER = Object.keys(AD_THEMES) as AdTheme[];
 
 /** One ad on the banner: its text, as the server cleaned it, and its theme. */
-export interface BoardAd { text: string; theme: AdTheme; url?: string }
+/** `id`: the server's id for a booked ad (absent on the house ads), which click logging needs. */
+export interface BoardAd { text: string; theme: AdTheme; url?: string; id?: string }
 
 const AD_DOMAIN = /(?:^|[^a-z0-9-])([a-z0-9](?:[a-z0-9-]*[a-z0-9])?)\s*\.\s*(co|com|xyz|io|gg|app|net|org|fun)(?![a-z0-9-])/i;
 

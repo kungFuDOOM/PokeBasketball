@@ -26,6 +26,7 @@ const USDC_TIERS_FILE = '20261213_pokejam_ads_usdc_tiers.sql';
 const PACK_FILES = ['20261214_pokejam_pack_fail_safe.sql', '20261215_pokejam_pack_battles.sql', '20261216_pokejam_pack_wallet.sql', '20261217_pokejam_pack_builder_fee.sql'];
 const WALLET_NONCE_FILE = '20261218_pokejam_wallet_link_nonce.sql';
 const HOLDER_FILE = '20261219_pokejam_raffle_holders_qualify.sql';
+const AD_CLICKS_FILE = '20261220_pokejam_ad_clicks.sql';
 const LIVE_SQL = readFileSync(new URL(LIVE_FILE, DIR), 'utf8');
 // sha256 of pokejam-test's 20261104_pokejam_ads.sql, renamed since and now 20261203_pokejam_ads.sql, already applied on the shared project.
 const DEVNET_SHA256 = 'adf6c2b432673feb800146593f6eeb87567c6a051678521d47a5d3c6a3c04cd0';
@@ -133,7 +134,7 @@ describe('the migration is additive', () => {
   });
 
   it('sorts after every other migration, keeping the devnet file first', () => {
-    expect(FILES.slice(-16)).toEqual([...MIGRATION_TAIL, QUIT_BAN_FILE, DISCORD_FILE, RAFFLE_FILE, HOENN_MONS_FILE, BURN_PRICE_FILE, USDC_TIERS_FILE, ...PACK_FILES, WALLET_NONCE_FILE, HOLDER_FILE]);
+    expect(FILES.slice(-17)).toEqual([...MIGRATION_TAIL, QUIT_BAN_FILE, DISCORD_FILE, RAFFLE_FILE, HOENN_MONS_FILE, BURN_PRICE_FILE, USDC_TIERS_FILE, ...PACK_FILES, WALLET_NONCE_FILE, HOLDER_FILE, AD_CLICKS_FILE]);
     expect(FILES).toContain('20261201_pokejam_judge_decides.sql');
     expect(new Set(FILES.map((f) => f.slice(0, 8))).size).toBe(FILES.length);
   });
@@ -155,7 +156,7 @@ describe('the migration is additive', () => {
     const list = readFileSync(new URL('./testDb.ts', import.meta.url), 'utf8').match(/const MIGRATIONS = \[[^\]]*\]/)![0];
     const listed = [...list.matchAll(/'([^']+\.sql)'/g)].map((m) => m[1]);
     expect(listed).toEqual([...listed].sort());
-    expect(listed.slice(-12)).toEqual([...MIGRATION_TAIL, QUIT_BAN_FILE, DISCORD_FILE, RAFFLE_FILE, HOENN_MONS_FILE, BURN_PRICE_FILE, USDC_TIERS_FILE, WALLET_NONCE_FILE, HOLDER_FILE]);
+    expect(listed.slice(-13)).toEqual([...MIGRATION_TAIL, QUIT_BAN_FILE, DISCORD_FILE, RAFFLE_FILE, HOENN_MONS_FILE, BURN_PRICE_FILE, USDC_TIERS_FILE, WALLET_NONCE_FILE, HOLDER_FILE, AD_CLICKS_FILE]);
   });
 });
 

@@ -9,6 +9,7 @@ import '../style.css';
 import './admin.css';
 import { CAPTCHA_ON, captchaToken } from '../multiplayer/shared/captcha';
 import { esc } from '../util';
+import { AD_CLICKS_RPC, adClicksError, adClicksHtml, type AdClickRow } from './adClicksView';
 import { AD_RPC, adAction, adConfirm, adsHtml, boardSwitch, isAdBoard, type AdBan, type AdBoard, type AdRow } from './adsView';
 import { bansHtml, judgeFlagsHtml, judgeShadowHtml, personLabel, reportsHtml, when, type Ban, type JudgeFlag, type JudgeShadow, type Reported } from './reportsView';
 import { raffleHtml, type RaffleAdmin } from './raffleView';
@@ -145,6 +146,11 @@ function dashboard(sb: SupabaseClient, email: string) {
         try {
           const [rows, bans] = await Promise.all([call<AdRow[]>(rpc.list, { p_days: Number(days.value) }), call<AdBan[]>(rpc.bans)]);
           if (tab === 'ads' && board === adBoard) body.innerHTML = adsHtml(rows, bans, board);
+          // Click counts (live board only). Its own failure never hides the ads above.
+          if (board === 'live') {
+            const clicks = await call<AdClickRow[]>(AD_CLICKS_RPC).then(adClicksHtml, (e: Error) => adClicksError(e.message));
+            if (tab === 'ads' && board === adBoard) body.insertAdjacentHTML('beforeend', clicks);
+          }
         } catch (e) {
           // Keep the switch, so a board whose migration isn't applied yet doesn't trap the moderator on it.
           if (tab === 'ads' && board === adBoard) body.innerHTML = `${boardSwitch(board)}<p class="note">Couldn't load the ${board} board: ${esc((e as Error).message)}</p>`;
