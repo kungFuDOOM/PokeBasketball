@@ -79,7 +79,7 @@ export function zoomFor(stageWidth: number): ZoomSet {
 }
 
 export function playOfTheGame(gameEl: HTMLElement, canvas: HTMLCanvasElement, clip: ReplayClip, h: Highlight, teamName: string,
-  audio: Audio, voice: Voice, opts: { again?: boolean } = {}): PlayOfTheGame {
+  audio: Audio, voice: Voice, opts: { again?: boolean; compose?: (cam: { zoom: number; x: number; y: number }) => void } = {}): PlayOfTheGame {
   const g = clip.game;
   const renderer = new Renderer(canvas);
   renderer.snap(g);
@@ -159,6 +159,7 @@ export function playOfTheGame(gameEl: HTMLElement, canvas: HTMLCanvasElement, cl
     const x = Math.max(hw, Math.min(VW - hw, cam.x));
     const y = Math.max(hh, Math.min(VH - hh, cam.y));
     canvas.style.transform = `scale(${cam.zoom.toFixed(4)}) translate(${((0.5 - x / VW) * 100).toFixed(3)}%, ${((0.5 - y / VH) * 100).toFixed(3)}%)`;
+    opts.compose?.({ zoom: cam.zoom, x, y });
   };
 
   return {
@@ -239,6 +240,13 @@ export function rememberBest(g: Game, rec: ReplayRecorder, audio: Audio): { best
   if (!best || !clip) return null;
   rememberReplay(g, { rec, best, teamName: g.teams[best.team].name, audio, voice: sharedVoice(audio) });
   return { best, clip };
+}
+
+/** Everything the clip recorder needs to replay a finished game's play. */
+export function savedPlay(g: Game): (Saved & { clip: ReplayClip }) | null {
+  const s = saved.get(g);
+  const clip = s && s.rec.clip(s.best);
+  return s && clip ? { ...s, clip } : null;
 }
 
 /** The play of a finished game, if there's one to watch: who and what. */

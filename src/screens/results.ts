@@ -1,5 +1,6 @@
 import { spriteUrl, type Pos } from '../data/pokemon';
 import { replayOf, watchAgain } from './potg';
+import { clipSupported, recordPlayClip } from './potgClip';
 import type { Game } from '../game/game';
 import type { Player, TeamId } from '../game/types';
 import { esc } from '../util';
@@ -117,6 +118,6 @@ export function resultsScreen(root: HTMLElement, g: Game, opts: ResultsOptions) 
     }), opts.onShare);
   }
   const potgBox = root.querySelector<HTMLElement>('[data-share-potg]');
-  if (potgBox && play) bindShare(potgBox, potgShareText(play), opts.onShare);
+  if (potgBox && play) bindShare(potgBox, potgShareText(play), opts.onShare, { supported: () => clipSupported(g), start: () => recordPlayClip(g) });
   root.querySelector('[data-replay]')?.addEventListener('click', () => watchAgain(g));
 }

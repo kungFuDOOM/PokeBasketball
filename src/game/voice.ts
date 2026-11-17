@@ -65,6 +65,15 @@ export class Voice {
     return sfx.reduce((d, s) => Math.max(d, HORN[s] ?? 0), 0);
   }
 
+  private tap: AudioNode | null = null;
+
+  /** Also sends his voice to `node` (a recording), or stops doing so with null. */
+  captureTo(node: AudioNode | null) {
+    if (this.out && this.tap) { try { this.out.disconnect(this.tap); } catch { /* not connected */ } }
+    this.tap = node;
+    if (this.out && node) this.out.connect(node);
+  }
+
   /** Says a line `delay` seconds from now, cutting off whatever he was saying. */
   say(clip: string, delay = 0) {
     const ctx = this.audio.context;
@@ -74,6 +83,7 @@ export class Voice {
       this.out = ctx.createGain();
       this.out.gain.value = GAIN;
       this.out.connect(ctx.destination);
+      if (this.tap) this.out.connect(this.tap);
     }
     this.stop();
     const src = ctx.createBufferSource();

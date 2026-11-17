@@ -24,6 +24,23 @@ export class Audio {
     return this.master;
   }
 
+  /**
+   * A stream of everything the effects bus plays (for recording a clip), or null when audio isn't unlocked or the
+   * browser can't do it. Call the returned `stop` when done. Muted means the clip is silent.
+   */
+  captureStream(): { stream: MediaStream; node: AudioNode; stop: () => void } | null {
+    const ctx = this.ctx;
+    if (!ctx || !this.master || typeof ctx.createMediaStreamDestination !== 'function') return null;
+    try {
+      const dest = ctx.createMediaStreamDestination();
+      const master = this.master;
+      master.connect(dest);
+      return { stream: dest.stream, node: dest, stop: () => { try { master.disconnect(dest); } catch { /* already gone */ } } };
+    } catch {
+      return null;
+    }
+  }
+
   /** Must be called from a user gesture. */
   unlock() {
     if (this.ctx) {
