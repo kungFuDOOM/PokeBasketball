@@ -300,7 +300,7 @@ export function menuScreen(root: HTMLElement, settings: Settings, onChange: () =
             <input id="team-name" maxlength="20" autocomplete="off" value="${esc(lettersName(settings.teamName))}">
           </label>
           <button class="btn play-btn" data-go="season" aria-label="Season Draft: draft 10, sim a season, get your grade">DRAFT &amp; GET GRADED<small>Draft 10 · sim a season · get your grade</small></button>
-          ${opts.onMultiplayer ? `<button class="btn online-btn" data-go="multiplayer" aria-label="Play online: quick match or a room code with a friend">PLAY ONLINE<small>Quick match · room code</small></button>` : ''}
+          ${opts.onMultiplayer ? `<button class="btn online-btn" data-go="multiplayer" aria-label="Play online: ranked, quick match or a room code with a friend">PLAY ONLINE<small>Ranked · quick match · room code</small></button>` : ''}
           ${opts.onProfile ? profileButtonHtml(signedIn) : ''}
         </div>
         ${opts.drafted ? `<p class="mode-saved hero-saved"><span class="lbl">My drafted team</span> ${esc(opts.drafted)}</p>` : ''}
