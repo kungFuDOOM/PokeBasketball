@@ -69,9 +69,10 @@ export interface TeamDef {
  * differently (new rolls, retuned odds, physics), so a stored seed and inputs are only ever replayed by the
  * engine that produced them.
  */
-export const ENGINE_VERSION = 3;
+export const ENGINE_VERSION = 4;
 // v1: the live pokejam.xyz odds, first seeded (#6). v2: pure skill, no rolls (#7). v3: back to the live game's
 // odds and CPU, every roll still on the match's seeded RNG, plus the live lineup rule and shot-clock horn.
+// v4: shove nerfed again (lower odds, 3s cooldown, AI shoves half as often).
 
 /** Seconds on the clock at the start of quarter `q` (overtime is above 4). */
 export const quarterClock = (q: number, quarterLen: number): number => (q > 4 ? Math.max(30, Math.round(quarterLen / 2)) : quarterLen);

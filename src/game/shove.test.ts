@@ -26,7 +26,7 @@ function setup() {
 }
 
 describe('turbo shove', () => {
-  it('caps the chance at 45% and starts a 1.5s shove cooldown', () => {
+  it('caps the chance at 25% and starts a 3s shove cooldown', () => {
     const { g, shover, handler, shove } = setup();
     shover.size = 3; handler.size = 0.5; // huge edge: uncapped chance would be far above the cap
     shover.mon = { ...shover.mon, types: ['Fighting'] }; handler.mon = { ...handler.mon, types: ['Rock'] };

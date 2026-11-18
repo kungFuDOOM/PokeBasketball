@@ -124,9 +124,9 @@ function makePlayer(id: number, team: TeamId, slot: number, mon: Mon, boost: num
 }
 
 /** Turbo shove tuning: base knockdown chance, chance cap, shover's own cooldown (s), reach, and max distance from the ball. */
-export const SHOVE_BASE = 0.25;
-export const SHOVE_MAX = 0.45;
-export const SHOVE_CD = 1.5;
+export const SHOVE_BASE = 0.12;
+export const SHOVE_MAX = 0.25;
+export const SHOVE_CD = 3.0;
 export const SHOVE_REACH = 4.8;
 export const SHOVE_BALL_R = 2.5;
 
