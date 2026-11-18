@@ -27,7 +27,7 @@ var DIFFICULTIES = {
   allstar: { label: "All-Star", cpuBoost: 0, green: 1.1, aggro: 0.9, react: 0.2, cpuShot: 0, contest: 0.9, assist: false, catchup: 0 },
   legend: { label: "Legend", cpuBoost: 4, green: 0.85, aggro: 1.15, react: 0.12, cpuShot: 0.03, contest: 1, assist: false, catchup: 0 }
 };
-var ENGINE_VERSION = 3;
+var ENGINE_VERSION = 4;
 var quarterClock = (q2, quarterLen) => q2 > 4 ? Math.max(30, Math.round(quarterLen / 2)) : quarterLen;
 function emptyIntent() {
   return { mx: 0, my: 0, turbo: false, shoot: false, shootHeld: false, pass: false, steal: false, special: false, swap: false };
@@ -1338,7 +1338,7 @@ function defend(g, p, it, dt) {
     const aggro = g.aggro(p);
     if (g.phase === "live" && d < 4.2) {
       if (g.rng() < dt * 0.3 * aggro * (p.r.def / 100)) it.steal = true;
-      else if (p.turbo > 0.6 && p.shoveCd <= 0 && g.rng() < dt * 0.07 * aggro) {
+      else if (p.turbo > 0.6 && p.shoveCd <= 0 && g.rng() < dt * 0.035 * aggro) {
         it.steal = true;
         it.turbo = true;
       }
@@ -1474,9 +1474,9 @@ function makePlayer(id, team, slot, mon, boost, rng) {
     hurt: 0
   };
 }
-var SHOVE_BASE = 0.25;
-var SHOVE_MAX = 0.45;
-var SHOVE_CD = 1.5;
+var SHOVE_BASE = 0.12;
+var SHOVE_MAX = 0.25;
+var SHOVE_CD = 3;
 var SHOVE_REACH = 4.8;
 var SHOVE_BALL_R = 2.5;
 var Game = class {

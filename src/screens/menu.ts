@@ -31,7 +31,7 @@ export function controlsHtml(): string {
         <tr><th>Shoot / Block</th><td><kbd>J</kbd> or <kbd>Space</kbd>. Hold, then release when the meter hits green</td></tr>
         <tr><th>Dunk</th><td>Hold <kbd>Shift</kbd> and shoot near the rim</td></tr>
         <tr><th>Pass / Switch</th><td><kbd>K</kbd>. Add <kbd>Shift</kbd> to throw an alley-oop to a teammate near the rim</td></tr>
-        <tr><th>Steal</th><td><kbd>L</kbd>. Add <kbd>Shift</kbd> to shove the ball handler (type matchups apply, 1.5s cooldown)</td></tr>
+        <tr><th>Steal</th><td><kbd>L</kbd>. Add <kbd>Shift</kbd> to shove the ball handler (type matchups apply, 3s cooldown)</td></tr>
         <tr><th>Turbo</th><td><kbd>Shift</kbd></td></tr>
         <tr><th>Special move</th><td><kbd>I</kbd> or <kbd>E</kbd> when the special bar is full</td></tr>
         <tr><th>Pause</th><td><kbd>P</kbd> or <kbd>Esc</kbd></td></tr>
