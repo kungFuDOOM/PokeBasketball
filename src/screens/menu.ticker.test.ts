@@ -60,7 +60,7 @@ describe('menu ticker', () => {
     expect(ripitAgain).toBeGreaterThan(open);
     expect(run.indexOf('RIPIT .CO')).toBeLessThan(run.indexOf('<b class="tk-tag">TIP</b>'));
     expect(run.indexOf('RIPIT .CO')).toBeLessThan(run.indexOf('SECOND AD'));
-    expect(run).toContain('href="https://ripit.co"');
+    expect(run).toContain('href="https://ripit.co/?utm_source=pokejam&amp;utm_medium=display_ad&amp;utm_campaign=pokejam_ad"');
     expect(run.split(weeklyChallengesTickerHtml()).length - 1).toBe(1);
     expect(run).toContain('<b class="tk-tag">LIVE</b>');
     expect(run).toContain('Franchise: 9-week seasons, badges, level-ups and evolutions');

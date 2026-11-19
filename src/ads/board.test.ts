@@ -36,6 +36,29 @@ beforeEach(() => {
 });
 afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); });
 
+describe('live ad links', () => {
+  it('passes a booked ad url (and id) through to the banner, and caches it', async () => {
+    const id = '11111111-1111-4111-8111-111111111111';
+    board.mockResolvedValue({ live: [{ id, text: 'SLABZ .COM', theme: 'gold', url: 'https://slabz.com/ref/POKEJAM', ends_at: '2099-01-01T00:00:00Z' }] });
+    let m = await load();
+    m.startLiveAds();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(setLiveAds.mock.calls[0][0][0]).toMatchObject({ id, text: 'SLABZ .COM', url: 'https://slabz.com/ref/POKEJAM' });
+    expect(JSON.parse(store.get(m.CACHE_KEY)!).live[0].url).toBe('https://slabz.com/ref/POKEJAM');
+    setLiveAds.mockClear();
+    m = await load(); // a reload reads the cache
+    m.startLiveAds();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(setLiveAds.mock.calls[0][0][0].url).toBe('https://slabz.com/ref/POKEJAM');
+  });
+  it('leaves url undefined when the booking has none', async () => {
+    const m = await load();
+    m.startLiveAds();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(setLiveAds.mock.calls[0][0][0].url).toBeUndefined();
+  });
+});
+
 describe('live ads polling', () => {
   it('fetches on start, then every 10 minutes (not 2)', async () => {
     const { startLiveAds, EVERY } = await load();

@@ -20,19 +20,19 @@ const board = 'PALLET TOWN ★ OAK LAB ★ GO';
 const opts = { top: 0, width: 480, scroll: 0, t: 0, edge: '#fff', hype: false, text: board };
 
 describe('the courtside LED board', () => {
-  it('runs the fixed $PJAM house half, then the bookable half', () => {
+  it('runs the fixed Slabz house half, then the bookable half', () => {
     const { ctx, texts } = fakeCtx();
     drawLedBoard(ctx, { ...opts, ads: [HOUSE_AD], house: houseAds() });
-    const pjam = texts.find((t) => t.text === BANNER_ADS[0].text);
-    const yours = texts.find((t) => t.text === 'YOUR AD HERE' && t.x > pjam!.x);
-    expect(pjam).toBeDefined();
+    const slabz = texts.find((t) => t.text === BANNER_ADS[0].text);
+    const yours = texts.find((t) => t.text === 'YOUR AD HERE' && t.x > slabz!.x);
+    expect(slabz).toBeDefined();
     expect(yours).toBeDefined();
     // The bookable panel starts after the whole house half.
-    expect(yours!.x - pjam!.x).toBeGreaterThan(HOUSE_W - 40);
+    expect(yours!.x - slabz!.x).toBeGreaterThan(HOUSE_W - 40);
     expect(texts.some((t) => t.text.includes('OAK LAB') && !t.text.includes('PALLET'))).toBe(true);
   });
 
-  it('puts a booked ad in the bookable half and keeps the $PJAM half', () => {
+  it('puts a booked ad in the bookable half and keeps the Slabz half', () => {
     const { ctx, texts } = fakeCtx();
     drawLedBoard(ctx, { ...opts, ads: [{ text: 'HOLD $PJAM', theme: 'fire' }], house: houseAds() });
     expect(texts.some((t) => t.text === 'HOLD $PJAM')).toBe(true);
