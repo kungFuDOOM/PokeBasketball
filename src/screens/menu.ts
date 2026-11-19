@@ -4,6 +4,7 @@ import type { TeamSource } from '../season/team';
 import { isNameBlocked } from '../nameFilter';
 import { isTutorialDone } from '../tutorial/store';
 import { esc, lettersName, showNameError } from '../util';
+import { logAdClick } from '../ads/clicks';
 import { adLinkUrl, liveAdsNow, onLiveAdsChange } from '../data/ads';
 import { weeklyChallengesTickerHtml } from '../raffle/challengesView';
 import { TICKER_TIP_RATIO, tickerRotation, type TickerSlot } from './tickerRotation';
@@ -185,7 +186,7 @@ export function tickerHtml(isStatic: boolean, clickable = false): string {
   const paid = liveAdsNow().map((a) => {
     const href = adLinkUrl(a.text, a.url);
     const text = esc(a.text);
-    return href ? `<a class="tk-link" href="${esc(href)}" target="_blank" rel="noopener noreferrer nofollow sponsored">${text}</a>` : text;
+    return href ? `<a class="tk-link"${a.id ? ` data-ad-id="${esc(a.id)}"` : ''} href="${esc(href)}" target="_blank" rel="noopener noreferrer nofollow sponsored">${text}</a>` : text;
   });
   const slotItem = (slot: TickerSlot): string => {
     switch (slot.kind) {
@@ -439,6 +440,11 @@ export function menuScreen(root: HTMLElement, settings: Settings, onChange: () =
     $('[data-go="challenges"]')!.addEventListener('click', openChallenges);
     wireTicker(openChallenges);
   }
+  // Paid ad links: count the click without delaying the link (the ticker is redrawn when ads change, so listen on the root).
+  root.addEventListener('click', (e) => {
+    const a = (e.target as HTMLElement | null)?.closest?.<HTMLAnchorElement>('a.tk-link[data-ad-id]');
+    if (a) logAdClick(a.dataset.adId, a.href);
+  });
   // Booked ads can arrive after the menu is drawn (the board loads on its own): redraw just the ticker then.
   offAds = onLiveAdsChange(() => {
     const old = $('.ticker');
