@@ -4,7 +4,9 @@
 import type { AdTheme } from '../data/ads';
 import type { BoardPlan, Plan } from './plans';
 
-export interface LiveAd { id: string; text: string; theme: AdTheme; wallet: string; starts_at: string; ends_at: string; burn_sig: string | null; usdc_sig?: string | null }
+export interface LiveAd { id: string; text: string; theme: AdTheme; wallet: string; starts_at: string; ends_at: string; burn_sig: string | null; usdc_sig?: string | null;
+  /** Click-through base link (https), when the booking has one; the page appends the UTMs. */
+  url?: string | null }
 
 export interface Board {
   now: string;
@@ -58,6 +60,7 @@ export interface Booking {
   /** Seconds of airtime left when moderators took it down: the advertiser can run it with new text. */
   removed_left: number | null;
   banned: boolean;
+  url?: string | null;
 }
 
 /** What confirm says: settled, still landing, or definitely not burned. */

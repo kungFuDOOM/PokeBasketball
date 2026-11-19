@@ -2,7 +2,7 @@ import { courtFor, type CourtStyle } from '../data/courts';
 import { bookableHalfOn, boardAds, houseAds, type BoardAd } from '../data/ads';
 import { badgeSvg } from '../ui/badges';
 import { IDEAL_RELEASE, type Game } from './game';
-import { drawLedBoard } from './ledBoard';
+import { drawLedBoard, type LedHit } from './ledBoard';
 import { SPOT_R, laneArrow, laneDashOffset, markerPulse, zonePoly, type CourtPt } from './markers';
 import { getSprite } from './sprites';
 import { BALL_R, COURT_L, COURT_W, HOOP_Y, RIM_R, RIM_Z, clamp, rand, type GameEvent, type Marker, type Player, type ShotZone } from './types';
@@ -48,6 +48,8 @@ export class Renderer {
   overlay: ((ctx: CanvasRenderingContext2D) => void) | null = null;
   /** What the courtside LED board runs: the booked ads (the Advertise page's preview shows a draft instead). */
   ads: () => BoardAd[] = boardAds;
+  /** The clickable LED panels as of the last frame (canvas px); see ledLinkAt. */
+  private ledHits: LedHit[] = [];
   private crowd: HTMLCanvasElement[] = [];
   private particles: Particle[] = [];
   private flash = 0;
@@ -222,6 +224,12 @@ export class Renderer {
     }
   }
 
+  /** The paid LED panel under a canvas point (480×270 space), if any: its final URL and booking id. Only the 16px panel strip counts. */
+  ledLinkAt(x: number, y: number): { url: string; id?: string } | null {
+    const h = this.ledHits.find((r) => x >= r.x0 && x < r.x1 && y >= r.y0 && y < r.y1);
+    return h ? { url: h.url, id: h.id } : null;
+  }
+
   private drawArena(ctx: CanvasRenderingContext2D) {
     ctx.fillStyle = '#0b0e22';
     ctx.fillRect(0, 0, VW, VH);
@@ -230,8 +238,9 @@ export class Renderer {
     const off = -((this.camX * S_FAR * 0.85) % crowd.width) - 200;
     for (let x = off; x < VW; x += crowd.width) ctx.drawImage(crowd, Math.round(x), 0);
     // LED ad board along the far sideline: 20px tall, bottom edge at Y_FAR-2, growing up over the crowd, with the fixed $PJAM house half first and the booked ads taking turns in the bookable half (where YOUR AD HERE ran).
+    this.ledHits = [];
     drawLedBoard(ctx, {
-      top: Y_FAR - 22, width: VW, scroll: this.camX * S_FAR + this.t * 12, t: this.t, edge: this.court!.boardColor,
+      hits: this.ledHits, top: Y_FAR - 22, width: VW, scroll: this.camX * S_FAR + this.t * 12, t: this.t, edge: this.court!.boardColor,
       hype: this.hype > 0, text: this.court!.board, ads: bookableHalfOn() ? this.ads() : [], house: houseAds(),
     });
   }

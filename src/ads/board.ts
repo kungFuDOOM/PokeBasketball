@@ -9,7 +9,7 @@ export const EVERY = 600_000;
 export const MAX_WAIT = 1_800_000;
 export const CACHE_KEY = 'pokejam.ads.board';
 
-interface Cached { at: number; live: { id?: string; text: string; theme: string; ends_at: string }[] }
+interface Cached { at: number; live: { id?: string; text: string; theme: string; ends_at: string; url?: string | null }[] }
 
 let timer: ReturnType<typeof setTimeout> | undefined;
 let started = false;
@@ -20,7 +20,7 @@ let inflight = false;
 
 function writeCache(b: Board) {
   try {
-    const c: Cached = { at: Date.now(), live: b.live.map((a) => ({ id: a.id, text: a.text, theme: a.theme, ends_at: a.ends_at })) };
+    const c: Cached = { at: Date.now(), live: b.live.map((a) => ({ id: a.id, text: a.text, theme: a.theme, ends_at: a.ends_at, url: a.url ?? null })) };
     localStorage.setItem(CACHE_KEY, JSON.stringify(c));
   } catch { /* storage full, blocked or private mode: just fetch more often */ }
 }
@@ -36,7 +36,7 @@ function readCache(): Cached | null {
 }
 
 function show(live: Cached['live']) {
-  setLiveAds(live.map((a) => ({ id: a.id, text: a.text, theme: a.theme as never, until: Date.parse(a.ends_at) })));
+  setLiveAds(live.map((a) => ({ id: a.id, url: a.url ?? undefined, text: a.text, theme: a.theme as never, until: Date.parse(a.ends_at) })));
 }
 
 /** Shows a board the page just got and shares it (the cache, the refresh clock). The Advertise page calls this too. */

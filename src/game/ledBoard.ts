@@ -1,4 +1,4 @@
-import { AD_TAG, AD_THEMES, boardAfterAd, type BannerAd, type BoardAd } from '../data/ads';
+import { AD_TAG, adOpenUrl, AD_THEMES, boardAfterAd, type BannerAd, type BoardAd } from '../data/ads';
 
 export interface LedBoardOptions {
   /** Top of the 20px board. */
@@ -22,7 +22,12 @@ export interface LedBoardOptions {
    * condensed to fit. Omit for the Advertise page's close-up of the bookable panel alone.
    */
   house?: BannerAd[];
+  /** When given, each drawn panel that has a link adds its screen rect and final (UTM'd) URL here, for click hit-testing. */
+  hits?: LedHit[];
 }
+
+/** A clickable panel as drawn this frame: x0..x1 across, y0..y1 down (canvas px), the URL to open, and the booking id when it has one. */
+export interface LedHit { x0: number; x1: number; y0: number; y1: number; url: string; id?: string }
 
 const LEAD = 4, PAD = 6, GAP = 4, TAG_PAD = 3;
 /** Width of one fixed house panel (main's half width before the bookable panel). */
@@ -87,7 +92,11 @@ export function drawLedBoard(ctx: CanvasRenderingContext2D, o: LedBoardOptions) 
   let x = -Math.floor(((o.scroll % cycle) + cycle) % cycle) - cycle;
   for (let i = 0; x < width + 4; i++) {
     const s = segs[i % segs.length];
-    house.forEach((a, j) => drawHousePanel(ctx, a, x + LEAD + j * HOUSE_W, top, base, pulse));
+    house.forEach((a, j) => {
+      drawHousePanel(ctx, a, x + LEAD + j * HOUSE_W, top, base, pulse);
+      const url = a.url ? adOpenUrl(a.text, a.url) : null;
+      if (o.hits && url) o.hits.push({ x0: x + LEAD + j * HOUSE_W, x1: x + LEAD + (j + 1) * HOUSE_W, y0: top + 2, y1: top + 18, url });
+    });
     if (s.ad) {
       const th = AD_THEMES[s.ad.theme];
       const bx = x + s.lead;
@@ -106,6 +115,8 @@ export function drawLedBoard(ctx: CanvasRenderingContext2D, o: LedBoardOptions) 
       ctx.fillText(AD_TAG, tx + TAG_PAD, base);
       ctx.fillStyle = th.color;
       ctx.fillText(s.ad.text, tx + tagW + GAP, base);
+      const url = o.hits ? adOpenUrl(s.ad.text, s.ad.url) : null;
+      if (o.hits && url) o.hits.push({ x0: bx, x1: bx + s.blockW, y0: top + 2, y1: top + 18, url, id: s.ad.id });
     }
     ctx.fillStyle = color;
     ctx.fillText(msg, x + s.lead + s.blockW, base);

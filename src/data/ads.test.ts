@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { AD_THEMES, BANNER_ADS, HOUSE_AD, adLinkUrl, adTextOk, boardAds, boardAfterAd, bookableHalfOn, cleanAdText, houseAds, setLiveAds } from './ads';
+import { AD_THEMES, BANNER_ADS, HOUSE_AD, SLABZ_URL, adLinkUrl, adOpenUrl, adTextOk, boardAds, boardAfterAd, bookableHalfOn, cleanAdText, houseAds, setLiveAds, withAdUtms } from './ads';
 import { COURTS } from './courts';
 
 describe('boardAfterAd', () => {
@@ -15,12 +15,13 @@ describe('boardAfterAd', () => {
 });
 
 describe('BANNER_ADS', () => {
-  it('has a $PJAM half and a YOUR AD HERE half as separate entries', () => {
+  it('has a Slabz half and a YOUR AD HERE half as separate entries', () => {
     expect(BANNER_ADS).toHaveLength(2);
-    expect(BANNER_ADS[0].text).toBe('$PJAM · OFFICIAL POKEJAM TOKEN');
+    expect(BANNER_ADS[0].text).toBe('SLABZ.COM');
+    expect(BANNER_ADS[0].url).toBe(SLABZ_URL);
     expect(BANNER_ADS[1].text).toBe('YOUR AD HERE');
     expect(BANNER_ADS[0]).not.toBe(BANNER_ADS[1]);
-    for (const a of BANNER_ADS) expect(Object.keys(a).sort()).toEqual(['bg', 'border', 'color', 'enabled', 'tag', 'tagBg', 'text']);
+    for (const a of BANNER_ADS) expect(Object.keys(a).sort()).toEqual(Object.keys(a).includes('url') ? ['bg', 'border', 'color', 'enabled', 'tag', 'tagBg', 'text', 'url'] : ['bg', 'border', 'color', 'enabled', 'tag', 'tagBg', 'text']);
   });
   it('makes no price or investment claims', () => {
     for (const a of BANNER_ADS) expect(a.text).not.toMatch(/price|profit|invest|moon|gain|return|\d+x/i);
@@ -28,8 +29,8 @@ describe('BANNER_ADS', () => {
 });
 
 describe('the two halves', () => {
-  it('keeps $PJAM as the fixed house half and YOUR AD HERE as the bookable half', () => {
-    expect(houseAds().map((a) => a.text)).toEqual(['$PJAM · OFFICIAL POKEJAM TOKEN']);
+  it('keeps Slabz as the fixed house half and YOUR AD HERE as the bookable half', () => {
+    expect(houseAds().map((a) => a.text)).toEqual(['SLABZ.COM']);
     expect(bookableHalfOn()).toBe(true);
     // The unbooked bookable half looks exactly like main's YOUR AD HERE panel.
     const yours = BANNER_ADS[1];
@@ -88,5 +89,36 @@ describe('adLinkUrl', () => {
     expect(adLinkUrl('x', 'http://evil.com')).toBeNull();
     expect(adLinkUrl('RIPIT .CO', 'http://evil.com')).toBe('https://ripit.co');
     expect(adLinkUrl('RIPIT .CO', 'https://ripit.co/play')).toBe('https://ripit.co/play');
+  });
+});
+
+const FINAL = 'https://slabz.com/ref/POKEJAM?utm_source=pokejam&utm_medium=display_ad&utm_campaign=pokejam_ad';
+
+describe('withAdUtms', () => {
+  it('appends the UTMs to a bare path', () => {
+    expect(withAdUtms('https://slabz.com/ref/POKEJAM')).toBe(FINAL);
+  });
+  it('appends after an existing query string', () => {
+    expect(withAdUtms('https://slabz.com/ref/POKEJAM?a=1')).toBe('https://slabz.com/ref/POKEJAM?a=1&utm_source=pokejam&utm_medium=display_ad&utm_campaign=pokejam_ad');
+  });
+  it('does not duplicate UTMs already present', () => {
+    expect(withAdUtms(FINAL)).toBe(FINAL);
+    const once = withAdUtms('https://slabz.com/ref/POKEJAM?utm_source=other&x=1')!;
+    expect(once.match(/utm_source=/g)).toHaveLength(1);
+    expect(once).toContain('utm_source=pokejam');
+    expect(withAdUtms(once)).toBe(once);
+  });
+  it('rejects anything that is not https', () => {
+    expect(withAdUtms('http://slabz.com/ref/POKEJAM')).toBeNull();
+    expect(withAdUtms('javascript:alert(1)')).toBeNull();
+    expect(withAdUtms('//slabz.com')).toBeNull();
+    expect(withAdUtms('https://user:pw@slabz.com/')).toBeNull();
+    expect(withAdUtms('not a url')).toBeNull();
+  });
+  it('gives the Slabz final destination for the booking and the hardcoded panel', () => {
+    expect(SLABZ_URL).toBe('https://slabz.com/ref/POKEJAM');
+    expect(adOpenUrl('SLABZ .COM', SLABZ_URL)).toBe(FINAL);
+    expect(adOpenUrl('YOUR AD HERE')).toBeNull();
+    expect(adOpenUrl('RIPIT .CO')).toBe('https://ripit.co/?utm_source=pokejam&utm_medium=display_ad&utm_campaign=pokejam_ad');
   });
 });

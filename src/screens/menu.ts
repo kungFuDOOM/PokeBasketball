@@ -5,7 +5,7 @@ import { isNameBlocked } from '../nameFilter';
 import { isTutorialDone } from '../tutorial/store';
 import { esc, lettersName, showNameError } from '../util';
 import { logAdClick } from '../ads/clicks';
-import { adLinkUrl, liveAdsNow, onLiveAdsChange } from '../data/ads';
+import { adOpenUrl, liveAdsNow, onLiveAdsChange } from '../data/ads';
 import { weeklyChallengesTickerHtml } from '../raffle/challengesView';
 import { TICKER_TIP_RATIO, tickerRotation, type TickerSlot } from './tickerRotation';
 import { prefersStatic, startAttract, type Attract, type AttractState } from './attract';
@@ -184,7 +184,7 @@ export function tickerHtml(isStatic: boolean, clickable = false): string {
   // Paid ads lead. While any are booked they share the ad blocks with $PJAM and the open slot, so one ad is not repeated.
   const esc = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   const paid = liveAdsNow().map((a) => {
-    const href = adLinkUrl(a.text, a.url);
+    const href = adOpenUrl(a.text, a.url); // final destination: the link plus the UTMs
     const text = esc(a.text);
     return href ? `<a class="tk-link"${a.id ? ` data-ad-id="${esc(a.id)}"` : ''} href="${esc(href)}" target="_blank" rel="noopener noreferrer nofollow sponsored">${text}</a>` : text;
   });

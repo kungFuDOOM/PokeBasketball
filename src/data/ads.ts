@@ -1,4 +1,5 @@
-export interface BannerAd { enabled: boolean; tag: string; text: string; bg: string; color: string; border: string; tagBg: string }
+/** `url`: where a click on this panel goes (base link; open it through withAdUtms so the UTMs are added). */
+export interface BannerAd { enabled: boolean; tag: string; text: string; bg: string; color: string; border: string; tagBg: string; url?: string }
 
 /** Colour themes an ad can run in on the courtside LED banner (the server checks the names). */
 export type AdTheme = 'gold' | 'fire' | 'water' | 'grass' | 'electric' | 'psychic' | 'ghost' | 'ice';
@@ -35,6 +36,39 @@ export function adLinkUrl(text: string, url?: string | null): string | null {
   return m ? `https://${m[1].toLowerCase()}.${m[2].toLowerCase()}` : null;
 }
 
+/** UTMs every paid-ad click carries, so the advertiser sees where the visit came from. */
+const AD_UTMS: [string, string][] = [['utm_source', 'pokejam'], ['utm_medium', 'display_ad'], ['utm_campaign', 'pokejam_ad']];
+
+/**
+ * Appends the Poke Jam UTMs to an https URL, whether or not it already has a query string, and without duplicating
+ * them when they are already there (an existing utm_source/medium/campaign is set to ours, in place). Null for anything
+ * that is not a valid https URL with a hostname and no userinfo.
+ */
+export function withAdUtms(url: string): string | null {
+  try {
+    const u = new URL(url);
+    if (u.protocol !== 'https:' || !u.hostname.includes('.') || u.username || u.password) return null;
+    for (const [k, v] of AD_UTMS) u.searchParams.set(k, v);
+    return u.href;
+  } catch {
+    return null;
+  }
+}
+
+/** The URL to open for a paid ad: its link (adLinkUrl) with the UTMs appended. Null when it has no safe link. */
+export function adOpenUrl(text: string, url?: string | null): string | null {
+  const base = adLinkUrl(text, url);
+  return base ? withAdUtms(base) : null;
+}
+
+/**
+ * SLABZ: the advertiser's tracking link. TO SWAP THE ADVERTISER'S LINK LATER change it in two places:
+ *  (1) this constant (the hardcoded left courtside panel below), and
+ *  (2) the url column of the Slabz booking row in public.pokejam_live_ads (the right panel and the bottom ticker).
+ * Store the base only (no utm_*): withAdUtms adds them when the link is opened.
+ */
+export const SLABZ_URL = 'https://slabz.com/ref/POKEJAM';
+
 /** What the banner shows when nobody has booked it: an ad for the ad space. */
 export const HOUSE_AD: BoardAd = { text: 'YOUR AD HERE', theme: 'gold' };
 
@@ -48,11 +82,14 @@ export const adTextOk = (s: string) => /^[A-Z0-9 $!?.,&+@#:'/%-]{1,24}$/.test(s.
 
 /** The sponsor panels in the courtside LED banner, left to right; together they replace the first (team/city) segment of a court's board text (the city already shows on the floor). Each half is independent (text, colors, tag, enabled). */
 export const BANNER_ADS: BannerAd[] = [
-  { enabled: true, tag: 'AD', text: '$PJAM · OFFICIAL POKEJAM TOKEN', bg: '#10122a', color: '#7dffb2', border: '#2fd37a', tagBg: '#2fd37a' },
+  // Left house half: Slabz (paid). TO GO BACK TO THE $PJAM PANEL restore this entry to:
+  //   { enabled: true, tag: 'AD', text: '$PJAM · OFFICIAL POKEJAM TOKEN', bg: '#10122a', color: '#7dffb2', border: '#2fd37a', tagBg: '#2fd37a' }
+  // (and drop the url). The right half stays bookable; the live Slabz booking runs there too.
+  { enabled: true, tag: 'AD', text: 'SLABZ.COM', bg: '#1b1340', color: '#9fd3ff', border: '#7c5cff', tagBg: '#7c5cff', url: SLABZ_URL },
   { enabled: true, tag: 'AD', text: 'YOUR AD HERE', bg: '#ffd23a', color: '#10122a', border: '#e03a2a', tagBg: '#e03a2a' },
 ];
 
-/** The fixed house half ($PJAM): every enabled panel except the last, which is the bookable half. */
+/** The fixed house half (Slabz; was $PJAM): every enabled panel except the last, which is the bookable half. */
 export const houseAds = (): BannerAd[] => BANNER_ADS.slice(0, -1).filter((a) => a.enabled);
 
 /** The last panel (YOUR AD HERE) is the bookable one: booked ads run there, or HOUSE_AD when nothing is booked. */
@@ -67,7 +104,7 @@ export function boardAfterAd(board: string): string {
 // drops off on time even between refreshes.
 let live: (BoardAd & { until: number })[] = [];
 
-const sig = () => JSON.stringify(live.map((a) => [a.text, a.theme, a.until]));
+const sig = () => JSON.stringify(live.map((a) => [a.text, a.theme, a.until, a.url ?? null, a.id ?? null]));
 const listeners = new Set<() => void>();
 
 /** Calls fn whenever the booked ads actually change (not on every refresh). Returns the unsubscribe. */

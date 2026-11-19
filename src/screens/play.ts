@@ -5,6 +5,7 @@ import { Hud } from '../game/hud';
 import { ReplayRecorder } from '../game/replay';
 import { Input } from '../game/input';
 import { Renderer } from '../game/render';
+import { logAdClick } from '../ads/clicks';
 import { preload } from '../game/sprites';
 import type { WireInput } from '../game/sync';
 import { emptyIntent, type GameConfig, type GameEvent, type Intent, type Player, type TeamId } from '../game/types';
@@ -109,6 +110,19 @@ export function playGame(
     online.start(g);
   }
   const renderer = new Renderer(canvas);
+  // The courtside LED panels are links: a click/tap that lands on the canvas inside the 16px panel strip opens the advertiser's
+  // link in a new tab and counts it. Sticks, buttons and the HUD sit above the canvas and never reach this; gameplay is untouched.
+  const ledAt = (e: MouseEvent) => {
+    const r = canvas.getBoundingClientRect();
+    return r.width && r.height ? renderer.ledLinkAt(((e.clientX - r.left) / r.width) * canvas.width, ((e.clientY - r.top) / r.height) * canvas.height) : null;
+  };
+  canvas.addEventListener('click', (e) => {
+    const hit = ledAt(e);
+    if (!hit) return;
+    window.open(hit.url, '_blank', 'noopener,noreferrer');
+    logAdClick(hit.id, hit.url);
+  });
+  canvas.addEventListener('pointermove', (e) => { canvas.style.cursor = ledAt(e) ? 'pointer' : ''; });
   const hud = new Hud(gameEl, g);
   // Play of the Game: offline games are recorded so the best moment can be replayed after the final buzzer.
   const spectator = !!opts.spectator && !online;
