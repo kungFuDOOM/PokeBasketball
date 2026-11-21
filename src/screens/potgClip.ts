@@ -2,7 +2,7 @@
 // modal, composes the (camera-cropped) game canvas plus a caption and watermark into a recording canvas, and
 // captures that with MediaRecorder, with the game's sound if the browser allows. Gameplay only: no HUD, scores,
 // wallet or wager, so it is safe from every mode (Pack Battles too). Nothing is uploaded.
-import { baseType, canRecordClip, clipExt, pickClipType } from '../ui/clipFormat';
+import { canRecordClip, clipFile, pickClipType } from '../ui/clipFormat';
 import { VH, VW } from '../game/render';
 import type { Game } from '../game/game';
 import { playOfTheGame, savedPlay } from './potg';
@@ -99,10 +99,12 @@ export function recordPlayClip(g: Game): ClipJob {
       rec.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
       rec.onerror = () => end(null);
       rec.onstop = () => {
-        const blob = new Blob(chunks, { type: baseType(type) });
-        end(blob.size ? new File([blob], `pokejam-play-of-the-game.${clipExt(type)}`, { type: blob.type }) : null);
+        // Prefer what the recorder says it actually produced (rec.mimeType) over what we asked for.
+        const blob = new Blob(chunks);
+        end(blob.size ? clipFile(blob, rec?.mimeType || type) : null);
       };
-      rec.start(250);
+      // No timeslice: timesliced output is a fragmented MP4 that Safari's <video> and Quick Look cannot play.
+      rec.start();
 
       const started = performance.now();
       let last = started;
