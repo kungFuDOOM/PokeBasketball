@@ -2782,12 +2782,14 @@ body:has(.pause-btn) .music-btn:not(.docked) {
 .potg-share .share { margin: 0 auto; }
 
 /* Share this play: the finished clip */
-.clip-panel { position: fixed; inset: 0; z-index: 400; display: flex; align-items: center; justify-content: center; padding: 12px; background: rgba(0, 0, 0, 0.78); }
+.clip-panel { position: fixed; inset: 0; z-index: 400; display: flex; align-items: center; justify-content: center; padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left)); background: rgba(0, 0, 0, 0.78); }
 .clip-card { position: relative; display: flex; flex-direction: column; gap: 10px; width: min(560px, 100%); max-height: 100%; padding: 10px; background: var(--panel); border: 2px solid var(--accent); border-radius: 8px; }
 .clip-card video { width: 100%; max-height: 55vh; background: #000; border-radius: 4px; }
 .clip-actions { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
 .clip-actions .btn { min-height: 44px; display: inline-flex; align-items: center; justify-content: center; font: 0.62rem var(--pixel); text-decoration: none; color: var(--fg); }
 .clip-actions .btn[hidden] { display: none; }
 .clip-toast { top: 8px; }
+.clip-hint { margin: 0; text-align: center; font: 0.55rem var(--pixel); color: var(--fg); }
+.clip-hint[hidden] { display: none; }
 /* the replay that is being recorded sits under a "Making your clip" card (the share button), out of sight */
 .potg-clip { position: fixed; left: -200vw; top: 0; width: 100vw; height: 100vh; pointer-events: none; }

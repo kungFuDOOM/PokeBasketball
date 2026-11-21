@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { baseType, canRecordClip, clipExt, pickClipType, planShare } from './clipFormat';
+import { baseType, canRecordClip, clipExt, clipFile, pickClipType, planPostOnX, planSave, planShare, saveLabel, X_HINT } from './clipFormat';
 
 const file = new File(['x'], 'a.mp4', { type: 'video/mp4' });
 
 describe('pickClipType', () => {
   it('prefers mp4 where it is supported (Safari)', () => {
-    expect(pickClipType((t) => t.startsWith('video/mp4'))).toBe('video/mp4;codecs=avc1.42E01E,mp4a.40.2');
+    expect(pickClipType((t) => t.startsWith('video/mp4'))).toBe('video/mp4;codecs=avc1');
+    expect(pickClipType((t) => t === 'video/mp4;codecs=avc1.42E01E,mp4a.40.2')).toBe('video/mp4;codecs=avc1.42E01E,mp4a.40.2');
+    expect(pickClipType((t) => t === 'video/mp4')).toBe('video/mp4');
   });
   it('falls back to webm vp9, then vp8', () => {
     expect(pickClipType((t) => t.startsWith('video/webm'))).toBe('video/webm;codecs=vp9,opus');
@@ -37,5 +39,29 @@ describe('planShare', () => {
   it('shares natively when files can be shared, else shows the video', () => {
     expect(planShare({ file, canShareFile: true })).toBe('native');
     expect(planShare({ file, canShareFile: false })).toBe('panel');
+  });
+});
+
+describe('saving and posting the clip', () => {
+  it('routes through the share sheet on touch devices that can share files, else a plain download', () => {
+    expect(planSave({ canShareFile: true, touch: true })).toBe('sheet');
+    expect(planSave({ canShareFile: true, touch: false })).toBe('download');
+    expect(planSave({ canShareFile: false, touch: true })).toBe('download');
+  });
+  it('labels the sheet route "Save to Photos" and the fallback "Download"', () => {
+    expect(saveLabel('sheet')).toBe('Save to Photos');
+    expect(saveLabel('download')).toBe('Download');
+  });
+  it('Post on X shares the file on mobile, else opens the intent with a hint', () => {
+    expect(planPostOnX({ canShareFile: true, touch: true })).toBe('sheet');
+    expect(planPostOnX({ canShareFile: true, touch: false })).toBe('intent-hint');
+    expect(planPostOnX({ canShareFile: false, touch: true })).toBe('intent-hint');
+    expect(X_HINT).toBe('Save the video, then attach it in X');
+  });
+  it('builds an mp4-typed File from a blob, ignoring codec suffixes', () => {
+    const f = clipFile(new Blob(['x']), 'video/mp4;codecs=avc1');
+    expect(f.type).toBe('video/mp4');
+    expect(f.name).toBe('pokejam-play-of-the-game.mp4');
+    expect(clipFile(new Blob(['x']), 'video/webm;codecs=vp9').name).toMatch(/\.webm$/);
   });
 });
