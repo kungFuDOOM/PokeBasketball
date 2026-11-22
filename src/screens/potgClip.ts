@@ -2,6 +2,7 @@
 // modal, composes the (camera-cropped) game canvas plus a caption and watermark into a recording canvas, and
 // captures that with MediaRecorder, with the game's sound if the browser allows. Gameplay only: no HUD, scores,
 // wallet or wager, so it is safe from every mode (Pack Battles too). Nothing is uploaded.
+import { CLIP_FPS, createClipPacer } from '../ui/clipPacer';
 import { canRecordClip, clipFile, pickClipType } from '../ui/clipFormat';
 import { VH, VW } from '../game/render';
 import type { Game } from '../game/game';
@@ -10,6 +11,8 @@ import { playOfTheGame, savedPlay } from './potg';
 /** Longest clip, and how long we wait for the whole thing before giving up. */
 export const MAX_CLIP_SECONDS = 15;
 const TIMEOUT_MS = (MAX_CLIP_SECONDS + 8) * 1000;
+/** Modest bitrate so Safari does not default to ~25 Mbps for a 6s clip. */
+const VIDEO_BPS = 7_000_000;
 const OUT_W = VW * 2;
 const OUT_H = VH * 2;
 
@@ -69,7 +72,11 @@ export function recordPlayClip(g: Game): ClipJob {
       const canvas = modal.querySelector('canvas')!;
       const caption = `${s.best.name.toUpperCase()} · ${s.best.title.toUpperCase()}`;
 
+      // Paint `out` at a fixed 30fps (not every rAF): Safari emits a captured frame per paint, bursty on 120Hz screens.
+      const pacer = createClipPacer();
+      let video: MediaStreamTrack & { requestFrame?: () => void };
       const compose = (cam: { zoom: number; x: number; y: number }) => {
+        if (!pacer.accept(performance.now())) return;
         const sw = VW / cam.zoom;
         const sh = VH / cam.zoom;
         octx.drawImage(canvas, cam.x - sw / 2, cam.y - sh / 2, sw, sh, 0, 0, OUT_W, OUT_H);
@@ -83,18 +90,24 @@ export function recordPlayClip(g: Game): ClipJob {
         octx.fillStyle = '#ffffff';
         octx.textAlign = 'right';
         octx.fillText('POKEJAM · pokejam.xyz', OUT_W - 20, OUT_H - 32);
+        if (manual) video.requestFrame?.();
       };
 
+      let manual = false;
       player = playOfTheGame(modal, canvas, s.clip, s.best, s.teamName, s.audio, s.voice, { compose });
 
-      const video = out.captureStream(30);
+      // Manual capture (requestFrame after each paint) where supported, else the browser's own 30fps capture.
+      let stream = out.captureStream(0);
+      video = stream.getVideoTracks()[0] as typeof video;
+      manual = typeof video?.requestFrame === 'function';
+      if (!manual) { stream.getTracks().forEach((t) => t.stop()); stream = out.captureStream(CLIP_FPS); video = stream.getVideoTracks()[0] as typeof video; }
       cap = s.audio.captureStream();
       if (cap) {
-        for (const t of cap.stream.getAudioTracks()) video.addTrack(t);
+        for (const t of cap.stream.getAudioTracks()) stream.addTrack(t);
         s.voice.captureTo(cap.node);
       }
       type = pickClipType((t) => MR.isTypeSupported?.(t) ?? false) ?? '';
-      rec = type ? new MR(video, { mimeType: type }) : new MR(video);
+      rec = type ? new MR(stream, { mimeType: type, videoBitsPerSecond: VIDEO_BPS }) : new MR(stream, { videoBitsPerSecond: VIDEO_BPS });
       if (!type) type = rec.mimeType || 'video/webm';
       rec.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
       rec.onerror = () => end(null);
