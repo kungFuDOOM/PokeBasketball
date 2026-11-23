@@ -1203,11 +1203,11 @@ var ROWS = [
   [393, "Piplup", ["Water"], "SG", 51, 64, 61, 58, 63, 49, 55, 56],
   [394, "Prinplup", ["Water"], "SG", 58, 72, 69, 67, 69, 61, 63, 63],
   [395, "Empoleon", ["Water", "Steel"], "C", 62, 82, 84, 78, 80, 84, 82, 72],
-  // Sinnoh legendaries, held to the 97 ceiling Mewtwo, Rayquaza and Deoxys set (generated ratings had four at 98-99).
+  // Sinnoh legendaries, held to the 97 ceiling Mewtwo, Rayquaza and Deoxys set (generated ratings had four at 98-99). Arceus is the one exception at 98 (inside 91 to 94).
   [483, "Dialga", ["Steel", "Dragon"], "C", 77, 92, 91, 80, 86, 96, 96, 78],
   [486, "Regigigas", ["Normal"], "C", 80, 70, 95, 74, 88, 90, 95, 74],
   [487, "Giratina", ["Ghost", "Dragon"], "C", 77, 76, 88, 78, 84, 96, 97, 76],
-  [493, "Arceus", ["Normal"], "C", 90, 82, 91, 80, 87, 95, 95, 82]
+  [493, "Arceus", ["Normal"], "C", 90, 82, 94, 80, 87, 95, 95, 82]
 ];
 var RETIRED_ROWS = [
   [658, "Greninja", ["Water", "Dark"], "SG", 94, 88, 78, 80, 82, 55, 58, 88],
@@ -3825,7 +3825,7 @@ var RANKED_EXCLUDED = [
   486,
   // Regigigas, C 94
   493,
-  // Arceus, C 97
+  // Arceus, C 98
   491
   // Darkrai, SG 92
 ];

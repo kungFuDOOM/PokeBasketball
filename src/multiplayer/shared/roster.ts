@@ -29,7 +29,7 @@ export const RANKED_EXCLUDED: readonly number[] = [
   484, // Palkia, C 95
   487, // Giratina, C 95
   486, // Regigigas, C 94
-  493, // Arceus, C 97
+  493, // Arceus, C 98
   491, // Darkrai, SG 92
 ];
 
