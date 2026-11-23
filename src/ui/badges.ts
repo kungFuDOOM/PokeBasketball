@@ -1,4 +1,4 @@
-// Small inline SVG badges for the badge case. Shapes and colors nod to the Kanto, Johto and Hoenn badges.
+// Small inline SVG badges for the badge case. Shapes and colors nod to the Kanto, Johto, Hoenn and Sinnoh badges.
 
 const shapes: Record<string, string> = {
   Boulder: `<polygon points="12,3 28,3 37,12 37,28 28,37 12,37 3,28 3,12" fill="#8d939c" stroke="#4b5058" stroke-width="2"/>
@@ -51,6 +51,23 @@ const shapes: Record<string, string> = {
     <circle cx="14" cy="20" r="3.5" fill="#6a1a42"/><circle cx="26" cy="20" r="3.5" fill="#6a4e0a"/>`,
   Rain: `<path d="M20 3 C27 14 33 20 33 26 C33 33 27 37 20 37 C13 37 7 33 7 26 C7 20 13 14 20 3z" fill="#2f78d0" stroke="#0c2a52" stroke-width="2"/>
     <path d="M15 24 C15 29 18 31 21 31" fill="none" stroke="#bfe0ff" stroke-width="2.5" stroke-linecap="round"/>`,
+  // Sinnoh.
+  Coal: `<polygon points="20,3 34,10 37,24 28,36 12,36 3,24 6,10" fill="#4a4d55" stroke="#1b1c20" stroke-width="2"/>
+    <polygon points="20,11 28,16 29,25 23,31 15,30 11,23 13,15" fill="#7b808b"/><path d="M16 17 L22 15 M15 24 L21 27" stroke="#c9ccd3" stroke-width="1.6" stroke-linecap="round"/>`,
+  Forest: `<path d="M20 3 C32 8 37 19 33 30 C29 36 24 37 20 37 C16 37 11 36 7 30 C3 19 8 8 20 3z" fill="#5fb05a" stroke="#1e4a1b" stroke-width="2"/>
+    <path d="M20 8 V34 M20 16 L28 11 M20 23 L29 18 M20 16 L12 11 M20 23 L11 18" stroke="#1e4a1b" stroke-width="1.8" stroke-linecap="round" fill="none"/>`,
+  Cobble: `<rect x="4" y="4" width="32" height="32" rx="5" fill="#c8553d" stroke="#4e1a0f" stroke-width="2"/>
+    <rect x="8" y="9" width="11" height="9" rx="2" fill="#e88a6e"/><rect x="21" y="9" width="11" height="9" rx="2" fill="#e88a6e"/><rect x="8" y="21" width="24" height="10" rx="2" fill="#e88a6e"/>`,
+  Fen: `<circle cx="20" cy="20" r="16" fill="#3f9bd6" stroke="#0d3a5c" stroke-width="2"/>
+    <path d="M8 17 q4-4 8 0 t8 0 t8 0 M8 25 q4-4 8 0 t8 0 t8 0" fill="none" stroke="#d8efff" stroke-width="2.4" stroke-linecap="round"/><circle cx="20" cy="11" r="2.2" fill="#d8efff"/>`,
+  Relic: `<polygon points="20,3 37,20 20,37 3,20" fill="#8a5ec4" stroke="#2a1346" stroke-width="2"/>
+    <polygon points="20,10 30,20 20,30 10,20" fill="#c6a7ee"/><circle cx="20" cy="20" r="4" fill="#2a1346"/>`,
+  Mine: `<circle cx="20" cy="20" r="16" fill="#7d8fa3" stroke="#2b3744" stroke-width="2"/>
+    <path d="M20 8 V26 M13 26 Q20 35 27 26 M14 14 H26" fill="none" stroke="#e6edf4" stroke-width="2.6" stroke-linecap="round"/><circle cx="20" cy="9" r="2.6" fill="#e6edf4"/>`,
+  Icicle: `<polygon points="5,6 35,6 20,37" fill="#9fdcf2" stroke="#2a7894" stroke-width="2" stroke-linejoin="round"/>
+    <path d="M12 6 L20 24 L28 6 M20 6 V30" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`,
+  Beacon: `<circle cx="20" cy="20" r="16" fill="#f2cf2f" stroke="#6a5400" stroke-width="2"/>
+    <path d="M23 6 L12 22 H19 L16 34 L29 17 H21z" fill="#fff6c2" stroke="#6a5400" stroke-width="1.4" stroke-linejoin="round"/>`,
   /** Any badge without its own design: a plain medal, never mistaken for the Elite emblem. */
   Neutral: `<circle cx="20" cy="20" r="16" fill="#9aa3ad" stroke="#4d555e" stroke-width="2"/>
     <circle cx="20" cy="20" r="9" fill="none" stroke="#e3e7eb" stroke-width="2"/>`,
