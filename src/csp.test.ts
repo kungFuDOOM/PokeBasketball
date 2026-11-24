@@ -53,6 +53,10 @@ describe('site CSP with live ads', () => {
     expect(directive(csp(SUPA, false, true), 'img-src').split(' ')).toContain('data:');
   });
 
+  it("allows the on-device clip preview (blob: video) and nothing remote for media", () => {
+    for (const p of [csp(SUPA, false, true), csp(SUPA, true, false)]) expect(directive(p, 'media-src').split(' ')).toEqual(['media-src', "'self'", 'blob:']);
+  });
+
   it("allows Collector Crypt's card images only in a Pack Battles build (VITE_MODE_PACK_BATTLES)", () => {
     const cc = CC_IMAGES.split(' ');
     const off = directive(csp(SUPA, false, true), 'img-src').split(' ');

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { baseType, canRecordClip, clipExt, clipFile, pickClipType, planPostOnX, planSave, planShare, saveLabel, X_HINT } from './clipFormat';
+import { baseType, canRecordClip, clipExt, clipFile, pickClipType, planPostOnX, planSave, planShare, saveLabel, sheetPayload, X_HINT } from './clipFormat';
 
 const file = new File(['x'], 'a.mp4', { type: 'video/mp4' });
 
@@ -34,11 +34,10 @@ describe('canRecordClip', () => {
 
 describe('planShare', () => {
   it('falls back to text/link without a clip', () => {
-    expect(planShare({ file: null, canShareFile: true })).toBe('text');
+    expect(planShare({ file: null })).toBe('text');
   });
-  it('shares natively when files can be shared, else shows the video', () => {
-    expect(planShare({ file, canShareFile: true })).toBe('native');
-    expect(planShare({ file, canShareFile: false })).toBe('panel');
+  it('always shows the preview card first (never auto-opens the share sheet)', () => {
+    expect(planShare({ file })).toBe('panel');
   });
 });
 
@@ -48,12 +47,15 @@ describe('saving and posting the clip', () => {
     expect(planSave({ canShareFile: true, touch: false })).toBe('download');
     expect(planSave({ canShareFile: false, touch: true })).toBe('download');
   });
-  it('labels the sheet route "Save to Photos" and the fallback "Download"', () => {
-    expect(saveLabel('sheet')).toBe('Save to Photos');
-    expect(saveLabel('download')).toBe('Download');
+  it('labels the sheet route "Save / Share Video" and the fallback "Download Video"', () => {
+    expect(saveLabel('sheet')).toBe('Save / Share Video');
+    expect(saveLabel('download')).toBe('Download Video');
   });
-  it('Post on X shares the file on mobile, else opens the intent with a hint', () => {
-    expect(planPostOnX({ canShareFile: true, touch: true })).toBe('sheet');
+  it('the sheet gets the file only: no title, text or url (breaks iOS Safari)', () => {
+    expect(Object.keys(sheetPayload(file))).toEqual(['files']);
+  });
+  it('Post on X is dropped on a phone with a file sheet, else opens the intent with a hint', () => {
+    expect(planPostOnX({ canShareFile: true, touch: true })).toBe('hidden');
     expect(planPostOnX({ canShareFile: true, touch: false })).toBe('intent-hint');
     expect(planPostOnX({ canShareFile: false, touch: true })).toBe('intent-hint');
     expect(X_HINT).toBe('Save the video, then attach it in X');
