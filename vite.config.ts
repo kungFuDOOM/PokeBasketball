@@ -34,6 +34,8 @@ export const csp = (supabaseUrl: string | undefined, captcha: boolean, analytics
   ...(captcha ? [`frame-src ${TURNSTILE}`] : []),
   "style-src 'self' 'unsafe-inline'",
   `img-src 'self' data:${analytics ? ` ${GA}` : ''}${packs ? ` ${CC_IMAGES}` : ''}`,
+  // The clip preview plays a blob: video made on the device (Play of the Game). Without this the <video> is blocked.
+  "media-src 'self' blob:",
   "font-src 'self'",
   // Online play talks to the configured Supabase project only (REST over https, Realtime over wss), plus the analytics beacon.
   // Courtside ads go through the project's pokejam-ads-live Edge Function, or VITE_ADS_API when it lives elsewhere (adsApiOrigin).

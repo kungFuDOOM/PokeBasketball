@@ -79,7 +79,7 @@ export function zoomFor(stageWidth: number): ZoomSet {
 }
 
 export function playOfTheGame(gameEl: HTMLElement, canvas: HTMLCanvasElement, clip: ReplayClip, h: Highlight, teamName: string,
-  audio: Audio, voice: Voice, opts: { again?: boolean; compose?: (cam: { zoom: number; x: number; y: number }) => void } = {}): PlayOfTheGame {
+  audio: Audio, voice: Voice, opts: { again?: boolean; silent?: boolean; compose?: (cam: { zoom: number; x: number; y: number }) => void } = {}): PlayOfTheGame {
   const g = clip.game;
   const renderer = new Renderer(canvas);
   renderer.snap(g);
@@ -110,7 +110,7 @@ export function playOfTheGame(gameEl: HTMLElement, canvas: HTMLCanvasElement, cl
   const flash = el.querySelector<HTMLElement>('.potg-flash')!;
   const intro = introLine(!!opts.again);
   const card = Math.max(CARD, voice.length(intro) + 0.2);
-  voice.say(intro);
+  if (!opts.silent) voice.say(intro);
   let t = 0;
   let acc = 0;
   let endT = -1;
@@ -199,11 +199,11 @@ export function playOfTheGame(gameEl: HTMLElement, canvas: HTMLCanvasElement, cl
         hud.handle(events);
         renderer.handle(events, g);
         const sfx = g.sfx.splice(0);
-        for (const s of sfx) audio.play(s);
+        if (!opts.silent) for (const s of sfx) audio.play(s);
         // A call that lands with a horn waits for it, as in the game.
         const hold = Voice.hornDelay(sfx);
         const line = announcer.next(events, g.time, (c) => hold + voice.length(c));
-        if (line) voice.say(line.clip, hold);
+        if (line && !opts.silent) voice.say(line.clip, hold);
       }
       if (clip.done && endT < 0) endT = t;
       if (endT >= 0) {

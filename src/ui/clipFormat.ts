@@ -37,14 +37,11 @@ export function canRecordClip(env: {
 export type SharePlan =
   /** No clip (unsupported, failed or timed out): the plain text/link share. */
   | 'text'
-  /** Hand the video file to the native share sheet. */
-  | 'native'
-  /** Show the video with Download, Post on X and Copy link. */
+  /** Show the clip preview card; the user taps Save / Share Video with a fresh gesture (never auto-open the sheet). */
   | 'panel';
 
-export function planShare(clip: { file: File | null; canShareFile: boolean }): SharePlan {
-  if (!clip.file) return 'text';
-  return clip.canShareFile ? 'native' : 'panel';
+export function planShare(clip: { file: File | null }): SharePlan {
+  return clip.file ? 'panel' : 'text';
 }
 
 /** Where the clip is saved from: the share sheet (its "Save Video" puts it in Photos) or a plain download link. */
@@ -55,21 +52,27 @@ export function planSave(env: { canShareFile: boolean; touch: boolean }): SaveRo
   return env.canShareFile && env.touch ? 'sheet' : 'download';
 }
 
-export const saveLabel = (route: SaveRoute): string => (route === 'sheet' ? 'Save to Photos' : 'Download');
+export const saveLabel = (route: SaveRoute): string => (route === 'sheet' ? 'Save / Share Video' : 'Download Video');
 
 export type XRoute =
-  /** Open the share sheet with the video so the user can pick X (an X web intent cannot attach a file). */
-  | 'sheet'
-  /** Open the text intent and tell the user to attach the saved video themselves. */
-  | 'intent-hint';
+  /** Open the text intent and tell the user to attach the saved video themselves (an X web intent cannot attach a file). */
+  | 'intent-hint'
+  /** Not offered: on a phone the share sheet already lists X. */
+  | 'hidden';
 
 export const planPostOnX = (env: { canShareFile: boolean; touch: boolean }): XRoute =>
-  env.canShareFile && env.touch ? 'sheet' : 'intent-hint';
+  env.canShareFile && env.touch ? 'hidden' : 'intent-hint';
 
 export const X_HINT = 'Save the video, then attach it in X';
+
+/** The share payload for the sheet: the file ONLY. Mixing files with title/text/url breaks iOS Safari's sheet. */
+export const sheetPayload = (file: File): { files: File[] } => ({ files: [file] });
 
 /** The video as a File with the right container type, whatever the recorder reported. */
 export function clipFile(blob: Blob, mime: string): File {
   const base = baseType(mime);
   return new File([blob], `pokejam-play-of-the-game.${clipExt(base)}`, { type: base });
 }
+
+/** A still of the peak moment (a data: URL, which the CSP allows for images) for clips made by the WebCodecs encoder. */
+export const clipPosters = new WeakMap<File, string>();
