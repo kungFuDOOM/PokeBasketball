@@ -803,8 +803,34 @@ export class Game {
   }
 
   /**
+   * Best bench fit for the floor spot `out` holds, by position first. Spot = court slot (PG,SG,SF,PF,C), so a
+   * SF covering PF is replaced by a PF. Order: exact position, then one spot away (small-ball cover), then
+   * (only when `allowFar`, i.e. injuries) anything. Inside a tier, a fit that would leave two PGs or two Cs
+   * loses, then the usual freshness/OVR/bench-order score decides. `ok` filters candidates.
+   */
+  private pickSub(t: TeamId, out: Player, pool: Player[], allowFar: boolean, ok: (c: Player, dist: number) => boolean): Player | null {
+    const target = out.slot >= 0 && out.slot < POSITIONS.length ? out.slot : POSITIONS.indexOf(out.mon.pos);
+    const others = this.teamPlayers(t).filter((p) => p !== out);
+    let best: Player | null = null;
+    let bk: number[] = [];
+    for (const c of pool) {
+      const dist = Math.abs(POSITIONS.indexOf(c.mon.pos) - target);
+      if (dist > 1 && !allowFar) continue;
+      if (!ok(c, dist)) continue;
+      const dup = (c.mon.pos === 'PG' || c.mon.pos === 'C') && others.some((p) => p.mon.pos === c.mon.pos) ? 1 : 0;
+      const returning = c.starter && !out.starter && c.energy >= 0.85;
+      // Bench order matters: the coach goes to the 6th man before the 10th.
+      const score = c.mon.ovr + c.energy * 10 + (returning ? 8 : 0) - (c.rotation - 5) * 4;
+      const key = [dist, dup, -score];
+      if (!best || key[0] < bk[0] || (key[0] === bk[0] && (key[1] < bk[1] || (key[1] === bk[1] && key[2] < bk[2])))) { best = c; bk = key; }
+    }
+    return best;
+  }
+
+  /**
    * The coach's rotation, run at dead balls and quarter breaks: tired players come out for the
-   * freshest good fit on the bench, and rested starters come back in.
+   * freshest good fit at their position, and rested starters come back to their own spot.
+   * Nobody plays more than one spot out of position unless an injury forces it.
    */
   private autoSubs(t: TeamId, quarterBreak: boolean) {
     if (!this.cfg.stamina) return;
@@ -812,7 +838,7 @@ export class Game {
     if (!bench().length) return;
     // An injured player always comes out, even when the user runs the rotation.
     for (const hurt of this.teamPlayers(t).filter((p) => p.hurt && p !== this.ball.owner && p.state === 'free')) {
-      const fill = bench().sort((a, b) => (b.mon.pos === hurt.mon.pos ? 6 : 0) + b.mon.ovr - b.rotation * 2 - ((a.mon.pos === hurt.mon.pos ? 6 : 0) + a.mon.ovr - a.rotation * 2))[0];
+      const fill = this.pickSub(t, hurt, bench(), true, () => true);
       if (fill) this.swap(hurt, fill);
     }
     if (t === 0 && this.teams[0].human && this.cfg.userAutoSubs === false) return;
@@ -820,17 +846,14 @@ export class Game {
     let swaps = 0;
     for (const out of onCourt) {
       if (swaps >= (quarterBreak ? 5 : 2)) break;
-      if (out === this.ball.owner || out.state !== 'free') continue;
+      if (out === this.ball.owner || out.state !== 'free' || !this.players.includes(out)) continue;
       const tired = out.energy < (quarterBreak ? 0.6 : 0.5);
-      let best: Player | null = null;
-      let bs = -Infinity;
-      for (const c of bench()) {
-        const restedStarter = c.starter && !out.starter && c.energy >= 0.85;
-        if (c.energy < 0.7 || !(tired || restedStarter)) continue;
-        // Bench order matters: the coach goes to the 6th man before the 10th.
-        const s = c.mon.ovr + (c.mon.pos === out.mon.pos ? 6 : 0) + c.energy * 10 + (restedStarter ? 8 : 0) - (c.rotation - 5) * 4;
-        if (s > bs) { bs = s; best = c; }
-      }
+      const best = this.pickSub(t, out, bench(), false, (c, dist) => {
+        if (c.energy < 0.7) return false;
+        if (tired) return true;
+        // A rested starter only comes back for their own spot (or their own position).
+        return c.starter && !out.starter && c.energy >= 0.85 && (dist === 0 || (dist === 1 && c.rotation === out.slot));
+      });
       if (best) {
         this.swap(out, best);
         swaps++;
