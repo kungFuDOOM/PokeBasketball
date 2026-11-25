@@ -135,3 +135,86 @@ describe('autoSubs injuries', () => {
     expect(home(g)).toContain(sg); // tired SG stays
   });
 });
+
+describe('autoSubs on fire', () => {
+  // The user's team on Auto, and a CPU team (which ignores the user's setting).
+  const teams: [string, boolean, Partial<GameConfig>][] = [
+    ['user', true, { userAutoSubs: true }],
+    ['CPU', false, { userAutoSubs: false }],
+  ];
+  const setup = (human: boolean, over: Partial<GameConfig>) => {
+    const g = build(STARTERS, [['SG', 60]], over, human);
+    benchOf(g).forEach((b) => (b.energy = 1));
+    const sg = byPos(g, 'SG');
+    sg.energy = 0.05;
+    sg.fire = true;
+    return { g, sg };
+  };
+
+  for (const [who, human, over] of teams) {
+    it(`${who}: a gassed player on fire stays in at dead balls and quarter breaks`, () => {
+      const { g, sg } = setup(human, over);
+      auto(g);
+      auto(g, true);
+      expect(home(g)).toContain(sg);
+      expect(sg.fire).toBe(true);
+    });
+
+    for (const quarterBreak of [false, true]) {
+      it(`${who}: once the fire ends, normal rules sub them at the next ${quarterBreak ? 'quarter break' : 'dead ball'}`, () => {
+        const { g, sg } = setup(human, over);
+        auto(g, quarterBreak);
+        expect(home(g)).toContain(sg);
+        sg.fire = false;
+        auto(g, quarterBreak);
+        expect(benchOf(g)).toContain(sg);
+      });
+    }
+  }
+
+  it('a rested starter does not take back the spot of a bench player on fire until the fire ends', () => {
+    const g = build(STARTERS, [['SG', 60]]);
+    const starter = byPos(g, 'SG');
+    const sub = benchOf(g)[0];
+    (g as unknown as { swap(o: Player, s: Player): void }).swap(starter, sub);
+    starter.energy = 1;
+    sub.energy = 0.8;
+    sub.fire = true;
+    auto(g);
+    expect(home(g)).toContain(sub);
+    sub.fire = false;
+    auto(g);
+    expect(home(g)).toContain(starter);
+  });
+
+  it('a tired teammate is still subbed while another player is on fire', () => {
+    const g = build(STARTERS, [['SG', 60], ['PF', 60]]);
+    benchOf(g).forEach((b) => (b.energy = 1));
+    const sg = byPos(g, 'SG');
+    const pf = byPos(g, 'PF');
+    tire(g, sg, pf);
+    sg.fire = true;
+    auto(g);
+    expect(home(g)).toContain(sg);
+    expect(benchOf(g)).toContain(pf);
+  });
+
+  for (const userAutoSubs of [true, false]) {
+    for (const phase of ['dead', 'live'] as const) {
+      it(`the user can still sub out a player on fire (auto subs ${userAutoSubs ? 'on' : 'off'}, called ${phase === 'dead' ? 'during a stoppage' : 'during live play'})`, () => {
+        const { g, sg } = setup(true, { userAutoSubs });
+        const sub = benchOf(g)[0];
+        g.phase = phase;
+        expect(g.requestSub(sg, sub)).toBe(true);
+        // A live-play call waits for the next dead ball.
+        if (phase === 'live') {
+          expect(home(g)).toContain(sg);
+          (g as unknown as { inbound(): void }).inbound();
+        }
+        expect(home(g)).toContain(sub);
+        expect(benchOf(g)).toContain(sg);
+        expect(sg.fire).toBe(false); // sitting down still puts the fire out
+      });
+    }
+  }
+});
