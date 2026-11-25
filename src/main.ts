@@ -17,9 +17,8 @@ import { DIFFICULTIES, type Difficulty } from './game/types';
 import type { Game } from './game/game';
 import { draftScreen, type DraftState } from './screens/draft';
 import { openRegionIds, poolMons } from './franchise/regions';
-import { watchKing } from './kabuto/dom';
-import { withKingKabuto } from './kabuto/king';
 import { shouldPlayMasterCutscene, shouldShowChampionship, shouldShowNewSeason } from './franchise/moments';
+import { watchKing } from './kabuto/dom';
 import { hubScreen } from './screens/hub';
 import { championshipScreen, newSeasonScreen } from './screens/moments';
 import { masterScreen } from './screens/master';
@@ -290,13 +289,10 @@ function season() {
 function draft(state: DraftState) {
   app.className = 'screen-draft';
   window.scrollTo(0, 0);
-  // Kabuto King is draftable while his event runs (crowned, gold tag); whoever drafts him keeps him (createFranchise).
-  const unwatch = watchKing(app);
   draftScreen(app, state, audio, (rosters, leftovers) => {
-    unwatch();
     // Cancel keeps the finished draft saved (Continue draft on the menu brings it back) and starts nothing.
     void startFranchise(state.teams, rosters, leftovers, { fromDrafted: false, onCancel: menu });
-  }, () => { unwatch(); menu(); }, saveDraft, { pool: withKingKabuto(poolMons(state.regions)) });
+  }, menu, saveDraft, { pool: poolMons(state.regions) });
 }
 
 /**
@@ -317,7 +313,6 @@ async function startFranchise(
   save();
   if (opts.fromDrafted) renameDrafted(name);
   // Pokémon held back from the draft pool (locked regions) still join free agency, for when their region unlocks.
-  // By dex, so a drafted Kabuto King (his own card) doesn't also bring a plain Kabuto into free agency.
   const used = new Set([...rosters.flat(), ...leftovers].map((m) => m.dex));
   franchise = createFranchise(teams, rosters, [...leftovers, ...POKEMON.filter((m) => !used.has(m.dex))]);
   const unlocked = loadRegionProfile();
@@ -326,6 +321,8 @@ async function startFranchise(
   saveDraft(null);
   hub();
 }
+
+let stopKing = () => {};
 
 function hub() {
   const f = franchise;
@@ -352,6 +349,11 @@ function hub() {
       saveFranchise(f);
       hub();
     });
+  }
+  // A saved King Kabuto keeps his crown and gold tag on the franchise screens only (never in drafts or Quick Play).
+  stopKing();
+  if (Object.values(f.players).some((p) => p.king === true)) {
+    stopKing = watchKing(app, () => franchise === f && /\bscreen-(hub|results)\b/.test(app.className));
   }
   hubScreen(app, f, settings, {
     play: (g) => playUserGame(f, g),

@@ -1,5 +1,5 @@
 import { EVOLUTIONS, RATING_LABELS, isRetired, monByDex, positionWeights, withBonus, type Mon, type PokeType, type Ratings } from '../data/pokemon';
-import { isKingKabuto, kingKabutoCard, withKingKabuto } from '../kabuto/king';
+import { kingKabutoCard } from '../kabuto/king';
 import { Game, bestLineup, chemistry } from '../game/game';
 import { courtFor, userCourt } from '../data/courts';
 import type { Difficulty, GameConfig, PStats, TeamDef } from '../game/types';
@@ -32,10 +32,7 @@ export interface FPlayer {
   ovrStart?: number;
   /** Weeks left on the injury list. */
   injury?: number;
-  /**
-   * Kabuto King: drafted during his event, so this team keeps the King card (dex 140) for good, after the event too.
-   * He never evolves. Missing on every other player, and on a Kabuto that went undrafted.
-   */
+  /** Legacy King Kabuto: only saves that already drafted him carry it, and they keep him. Never set on new players. */
   king?: true;
 }
 
@@ -164,7 +161,7 @@ export const monOf = (f: Franchise, uid: string): Mon => {
   return p.king === true ? kingKabutoCard(p.bonus) : withBonus(p.dex, p.bonus);
 };
 
-/** Where this player can evolve, if anywhere. Kabuto King stays Kabuto King. */
+/** Where this player can evolve, if anywhere. A saved King Kabuto stays King Kabuto. */
 export const evolutionOf = (p: FPlayer) => (p.king === true ? undefined : EVOLUTIONS[p.dex]);
 
 /** Uids of a team's starting five and bench, in the order the coach would use them. */
@@ -250,12 +247,9 @@ export function createFranchise(
 ): Franchise {
   const players: Record<string, FPlayer> = {};
   let n = 0;
-  // Only a team that drafted Kabuto King keeps him: one left in the pool joins free agency as a plain Kabuto.
-  const add = (m: Mon, drafted = false) => {
+  const add = (m: Mon) => {
     const uid = `p${n++}`;
-    const king = drafted && isKingKabuto(m);
-    players[uid] = { uid, dex: m.dex, level: 1, xp: 0, bonus: {}, stats: emptyStats(), ovrStart: king ? m.ovr : withBonus(m.dex, {}).ovr };
-    if (king) players[uid].king = true;
+    players[uid] = { uid, dex: m.dex, level: 1, xp: 0, bonus: {}, stats: emptyStats(), ovrStart: withBonus(m.dex, {}).ovr };
     return uid;
   };
   return {
@@ -263,7 +257,7 @@ export function createFranchise(
     season: 1,
     week: 1,
     phase: 'season',
-    teams: teams.map((t, id) => ({ id, ...t, roster: rosters[id].map((m) => add(m, true)), w: 0, l: 0, pf: 0, pa: 0, streak: 0 })),
+    teams: teams.map((t, id) => ({ id, ...t, roster: rosters[id].map((m) => add(m)), w: 0, l: 0, pf: 0, pa: 0, streak: 0 })),
     players,
     freeAgents: leftovers.map((m) => add(m)),
     weeks: teams.length - 1,
@@ -334,6 +328,7 @@ export function loadFranchise(): Franchise | null {
     if (!cleanTeams(f.teams, regionTeams(regionById(f.region) ?? KANTO))) return null;
     reconcileRegions(f, loadRegionProfile());
     retireLegacy(f);
+    // Saved `king: true` players are kept as they are (King card, level, xp, bonus, ovrStart): no migration.
     const earned = earnedUnlocks(f);
     if (earned.some((id) => loadRegionProfile().indexOf(id) < 0)) saveRegionProfile(earned);
     return f;
@@ -853,7 +848,7 @@ function computeAwards(f: Franchise): Award[] {
 function bringBackKanto(f: Franchise): void {
   const me = f.teams[0];
   const held = new Set(me.roster.map((u) => f.players[u].dex));
-  const pool = withKingKabuto(poolMons(openRegions(f))).filter((m) => !held.has(m.dex));
+  const pool = poolMons(openRegions(f)).filter((m) => !held.has(m.dex));
   const cpu = regionTeams(KANTO);
   const draftTeams = [
     { name: me.name, abbr: me.abbr, color: me.color, color2: me.color2, human: true },
@@ -870,9 +865,7 @@ function bringBackKanto(f: Franchise): void {
   const add = (m: Mon) => {
     while (f.players[`p${n}`]) n++;
     const uid = `p${n++}`;
-    const king = isKingKabuto(m);
-    f.players[uid] = { uid, dex: m.dex, level: 1, xp: 0, bonus: {}, stats: emptyStats(), ovrStart: king ? m.ovr : withBonus(m.dex, {}).ovr };
-    if (king) f.players[uid].king = true;
+    f.players[uid] = { uid, dex: m.dex, level: 1, xp: 0, bonus: {}, stats: emptyStats(), ovrStart: withBonus(m.dex, {}).ovr };
     return uid;
   };
   f.teams = [me, ...cpu.map((t, i): FTeam => ({

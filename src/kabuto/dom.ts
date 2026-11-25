@@ -1,6 +1,6 @@
-// DOM helpers for Kabuto King: crowned sprite + gold name tag, applied to screens we don't want to fork (the draft).
+// DOM helpers for a saved King Kabuto: crowned sprite + gold name tag, used only on franchise screens.
 import { spriteUrl } from '../data/pokemon';
-import { KING_KABUTO, kingKabutoActive } from './config';
+import { KING_KABUTO } from './config';
 import { crownedSpriteUrl } from './crown';
 
 /** Swap a dex-140 sprite <img> for the crowned data URL once it is ready (the plain sprite shows meanwhile). */
@@ -9,7 +9,10 @@ export function crownImg(img: HTMLImageElement): void {
   void crownedSpriteUrl(plain).then((u) => { if (u !== plain && img.getAttribute('src') === plain) img.src = u; });
 }
 
-/** Crown every Kabuto King sprite under `root` and wrap exact "Kabuto King" name text in the gold tag. */
+/**
+ * Crown every dex-140 sprite under `root` and wrap exact "Kabuto King" name text in the gold tag. Plain Kabuto
+ * sprites share the dex-140 url, so only call this where a saved King is on screen (see `watchKing`).
+ */
 export function decorateKing(root: ParentNode): void {
   const url = spriteUrl(KING_KABUTO.dex);
   root.querySelectorAll<HTMLImageElement>('img').forEach((img) => { if (img.getAttribute('src') === url) crownImg(img); });
@@ -27,11 +30,15 @@ export function decorateKing(root: ParentNode): void {
   }
 }
 
-/** While the window is open, keep `root` decorated as the screen re-renders. Returns a disposer. No-op when closed. */
-export function watchKing(root: HTMLElement, now: number = Date.now()): () => void {
-  if (!kingKabutoActive(now) || typeof MutationObserver === 'undefined') return () => {};
-  decorateKing(root);
-  const mo = new MutationObserver(() => decorateKing(root));
+/**
+ * Keep `root` decorated as a franchise screen re-renders. Only for a franchise that holds a saved King: a
+ * franchise has one dex-140 player, so every Kabuto sprite on its screens is him. Returns a disposer.
+ */
+export function watchKing(root: HTMLElement, when: () => boolean = () => true): () => void {
+  if (typeof MutationObserver === 'undefined') return () => {};
+  const run = () => { if (when()) decorateKing(root); };
+  run();
+  const mo = new MutationObserver(run);
   mo.observe(root, { childList: true, subtree: true });
   return () => mo.disconnect();
 }
