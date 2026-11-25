@@ -1,4 +1,5 @@
 import { EVOLUTIONS, RATING_LABELS, isRetired, monByDex, positionWeights, withBonus, type Mon, type PokeType, type Ratings } from '../data/pokemon';
+import { kingKabutoCard } from '../kabuto/king';
 import { Game, bestLineup, chemistry } from '../game/game';
 import { courtFor, userCourt } from '../data/courts';
 import type { Difficulty, GameConfig, PStats, TeamDef } from '../game/types';
@@ -31,7 +32,7 @@ export interface FPlayer {
   ovrStart?: number;
   /** Weeks left on the injury list. */
   injury?: number;
-  /** Retired limited special. Only old saves carry it: `loadFranchise` turns that player into a plain Kabuto and drops it. Never set on new players. */
+  /** Legacy King Kabuto: only saves that already drafted him carry it, and they keep him. Never set on new players. */
   king?: true;
 }
 
@@ -157,11 +158,11 @@ const emptyStats = (): SeasonStats => ({ gp: 0, pts: 0, fgm: 0, fga: 0, tpm: 0, 
 
 export const monOf = (f: Franchise, uid: string): Mon => {
   const p = f.players[uid];
-  return withBonus(p.dex, p.bonus);
+  return p.king === true ? kingKabutoCard(p.bonus) : withBonus(p.dex, p.bonus);
 };
 
-/** Where this player can evolve, if anywhere. */
-export const evolutionOf = (p: FPlayer) => EVOLUTIONS[p.dex];
+/** Where this player can evolve, if anywhere. A saved King Kabuto stays King Kabuto. */
+export const evolutionOf = (p: FPlayer) => (p.king === true ? undefined : EVOLUTIONS[p.dex]);
 
 /** Uids of a team's starting five and bench, in the order the coach would use them. */
 /**
@@ -299,20 +300,6 @@ function retireLegacy(f: Franchise) {
   f.news = f.news.slice(0, 8);
 }
 
-/**
- * Save migration: the retired Kabuto King special (players flagged `king: true`, dex 140) becomes a plain Kabuto.
- * Level, xp, bonus, stats, uid and roster spot stay as they were; he uses Kabuto's normal ratings plus his bonus and
- * can evolve like any Kabuto. His season-start OVR is re-based so Most Improved doesn't see the card change as a drop.
- */
-function migrateKing(f: Franchise) {
-  for (const p of Object.values(f.players)) {
-    if (!p || (p as { king?: unknown }).king === undefined) continue;
-    delete p.king;
-    p.dex = 140;
-    if (p.ovrStart !== undefined) p.ovrStart = withBonus(p.dex, p.bonus).ovr;
-  }
-}
-
 const HEX = /^#[0-9a-f]{3,8}$/i;
 
 /**
@@ -341,7 +328,7 @@ export function loadFranchise(): Franchise | null {
     if (!cleanTeams(f.teams, regionTeams(regionById(f.region) ?? KANTO))) return null;
     reconcileRegions(f, loadRegionProfile());
     retireLegacy(f);
-    migrateKing(f);
+    // Saved `king: true` players are kept as they are (King card, level, xp, bonus, ovrStart): no migration.
     const earned = earnedUnlocks(f);
     if (earned.some((id) => loadRegionProfile().indexOf(id) < 0)) saveRegionProfile(earned);
     return f;

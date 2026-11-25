@@ -39,7 +39,7 @@ async function sgBoard(page) {
   await page.waitForTimeout(1500);
 }
 
-// A legacy franchise: the user's Kabuto carries the retired `king: true` flag (as saves from the event did); reused verbatim after the removal.
+// A legacy franchise: the user's Kabuto carries the legacy `king: true` flag (as saves from the event did); it must still load as King Kabuto.
 async function buildLegacySave(page) {
   await goMenu(page);
   const json = await page.evaluate(async () => {
@@ -52,7 +52,7 @@ async function buildLegacySave(page) {
     const used = new Set(rosters.flat().map((m) => m.dex));
     const f = L.createFranchise(teams, rosters, pool.filter((m) => !used.has(m.dex)));
     const u = Object.values(f.players).find((p) => p.dex === 140);
-    Object.assign(u, { king: true, level: 4, xp: 3, bonus: { pas: 2, spd: 1 } });
+    Object.assign(u, { king: true, level: 4, xp: 3, bonus: { pas: 2, spd: 1 }, ovrStart: 87 });
     return JSON.stringify(f);
   });
   writeFileSync(SAVE_FILE, json);

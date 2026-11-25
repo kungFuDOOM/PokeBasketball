@@ -133,7 +133,7 @@ describe('Sinnoh championship cycle', () => {
     expect(f.teams[0].name).toBe('Pallet Town');
     expect(f.players[star]).toMatchObject({ level: 8, xp: 17, bonus: { sht: 3, spd: 1 }, injury: 0 });
     expect(f.players[star].stats.pts).toBe(0);
-    expect(f.players[kept]).toMatchObject({ dex: 140, level: 4, xp: 3, bonus: { pas: 1 } });
+    expect(f.players[kept]).toMatchObject({ dex: 140, king: true, level: 4, xp: 3, bonus: { pas: 1 } });
     expect(f.freeAgents).toContain(oldCpu);
     expect(f.players[oldCpu]).toMatchObject({ level: 5, bonus: { def: 2 } });
     expect(f.teams.some((t) => t.roster.includes(oldCpu))).toBe(false);
@@ -174,9 +174,7 @@ describe('Sinnoh championship cycle', () => {
     expect(cpuDex(loaded)).toEqual(drafted);
     expect(loaded.teams[0].roster).toEqual(owned);
     expect(loaded.players[star]).toMatchObject({ level: 8, xp: 17, bonus: { sht: 3, spd: 1 } });
-    // The retired King flag planted above is migrated away on load: a plain Kabuto with the same level, xp and bonus.
-    expect(loaded.players[kept].king).toBeUndefined();
-    expect(loaded.players[kept]).toMatchObject({ dex: 140, level: 4, xp: 3, bonus: { pas: 1 } });
+    expect(loaded.players[kept].king).toBe(true);
     expect(loaded.unlockedRegions).toEqual(['johto', 'hoenn', 'sinnoh']);
     expect(loaded.history).toEqual(history);
 

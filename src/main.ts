@@ -18,6 +18,7 @@ import type { Game } from './game/game';
 import { draftScreen, type DraftState } from './screens/draft';
 import { openRegionIds, poolMons } from './franchise/regions';
 import { shouldPlayMasterCutscene, shouldShowChampionship, shouldShowNewSeason } from './franchise/moments';
+import { watchKing } from './kabuto/dom';
 import { hubScreen } from './screens/hub';
 import { championshipScreen, newSeasonScreen } from './screens/moments';
 import { masterScreen } from './screens/master';
@@ -321,6 +322,8 @@ async function startFranchise(
   hub();
 }
 
+let stopKing = () => {};
+
 function hub() {
   const f = franchise;
   if (!f) return menu();
@@ -346,6 +349,11 @@ function hub() {
       saveFranchise(f);
       hub();
     });
+  }
+  // A saved King Kabuto keeps his crown and gold tag on the franchise screens only (never in drafts or Quick Play).
+  stopKing();
+  if (Object.values(f.players).some((p) => p.king === true)) {
+    stopKing = watchKing(app, () => franchise === f && /\bscreen-(hub|results)\b/.test(app.className));
   }
   hubScreen(app, f, settings, {
     play: (g) => playUserGame(f, g),

@@ -20,9 +20,7 @@ export function loadBest(): ThreePtBest | null {
     const v = JSON.parse(raw) as Partial<ThreePtBest> | null;
     if (!v || typeof v !== 'object') return null;
     if (!validScore(v.score) || typeof v.dex !== 'number' || !Number.isFinite(v.dex) || typeof v.name !== 'string' || typeof v.at !== 'number') return null;
-    // A retired limited special was saved under dex 140 with its own name: it shows as plain Kabuto now.
-    const name = v.dex === 140 ? 'Kabuto' : v.name;
-    return { score: v.score, dex: v.dex, name, at: v.at };
+    return { score: v.score, dex: v.dex, name: v.name, at: v.at };
   } catch {
     return null;
   }
