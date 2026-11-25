@@ -10,7 +10,7 @@ import {
   seasonWeeks, sign, simulate, startRookieDraft, venueOf, weekGames, type Franchise,
 } from './league';
 import { shouldPlayMasterCutscene } from './moments';
-import { HOENN, JOHTO, KANTO, REGIONS, SINNOH, inPool, nextRegion, openRegionIds, poolMons, regionTeams } from './regions';
+import { HOENN, JOHTO, KANTO, REGIONS, SINNOH, inPool, nextRegion, isKantoCpuMon, openRegionIds, poolMons, regionTeams } from './regions';
 
 const store = new Map<string, string>();
 vi.stubGlobal('localStorage', {
@@ -28,7 +28,7 @@ const gen2 = (dex: number) => dex >= 152 && dex <= 251;
 function kanto(unlocked: string[] = []): Franchise {
   const teams = [{ name: 'Me', abbr: 'MEE', color: '#3b6fd8', color2: '#16224a', human: true }, ...LEAGUE.map((t) => ({ ...t, human: false }))];
   const open = openRegionIds(unlocked);
-  const { rosters, leftovers } = autoDraft(teams, 10, undefined, poolMons(open));
+  const { rosters, leftovers } = autoDraft(teams, 10, undefined, poolMons(open), isKantoCpuMon);
   const used = new Set([...rosters.flat(), ...leftovers]);
   const f = createFranchise(teams, rosters, [...leftovers, ...POKEMON.filter((m) => !used.has(m))]);
   if (unlocked.length) f.unlockedRegions = unlocked;
@@ -407,11 +407,17 @@ describe('the franchise Pokémon pool', () => {
     expect(f.teams.flatMap((t) => t.roster).some((u) => gen2(f.players[u].dex))).toBe(false);
     // The held-back Pokémon still exist, in free agency, for later.
     expect(f.freeAgents.filter((u) => gen2(f.players[u].dex))).toHaveLength(100);
+    // Unlocked: the Gen 2 pool opens for the user, but Kanto's gyms and Elite still draft Gen 1 only.
     const open = kanto(['johto']);
-    expect(open.teams.flatMap((t) => t.roster).some((u) => gen2(open.players[u].dex))).toBe(true);
+    expect(open.teams.filter((t) => !t.human).flatMap((t) => t.roster).some((u) => gen2(open.players[u].dex))).toBe(false);
+    expect(open.freeAgents.filter((u) => gen2(open.players[u].dex))).toHaveLength(100 - open.teams[0].roster.filter((u) => gen2(open.players[u].dex)).length);
     // The user's own drafted team is kept as is, even with Gen 2 Pokémon in it.
     const mine = [monByDex(248), ...POKEMON.slice(0, 9)];
-    const { rosters, leftovers } = autoDraft([{ name: 'A', abbr: 'AAA', color: '#000', color2: '#fff', human: true }, ...LEAGUE.map((t) => ({ ...t, human: false }))], 10, mine, poolMons(['kanto']));
+    const unlocked = autoDraft([{ name: 'A', abbr: 'AAA', color: '#000', color2: '#fff', human: true }, ...LEAGUE.map((t) => ({ ...t, human: false }))], 10, mine, poolMons(['kanto', 'johto']), isKantoCpuMon);
+    expect(unlocked.rosters[0]).toEqual(mine);
+    expect(unlocked.rosters.slice(1).flat().every((m) => m.dex <= 151)).toBe(true);
+    expect(unlocked.leftovers.some((m) => gen2(m.dex))).toBe(true);
+    const { rosters, leftovers } = autoDraft([{ name: 'A', abbr: 'AAA', color: '#000', color2: '#fff', human: true }, ...LEAGUE.map((t) => ({ ...t, human: false }))], 10, mine, poolMons(['kanto']), isKantoCpuMon);
     expect(rosters[0]).toEqual(mine);
     expect([...rosters.slice(1).flat(), ...leftovers].some((m) => gen2(m.dex))).toBe(false);
     expect(new Set([...rosters.flat(), ...leftovers]).size).toBe(rosters.flat().length + leftovers.length);

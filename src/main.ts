@@ -16,7 +16,7 @@ import { musicToggle } from './ui/musicToggle';
 import { DIFFICULTIES, type Difficulty } from './game/types';
 import type { Game } from './game/game';
 import { draftScreen, type DraftState } from './screens/draft';
-import { openRegionIds, poolMons } from './franchise/regions';
+import { isKantoCpuMon, openRegionIds, poolMons } from './franchise/regions';
 import { shouldPlayMasterCutscene, shouldShowChampionship, shouldShowNewSeason } from './franchise/moments';
 import { watchKing } from './kabuto/dom';
 import { hubScreen } from './screens/hub';
@@ -221,7 +221,7 @@ function menu() {
         return draft({ teams, order: shuffle(teams.map((_, i) => i)), taken: [], rounds: 10, regions });
       }
       // My Drafted Team or Random: no draft screen. The CPU teams fill their rosters from what's left.
-      const { rosters, leftovers } = autoDraft(teams, 10, mine ? draftedMons(mine) : undefined, poolMons(regions));
+      const { rosters, leftovers } = autoDraft(teams, 10, mine ? draftedMons(mine) : undefined, poolMons(regions), isKantoCpuMon);
       void startFranchise(teams, rosters, leftovers, { fromDrafted: !!mine, onCancel: menu });
     },
   });
@@ -257,7 +257,7 @@ function franchiseWithDrafted(onCancel: () => void) {
     { name, abbr: abbr(name), ...USER_STYLE, ...(mine ? mine.colors : {}), human: true },
     ...LEAGUE.map((t) => ({ ...t, human: false })),
   ];
-  const { rosters, leftovers } = autoDraft(teams, 10, mine ? draftedMons(mine) : undefined, poolMons(openRegionIds(loadRegionProfile())));
+  const { rosters, leftovers } = autoDraft(teams, 10, mine ? draftedMons(mine) : undefined, poolMons(openRegionIds(loadRegionProfile())), isKantoCpuMon);
   void startFranchise(teams, rosters, leftovers, { fromDrafted: !!mine, onCancel });
 }
 
@@ -292,7 +292,7 @@ function draft(state: DraftState) {
   draftScreen(app, state, audio, (rosters, leftovers) => {
     // Cancel keeps the finished draft saved (Continue draft on the menu brings it back) and starts nothing.
     void startFranchise(state.teams, rosters, leftovers, { fromDrafted: false, onCancel: menu });
-  }, menu, saveDraft, { pool: poolMons(state.regions) });
+  }, menu, saveDraft, { pool: poolMons(state.regions), cpuOk: isKantoCpuMon });
 }
 
 /**

@@ -224,5 +224,11 @@ export function inPool(dex: number, open: readonly string[]): boolean {
   return !REGIONS.some((r) => open.indexOf(r.id) < 0 && dex >= r.dex[0] && dex <= r.dex[1] && !(r.open ?? []).includes(dex));
 }
 
+/**
+ * Kanto's CPU teams (the eight gyms and the Indigo Elite) draft Gen 1 only, whatever the user's pool holds (including
+ * the Hoenn/Sinnoh `open` exceptions). This is only a CPU rule: the user's draft, free agents and trades use `poolMons`.
+ */
+export const isKantoCpuMon = (m: Pick<Mon, 'dex'>): boolean => m.dex >= KANTO.dex[0] && m.dex <= KANTO.dex[1];
+
 /** The franchise draft pool. `open` missing means no limit (Quick Play, Season Draft and drafts saved before regions). */
 export const poolMons = (open?: readonly string[]): Mon[] => (open ? POKEMON.filter((m) => inPool(m.dex, open)) : [...POKEMON]);

@@ -7,7 +7,7 @@ import {
   loadFranchise, recordGame, regionOf, regionStatus, rookieOnClock, rookiePick, saveFranchise, shouldReturnToKanto,
   startRookieDraft, weekGames, type Franchise,
 } from './league';
-import { HOENN, JOHTO, KANTO, SINNOH, openRegionIds, poolMons, regionTeams } from './regions';
+import { HOENN, JOHTO, KANTO, SINNOH, isKantoCpuMon, openRegionIds, poolMons, regionTeams } from './regions';
 
 const store = new Map<string, string>();
 vi.stubGlobal('localStorage', {
@@ -21,7 +21,7 @@ beforeEach(() => store.clear());
 
 function kanto(unlocked: string[] = []): Franchise {
   const teams = [{ name: 'Pallet Town', abbr: 'PAL', color: '#3b6fd8', color2: '#16224a', human: true }, ...LEAGUE.map((t) => ({ ...t, human: false }))];
-  const { rosters, leftovers } = autoDraft(teams, 10, undefined, poolMons(openRegionIds(unlocked)));
+  const { rosters, leftovers } = autoDraft(teams, 10, undefined, poolMons(openRegionIds(unlocked)), isKantoCpuMon);
   const used = new Set([...rosters.flat(), ...leftovers]);
   const f = createFranchise(teams, rosters, [...leftovers, ...POKEMON.filter((m) => !used.has(m))]);
   if (unlocked.length) f.unlockedRegions = unlocked;
@@ -329,5 +329,49 @@ describe('Sinnoh championship cycle', () => {
     expect(regionOf(earned).id).toBe('johto');
     expect(enterRegion(earned, 'hoenn')).toBe(true);
     expect(regionOf(earned).id).toBe('hoenn');
+  });
+
+  const gen1Only = (f: Franchise) => f.teams.filter((t) => !t.human).flatMap((t) => t.roster).every((u) => f.players[u].dex >= 1 && f.players[u].dex <= 151);
+
+  it('a new Kanto franchise drafts its gyms and Elite from Gen 1 only, while the user pool keeps the open exceptions', () => {
+    expect(poolMons(openRegionIds([])).some((m) => m.dex === 376 || m.dex === 445)).toBe(true);
+    for (const unlocked of [[], ['johto', 'hoenn', 'sinnoh']]) {
+      for (let i = 0; i < 5; i++) {
+        const f = kanto(unlocked);
+        expect(f.teams.filter((t) => t.gym || t.elite)).toHaveLength(9);
+        expect(gen1Only(f)).toBe(true);
+        for (const t of f.teams.filter((x) => !x.human)) expect(t.roster).toHaveLength(10);
+        // Later-gen Pokémon were not lost: they are in free agency (or on the user's team).
+        const rest = [...f.freeAgents, ...f.teams[0].roster];
+        expect(rest.some((u) => f.players[u].dex > 151)).toBe(true);
+      }
+    }
+  });
+
+  it('a Sinnoh title return redrafts the gyms Gen 1 only, and the user keeps a later-gen roster', () => {
+    const f = reachSinnoh();
+    const me = f.teams[0];
+    const held = new Set(me.roster.map((u) => f.players[u].dex));
+    for (const [i, dex] of [376, 445, 384].entries()) if (!held.has(dex)) { held.delete(f.players[me.roster[i]].dex); f.players[me.roster[i]].dex = dex; held.add(dex); }
+    const owned = [...me.roster];
+    const laterOwned = owned.filter((u) => f.players[u].dex > 151);
+    expect(laterOwned.length).toBeGreaterThanOrEqual(3);
+    playOut(f, () => true);
+    rookieDraft(f);
+    expect(f.region).toBe('kanto');
+    expect(gen1Only(f)).toBe(true);
+    expect(f.teams.filter((t) => !t.human).every((t) => t.roster.length === 10)).toBe(true);
+    for (const u of laterOwned) expect(f.teams[0].roster).toContain(u);
+    expect(f.teams[0].roster.some((u) => f.players[u].dex > 151)).toBe(true);
+  });
+
+  it('an existing save with a later-gen Pokémon on a Kanto gym still loads, and is not rewritten', () => {
+    const f = kanto(['johto', 'hoenn', 'sinnoh']);
+    const gymMon = f.teams[1].roster[0];
+    f.players[gymMon].dex = 376;
+    saveFranchise(f);
+    const g = loadFranchise();
+    expect(g).not.toBeNull();
+    expect(g!.players[g!.teams[1].roster[0]].dex).toBe(376);
   });
 });

@@ -8,7 +8,7 @@ import { safeName } from '../nameFilter';
 import { fixAbbr } from '../util';
 import { USER_STYLE, contrastAway } from '../multiplayer/shared/matchSetup';
 import { autoDraft } from '../season/team';
-import { KANTO, REGIONS, inPool, nextRegion, openRegionIds, poolMons, regionById, regionTeams, type LeagueTeam, type RegionDef } from './regions';
+import { KANTO, REGIONS, inPool, isKantoCpuMon, nextRegion, openRegionIds, poolMons, regionById, regionTeams, type LeagueTeam, type RegionDef } from './regions';
 
 const SAVE_KEY = 'pokejam.franchise.v1';
 /** XP needed to go from `level` to the next one; each level costs a bit more. */
@@ -849,13 +849,14 @@ function bringBackKanto(f: Franchise): void {
   const me = f.teams[0];
   const held = new Set(me.roster.map((u) => f.players[u].dex));
   const pool = poolMons(openRegions(f)).filter((m) => !held.has(m.dex));
+  // Gyms and Elite draft Gen 1 only; the user's kept roster may hold any open Pokémon.
   const cpu = regionTeams(KANTO);
   const draftTeams = [
     { name: me.name, abbr: me.abbr, color: me.color, color2: me.color2, human: true },
     ...cpu.map((t) => ({ ...t, human: false })),
   ];
   // `fixed` only skips the user's picks. Those objects are already out of `pool` (removed by dex above).
-  const { rosters } = autoDraft(draftTeams, 10, me.roster.map((u) => monByDex(f.players[u].dex)), pool);
+  const { rosters } = autoDraft(draftTeams, 10, me.roster.map((u) => monByDex(f.players[u].dex)), pool, isKantoCpuMon);
   const fa = new Set(f.freeAgents);
   for (const t of f.teams) {
     if (t.human) continue;
