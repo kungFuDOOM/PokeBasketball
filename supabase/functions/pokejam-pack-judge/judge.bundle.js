@@ -2351,6 +2351,7 @@ var Game = class {
    * The coach's rotation, run at dead balls and quarter breaks: tired players come out for the
    * freshest good fit at their position, and rested starters come back to their own spot.
    * Nobody plays more than one spot out of position unless an injury forces it.
+   * A player on fire stays in until the fire ends, however tired; only an injury pulls them.
    */
   autoSubs(t, quarterBreak) {
     if (!this.cfg.stamina) return;
@@ -2366,6 +2367,7 @@ var Game = class {
     for (const out of onCourt) {
       if (swaps >= (quarterBreak ? 5 : 2)) break;
       if (out === this.ball.owner || out.state !== "free" || !this.players.includes(out)) continue;
+      if (out.fire) continue;
       const tired = out.energy < (quarterBreak ? 0.6 : 0.5);
       const best = this.pickSub(t, out, bench(), false, (c, dist2) => {
         if (c.energy < 0.7) return false;

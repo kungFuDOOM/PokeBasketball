@@ -831,6 +831,7 @@ export class Game {
    * The coach's rotation, run at dead balls and quarter breaks: tired players come out for the
    * freshest good fit at their position, and rested starters come back to their own spot.
    * Nobody plays more than one spot out of position unless an injury forces it.
+   * A player on fire stays in until the fire ends, however tired; only an injury pulls them.
    */
   private autoSubs(t: TeamId, quarterBreak: boolean) {
     if (!this.cfg.stamina) return;
@@ -847,6 +848,8 @@ export class Game {
     for (const out of onCourt) {
       if (swaps >= (quarterBreak ? 5 : 2)) break;
       if (out === this.ball.owner || out.state !== 'free' || !this.players.includes(out)) continue;
+      // Subbing out would put the fire out (see swap), so the coach never does it. Manual subs don't come through here.
+      if (out.fire) continue;
       const tired = out.energy < (quarterBreak ? 0.6 : 0.5);
       const best = this.pickSub(t, out, bench(), false, (c, dist) => {
         if (c.energy < 0.7) return false;
