@@ -1,0 +1,155 @@
+[
+ {
+  "id": 1,
+  "abbr": "PEW",
+  "boost": -3,
+  "mons": [
+   "Rayquaza #384 97",
+   "Regirock #377 90",
+   "Latios #381 92",
+   "Infernape #392 87",
+   "Aggron #306 89",
+   "Hippowdon #450 87",
+   "Gardevoir #282 83",
+   "Gengar #94 83",
+   "Heracross #214 83",
+   "Mismagius #429 81"
+  ]
+ },
+ {
+  "id": 2,
+  "abbr": "CER",
+  "boost": -2,
+  "mons": [
+   "Dialga #483 97",
+   "Mew #151 94",
+   "Milotic #350 85",
+   "Tyranitar #248 89",
+   "Hydreigon #635 85",
+   "Tinkaton #959 85",
+   "Electrode #101 84",
+   "Braviary #628 84",
+   "Vaporeon #134 81",
+   "Empoleon #395 85"
+  ]
+ },
+ {
+  "id": 3,
+  "abbr": "VER",
+  "boost": -1,
+  "mons": [
+   "Mewtwo #150 97",
+   "Raichu #26 87",
+   "Dragonite #149 90",
+   "Moltres #146 90",
+   "Snorlax #143 89",
+   "Kingdra #230 83",
+   "Conkeldurr #534 81",
+   "Porygon-Z #474 82",
+   "Cresselia #488 84",
+   "Manectric #310 81"
+  ]
+ },
+ {
+  "id": 4,
+  "abbr": "CEL",
+  "boost": 0,
+  "mons": [
+   "Palkia #484 95",
+   "Sceptile #254 88",
+   "Garchomp #445 89",
+   "Feraligatr #160 86",
+   "Entei #244 87",
+   "Houndoom #229 84",
+   "Gyarados #130 87",
+   "Rhyperior #464 85",
+   "Togekiss #468 83",
+   "Poliwrath #62 81"
+  ]
+ },
+ {
+  "id": 5,
+  "abbr": "FCH",
+  "boost": 1,
+  "mons": [
+   "Ho-Oh #250 95",
+   "Crobat #169 87",
+   "Azelf #482 89",
+   "Metagross #376 90",
+   "Blaziken #257 84",
+   "Electivire #466 84",
+   "Lapras #131 84",
+   "Meganium #154 87",
+   "Manaphy #490 82",
+   "Aerodactyl #142 81"
+  ]
+ },
+ {
+  "id": 6,
+  "abbr": "SAF",
+  "boost": 2,
+  "mons": [
+   "Lugia #249 96",
+   "Latias #380 91",
+   "Kyogre #382 92",
+   "Zoroark #571 87",
+   "Lucario #448 87",
+   "Blastoise #9 88",
+   "Ninetales #38 85",
+   "Suicune #245 85",
+   "Scyther #123 83",
+   "Luxray #405 81"
+  ]
+ },
+ {
+  "id": 7,
+  "abbr": "CIN",
+  "boost": 2,
+  "mons": [
+   "Charizard #6 91",
+   "Arceus #493 98",
+   "Alakazam #65 88",
+   "Salamence #373 87",
+   "Tyrantrum #697 87",
+   "Scizor #212 86",
+   "Tangrowth #465 85",
+   "Espeon #196 84",
+   "Jirachi #385 82",
+   "Kangaskhan #115 81"
+  ]
+ },
+ {
+  "id": 8,
+  "abbr": "VIR",
+  "boost": 3,
+  "mons": [
+   "Groudon #383 92",
+   "Slaking #289 91",
+   "Raikou #243 88",
+   "Articuno #144 89",
+   "Leafeon #470 87",
+   "Steelix #208 87",
+   "Machamp #68 83",
+   "Registeel #379 86",
+   "Rapidash #78 83",
+   "Cloyster #91 83"
+  ]
+ },
+ {
+  "id": 9,
+  "abbr": "E4",
+  "boost": 4,
+  "mons": [
+   "Giratina #487 95",
+   "Deoxys #386 97",
+   "Swampert #260 87",
+   "Jolteon #135 87",
+   "Torterra #389 87",
+   "Typhlosion #157 85",
+   "Nidoking #34 83",
+   "Celebi #251 82",
+   "Gallade #475 82",
+   "Golduck #55 79"
+  ]
+ }
+]

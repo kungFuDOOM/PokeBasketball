@@ -188,8 +188,8 @@ export function draftScreen(
   onDone: (rosters: Mon[][], leftovers: Mon[]) => void,
   onBack: () => void,
   onProgress: (state: DraftState) => void,
-  /** `customize: false` leaves out the rename / color picker on the draft-complete screen; `pool` replaces the draftable Pokémon. */
-  opts: { customize?: boolean; pool?: readonly Mon[] } = {},
+  /** `customize: false` leaves out the rename / color picker on the draft-complete screen; `pool` replaces the draftable Pokémon; `cpuOk` limits what CPU teams (not you, not Auto-pick) may take. */
+  opts: { customize?: boolean; pool?: readonly Mon[]; cpuOk?: (m: Mon) => boolean } = {},
 ) {
   const { teams, order } = state;
   // Own container so listeners die with the screen.
@@ -198,6 +198,8 @@ export function draftScreen(
   host.replaceChildren(root);
   const pool = [...(opts.pool ?? poolMons(state.regions))].sort((a, b) => b.ovr - a.ovr);
   const rosters: Mon[][] = teams.map(() => []);
+  /** What team `t` may pick from by CPU logic: the whole board, or only what `opts.cpuOk` allows for CPU teams. */
+  const cpuPool = (t: number) => (opts.cpuOk && !teams[t].human ? pool.filter(opts.cpuOk) : pool);
   const size = state.rounds ?? 5;
   const picks = snakePicks(order, size);
   const me = teams.findIndex((t) => t.human);
@@ -429,7 +431,7 @@ export function draftScreen(
   const scheduleCpu = () => {
     window.clearTimeout(cpuTimer);
     if (!done && picks[pick] !== me) {
-      cpuTimer = window.setTimeout(() => take(cpuPick(pool, rosters[picks[pick]], teams[picks[pick]].types)), 280);
+      cpuTimer = window.setTimeout(() => take(cpuPick(cpuPool(picks[pick]), rosters[picks[pick]], teams[picks[pick]].types)), 280);
     }
   };
 
@@ -466,7 +468,7 @@ export function draftScreen(
     if (a === 'auto' && userTurn()) take(cpuPick(pool, rosters[me]));
     if (a === 'sim' && !done) {
       window.clearTimeout(cpuTimer);
-      while (pick < picks.length) record(cpuPick(pool, rosters[picks[pick]], teams[picks[pick]].types));
+      while (pick < picks.length) record(cpuPick(cpuPool(picks[pick]), rosters[picks[pick]], teams[picks[pick]].types));
       finish();
     }
   });
@@ -480,7 +482,7 @@ export function draftScreen(
   for (const dex of saved) {
     if (pick >= picks.length) break;
     // A Pokémon no longer in the game (older save): that pick becomes the team's best available.
-    record(pool.find((x) => x.dex === dex) ?? cpuPick(pool, rosters[picks[pick]], teams[picks[pick]].types));
+    record(pool.find((x) => x.dex === dex) ?? cpuPick(cpuPool(picks[pick]), rosters[picks[pick]], teams[picks[pick]].types));
   }
   if (saved.length) log.push(`Draft resumed at pick ${pick + 1}.`);
   if (pick >= picks.length) return finish();

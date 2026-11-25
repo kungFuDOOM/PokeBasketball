@@ -1,0 +1,155 @@
+[
+ {
+  "id": 1,
+  "abbr": "PEW",
+  "boost": 0,
+  "mons": [
+   "Charizard #6 91",
+   "Rhyperior #464 85",
+   "Nidoking #34 83",
+   "Rapidash #78 83",
+   "Magnezone #462 81",
+   "Golduck #55 79",
+   "Jynx #124 78",
+   "Magmar #126 76",
+   "Blissey #242 75",
+   "Slowking #199 74"
+  ]
+ },
+ {
+  "id": 2,
+  "abbr": "CER",
+  "boost": 1,
+  "mons": [
+   "Mewtwo #150 97",
+   "Gyarados #130 87",
+   "Jolteon #135 87",
+   "Machamp #68 83",
+   "Porygon-Z #474 82",
+   "Rhydon #112 79",
+   "Tauros #128 77",
+   "Arbok #24 76",
+   "Magneton #82 74",
+   "Elekid #239 68"
+  ]
+ },
+ {
+  "id": 3,
+  "abbr": "VER",
+  "boost": 2,
+  "mons": [
+   "Zapdos #145 91",
+   "Blastoise #9 88",
+   "Cloyster #91 83",
+   "Kingdra #230 83",
+   "Pikachu #25 80",
+   "Muk #89 82",
+   "Omastar #139 76",
+   "Dodrio #85 77",
+   "Primeape #57 73",
+   "Porygon2 #233 72"
+  ]
+ },
+ {
+  "id": 4,
+  "abbr": "CEL",
+  "boost": 3,
+  "mons": [
+   "Leafeon #470 87",
+   "Scyther #123 83",
+   "Raichu #26 87",
+   "Gengar #94 83",
+   "Poliwrath #62 81",
+   "Weezing #110 78",
+   "Pinsir #127 78",
+   "Glaceon #471 76",
+   "Pidgeot #18 75",
+   "Tentacruel #73 75"
+  ]
+ },
+ {
+  "id": 5,
+  "abbr": "FCH",
+  "boost": 4,
+  "mons": [
+   "Crobat #169 87",
+   "Dragonite #149 90",
+   "Electivire #466 84",
+   "Tangrowth #465 85",
+   "Aerodactyl #142 81",
+   "Victreebel #71 77",
+   "Hitmonlee #106 78",
+   "Dugtrio #51 76",
+   "Slowbro #80 73",
+   "Golbat #42 72"
+  ]
+ },
+ {
+  "id": 6,
+  "abbr": "SAF",
+  "boost": 5,
+  "mons": [
+   "Mew #151 94",
+   "Scizor #212 86",
+   "Lapras #131 84",
+   "Magmortar #467 81",
+   "Kangaskhan #115 81",
+   "Kabutops #141 78",
+   "Electabuzz #125 79",
+   "Exeggutor #103 78",
+   "Wartortle #8 74",
+   "Mr. Mime #122 73"
+  ]
+ },
+ {
+  "id": 7,
+  "abbr": "CIN",
+  "boost": 5,
+  "mons": [
+   "Moltres #146 90",
+   "Alakazam #65 88",
+   "Nidoqueen #31 83",
+   "Electrode #101 84",
+   "Dewgong #87 79",
+   "Vaporeon #134 81",
+   "Marowak #105 77",
+   "Kadabra #64 77",
+   "Sandslash #28 73",
+   "Politoed #186 72"
+  ]
+ },
+ {
+  "id": 8,
+  "abbr": "VIR",
+  "boost": 6,
+  "mons": [
+   "Steelix #208 87",
+   "Venusaur #3 88",
+   "Starmie #121 86",
+   "Arcanine #59 80",
+   "Kingler #99 78",
+   "Haunter #93 75",
+   "Umbreon #197 78",
+   "Golem #76 77",
+   "Hypno #97 75",
+   "Venomoth #49 73"
+  ]
+ },
+ {
+  "id": 9,
+  "abbr": "E4",
+  "boost": 7,
+  "mons": [
+   "Articuno #144 89",
+   "Snorlax #143 89",
+   "Espeon #196 84",
+   "Ninetales #38 85",
+   "Flareon #136 79",
+   "Lickilicky #463 80",
+   "Hitmonchan #107 78",
+   "Persian #53 76",
+   "Vileplume #45 74",
+   "Onix #95 74"
+  ]
+ }
+]
