@@ -1,0 +1,393 @@
+{
+ "n": 200,
+ "boostsOnReturn": {
+  "PEW": 1,
+  "CER": 2,
+  "VER": 4,
+  "CEL": 5,
+  "FCH": 6,
+  "SAF": 7,
+  "CIN": 6,
+  "VIR": 8,
+  "E4": 9
+ },
+ "newFranchise": [
+  {
+   "team": "PEW",
+   "raw": 83.2,
+   "eff": 85.2,
+   "laterPerRoster": 0.85,
+   "laterDex": {
+    "Rhyperior": 105,
+    "Magnezone": 27,
+    "Leafeon": 11,
+    "Electivire": 16,
+    "Tangrowth": 12
+   }
+  },
+  {
+   "team": "CER",
+   "raw": 83.1,
+   "eff": 86.1,
+   "laterPerRoster": 0.28,
+   "laterDex": {
+    "Magnezone": 20,
+    "Leafeon": 14,
+    "Tangrowth": 13,
+    "Electivire": 9,
+    "Rhyperior": 1
+   }
+  },
+  {
+   "team": "VER",
+   "raw": 83.2,
+   "eff": 87.2,
+   "laterPerRoster": 0.46,
+   "laterDex": {
+    "Magnezone": 24,
+    "Tangrowth": 30,
+    "Electivire": 25,
+    "Leafeon": 7,
+    "Rhyperior": 6
+   }
+  },
+  {
+   "team": "CEL",
+   "raw": 83,
+   "eff": 88,
+   "laterPerRoster": 1.11,
+   "laterDex": {
+    "Leafeon": 102,
+    "Electivire": 37,
+    "Tangrowth": 63,
+    "Magnezone": 20,
+    "Rhyperior": 1
+   }
+  },
+  {
+   "team": "FCH",
+   "raw": 83.1,
+   "eff": 89.1,
+   "laterPerRoster": 0.35,
+   "laterDex": {
+    "Rhyperior": 1,
+    "Tangrowth": 11,
+    "Electivire": 16,
+    "Magnezone": 28,
+    "Leafeon": 15
+   }
+  },
+  {
+   "team": "SAF",
+   "raw": 83.3,
+   "eff": 90.3,
+   "laterPerRoster": 0.44,
+   "laterDex": {
+    "Tangrowth": 26,
+    "Magnezone": 24,
+    "Electivire": 29,
+    "Leafeon": 6,
+    "Rhyperior": 3
+   }
+  },
+  {
+   "team": "CIN",
+   "raw": 83.5,
+   "eff": 90.5,
+   "laterPerRoster": 0.46,
+   "laterDex": {
+    "Electivire": 31,
+    "Leafeon": 15,
+    "Magnezone": 20,
+    "Tangrowth": 21,
+    "Rhyperior": 4
+   }
+  },
+  {
+   "team": "VIR",
+   "raw": 82.9,
+   "eff": 90.9,
+   "laterPerRoster": 0.65,
+   "laterDex": {
+    "Rhyperior": 78,
+    "Magnezone": 15,
+    "Tangrowth": 14,
+    "Leafeon": 13,
+    "Electivire": 9
+   }
+  },
+  {
+   "team": "E4",
+   "raw": 83.4,
+   "eff": 92.4,
+   "laterPerRoster": 0.39,
+   "laterDex": {
+    "Leafeon": 17,
+    "Magnezone": 22,
+    "Electivire": 28,
+    "Tangrowth": 10,
+    "Rhyperior": 1
+   }
+  }
+ ],
+ "afterSinnoh": [
+  {
+   "team": "PEW",
+   "raw": 84.4,
+   "eff": 87.3,
+   "laterPerRoster": 2.08,
+   "laterDex": {
+    "Rhyperior": 131,
+    "Politoed": 18,
+    "Scizor": 9,
+    "Porygon2": 14,
+    "Electivire": 18,
+    "Lickilicky": 22,
+    "Porygon-Z": 16,
+    "Glaceon": 27,
+    "Crobat": 8,
+    "Kingdra": 15,
+    "Umbreon": 20,
+    "Hitmontop": 1,
+    "Magnezone": 31,
+    "Tangrowth": 13,
+    "Magmortar": 13,
+    "Slowking": 15,
+    "Blissey": 23,
+    "Espeon": 13,
+    "Steelix": 2,
+    "Leafeon": 7
+   }
+  },
+  {
+   "team": "CER",
+   "raw": 84.4,
+   "eff": 88.4,
+   "laterPerRoster": 1.74,
+   "laterDex": {
+    "Kingdra": 23,
+    "Slowking": 29,
+    "Tangrowth": 18,
+    "Espeon": 17,
+    "Umbreon": 26,
+    "Glaceon": 27,
+    "Scizor": 26,
+    "Porygon-Z": 26,
+    "Politoed": 15,
+    "Blissey": 22,
+    "Crobat": 12,
+    "Lickilicky": 19,
+    "Rhyperior": 5,
+    "Electivire": 12,
+    "Magmortar": 22,
+    "Leafeon": 11,
+    "Magnezone": 11,
+    "Hitmontop": 5,
+    "Steelix": 9,
+    "Porygon2": 12,
+    "Elekid": 1
+   }
+  },
+  {
+   "team": "VER",
+   "raw": 84.6,
+   "eff": 90.6,
+   "laterPerRoster": 1.9,
+   "laterDex": {
+    "Leafeon": 14,
+    "Espeon": 22,
+    "Magnezone": 26,
+    "Glaceon": 16,
+    "Slowking": 20,
+    "Magmortar": 21,
+    "Politoed": 19,
+    "Kingdra": 23,
+    "Lickilicky": 26,
+    "Electivire": 23,
+    "Porygon2": 17,
+    "Steelix": 8,
+    "Bellossom": 2,
+    "Porygon-Z": 27,
+    "Umbreon": 26,
+    "Hitmontop": 7,
+    "Tangrowth": 31,
+    "Blissey": 20,
+    "Scizor": 14,
+    "Crobat": 17,
+    "Rhyperior": 1
+   }
+  },
+  {
+   "team": "CEL",
+   "raw": 84.3,
+   "eff": 91.3,
+   "laterPerRoster": 2.4,
+   "laterDex": {
+    "Tangrowth": 62,
+    "Magmortar": 21,
+    "Blissey": 14,
+    "Lickilicky": 20,
+    "Leafeon": 101,
+    "Umbreon": 18,
+    "Steelix": 12,
+    "Kingdra": 22,
+    "Porygon2": 13,
+    "Scizor": 31,
+    "Electivire": 21,
+    "Slowking": 19,
+    "Espeon": 33,
+    "Porygon-Z": 23,
+    "Magnezone": 21,
+    "Hitmontop": 5,
+    "Politoed": 20,
+    "Glaceon": 14,
+    "Crobat": 6,
+    "Rhyperior": 2,
+    "Elekid": 1
+   }
+  },
+  {
+   "team": "FCH",
+   "raw": 84.3,
+   "eff": 92.3,
+   "laterPerRoster": 2.25,
+   "laterDex": {
+    "Electivire": 26,
+    "Kingdra": 32,
+    "Magmortar": 21,
+    "Crobat": 91,
+    "Espeon": 24,
+    "Blissey": 18,
+    "Umbreon": 24,
+    "Tangrowth": 19,
+    "Porygon-Z": 19,
+    "Magnezone": 21,
+    "Glaceon": 26,
+    "Slowking": 26,
+    "Steelix": 3,
+    "Lickilicky": 14,
+    "Scizor": 32,
+    "Porygon2": 17,
+    "Politoed": 16,
+    "Rhyperior": 5,
+    "Leafeon": 13,
+    "Hitmontop": 4
+   }
+  },
+  {
+   "team": "SAF",
+   "raw": 84.7,
+   "eff": 93.7,
+   "laterPerRoster": 2.07,
+   "laterDex": {
+    "Scizor": 34,
+    "Porygon-Z": 23,
+    "Magnezone": 21,
+    "Glaceon": 27,
+    "Slowking": 26,
+    "Tangrowth": 23,
+    "Lickilicky": 24,
+    "Porygon2": 18,
+    "Magmortar": 23,
+    "Umbreon": 20,
+    "Electivire": 23,
+    "Espeon": 36,
+    "Steelix": 18,
+    "Kingdra": 25,
+    "Blissey": 29,
+    "Politoed": 20,
+    "Elekid": 2,
+    "Rhyperior": 8,
+    "Hitmontop": 2,
+    "Leafeon": 6,
+    "Crobat": 6
+   }
+  },
+  {
+   "team": "CIN",
+   "raw": 84.5,
+   "eff": 92.5,
+   "laterPerRoster": 1.85,
+   "laterDex": {
+    "Leafeon": 22,
+    "Porygon-Z": 22,
+    "Blissey": 31,
+    "Politoed": 24,
+    "Glaceon": 14,
+    "Scizor": 8,
+    "Steelix": 15,
+    "Electivire": 26,
+    "Slowking": 22,
+    "Magnezone": 24,
+    "Kingdra": 14,
+    "Crobat": 15,
+    "Porygon2": 21,
+    "Tangrowth": 20,
+    "Hitmontop": 1,
+    "Bellossom": 1,
+    "Lickilicky": 22,
+    "Magmortar": 32,
+    "Umbreon": 17,
+    "Rhyperior": 7,
+    "Espeon": 12
+   }
+  },
+  {
+   "team": "VIR",
+   "raw": 84.3,
+   "eff": 94.3,
+   "laterPerRoster": 2.67,
+   "laterDex": {
+    "Steelix": 130,
+    "Lickilicky": 26,
+    "Umbreon": 30,
+    "Espeon": 29,
+    "Hitmontop": 2,
+    "Rhyperior": 37,
+    "Porygon-Z": 20,
+    "Politoed": 21,
+    "Blissey": 25,
+    "Magmortar": 25,
+    "Porygon2": 29,
+    "Scizor": 23,
+    "Crobat": 20,
+    "Electivire": 28,
+    "Leafeon": 10,
+    "Magnezone": 18,
+    "Tangrowth": 7,
+    "Slowking": 15,
+    "Glaceon": 21,
+    "Kingdra": 17
+   }
+  },
+  {
+   "team": "E4",
+   "raw": 84.5,
+   "eff": 95.5,
+   "laterPerRoster": 1.9,
+   "laterDex": {
+    "Crobat": 25,
+    "Kingdra": 29,
+    "Blissey": 18,
+    "Electivire": 23,
+    "Slowking": 28,
+    "Tangrowth": 7,
+    "Magnezone": 27,
+    "Scizor": 23,
+    "Glaceon": 28,
+    "Porygon2": 23,
+    "Porygon-Z": 24,
+    "Umbreon": 19,
+    "Magmortar": 22,
+    "Politoed": 17,
+    "Leafeon": 16,
+    "Lickilicky": 27,
+    "Espeon": 14,
+    "Steelix": 3,
+    "Rhyperior": 4,
+    "Bellossom": 1,
+    "Hitmontop": 2
+   }
+  }
+ ]
+}

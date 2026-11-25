@@ -7,7 +7,7 @@ import {
   loadFranchise, recordGame, regionOf, regionStatus, rookieOnClock, rookiePick, saveFranchise, shouldReturnToKanto,
   startRookieDraft, weekGames, type Franchise,
 } from './league';
-import { HOENN, JOHTO, KANTO, SINNOH, isKantoCpuMon, openRegionIds, poolMons, regionTeams } from './regions';
+import { HOENN, JOHTO, KANTO, KANTO_RETURN_BUMP, SINNOH, isKantoCpuMon, openRegionIds, poolMons, regionTeams } from './regions';
 
 const store = new Map<string, string>();
 vi.stubGlobal('localStorage', {
@@ -144,7 +144,7 @@ describe('Sinnoh championship cycle', () => {
     expect(f.news[0]).toContain('returns to the Kanto League');
 
     expect(f.teams.slice(1).map((t) => t.name)).toEqual(regionTeams(KANTO).map((t) => t.name));
-    expect(f.teams.slice(1).map((t) => t.boost)).toEqual(regionTeams(KANTO).map((t) => t.boost));
+    expect(f.teams.slice(1).map((t) => t.boost)).toEqual(regionTeams(KANTO).map((t, i) => t.boost + KANTO_RETURN_BUMP[i]));
     expect(f.teams.slice(1).map((t) => t.badge ?? 'Elite')).toEqual(['Boulder', 'Cascade', 'Thunder', 'Rainbow', 'Soul', 'Marsh', 'Volcano', 'Earth', 'Elite']);
     const drafted = cpuDex(f);
     expect(drafted).not.toEqual(sinnohDexes);
@@ -331,9 +331,10 @@ describe('Sinnoh championship cycle', () => {
     expect(regionOf(earned).id).toBe('hoenn');
   });
 
-  const gen1Only = (f: Franchise) => f.teams.filter((t) => !t.human).flatMap((t) => t.roster).every((u) => f.players[u].dex >= 1 && f.players[u].dex <= 151);
+  /** Gyms and Elite: Gen 1 plus later-gen Pokémon in a Gen 1 evolution family (the production helper), never Garchomp and co. */
+  const gen1Only = (f: Franchise) => f.teams.filter((t) => !t.human).flatMap((t) => t.roster).every((u) => isKantoCpuMon({ dex: f.players[u].dex }));
 
-  it('a new Kanto franchise drafts its gyms and Elite from Gen 1 only, while the user pool keeps the open exceptions', () => {
+  it('a new Kanto franchise drafts its gyms and Elite from Gen 1 and its family evolutions only, while the user pool keeps the open exceptions', () => {
     expect(poolMons(openRegionIds([])).some((m) => m.dex === 376 || m.dex === 445)).toBe(true);
     for (const unlocked of [[], ['johto', 'hoenn', 'sinnoh']]) {
       for (let i = 0; i < 5; i++) {
@@ -348,7 +349,7 @@ describe('Sinnoh championship cycle', () => {
     }
   });
 
-  it('a Sinnoh title return redrafts the gyms Gen 1 only, and the user keeps a later-gen roster', () => {
+  it('a Sinnoh title return redrafts the gyms from Gen 1 and family evolutions only, and the user keeps a later-gen roster', () => {
     const f = reachSinnoh();
     const me = f.teams[0];
     const held = new Set(me.roster.map((u) => f.players[u].dex));
@@ -360,6 +361,8 @@ describe('Sinnoh championship cycle', () => {
     rookieDraft(f);
     expect(f.region).toBe('kanto');
     expect(gen1Only(f)).toBe(true);
+    const banned = new Set([445, 376, 384, 373, 330, 448]); // Garchomp, Metagross, Rayquaza, Salamence, Flygon, Lucario
+    expect(f.teams.filter((t) => !t.human).flatMap((t) => t.roster).some((u) => banned.has(f.players[u].dex))).toBe(false);
     expect(f.teams.filter((t) => !t.human).every((t) => t.roster.length === 10)).toBe(true);
     for (const u of laterOwned) expect(f.teams[0].roster).toContain(u);
     expect(f.teams[0].roster.some((u) => f.players[u].dex > 151)).toBe(true);

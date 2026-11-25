@@ -1,11 +1,11 @@
 // Screenshots of the Kanto gym rosters (trade panel + starting-five intro). Usage:
-//   npx vite --port 5199 --strictPort &   then   node scripts/kanto-gyms-shots.mjs <before|after> <outDir>
+//   PORT=5199 npx vite --port 5199 --strictPort &   then   node scripts/kanto-gyms-shots.mjs <before|after> <outDir>
 // Builds a franchise in-page with all four regions open for the user (the worst case for later-gen gym players),
-// drafting the CPU Kanto teams through the same `isKantoCpuMon` rule the app uses once it exists.
+// drafting the CPU Kanto teams through the same `isKantoCpuMon` rule the app uses (Gen 1 plus Gen 1 family evolutions).
 import { chromium } from 'playwright-core';
 import { writeFileSync } from 'node:fs';
 const [TAG, OUT] = process.argv.slice(2);
-const BASE = 'http://localhost:5199/';
+const BASE = `http://localhost:${process.env.PORT ?? 5199}/`;
 const VIEWS = { phone: { width: 844, height: 390 }, desktop: { width: 1280, height: 800 } };
 const TEAMS = [1, 4, 8, 9]; // Pewter, Celadon, Viridian, Indigo Elite
 

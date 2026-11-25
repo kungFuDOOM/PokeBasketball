@@ -8,7 +8,7 @@ import { safeName } from '../nameFilter';
 import { fixAbbr } from '../util';
 import { USER_STYLE, contrastAway } from '../multiplayer/shared/matchSetup';
 import { autoDraft } from '../season/team';
-import { KANTO, REGIONS, inPool, isKantoCpuMon, nextRegion, openRegionIds, poolMons, regionById, regionTeams, type LeagueTeam, type RegionDef } from './regions';
+import { KANTO, KANTO_RETURN_BUMP, REGIONS, inPool, isKantoCpuMon, nextRegion, openRegionIds, poolMons, regionById, regionTeams, type LeagueTeam, type RegionDef } from './regions';
 
 const SAVE_KEY = 'pokejam.franchise.v1';
 /** XP needed to go from `level` to the next one; each level costs a bit more. */
@@ -845,7 +845,7 @@ function computeAwards(f: Franchise): Award[] {
  * roster is missing). Draft them the same way a new franchise does: snake order, each CPU's types, from the open
  * pool, skipping species the user already owns. Old CPU players become free agents and keep their levels.
  */
-function bringBackKanto(f: Franchise): void {
+export function bringBackKanto(f: Franchise): void {
   const me = f.teams[0];
   const held = new Set(me.roster.map((u) => f.players[u].dex));
   const pool = poolMons(openRegions(f)).filter((m) => !held.has(m.dex));
@@ -870,7 +870,7 @@ function bringBackKanto(f: Franchise): void {
     return uid;
   };
   f.teams = [me, ...cpu.map((t, i): FTeam => ({
-    id: i + 1, name: t.name, abbr: t.abbr, color: t.color, color2: t.color2, human: false, leader: t.leader, types: [...t.types], boost: t.boost,
+    id: i + 1, name: t.name, abbr: t.abbr, color: t.color, color2: t.color2, human: false, leader: t.leader, types: [...t.types], boost: t.boost + (KANTO_RETURN_BUMP[i] ?? 0),
     ...(t.gym ? { gym: t.gym, badge: t.badge } : {}), ...(t.elite ? { elite: true } : {}),
     roster: rosters[i + 1].map(add), w: 0, l: 0, pf: 0, pa: 0, streak: 0,
   }))];
