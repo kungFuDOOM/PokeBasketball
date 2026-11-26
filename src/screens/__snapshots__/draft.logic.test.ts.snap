@@ -3,52 +3,52 @@
 exports[`cpuPick > full 4-team 10-round CPU draft is stable for a seed 1`] = `
 [
   [
-    250,
-    483,
-    381,
+    136,
+    105,
+    486,
+    151,
     289,
-    487,
-    464,
-    571,
-    6,
-    38,
     65,
+    491,
+    134,
+    383,
+    143,
+  ],
+  [
+    493,
+    384,
+    483,
+    467,
+    250,
+    380,
+    121,
+    31,
+    196,
+    149,
+  ],
+  [
+    382,
+    484,
+    487,
+    53,
+    249,
+    49,
+    182,
+    376,
+    254,
+    6,
   ],
   [
     386,
-    493,
-    249,
-    151,
-    145,
-    380,
-    34,
-    467,
-    306,
-    144,
-  ],
-  [
     150,
-    9,
-    486,
-    51,
-    196,
+    34,
     89,
-    121,
-    244,
-    482,
-    71,
-  ],
-  [
-    384,
-    382,
-    484,
-    491,
-    105,
-    383,
-    254,
-    146,
+    38,
+    45,
+    145,
+    381,
     103,
-    376,
+    76,
   ],
 ]
 `;
@@ -57,8 +57,8 @@ exports[`cpuPick > full 4-team 10-round CPU draft is stable for a seed 2`] = `
 [
   95,
   96,
-  93,
-  94,
+  95,
+  96,
 ]
 `;
 
@@ -66,16 +66,16 @@ exports[`cpuPick > takes the best fit with a pinned seed 1`] = `
 [
   "249",
   "484",
+  "491",
+  "486",
   "493",
-  "386",
-  "150",
-  "151",
+  "53",
 ]
 `;
 
 exports[`ratings math > starters overall of a top-ten roster is pinned 1`] = `
 [
-  151,
+  250,
   386,
   150,
   384,
@@ -83,4 +83,4 @@ exports[`ratings math > starters overall of a top-ten roster is pinned 1`] = `
 ]
 `;
 
-exports[`ratings math > starters overall of a top-ten roster is pinned 2`] = `97`;
+exports[`ratings math > starters overall of a top-ten roster is pinned 2`] = `96`;

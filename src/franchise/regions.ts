@@ -21,8 +21,6 @@ export interface LeagueTeam {
   ace?: number;
   /** Ten distinct dex numbers. Missing: the team drafts (the Indigo Elite). */
   roster?: number[];
-  /** The starting five, PG to C, when it isn't the one `bestLineup` would pick from `roster`. */
-  starters?: number[];
 }
 
 /** A region's team. The Indigo Elite drafts; every gym brings a fixed roster (ace first). */
@@ -52,49 +50,42 @@ export interface RegionDef {
   finale: RegionTeam;
 }
 
-/** Bump when the Kanto gym rosters or boosts change: saves made on an older revision rebuild their gyms once on load. */
-export const KANTO_GYMS_REV = 2;
-
 export const KANTO: RegionDef = {
   id: 'kanto',
   index: 0,
   name: 'Kanto',
   generation: 1,
   dex: [1, 151],
-  // Hand-made Gen 1 lines (dex 1-151, plus a later evolution of one of those lines). The gyms are strong on paper: the
-  // matchup card's team OVR (starting-five mean + the +2 chemistry) climbs from 88 to 94, and the boosts are small (0-4).
-  // Strength comes from the ratings in data/pokemon.ts, not from hidden boosts. Every starter is 82+ and on type unless
-  // no on-type Pokémon plays that position, or the slot is the gym's legendary. Brock, Misty and Erika have no
-  // legendary. From Vermilion on, each gym has exactly one: Zapdos, Articuno (Gen 1 has no Poison legendary), Mew,
-  // Moltres, Mewtwo. All start except Mew. The starting five is the one `bestLineup` picks, unless `starters` names it.
+  // Hand-made Gen 1 lines. `bestLineup` picks the five, one per position. The card OVR is that five's rounded
+  // mean: about 88 at Pewter, climbing to the low 90s at Viridian. Boosts stay 0-4. Brock and Misty have no
+  // legendary. From Vermilion on, each gym has exactly one and that one starts. Erika has none (Celebi is Gen 2).
   gyms: [
-    // Golem, Onix, Kabutops and Aerodactyl start. No Rock Pokémon plays point guard, so Electrode does.
+    // Golem starts at power forward. Aerodactyl, Kabutops and Rhyperior are the other rock stars. Dugtrio is the
+    // point guard: no rock plays PG. Onix, Omastar, Rhydon, Rhyhorn and Graveler are the bench.
     { name: 'Pewter Boulders', abbr: 'PEW', color: '#a38c63', color2: '#2e271b', leader: 'Brock', types: ['Rock'], boost: 0, gym: 1, badge: 'Boulder',
-      ace: 76, roster: [76, 95, 141, 142, 101, 139, 112, 111, 75, 138] },
-    // Starmie, Kingdra, Vaporeon, Blastoise, Gyarados.
+      ace: 76, roster: [76, 142, 141, 51, 464, 139, 95, 112, 111, 75] },
+    // Starmie, Kingdra, Vaporeon, Blastoise and Gyarados. All water.
     { name: 'Cerulean Cascades', abbr: 'CER', color: '#2bb3d6', color2: '#0b2c38', leader: 'Misty', types: ['Water'], boost: 0, gym: 2, badge: 'Cascade',
-      ace: 121, roster: [121, 9, 130, 230, 134, 91, 99, 73, 87, 80] },
-    // Raichu, Magneton, Zapdos and Electivire start. No Electric Pokémon plays center, so Snorlax does.
+      ace: 121, roster: [121, 230, 134, 9, 130, 91, 55, 99, 73, 87] },
+    // Zapdos starts at small forward. Raichu, Electrode, Electivire and Magnezone fill the other four. All electric.
     { name: 'Vermilion Thunder', abbr: 'VER', color: '#f2c522', color2: '#3a2f06', leader: 'Lt. Surge', types: ['Electric'], boost: 1, gym: 3, badge: 'Thunder',
-      ace: 145, roster: [145, 26, 466, 82, 143, 135, 462, 125, 25, 81] },
-    // Leafeon, Bellossom, Victreebel, Vileplume, Venusaur: all Grass. No legendary (Celebi is Gen 2).
+      ace: 145, roster: [145, 26, 101, 466, 462, 135, 25, 239, 172, 81] },
+    // No legendary. Venusaur starts at center, with Leafeon, Bellossom, Victreebel and Vileplume.
     { name: 'Celadon Rainbows', abbr: 'CEL', color: '#5cb85c', color2: '#13301a', leader: 'Erika', types: ['Grass'], boost: 1, gym: 4, badge: 'Rainbow',
-      ace: 3, roster: [3, 470, 71, 45, 182, 465, 68, 107, 114, 47] },
-    // Crobat, Venomoth, Nidoqueen and Muk start with Articuno, the bird Surge and Blaine leave.
+      ace: 3, roster: [3, 470, 71, 45, 182, 465, 47, 114, 70, 69] },
+    // Articuno starts. Gen 1 has no Poison legendary. Crobat, Venomoth, Nidoqueen and Muk start with him.
     { name: 'Fuchsia Ninjas', abbr: 'FCH', color: '#b04fc4', color2: '#2d1236', leader: 'Koga', types: ['Poison'], boost: 2, gym: 5, badge: 'Soul',
-      ace: 144, roster: [144, 169, 49, 31, 89, 110, 24, 42, 62, 127] },
-    // Alakazam, Espeon, Hypno and Exeggutor start. The only Psychic small forward is Mewtwo, so Gengar plays there. Mew is a
-    // point guard rated above Alakazam, so `starters` keeps Alakazam in front and Mew is the sixth man.
-    { name: 'Saffron Psychics', abbr: 'SAF', color: '#f2668b', color2: '#3a1220', leader: 'Sabrina', types: ['Psychic'], boost: 3, gym: 6, badge: 'Marsh',
-      ace: 65, roster: [65, 196, 94, 97, 103, 151, 124, 122, 199, 64],
-      starters: [65, 196, 94, 97, 103] },
-    // Ninetales, Magmortar, Moltres and Flareon start. No Fire Pokémon plays center, so Dragonite does. Charizard is left off so
-    // he cannot take the wing from Moltres.
+      ace: 144, roster: [144, 169, 49, 31, 89, 24, 110, 94, 15, 42] },
+    // Mew stays at point guard. Alakazam starts at small forward beside Espeon, Hypno and Exeggutor.
+    { name: 'Saffron Psychics', abbr: 'SAF', color: '#f2668b', color2: '#3a1220', leader: 'Sabrina', types: ['Psychic'], boost: 2, gym: 6, badge: 'Marsh',
+      ace: 151, roster: [151, 65, 196, 97, 103, 122, 124, 199, 80, 64] },
+    // Moltres starts. Charizard is left off so he cannot take the wing. Ninetales, Magmortar and Flareon start.
+    // Dragonite is the center: Gen 1 has no fire center.
     { name: 'Cinnabar Volcanoes', abbr: 'CIN', color: '#e8622c', color2: '#3d160b', leader: 'Blaine', types: ['Fire'], boost: 3, gym: 7, badge: 'Volcano',
-      ace: 146, roster: [146, 38, 467, 136, 149, 78, 59, 126, 242, 128] },
-    // Dugtrio, Marowak, Nidoking and Rhyperior start with Mewtwo, who Team Rocket made. No other Ground Pokémon plays small forward.
+      ace: 146, roster: [146, 38, 467, 136, 149, 78, 59, 128, 463, 242] },
+    // Mewtwo starts. Nidoking, Steelix and Marowak are the ground stars. Persian is the point guard: Dugtrio plays for Brock.
     { name: 'Viridian Quakes', abbr: 'VIR', color: '#7c9a3a', color2: '#1e2a0e', leader: 'Giovanni', types: ['Ground'], boost: 4, gym: 8, badge: 'Earth',
-      ace: 150, roster: [150, 51, 105, 34, 464, 208, 28, 53, 106, 57] },
+      ace: 150, roster: [150, 53, 105, 34, 208, 28, 115, 106, 57, 237] },
   ],
   finale: { name: 'Indigo Elite', abbr: 'E4', color: '#d4a017', color2: '#2a2106', leader: 'The Elite Four', types: ['Ice', 'Fighting', 'Ghost', 'Dragon'], boost: 7, elite: true },
 };
@@ -118,29 +109,29 @@ export const JOHTO: RegionDef = {
   gyms: [
     { name: 'Violet Soar', abbr: 'VIO', city: 'Violet City', color: '#8f7fd9', color2: '#1e1838', leader: 'Falkner', types: ['Flying'], boost: 0, gym: 1, badge: 'Zephyr',
       ace: 169, roster: [169, 6, 178, 227, 149, 189, 198, 226, 193, 207] },
-    { name: 'Azalea Swarm', abbr: 'AZA', city: 'Azalea Town', color: '#8fb83a', color2: '#223010', leader: 'Bugsy', types: ['Bug'], boost: 0, gym: 2, badge: 'Hive',
+    { name: 'Azalea Swarm', abbr: 'AZA', city: 'Azalea Town', color: '#8fb83a', color2: '#223010', leader: 'Bugsy', types: ['Bug'], boost: 3, gym: 2, badge: 'Hive',
       ace: 212, roster: [212, 169, 49, 214, 205, 193, 166, 213, 168, 127] },
     { name: 'Goldenrod Pride', abbr: 'GOL', city: 'Goldenrod City', color: '#e8b923', color2: '#3a2c06', leader: 'Whitney', types: ['Normal'], boost: 6, gym: 3, badge: 'Plain',
       ace: 143, roster: [143, 53, 233, 234, 217, 241, 242, 203, 162, 164] },
     // Gengar is Morty's ace and the one Gen 1 Ghost worth a star; Ghosts are thin in Gen 2, so Tyranitar, Espeon and
     // Heracross fill in around Misdreavus.
-    { name: 'Ecruteak Specters', abbr: 'ECR', city: 'Ecruteak City', color: '#6c4fa3', color2: '#1b1230', leader: 'Morty', types: ['Ghost'], boost: 2, gym: 4, badge: 'Fog',
+    { name: 'Ecruteak Specters', abbr: 'ECR', city: 'Ecruteak City', color: '#6c4fa3', color2: '#1b1230', leader: 'Morty', types: ['Ghost'], boost: 3, gym: 4, badge: 'Fog',
       ace: 94, roster: [94, 248, 200, 196, 214, 208, 229, 230, 232, 217] },
     // Heracross and the Gen 1 stars Hitmonchan and Hitmonlee; Hitmontop is the one Gen 2 Fighting type.
     { name: 'Cianwood Crushers', abbr: 'CIA', city: 'Cianwood City', color: '#c0603a', color2: '#33170c', leader: 'Chuck', types: ['Fighting'], boost: 3, gym: 5, badge: 'Storm',
       ace: 214, roster: [214, 248, 169, 107, 106, 237, 208, 232, 217, 197] },
     // Magneton, from Jasmine's Magnemite, is the one Gen 1 star; Crobat plays point guard.
-    { name: 'Olivine Irons', abbr: 'OLI', city: 'Olivine City', color: '#9aa6b2', color2: '#22282e', leader: 'Jasmine', types: ['Steel'], boost: 3, gym: 6, badge: 'Mineral',
+    { name: 'Olivine Irons', abbr: 'OLI', city: 'Olivine City', color: '#9aa6b2', color2: '#22282e', leader: 'Jasmine', types: ['Steel'], boost: 5, gym: 6, badge: 'Mineral',
       ace: 208, roster: [208, 169, 82, 212, 227, 205, 197, 189, 242, 199] },
     // Lapras and Jynx are the Ice stars; Gen 2 has only Piloswine, Sneasel and Delibird, so Scizor and Espeon fill in.
-    { name: 'Mahogany Frost', abbr: 'MAH', city: 'Mahogany Town', color: '#7fd0e8', color2: '#0e2a33', leader: 'Pryce', types: ['Ice'], boost: 6, gym: 7, badge: 'Glacier',
+    { name: 'Mahogany Frost', abbr: 'MAH', city: 'Mahogany Town', color: '#7fd0e8', color2: '#0e2a33', leader: 'Pryce', types: ['Ice'], boost: 7, gym: 7, badge: 'Glacier',
       ace: 131, roster: [131, 212, 124, 196, 221, 215, 225, 229, 230, 197] },
-    { name: 'Blackthorn Dragons', abbr: 'BLK', city: 'Blackthorn City', color: '#3d6fd8', color2: '#0f1a3a', leader: 'Clair', types: ['Dragon'], boost: 2, gym: 8, badge: 'Rising',
+    { name: 'Blackthorn Dragons', abbr: 'BLK', city: 'Blackthorn City', color: '#3d6fd8', color2: '#0f1a3a', leader: 'Clair', types: ['Dragon'], boost: 3, gym: 8, badge: 'Rising',
       ace: 149, roster: [149, 169, 230, 212, 214, 248, 208, 232, 217, 197] },
   ],
   // Alakazam (Psychic) and Gengar (Poison) are the finale's two Gen 1 stars.
   finale: { name: 'Johto Elite', abbr: 'JOH', city: 'Indigo Plateau', title: 'Johto Elite Four & Champion Lance', color: '#b8323c', color2: '#2a0b0e',
-    leader: 'Will · Koga · Bruno · Karen · Champion Lance', types: ['Psychic', 'Poison', 'Fighting', 'Dark', 'Dragon'], boost: 5, elite: true,
+    leader: 'Will · Koga · Bruno · Karen · Champion Lance', types: ['Psychic', 'Poison', 'Fighting', 'Dark', 'Dragon'], boost: 6, elite: true,
     ace: 248, roster: [248, 65, 196, 94, 214, 169, 229, 230, 197, 178] },
 };
 
@@ -164,11 +155,11 @@ export const HOENN: RegionDef = {
   // The fourteen Hoenn Pokémon hand-tuned before the region existed.
   open: [254, 257, 260, 282, 303, 310, 350, 373, 376, 380, 381, 382, 383, 384],
   gyms: [
-    { name: 'Rustboro Stones', abbr: 'RUS', city: 'Rustboro City', color: '#b08d57', color2: '#2e2414', leader: 'Roxanne', types: ['Rock'], boost: 0, gym: 1, badge: 'Stone',
+    { name: 'Rustboro Stones', abbr: 'RUS', city: 'Rustboro City', color: '#b08d57', color2: '#2e2414', leader: 'Roxanne', types: ['Rock'], boost: 2, gym: 1, badge: 'Stone',
       ace: 306, roster: [306, 282, 142, 141, 369, 348, 346, 338, 337, 299] },
     { name: 'Dewford Breakers', abbr: 'DEW', city: 'Dewford Town', color: '#d0703a', color2: '#35180a', leader: 'Brawly', types: ['Fighting'], boost: 6, gym: 2, badge: 'Knuckle',
       ace: 297, roster: [297, 282, 107, 106, 286, 308, 310, 321, 291, 277] },
-    { name: 'Mauville Dynamos', abbr: 'MAU', city: 'Mauville City', color: '#f5c518', color2: '#3a2f06', leader: 'Wattson', types: ['Electric'], boost: 3, gym: 3, badge: 'Dynamo',
+    { name: 'Mauville Dynamos', abbr: 'MAU', city: 'Mauville City', color: '#f5c518', color2: '#3a2f06', leader: 'Wattson', types: ['Electric'], boost: 5, gym: 3, badge: 'Dynamo',
       ace: 310, roster: [310, 289, 82, 319, 181, 311, 312, 376, 306, 297] },
     { name: 'Lavaridge Flames', abbr: 'LAV', city: 'Lavaridge Town', color: '#e2492f', color2: '#3a120b', leader: 'Flannery', types: ['Fire'], boost: 3, gym: 4, badge: 'Heat',
       ace: 6, roster: [6, 282, 229, 373, 323, 324, 350, 310, 291, 277] },
@@ -176,9 +167,9 @@ export const HOENN: RegionDef = {
       ace: 289, roster: [289, 277, 233, 335, 115, 295, 264, 301, 351, 352] },
     { name: 'Fortree Feathers', abbr: 'FOR', city: 'Fortree City', color: '#6fb7e8', color2: '#0f2a3a', leader: 'Winona', types: ['Flying'], boost: 4, gym: 6, badge: 'Feather',
       ace: 373, roster: [373, 6, 291, 284, 149, 277, 357, 334, 267, 279] },
-    { name: 'Mossdeep Minds', abbr: 'MOS', city: 'Mossdeep City', color: '#e05a9c', color2: '#3a1026', leader: 'Tate & Liza', types: ['Psychic'], boost: 7, gym: 7, badge: 'Mind',
+    { name: 'Mossdeep Minds', abbr: 'MOS', city: 'Mossdeep City', color: '#e05a9c', color2: '#3a1026', leader: 'Tate & Liza', types: ['Psychic'], boost: 8, gym: 7, badge: 'Mind',
       ace: 376, roster: [376, 282, 196, 203, 338, 344, 326, 337, 358, 308] },
-    { name: 'Sootopolis Rain', abbr: 'SOO', city: 'Sootopolis City', color: '#2f78d0', color2: '#0c1e38', leader: 'Juan', types: ['Water'], boost: 6, gym: 8, badge: 'Rain',
+    { name: 'Sootopolis Rain', abbr: 'SOO', city: 'Sootopolis City', color: '#2f78d0', color2: '#0c1e38', leader: 'Juan', types: ['Water'], boost: 7, gym: 8, badge: 'Rain',
       ace: 121, roster: [121, 230, 319, 350, 321, 365, 369, 367, 368, 342] },
   ],
   // All Gen 3. Steven's Mawile: Steel, and from Granite Cave, where the player first meets him.
@@ -207,26 +198,26 @@ export const SINNOH: RegionDef = {
   // The fifteen Sinnoh Pokémon hand-tuned before the region existed.
   open: [392, 405, 437, 445, 448, 454, 461, 462, 464, 465, 466, 468, 470, 473, 475],
   gyms: [
-    { name: 'Oreburgh Miners', abbr: 'ORE', city: 'Oreburgh City', color: '#8a8f99', color2: '#22252b', leader: 'Roark', types: ['Rock'], boost: -2, gym: 1, badge: 'Coal',
+    { name: 'Oreburgh Miners', abbr: 'ORE', city: 'Oreburgh City', color: '#8a8f99', color2: '#22252b', leader: 'Roark', types: ['Rock'], boost: 3, gym: 1, badge: 'Coal',
       ace: 464, roster: [464, 429, 409, 142, 141, 476, 411, 398, 467, 437] },
-    { name: 'Eterna Blooms', abbr: 'ETE', city: 'Eterna City', color: '#5fb05a', color2: '#143018', leader: 'Gardenia', types: ['Grass'], boost: 2, gym: 2, badge: 'Forest',
+    { name: 'Eterna Blooms', abbr: 'ETE', city: 'Eterna City', color: '#5fb05a', color2: '#143018', leader: 'Gardenia', types: ['Grass'], boost: 4, gym: 2, badge: 'Forest',
       ace: 465, roster: [465, 407, 470, 71, 460, 455, 471, 421, 424, 452] },
     { name: 'Veilstone Brawlers', abbr: 'VEI', city: 'Veilstone City', color: '#c8553d', color2: '#34120b', leader: 'Maylene', types: ['Fighting'], boost: 2, gym: 3, badge: 'Cobble',
       ace: 448, roster: [448, 68, 297, 475, 454, 468, 429, 452, 424, 477] },
     { name: 'Pastoria Marshes', abbr: 'PAS', city: 'Pastoria City', color: '#3f9bd6', color2: '#0d2a40', leader: 'Crasher Wake', types: ['Water'], boost: 5, gym: 4, badge: 'Fen',
       ace: 419, roster: [419, 121, 350, 457, 472, 423, 424, 430, 468, 452] },
-    { name: 'Hearthome Phantoms', abbr: 'HEA', city: 'Hearthome City', color: '#8a5ec4', color2: '#22123a', leader: 'Fantina', types: ['Ghost'], boost: 5, gym: 5, badge: 'Relic',
+    { name: 'Hearthome Phantoms', abbr: 'HEA', city: 'Hearthome City', color: '#8a5ec4', color2: '#22123a', leader: 'Fantina', types: ['Ghost'], boost: 7, gym: 5, badge: 'Relic',
       ace: 429, roster: [429, 477, 426, 478, 94, 467, 479, 442, 424, 430] },
     { name: 'Canalave Anchors', abbr: 'CAN', city: 'Canalave City', color: '#7d8fa3', color2: '#1a222b', leader: 'Byron', types: ['Steel'], boost: 3, gym: 6, badge: 'Mine',
       ace: 448, roster: [448, 462, 437, 212, 208, 476, 411, 468, 429, 424] },
     { name: 'Snowpoint Blizzards', abbr: 'SNO', city: 'Snowpoint City', color: '#9fdcf2', color2: '#10303d', leader: 'Candice', types: ['Ice'], boost: 9, gym: 7, badge: 'Icicle',
       ace: 461, roster: [461, 471, 478, 473, 460, 452, 424, 468, 477, 463] },
-    { name: 'Sunyshore Voltage', abbr: 'SUN', city: 'Sunyshore City', color: '#f2cf2f', color2: '#3a3006', leader: 'Volkner', types: ['Electric'], boost: 4, gym: 8, badge: 'Beacon',
+    { name: 'Sunyshore Voltage', abbr: 'SUN', city: 'Sunyshore City', color: '#f2cf2f', color2: '#3a3006', leader: 'Volkner', types: ['Electric'], boost: 6, gym: 8, badge: 'Beacon',
       ace: 466, roster: [466, 405, 462, 135, 465, 467, 479, 468, 463, 424] },
   ],
   // All Gen 4. Cynthia's Garchomp leads; Aaron's Yanmega, Bertha's Hippowdon, Flint's Magmortar and Lucian's Gallade.
   finale: { name: 'Sinnoh Elite', abbr: 'SNL', city: 'Sinnoh League', title: 'Sinnoh Elite Four & Champion Cynthia', color: '#6a5acd', color2: '#16123a',
-    leader: 'Aaron · Bertha · Flint · Lucian · Champion Cynthia', types: ['Bug', 'Ground', 'Fire', 'Psychic', 'Dragon'], boost: 4, elite: true,
+    leader: 'Aaron · Bertha · Flint · Lucian · Champion Cynthia', types: ['Bug', 'Ground', 'Fire', 'Psychic', 'Dragon'], boost: 7, elite: true,
     ace: 445, roster: [445, 450, 467, 475, 469, 468, 437, 472, 464, 429] },
 };
 

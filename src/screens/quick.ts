@@ -4,10 +4,9 @@ import { COURTS, courtFor, userCourt, type CourtStyle } from '../data/courts';
 import { POKEMON, POSITIONS, TYPE_COLORS, monByDex, spriteUrl, type Mon } from '../data/pokemon';
 import { LEAGUE, USER_STYLE, contrastAway, simulate, type LeagueTeam } from '../franchise/league';
 import type { Audio } from '../game/audio';
-import { type Game } from '../game/game';
-import { strengthHtml, strengthOf } from './strength';
+import { bestLineup, teamOvr, type Game } from '../game/game';
 import type { TeamDef } from '../game/types';
-import { cpuRoster, draftedMons, draftedStarters, loadDrafted, renameDrafted, type TeamSource, plannedLineup } from '../season/team';
+import { cpuRoster, draftedMons, draftedStarters, loadDrafted, renameDrafted, type TeamSource } from '../season/team';
 import { inlineRename } from '../ui/teamName';
 import { badgeSvg } from '../ui/badges';
 import { abbr, esc, lettersName, shuffle, tier } from '../util';
@@ -119,8 +118,7 @@ export function quickPlay(root: HTMLElement, settings: Settings, audio: Audio, a
     const cpuSide = (pool: Mon[], size: number) => {
       if (!opp.roster?.length) return cpuRoster(pool, size, opp.types);
       const mons = opp.roster.map((d) => monByDex(d));
-      const plan = plannedLineup(mons, opp.starters);
-      const take = size >= mons.length ? [...plan.starters, ...plan.bench] : plan.starters;
+      const take = size >= mons.length ? mons : bestLineup(mons).starters;
       for (const m of take) {
         const i = pool.findIndex((p) => p.dex === m.dex);
         if (i >= 0) pool.splice(i, 1);
@@ -133,7 +131,7 @@ export function quickPlay(root: HTMLElement, settings: Settings, audio: Audio, a
       const all = draftedMons(saved);
       const starters = draftedStarters(saved);
       const pool = POKEMON.filter((m) => !all.includes(m));
-      const theirs = plannedLineup(cpuSide(pool, 10), opp.starters);
+      const theirs = bestLineup(cpuSide(pool, 10));
       drafted = { name: saved.name, ...saved.colors, bench: all.filter((m) => !starters.includes(m)), oppBench: theirs.bench };
       return matchup(opp, starters, theirs.starters, courtFor(opp));
     }
@@ -160,11 +158,11 @@ export function quickPlay(root: HTMLElement, settings: Settings, audio: Audio, a
     root.className = 'screen-quick';
     window.scrollTo(0, 0);
     const venues: CourtStyle[] = [userCourt(userName()), ...Object.entries(COURTS).filter(([k]) => k !== 'Pallet Town').map(([, c]) => c)];
-    const side = (name: string, color: string, sub: string, mons: Mon[], bench: Mon[] = [], mine = false, boost = 0) => `
+    const side = (name: string, color: string, sub: string, mons: Mon[], bench: Mon[] = [], mine = false) => `
       <div class="nx-team" style="--tc:${color}">
         <span class="where">${esc(sub)}</span>
         <h3 class="${mine ? 'nx-name' : ''}">${esc(name)}</h3>
-        ${strengthHtml(strengthOf(mons, boost))}
+        <p>${teamOvr(mons)} OVR</p>
         ${lineupHtml(mons)}
         ${bench.length ? `<p class="note nx-bench-lbl">Bench</p><div class="nx-bench">${lineupHtml(bench)}</div>` : ''}
       </div>`;
@@ -175,7 +173,7 @@ export function quickPlay(root: HTMLElement, settings: Settings, audio: Audio, a
           <div class="nx-cols">
             ${side(userName(), user().color, drafted ? 'You · My Drafted Team' : 'You', mine, drafted?.bench, true)}
             <div class="vs">VS</div>
-            ${side(opp.name, opp.color, opp.elite ? 'Final boss' : `Gym Leader ${opp.leader}`, theirs, drafted?.oppBench, false, opp.boost)}
+            ${side(opp.name, opp.color, opp.elite ? 'Final boss' : `Gym Leader ${opp.leader}`, theirs, drafted?.oppBench)}
           </div>
           <div class="field venue">Venue
             <select id="venue">${venues.map((v, i) => `<option value="${i}" ${v.venue === court.venue ? 'selected' : ''}>${esc(v.venue)}</option>`).join('')}</select>

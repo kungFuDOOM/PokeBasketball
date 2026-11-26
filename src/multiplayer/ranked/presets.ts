@@ -13,12 +13,12 @@ export interface RankedPreset {
  * others' (see presets.test.ts). Keep the server seed (migration 20261124) in step with this list.
  */
 export const RANKED_PRESETS: readonly RankedPreset[] = [
-  { id: 'A', name: 'Night Furnace', dex: [78, 229, 94, 9, 208] }, // Rapidash, Houndoom, Gengar, Blastoise, Steelix
+  { id: 'A', name: 'Night Furnace', dex: [78, 229, 94, 9, 154] }, // Rapidash, Houndoom, Gengar, Blastoise, Meganium
   { id: 'B', name: 'Jungle Fury', dex: [254, 392, 475, 115, 130] }, // Sceptile, Infernape, Gallade, Kangaskhan, Gyarados
-  { id: 'C', name: 'Iron Bloom', dex: [135, 142, 212, 31, 3] }, // Jolteon, Aerodactyl, Scizor, Nidoqueen, Venusaur
+  { id: 'C', name: 'Iron Bloom', dex: [461, 474, 212, 68, 3] }, // Weavile, Porygon-Z, Scizor, Machamp, Venusaur
   { id: 'D', name: 'Fang & Fist', dex: [571, 448, 612, 62, 697] }, // Zoroark, Lucario, Haxorus, Poliwrath, Tyrantrum
   { id: 'E', name: 'Sky Hammers', dex: [169, 959, 257, 628, 465] }, // Crobat, Tinkaton, Blaziken, Braviary, Tangrowth
-  { id: 'F', name: 'Dragon Mind', dex: [65, 123, 635, 373, 473] }, // Alakazam, Scyther, Hydreigon, Salamence, Mamoswine
+  { id: 'F', name: 'Dragon Mind', dex: [26, 123, 635, 373, 473] }, // Raichu, Scyther, Hydreigon, Salamence, Mamoswine
 ];
 
 /**

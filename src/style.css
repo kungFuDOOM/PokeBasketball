@@ -385,10 +385,17 @@ kbd {
 .nx-team .where { font-size: 0.75rem; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); }
 .nx-team h3 { margin: 2px 0 0; font-size: 1.4rem; text-transform: uppercase; letter-spacing: 0.03em; }
 .nx-team p { margin: 0 0 8px; color: var(--muted); font-weight: 600; }
-.nx-team .nx-str { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 12px; }
-.nx-plays { color: var(--fg); }
-.nx-plays b { color: var(--accent); font-size: 1.25rem; }
-.nx-str small { flex-basis: 100%; font-size: 0.8rem; }
+.nx-team .nx-ovr { white-space: nowrap; }
+.nx-team .nx-ovr b { color: var(--fg); font-weight: 800; }
+.nx-team .nx-ovr .eff { color: var(--accent); }
+@media (orientation: landscape) and (max-height: 450px) {
+  .nx-team { padding: 8px 8px 6px; }
+  .nx-team h3 { font-size: 1.05rem; }
+  .nx-team .where, .nx-team .leader { font-size: 0.68rem; }
+  .nx-team .nx-ovr { font-size: 0.82rem; margin-bottom: 4px; }
+  .lineup img { width: 40px; height: 40px; }
+  .next .game-settings { margin: 8px auto; }
+}
 .lineup { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 4px; }
 .lineup li { display: flex; flex-direction: column; align-items: center; font-size: 0.8rem; font-weight: 700; color: var(--muted); min-width: 0; }
 .lineup img { width: 52px; height: 52px; image-rendering: pixelated; }

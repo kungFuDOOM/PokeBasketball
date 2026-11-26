@@ -1,13 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { POKEMON, monByDex } from '../data/pokemon';
-import type { Game } from '../game/game';
+import { bestLineup, type Game } from '../game/game';
 import { autoDraft } from '../season/team';
 import {
   LEAGUE, advance, awardRegion, createFranchise, enterRegion, finalWeek, finishRookieDraft, gameConfig, gymBadgeCount,
-  lineupOf, loadFranchise, recordGame, regionOf, regionStatus, rookieOnClock, rookiePick, saveFranchise, shouldReturnToKanto,
-  startRookieDraft, weekGames, type FGame, type Franchise,
+  loadFranchise, recordGame, regionOf, regionStatus, rookieOnClock, rookiePick, saveFranchise, shouldReturnToKanto,
+  startRookieDraft, weekGames, type Franchise,
 } from './league';
-import { HOENN, JOHTO, KANTO, KANTO_GYMS_REV, KANTO_RETURN_BUMP, SINNOH, isKantoCpuMon, openRegionIds, poolMons, regionTeams } from './regions';
+import { HOENN, JOHTO, KANTO, KANTO_RETURN_BUMP, SINNOH, isKantoCpuMon, openRegionIds, poolMons, regionTeams } from './regions';
 
 const store = new Map<string, string>();
 vi.stubGlobal('localStorage', {
@@ -379,7 +379,6 @@ describe('Sinnoh championship cycle', () => {
     f.season = 1;
     f.region = 'kanto';
     delete f.titles;
-    delete f.gymsRev;
     saveFranchise(f);
     const g = loadFranchise()!;
     expect(g.teams[0].roster).toEqual(mine);
@@ -400,86 +399,35 @@ describe('Sinnoh championship cycle', () => {
     expect(again.teams[0].roster).toEqual(mine);
   });
 
+  it('a Season 1 Pewter roster of Mew, Aerodactyl, Zapdos, Omanyte and Muk is rebuilt', () => {
+    const f = kanto();
+    const mine = [...f.teams[0].roster];
+    const brock = f.teams[1];
+    const broken = [151, 142, 145, 138, 89, 16, 19, 21, 10, 13];
+    brock.roster.forEach((u, i) => { f.players[u].dex = broken[i]; });
+    brock.boost = 0;
+    f.season = 1;
+    f.region = 'kanto';
+    const before = bestLineup(brock.roster.map((u) => monByDex(f.players[u].dex))).starters.map((m) => m.dex);
+    expect(before).toEqual(expect.arrayContaining([151, 142, 145, 138, 89]));
+    saveFranchise(f);
+    const g = loadFranchise()!;
+    expect(g.teams[0].roster).toEqual(mine);
+    expect(g.teams[1].roster.map((u) => g.players[u].dex)).toEqual(KANTO.gyms[0].roster);
+    expect(g.teams[1].roster.map((u) => g.players[u].dex)).not.toEqual(expect.arrayContaining([151, 145]));
+    expect(bestLineup(g.teams[1].roster.map((u) => monByDex(g.players[u].dex))).starters.map((m) => m.dex)).toContain(76);
+    expect(g.teams[1].boost).toBe(KANTO.gyms[0].boost);
+  });
+
   it('a Kanto save with a Sinnoh title raises gym boosts to the design plus the return bump', () => {
     const f = kanto();
     f.region = 'kanto';
     f.season = 4;
     f.titles = [{ regionId: 'sinnoh', season: 4 }];
-    for (const t of f.teams.slice(1)) t.boost = t.elite ? 9 : 16;
-    delete f.gymsRev;
+    for (const t of f.teams.slice(1)) t.boost = 0;
     saveFranchise(f);
     const g = loadFranchise()!;
-    // Gyms are set to the design plus the bump (lowered here). The Elite Four's stored boost is left alone.
-    expect(g.teams.slice(1).map((t) => t.boost)).toEqual(regionTeams(KANTO).map((t, i) => (t.elite ? 9 : t.boost + KANTO_RETURN_BUMP[i])));
+    expect(g.teams.slice(1).map((t) => t.boost)).toEqual(regionTeams(KANTO).map((t, i) => t.boost + KANTO_RETURN_BUMP[i]));
     expect(g.teams[0].roster).toEqual(f.teams[0].roster);
-  });
-
-  it("the live save: Brock's Mew/Aerodactyl/Zapdos/Omanyte/Muk roster becomes the new Brock, and old boosts come down", () => {
-    const f = kanto();
-    const brock = f.teams[1];
-    // Starters Mew (PG), Aerodactyl (SG), Zapdos (SF), Omanyte (PF), Muk (C), then a bench.
-    [151, 142, 145, 138, 89, 74, 75, 111, 140, 51].forEach((dex, i) => { f.players[brock.roster[i]].dex = dex; });
-    const old = [10, 7, 8, 13, 13, 13, 15, 16];
-    f.teams.filter((t) => t.gym).forEach((t) => { t.boost = old[t.gym! - 1]; });
-    delete f.gymsRev;
-    const mine = structuredClone(f.teams[0]);
-    const elite = structuredClone(f.teams.find((t) => t.elite)!);
-    saveFranchise(f);
-
-    const g = loadFranchise()!;
-    expect(g.teams[1].roster.map((u) => g.players[u].dex)).toEqual(KANTO.gyms[0].roster);
-    const five = lineupOf(g, g.teams[1]).starters.map((u) => g.players[u].dex);
-    expect(five).toContain(76);
-    for (const gone of [151, 145, 89]) expect(g.teams[1].roster.map((u) => g.players[u].dex)).not.toContain(gone);
-    expect(g.teams.filter((t) => t.gym).map((t) => t.boost)).toEqual(KANTO.gyms.map((t) => t.boost));
-    expect(g.teams[0]).toEqual(mine);
-    const kept = g.teams.find((t) => t.elite)!;
-    expect([kept.roster, kept.boost]).toEqual([elite.roster, elite.boost]);
-    expect(kept.roster.map((u) => g.players[u].dex)).toEqual(elite.roster.map((u) => f.players[u].dex));
-    expect(g.gymsRev).toBe(KANTO_GYMS_REV);
-  });
-
-  it('the repair runs once, so a later change to a gym roster (a trade, a rookie) sticks', () => {
-    const f = kanto();
-    delete f.gymsRev;
-    saveFranchise(f);
-    const g = loadFranchise()!;
-    const mine = g.teams[0].roster[9];
-    const theirs = g.teams[1].roster[9];
-    g.teams[0].roster[9] = theirs;
-    g.teams[1].roster[9] = mine;
-    saveFranchise(g);
-    const again = loadFranchise()!;
-    expect(again.teams[0].roster[9]).toBe(theirs);
-    expect(again.teams[1].roster[9]).toBe(mine);
-  });
-
-  it('a rebuilt gym takes its species from free agency instead of adding a second copy', () => {
-    const f = kanto();
-    const brock = f.teams[1];
-    const golem = brock.roster.find((u) => f.players[u].dex === 76)!;
-    brock.roster[brock.roster.indexOf(golem)] = f.freeAgents.shift()!;
-    f.freeAgents.push(golem);
-    delete f.gymsRev;
-    saveFranchise(f);
-    const g = loadFranchise()!;
-    expect(g.teams[1].roster).toContain(golem);
-    expect(g.freeAgents).not.toContain(golem);
-    expect(Object.keys(g.players)).toHaveLength(Object.keys(f.players).length);
-  });
-
-  it("a Kanto gym's players level up but keep their species", () => {
-    const f = kanto();
-    const brock = f.teams[1];
-    const onix = brock.roster.find((u) => f.players[u].dex === 95)!;
-    const { cfg, sides, uidOf } = gameConfig(f, { week: 1, home: 0, away: 1, score: null } as unknown as FGame, false, 60, 'pro');
-    const gp = [...cfg.away.roster].find((m) => uidOf.get(m) === onix)!;
-    f.players[onix].level = 60;
-    f.players[onix].xp = 100000;
-    const stats = { pts: 0, reb: 0, ast: 0, stl: 0, blk: 0, fgm: 0, fga: 0, sec: 60 };
-    const game = { score: [80, 70], cfg: { quarterLen: 60 }, quarter: 4, rosterOf: (t: number) => (t === 1 ? [{ mon: gp, team: 1, stats }] : []) } as unknown as Game;
-    recordGame(f, { week: 1, home: 0, away: 1, score: null } as unknown as FGame, game, sides, uidOf);
-    expect(f.players[onix].level).toBeGreaterThan(60);
-    expect(f.players[onix].dex).toBe(95);
   });
 });

@@ -23,12 +23,12 @@ create table if not exists public.pokejam_ranked_presets (
 );
 
 insert into public.pokejam_ranked_presets (id, name, dex) values
-  ('A', 'Night Furnace', array[78, 229, 94, 9, 208]),
+  ('A', 'Night Furnace', array[78, 229, 94, 9, 154]),
   ('B', 'Jungle Fury', array[254, 392, 475, 115, 130]),
-  ('C', 'Iron Bloom', array[135, 142, 212, 31, 3]),
+  ('C', 'Iron Bloom', array[461, 474, 212, 68, 3]),
   ('D', 'Fang & Fist', array[571, 448, 612, 62, 697]),
   ('E', 'Sky Hammers', array[169, 959, 257, 628, 465]),
-  ('F', 'Dragon Mind', array[65, 123, 635, 373, 473])
+  ('F', 'Dragon Mind', array[26, 123, 635, 373, 473])
 on conflict do nothing;
 
 alter table public.pokejam_ranked_presets enable row level security;

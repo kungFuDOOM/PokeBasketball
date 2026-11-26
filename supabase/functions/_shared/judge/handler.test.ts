@@ -181,7 +181,7 @@ describe('pokejam-judge', () => {
       expect(await (await call(deps, { match_ids: [m.id] })).json()).toEqual({ ok: true, results: [{ match_id: m.id, result: 'recorded', status: 'incomplete' }] });
 
       const { setup: server } = (await deps.setupOf(m.id))!;
-      expect(server).toMatchObject({ matchId: m.id, seed: 777, quarterLen: 60, home: { roster: [78, 229, 94, 9, 208] }, away: { roster: [254, 392, 475, 115, 130] } });
+      expect(server).toMatchObject({ matchId: m.id, seed: 777, quarterLen: 60, home: { roster: [78, 229, 94, 9, 154] }, away: { roster: [254, 392, 475, 115, 130] } });
       expect(seen!.setup).toEqual(server);
       expect(seen!.lockstep).toEqual({ emptyTicks: MIN_DELAY });
       const honest = await realJudge(mergeEvidence({ setup: server!, keys: pub, inputs, applied: [] }, null, pub, server!));

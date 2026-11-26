@@ -88,7 +88,7 @@ describe('hub: the next region', () => {
     const card = text(nextCard(f, settings));
     expect(card).toContain('Violet Soar');
     expect(card).toContain('Gym Leader Falkner · Zephyr Badge on the line');
-    expect(card).toMatch(/\d+ OVR\s*Game strength\s*\d+/);
+    expect(card).toMatch(/\d+ OVR/);
     // The standings keep the Johto Elite's full coach label, as text and as a title (the line wraps on phones).
     expect(standingsHtml(f)).toContain('<small title="Will · Koga · Bruno · Karen · Champion Lance">Will · Koga · Bruno · Karen · Champion Lance</small>');
   });

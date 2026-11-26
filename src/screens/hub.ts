@@ -1,13 +1,12 @@
 import { POSITIONS, monByDex, spriteUrl, type Pos } from '../data/pokemon';
 import {
-  badgesEarned, canAcquire, canSign, regionOf, regionStatus, regionTitles, canTrade, finalWeek, judgeTrade, lineupOf, makeTrade, resetLineup, swapInLineup, tradeDeadline, venueOf, monOf, perGame, sign, standings, matchStrength, userGame, weekGames, weekLabel,
+  badgesEarned, canAcquire, canSign, regionOf, regionStatus, regionTitles, canTrade, effectiveStrength, finalWeek, judgeTrade, lineupOf, makeTrade, resetLineup, swapInLineup, tradeDeadline, venueOf, monOf, perGame, sign, standings, teamOvrOf, userGame, weekGames, weekLabel,
   xpToNext, type FGame, type FTeam, type Franchise,
 } from '../franchise/league';
 import { badgeSvg } from '../ui/badges';
 import { staminaOf } from '../game/game';
 import { esc, tier } from '../util';
 import { bindSettings, settingsHtml, type Settings } from './menu';
-import { strengthHtml } from './strength';
 import { countAt, posTrackHtml, targetPer, typeChips } from './draft';
 
 export interface HubActions {
@@ -89,7 +88,7 @@ export function nextCard(f: Franchise, settings: Settings): string {
       <span class="where">${where}${t.gym ? ` · Gym ${t.gym}` : t.elite ? ' · Final boss' : ''}</span>
       <h3>${esc(t.name)}</h3>
       ${t.leader && !t.human ? `<p class="leader">${t.elite ? '' : 'Gym Leader '}${esc(t.leader)}${t.badge ? ` · ${esc(t.badge)} Badge on the line` : ''}</p>` : ''}
-      ${strengthHtml(matchStrength(f, g, t.id), g.round ? '' : rec(t))}
+      <p class="nx-ovr">${g.round ? '' : `${rec(t)} · `}<b>${teamOvrOf(f, t)}</b> OVR · <b class="eff">${Math.round(effectiveStrength(lineupOf(f, t).starters.map((u) => monOf(f, u)), t.boost ?? 0))}</b> eff</p>
       ${lineup(f, t)}
     </div>`;
   const title = g.round === 'final' ? 'The Final' : g.round === 'semi' ? 'Semifinal' : weekLabel(f);
