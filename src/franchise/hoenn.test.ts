@@ -105,13 +105,15 @@ describe('Gen 3 data (#252-386)', () => {
   it('leaves every other Pokémon exactly as it was (digests pinned from the Johto branch)', () => {
     const others = POKEMON.filter((m) => !gen3(m.dex) && !newGen4(m.dex));
     expect(others).toHaveLength(277);
-    expect(fnv(JSON.stringify(others))).toBe('931199c9');
+    // Digest moved when the legendary ladder retuned the Gen 1-2 cards in this set.
+    expect(fnv(JSON.stringify(others))).toBe('a9052cf6');
     // Evolutions of the Pokémon that were in the game before Sinnoh, leaving out the new Sinnoh forms they gained (Eevee -> Glaceon).
     const before = Object.entries(EVOLUTIONS).filter(([k]) => !gen3(Number(k)) && !newGen4(Number(k)))
       .map(([k, e]) => [k, { level: e.level, to: e.to.filter((d) => !newGen4(d)) }]).filter(([, e]) => (e as { to: number[] }).to.length);
     expect(fnv(JSON.stringify(before))).toBe('922c9a81');
     // Hoenn hand-tuned cards. Sceptile, Blaziken and Swampert were buffed with the other Gen 3 starters.
-    expect(fnv(JSON.stringify(POKEMON.filter((m) => LEGACY.indexOf(m.dex) >= 0)))).toBe('9c11d760');
+    // Latios and Rayquaza sit in this fourteen; the legendary ladder retuned both.
+    expect(fnv(JSON.stringify(POKEMON.filter((m) => LEGACY.indexOf(m.dex) >= 0)))).toBe('660db61c');
     expect(monByDex(376)).toMatchObject({ name: 'Metagross', pos: 'C', types: ['Steel', 'Psychic'], r: { spd: 58, sht: 64, ins: 90, pas: 70, def: 84, blk: 94, reb: 90, hnd: 60 } });
   });
 

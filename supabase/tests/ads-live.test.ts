@@ -29,6 +29,7 @@ const HOLDER_FILE = '20261219_pokejam_raffle_holders_qualify.sql';
 const AD_CLICKS_FILE = '20261220_pokejam_ad_clicks.sql';
 const AD_URL_FILE = '20261221_pokejam_live_ads_url.sql';
 const SINNOH_MONS_FILE = '20261222_pokejam_mons_sinnoh.sql';
+const MONS_POS_FILE = '20261223_pokejam_mons_positions.sql';
 const LIVE_SQL = readFileSync(new URL(LIVE_FILE, DIR), 'utf8');
 // sha256 of pokejam-test's 20261104_pokejam_ads.sql, renamed since and now 20261203_pokejam_ads.sql, already applied on the shared project.
 const DEVNET_SHA256 = 'adf6c2b432673feb800146593f6eeb87567c6a051678521d47a5d3c6a3c04cd0';
@@ -136,7 +137,7 @@ describe('the migration is additive', () => {
   });
 
   it('sorts after every other migration, keeping the devnet file first', () => {
-    expect(FILES.slice(-19)).toEqual([...MIGRATION_TAIL, QUIT_BAN_FILE, DISCORD_FILE, RAFFLE_FILE, HOENN_MONS_FILE, BURN_PRICE_FILE, USDC_TIERS_FILE, ...PACK_FILES, WALLET_NONCE_FILE, HOLDER_FILE, AD_CLICKS_FILE, AD_URL_FILE, SINNOH_MONS_FILE]);
+    expect(FILES.slice(-20)).toEqual([...MIGRATION_TAIL, QUIT_BAN_FILE, DISCORD_FILE, RAFFLE_FILE, HOENN_MONS_FILE, BURN_PRICE_FILE, USDC_TIERS_FILE, ...PACK_FILES, WALLET_NONCE_FILE, HOLDER_FILE, AD_CLICKS_FILE, AD_URL_FILE, SINNOH_MONS_FILE, MONS_POS_FILE]);
     expect(FILES).toContain('20261201_pokejam_judge_decides.sql');
     expect(new Set(FILES.map((f) => f.slice(0, 8))).size).toBe(FILES.length);
   });
@@ -158,7 +159,7 @@ describe('the migration is additive', () => {
     const list = readFileSync(new URL('./testDb.ts', import.meta.url), 'utf8').match(/const MIGRATIONS = \[[^\]]*\]/)![0];
     const listed = [...list.matchAll(/'([^']+\.sql)'/g)].map((m) => m[1]);
     expect(listed).toEqual([...listed].sort());
-    expect(listed.slice(-15)).toEqual([...MIGRATION_TAIL, QUIT_BAN_FILE, DISCORD_FILE, RAFFLE_FILE, HOENN_MONS_FILE, BURN_PRICE_FILE, USDC_TIERS_FILE, WALLET_NONCE_FILE, HOLDER_FILE, AD_CLICKS_FILE, AD_URL_FILE, SINNOH_MONS_FILE]);
+    expect(listed.slice(-16)).toEqual([...MIGRATION_TAIL, QUIT_BAN_FILE, DISCORD_FILE, RAFFLE_FILE, HOENN_MONS_FILE, BURN_PRICE_FILE, USDC_TIERS_FILE, WALLET_NONCE_FILE, HOLDER_FILE, AD_CLICKS_FILE, AD_URL_FILE, SINNOH_MONS_FILE, MONS_POS_FILE]);
   });
 });
 

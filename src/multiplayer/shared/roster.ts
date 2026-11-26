@@ -15,21 +15,21 @@ export function randomFive(rng: () => number = Math.random, pool: readonly Mon[]
  * Mewtwo then so be it." Change Ranked's pool here.
  */
 export const RANKED_EXCLUDED: readonly number[] = [
-  150, // Mewtwo, SF 97
-  249, // Lugia, C 96
-  250, // Ho-Oh, C 95
-  151, // Mew, PG 94
-  384, // Rayquaza, PF 97
-  381, // Latios, SF 92
+  150, // Mewtwo, SF 96
+  249, // Lugia, PF 95
+  250, // Ho-Oh, SF 94
+  151, // Mew, PG 93
+  384, // Rayquaza, PF 96
+  381, // Latios, SG 93
   383, // Groudon, PF 92
   382, // Kyogre, C 92
   380, // Latias, SF 91
-  386, // Deoxys, SG 97
-  483, // Dialga, C 97
-  484, // Palkia, C 95
-  487, // Giratina, C 95
-  486, // Regigigas, C 94
-  493, // Arceus, C 98
+  386, // Deoxys, SG 95
+  483, // Dialga, PF 95
+  484, // Palkia, SF 94
+  487, // Giratina, PF 94
+  486, // Regigigas, C 93
+  493, // Arceus, C 97
   491, // Darkrai, SG 92
 ];
 
@@ -41,7 +41,7 @@ export const RANKED_LEGENDARIES: readonly number[] = [
   145, // Zapdos
   146, // Moltres
   243, // Raikou
-  244, // Entei
+  244, // Entei, PF 88
   245, // Suicune
   251, // Celebi
   377, // Regirock

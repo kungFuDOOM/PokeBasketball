@@ -154,11 +154,12 @@ describe('Sinnoh starters and legendaries', () => {
     expect(monByDex(389).r.blk).toBeLessThan(90);
   });
 
-  it('legendaries follow the earlier generations: in the dex, none above the 97 ceiling except Arceus at 98, the strongest kept out of Ranked', () => {
+  it('legendaries follow the earlier generations: Arceus is the only 97, nothing is 98 or above, the strongest kept out of Ranked', () => {
     const legends = [480, 481, 482, 483, 484, 485, 486, 487, 488, 490, 491, 492, 493];
-    for (const d of legends.filter((x) => x !== 493)) expect(monByDex(d).ovr, monByDex(d).name).toBeLessThanOrEqual(97);
-    expect(monByDex(493).ovr).toBe(98);
-    expect(Math.max(...POKEMON.map((m) => m.ovr))).toBe(98);
+    for (const d of legends) expect(monByDex(d).ovr, monByDex(d).name).toBeLessThanOrEqual(97);
+    expect(monByDex(493).ovr).toBe(97);
+    expect(POKEMON.filter((m) => m.ovr === 97).map((m) => m.name)).toEqual(['Arceus']);
+    expect(Math.max(...POKEMON.map((m) => m.ovr))).toBe(97);
     for (const d of [483, 484, 486, 487, 491, 493]) expect(RANKED_EXCLUDED, `#${d}`).toContain(d);
     for (const d of legends) expect(RANKED_LEGENDARIES, `#${d}`).toContain(d);
     expect(RANKED_POOL.some((m) => [483, 484, 486, 487, 491, 493].includes(m.dex))).toBe(false);

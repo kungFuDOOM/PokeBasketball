@@ -127,8 +127,8 @@ describe('Johto and Hoenn starter buffs', () => {
       expect(m.archetype, m.name).toBe(want.role);
     }
     expect(monByDex(289)).toMatchObject({ name: 'Slaking', ovr: 91, r: rate(81, 74, 97, 65, 86, 80, 97, 72) });
-    expect(monByDex(384)).toMatchObject({ name: 'Rayquaza', ovr: 97, r: rate(88, 89, 99, 68, 86, 89, 94, 70) });
-    expect(monByDex(386)).toMatchObject({ name: 'Deoxys', ovr: 97, r: rate(97, 96, 97, 74, 83, 54, 64, 89) });
+    expect(monByDex(384)).toMatchObject({ name: 'Rayquaza', ovr: 96, r: rate(88, 89, 97, 68, 86, 89, 94, 70) });
+    expect(monByDex(386)).toMatchObject({ name: 'Deoxys', ovr: 95, r: rate(95, 94, 95, 74, 83, 54, 64, 89) });
     expect(monByDex(6).ovr).toBeGreaterThan(monByDex(157).ovr);
     expect(monByDex(3).ovr).toBeGreaterThan(monByDex(154).ovr);
     expect(monByDex(9).ovr).toBeGreaterThan(monByDex(160).ovr);
