@@ -1063,7 +1063,7 @@ var ROWS = [
   [145, "Zapdos", ["Electric", "Flying"], "SF", 94, 84, 96, 68, 84, 82, 76, 74],
   [392, "Infernape", ["Fire", "Fighting"], "SG", 92, 82, 88, 72, 74, 55, 58, 86],
   [461, "Weavile", ["Dark", "Ice"], "PG", 94, 72, 78, 72, 92, 50, 52, 88],
-  [196, "Espeon", ["Psychic"], "SG", 85, 93, 62, 86, 66, 48, 52, 84],
+  [196, "Espeon", ["Psychic"], "SG", 91, 95, 72, 90, 76, 48, 52, 88],
   [197, "Umbreon", ["Dark"], "SF", 78, 72, 66, 74, 93, 72, 70, 76],
   [282, "Gardevoir", ["Psychic", "Fairy"], "PG", 74, 90, 66, 88, 70, 72, 66, 78],
   [212, "Scizor", ["Bug", "Steel"], "SF", 82, 78, 86, 66, 94, 80, 74, 76],
@@ -1072,8 +1072,8 @@ var ROWS = [
   [59, "Arcanine", ["Fire"], "SF", 94, 72, 88, 66, 76, 64, 68, 78],
   [466, "Electivire", ["Electric"], "PF", 72, 62, 92, 58, 78, 84, 86, 66],
   [26, "Raichu", ["Electric"], "PG", 92, 82, 74, 80, 74, 46, 50, 88],
-  [135, "Jolteon", ["Electric"], "PG", 97, 80, 68, 78, 76, 42, 48, 90],
-  [76, "Golem", ["Rock", "Ground"], "PF", 45, 48, 88, 50, 72, 88, 86, 50],
+  [135, "Jolteon", ["Electric"], "PG", 97, 76, 68, 78, 76, 42, 48, 90],
+  [76, "Golem", ["Rock", "Ground"], "PF", 58, 62, 97, 56, 88, 92, 94, 54],
   [3, "Venusaur", ["Grass", "Poison"], "C", 52, 66, 89, 74, 74, 90, 93, 56],
   [106, "Hitmonlee", ["Fighting"], "SF", 84, 68, 90, 56, 78, 72, 60, 70],
   [107, "Hitmonchan", ["Fighting"], "SG", 82, 74, 72, 60, 88, 60, 58, 78],
@@ -1084,45 +1084,45 @@ var ROWS = [
   [79, "Slowpoke", ["Water", "Psychic"], "PF", 30, 72, 56, 70, 54, 62, 64, 58],
   [129, "Magikarp", ["Water"], "PG", 40, 30, 30, 30, 30, 25, 30, 35],
   // Rock
-  [142, "Aerodactyl", ["Rock", "Flying"], "SG", 95, 70, 86, 64, 80, 62, 60, 80],
+  [142, "Aerodactyl", ["Rock", "Flying"], "SG", 95, 72, 86, 64, 80, 62, 60, 80],
   [112, "Rhydon", ["Ground", "Rock"], "PF", 50, 48, 90, 46, 74, 88, 90, 52],
-  [464, "Rhyperior", ["Ground", "Rock"], "C", 46, 52, 94, 46, 76, 90, 94, 50],
-  [141, "Kabutops", ["Rock", "Water"], "SF", 82, 72, 84, 62, 84, 64, 62, 76],
+  [464, "Rhyperior", ["Ground", "Rock"], "C", 52, 60, 96, 58, 86, 94, 98, 52],
+  [141, "Kabutops", ["Rock", "Water"], "SF", 90, 80, 93, 66, 90, 70, 70, 80],
   [139, "Omastar", ["Rock", "Water"], "PF", 48, 76, 72, 70, 74, 84, 84, 56],
   [185, "Sudowoodo", ["Rock"], "PF", 50, 54, 78, 54, 78, 76, 76, 54],
   // Water
-  [121, "Starmie", ["Water", "Psychic"], "PG", 92, 84, 62, 84, 70, 50, 50, 86],
-  [134, "Vaporeon", ["Water"], "SF", 68, 76, 82, 74, 78, 82, 88, 62],
+  [121, "Starmie", ["Water", "Psychic"], "PG", 92, 88, 62, 88, 70, 50, 50, 86],
+  [134, "Vaporeon", ["Water"], "SF", 68, 82, 84, 74, 84, 82, 88, 62],
   [260, "Swampert", ["Water", "Ground"], "PF", 68, 62, 96, 62, 82, 88, 89, 64],
   [160, "Feraligatr", ["Water"], "SF", 80, 74, 94, 62, 88, 78, 84, 74],
-  [230, "Kingdra", ["Water", "Dragon"], "SG", 82, 90, 72, 74, 72, 62, 62, 80],
+  [230, "Kingdra", ["Water", "Dragon"], "SG", 82, 93, 78, 74, 76, 62, 62, 80],
   [350, "Milotic", ["Water"], "PF", 66, 72, 84, 84, 78, 86, 88, 62],
   [91, "Cloyster", ["Water", "Ice"], "C", 52, 58, 78, 52, 88, 94, 84, 50],
   [62, "Poliwrath", ["Water", "Fighting"], "PF", 64, 64, 88, 60, 82, 78, 82, 62],
   // Electric
   [181, "Ampharos", ["Electric"], "PF", 58, 80, 82, 70, 66, 78, 80, 60],
   [405, "Luxray", ["Electric"], "SF", 84, 74, 86, 62, 86, 66, 66, 76],
-  [462, "Magnezone", ["Electric", "Steel"], "PF", 50, 70, 86, 60, 76, 90, 86, 48],
+  [462, "Magnezone", ["Electric", "Steel"], "PF", 50, 74, 89, 60, 76, 90, 86, 48],
   [243, "Raikou", ["Electric"], "SG", 94, 86, 82, 72, 80, 60, 58, 86],
   [310, "Manectric", ["Electric"], "PG", 90, 76, 70, 70, 70, 44, 48, 84],
   // Grass
   // Speed +1 only. Overall stays 88, level with Venusaur and Blastoise and inside the Ranked cap.
   [254, "Sceptile", ["Grass"], "PG", 96, 82, 76, 80, 74, 48, 52, 88],
-  [45, "Vileplume", ["Grass", "Poison"], "PF", 46, 64, 76, 72, 70, 82, 82, 54],
-  [71, "Victreebel", ["Grass", "Poison"], "SF", 70, 70, 82, 64, 82, 74, 70, 66],
+  [45, "Vileplume", ["Grass", "Poison"], "PF", 58, 76, 86, 78, 84, 90, 92, 58],
+  [71, "Victreebel", ["Grass", "Poison"], "SF", 82, 86, 94, 70, 90, 78, 72, 72],
   [154, "Meganium", ["Grass"], "C", 54, 62, 84, 81, 76, 88, 92, 60],
   [465, "Tangrowth", ["Grass"], "C", 48, 68, 90, 58, 76, 86, 92, 50],
   [470, "Leafeon", ["Grass"], "PG", 92, 80, 78, 80, 82, 50, 52, 84],
   // Poison
   [110, "Weezing", ["Poison"], "C", 40, 52, 70, 60, 78, 90, 86, 48],
-  [89, "Muk", ["Poison"], "C", 36, 50, 84, 52, 76, 88, 94, 46],
-  [34, "Nidoking", ["Poison", "Ground"], "PF", 76, 72, 90, 66, 80, 78, 80, 68],
+  [89, "Muk", ["Poison"], "C", 48, 58, 90, 62, 84, 94, 98, 48],
+  [34, "Nidoking", ["Poison", "Ground"], "PF", 86, 82, 95, 72, 84, 84, 86, 72],
   [31, "Nidoqueen", ["Poison", "Ground"], "PF", 68, 66, 86, 70, 82, 82, 86, 64],
   [169, "Crobat", ["Poison", "Flying"], "PG", 98, 76, 70, 78, 84, 48, 50, 88],
   [454, "Toxicroak", ["Poison", "Fighting"], "SF", 80, 70, 86, 62, 88, 70, 66, 74],
   [24, "Arbok", ["Poison"], "SF", 82, 66, 80, 58, 86, 68, 62, 72],
   // Psychic
-  [97, "Hypno", ["Psychic"], "PF", 56, 72, 70, 82, 80, 80, 78, 62],
+  [97, "Hypno", ["Psychic"], "PF", 68, 84, 86, 86, 90, 88, 90, 68],
   [475, "Gallade", ["Psychic", "Fighting"], "SF", 82, 72, 90, 68, 88, 70, 68, 74],
   [437, "Bronzong", ["Steel", "Psychic"], "C", 36, 58, 72, 60, 86, 92, 86, 46],
   // Eon attacker moved to shooting guard: shot and speed stay the card, paint stats come down.
@@ -1132,14 +1132,14 @@ var ROWS = [
   // Fire
   [126, "Magmar", ["Fire"], "SF", 78, 80, 82, 66, 72, 66, 62, 74],
   [78, "Rapidash", ["Fire"], "PG", 96, 72, 74, 72, 70, 44, 48, 86],
-  [38, "Ninetales", ["Fire"], "PG", 86, 86, 62, 86, 72, 52, 54, 84],
+  [38, "Ninetales", ["Fire"], "PG", 90, 92, 62, 88, 72, 52, 54, 86],
   [157, "Typhlosion", ["Fire"], "SF", 84, 90, 90, 68, 78, 70, 70, 80],
-  [136, "Flareon", ["Fire"], "PF", 66, 64, 90, 58, 74, 74, 80, 62],
+  [136, "Flareon", ["Fire"], "PF", 82, 78, 95, 64, 82, 80, 88, 66],
   [146, "Moltres", ["Fire", "Flying"], "SF", 89, 90, 97, 68, 82, 80, 74, 74],
   [229, "Houndoom", ["Dark", "Fire"], "SG", 88, 82, 78, 66, 84, 58, 58, 82],
   [637, "Volcarona", ["Bug", "Fire"], "SF", 78, 88, 72, 72, 72, 72, 66, 74],
   // Ground
-  [105, "Marowak", ["Ground"], "SG", 70, 82, 74, 64, 80, 62, 64, 72],
+  [105, "Marowak", ["Ground"], "SG", 80, 89, 92, 74, 92, 70, 70, 80],
   [530, "Excadrill", ["Ground", "Steel"], "SF", 84, 66, 92, 58, 80, 70, 70, 76],
   [383, "Groudon", ["Ground"], "PF", 74, 70, 96, 60, 84, 94, 96, 62],
   [382, "Kyogre", ["Water"], "C", 68, 88, 88, 70, 76, 93, 96, 60],
@@ -1216,7 +1216,15 @@ var ROWS = [
   // Palkia and Entei were generated. Hand rows win, and gen-pokemon-data.mjs skips them, so the new
   // positions survive a regen. Palkia is a shooting forward. Entei is a finishing power forward.
   [484, "Palkia", ["Water", "Dragon"], "SF", 92, 95, 93, 84, 88, 78, 78, 86],
-  [244, "Entei", ["Fire"], "PF", 83, 75, 92, 69, 81, 77, 89, 74]
+  [244, "Entei", ["Fire"], "PF", 83, 75, 92, 69, 81, 77, 89, 74],
+  // Kanto gym buffs. Attributes only. These were generated rows; hand rows win. Types and positions are unchanged.
+  [49, "Venomoth", ["Bug", "Poison"], "SG", 90, 89, 76, 80, 84, 61, 61, 86],
+  [51, "Dugtrio", ["Ground"], "PG", 99, 76, 86, 78, 86, 48, 53, 86],
+  [82, "Magneton", ["Electric", "Steel"], "SG", 72, 92, 72, 76, 80, 67, 59, 76],
+  [95, "Onix", ["Rock", "Ground"], "C", 66, 53, 74, 56, 88, 99, 90, 58],
+  [103, "Exeggutor", ["Grass", "Psychic"], "C", 60, 88, 88, 76, 80, 90, 92, 66],
+  [182, "Bellossom", ["Grass"], "SG", 84, 89, 74, 82, 82, 68, 68, 84],
+  [467, "Magmortar", ["Fire"], "SG", 82, 95, 86, 80, 80, 67, 68, 80]
 ];
 var RETIRED_ROWS = [
   [658, "Greninja", ["Water", "Dark"], "SG", 94, 88, 78, 80, 82, 55, 58, 88],

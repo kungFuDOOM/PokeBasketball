@@ -134,3 +134,10 @@ export function autoDraft(teams: DraftTeam[], size: number, fixed?: Mon[], from:
   }
   return { rosters, leftovers: pool };
 }
+
+/** A team's five and bench: the hand-picked `starters` (dex numbers) when it has all of them, else `bestLineup`. */
+export function plannedLineup(mons: Mon[], starters?: readonly number[]): { starters: Mon[]; bench: Mon[] } {
+  const five = (starters ?? []).map((d) => mons.find((m) => m.dex === d)).filter((m): m is Mon => !!m);
+  if (five.length !== 5) return bestLineup(mons);
+  return { starters: five, bench: mons.filter((m) => !five.includes(m)).sort((a, b) => b.ovr - a.ovr) };
+}

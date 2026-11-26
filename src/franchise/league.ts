@@ -7,8 +7,9 @@ import type { DraftState } from '../screens/draft';
 import { safeName } from '../nameFilter';
 import { fixAbbr } from '../util';
 import { USER_STYLE, contrastAway } from '../multiplayer/shared/matchSetup';
-import { autoDraft } from '../season/team';
-import { KANTO, KANTO_RETURN_BUMP, REGIONS, SINNOH, inPool, isKantoCpuMon, nextRegion, openRegionIds, poolMons, regionById, regionTeams, type LeagueTeam, type RegionDef } from './regions';
+import { autoDraft, plannedLineup } from '../season/team';
+import { strengthOf, type Strength } from '../screens/strength';
+import { KANTO, KANTO_GYMS_REV, KANTO_RETURN_BUMP, REGIONS, SINNOH, inPool, isKantoCpuMon, nextRegion, openRegionIds, poolMons, regionById, regionTeams, type LeagueTeam, type RegionDef } from './regions';
 
 const SAVE_KEY = 'pokejam.franchise.v1';
 /** XP needed to go from `level` to the next one; each level costs a bit more. */
@@ -102,6 +103,8 @@ export interface Franchise {
   games: FGame[];
   signedWeek: number;
   news: string[];
+  /** `KANTO_GYMS_REV` the Kanto gyms were built on. Missing or older: they are rebuilt once on load. */
+  gymsRev?: number;
   champion?: number;
   mvp?: string;
   /** This season's awards, set when the final ends. */
@@ -240,6 +243,13 @@ function schedule(n: number, twice: boolean): FGame[] {
   return games;
 }
 
+/** Sets a CPU team's depth chart to its hand-picked starting five (dex numbers), the bench best first. */
+function setPlannedLineup(players: Record<string, FPlayer>, t: FTeam, starters: readonly number[]) {
+  const byMon = new Map(t.roster.map((u) => [withBonus(players[u].dex, players[u].bonus), u]));
+  const plan = plannedLineup([...byMon.keys()], starters);
+  t.lineup = [...plan.starters, ...plan.bench].map((m) => byMon.get(m)!);
+}
+
 export function createFranchise(
   teams: (Omit<FTeam, 'id' | 'roster' | 'w' | 'l' | 'pf' | 'pa' | 'streak'>)[],
   rosters: Mon[][],
@@ -257,7 +267,14 @@ export function createFranchise(
     season: 1,
     week: 1,
     phase: 'season',
-    teams: teams.map((t, id) => ({ id, ...t, roster: rosters[id].map((m) => add(m)), w: 0, l: 0, pf: 0, pa: 0, streak: 0 })),
+    teams: teams.map((t, id) => {
+      // `teams` may be league definitions: their dex-number `starters` becomes this team's depth chart.
+      const { starters, ...rest } = t as typeof t & { starters?: number[] };
+      const team: FTeam = { id, ...rest, roster: rosters[id].map((m) => add(m)), w: 0, l: 0, pf: 0, pa: 0, streak: 0 };
+      if (starters) setPlannedLineup(players, team, starters);
+      return team;
+    }),
+    gymsRev: KANTO_GYMS_REV,
     players,
     freeAgents: leftovers.map((m) => add(m)),
     weeks: teams.length - 1,
@@ -320,37 +337,47 @@ function cleanTeams(teams: unknown, cpu: LeagueTeam[] = LEAGUE): boolean {
 }
 
 /**
- * Old Kanto saves drafted the gyms, so Brock could be starting Mewtwo. On load, rebuild each Kanto CPU gym from the
- * hand-made roster (the user's team and the Indigo Elite are left alone) and raise a stored boost that is still below
- * the current design. A save that has already come back from a Sinnoh title keeps the return bump on top of that.
- * A gym whose roster already matches is not replaced, so levels survive the next load.
+ * Old Kanto saves drafted the gyms (Brock could be starting Mewtwo) or used an earlier hand-made design. A save below
+ * `KANTO_GYMS_REV` rebuilds each Kanto CPU gym once: the current roster, depth chart and boost (lowered as well as
+ * raised, plus the return bump after a Sinnoh title). The user's team and the Indigo Elite are never touched. It runs
+ * once per revision so later trades and rookie picks stick. A gym that already has the right ten keeps its players.
+ * A new roster spot takes that species from free agency when it is there, so the league doesn't end up with two.
  */
 function repairKantoGyms(f: Franchise): void {
-  if (regionOf(f).id !== KANTO.id) return;
+  if (regionOf(f).id !== KANTO.id || (f.gymsRev ?? 0) >= KANTO_GYMS_REV) return;
   const returned = (f.titles ?? []).some((t) => t.regionId === SINNOH.id);
   const cpu = regionTeams(KANTO);
-  let n = Object.keys(f.players).reduce((a, k) => Math.max(a, /^p\d+$/.test(k) ? Number(k.slice(1)) + 1 : a), 0);
-  const fa = new Set(f.freeAgents);
+  const stale: { t: FTeam; def: (typeof cpu)[number] }[] = [];
   for (const t of f.teams) {
-    if (t.human) continue;
-    const i = cpu.findIndex((g) => (t.elite ? !!g.elite : g.gym === t.gym));
-    if (i < 0) continue;
+    if (t.human || t.elite) continue;
+    const i = cpu.findIndex((g) => !g.elite && g.gym === t.gym);
     const def = cpu[i];
-    const want = def.boost + (returned ? (KANTO_RETURN_BUMP[i] ?? 0) : 0);
-    if ((t.boost ?? 0) < want) t.boost = want;
-    if (!t.gym || !def.roster) continue;
+    if (!def?.roster) continue;
+    t.boost = def.boost + (returned ? (KANTO_RETURN_BUMP[i] ?? 0) : 0);
     const have = t.roster.map((u) => f.players[u]?.dex);
-    const same = have.length === def.roster.length && new Set(have).size === def.roster.length && def.roster.every((d) => have.includes(d));
-    if (same) continue;
-    for (const u of t.roster) if (!fa.has(u) && f.players[u]) { f.freeAgents.push(u); fa.add(u); }
-    t.roster = def.roster.map((dex) => {
+    if (have.length === def.roster.length && def.roster.every((d) => have.includes(d))) {
+      delete t.lineup;
+      if (def.starters) setPlannedLineup(f.players, t, def.starters);
+    } else stale.push({ t, def });
+  }
+  // Release every stale roster first: one gym's old player may be on another gym's new list.
+  for (const { t } of stale) {
+    for (const u of t.roster) if (f.players[u] && !f.freeAgents.includes(u)) f.freeAgents.push(u);
+  }
+  let n = Object.keys(f.players).reduce((a, k) => Math.max(a, /^p\d+$/.test(k) ? Number(k.slice(1)) + 1 : a), 0);
+  for (const { t, def } of stale) {
+    t.roster = def.roster!.map((dex) => {
+      const k = f.freeAgents.findIndex((u) => f.players[u]?.dex === dex && !f.players[u].king);
+      if (k >= 0) return f.freeAgents.splice(k, 1)[0];
       while (f.players[`p${n}`]) n++;
       const uid = `p${n++}`;
       f.players[uid] = { uid, dex, level: 1, xp: 0, bonus: {}, stats: emptyStats(), ovrStart: monByDex(dex).ovr };
       return uid;
     });
     delete t.lineup;
+    if (def.starters) setPlannedLineup(f.players, t, def.starters);
   }
+  f.gymsRev = KANTO_GYMS_REV;
 }
 
 export function loadFranchise(): Franchise | null {
@@ -695,6 +722,16 @@ export function gameConfig(f: Franchise, game: FGame, humanPlays: boolean, quart
   return { cfg, sides, uidOf };
 }
 
+/**
+ * How strong a side really plays in this game, as `effectiveStrength` rounded: team OVR (starting-five mean plus
+ * chemistry) plus the boost the engine will get (including a later region's scaling). Difficulty is not included.
+ */
+export function matchStrength(f: Franchise, game: FGame, teamId: number): Strength {
+  const { cfg, sides } = gameConfig(f, game, false, 1, 'pro');
+  const def = sides[0] === teamId ? cfg.home : cfg.away;
+  return strengthOf(def.roster, def.boost ?? 0);
+}
+
 /** Plays a CPU-controlled game with the real engine, yielding to the browser between slices. */
 export function simulate(cfg: ConstructorParameters<typeof Game>[0]): Promise<Game> {
   return new Promise((resolve) => {
@@ -738,12 +775,16 @@ function levelUp(p: FPlayer, rng = Math.random): string[] {
 
 /**
  * Where a player on `team` may evolve to. A later region's gyms and final opponent never field a Pokémon from a later
- * generation than the region's own (Pryce's Piloswine stays a Piloswine in Johto); everyone else evolves freely.
+ * generation than the region's own (Pryce's Piloswine stays a Piloswine in Johto). Kanto's gym players don't evolve.
+ * Everyone else evolves freely.
  */
 function evolutionsFor(f: Franchise, team: number, to: number[]): number[] {
   const t = f.teams[team];
   const r = regionOf(f);
-  return t && !t.human && r.index > 0 ? to.filter((d) => d <= r.dex[1]) : to;
+  if (!t || t.human) return to;
+  // Kanto's gyms have hand-made rosters: their players level up but keep their species.
+  if (r.index === 0) return t.gym ? [] : to;
+  return to.filter((d) => d <= r.dex[1]);
 }
 
 /** Applies a finished engine game to the league: score, standings, stats, XP, level-ups and evolutions. */
@@ -909,6 +950,8 @@ export function bringBackKanto(f: Franchise): void {
     ...(t.gym ? { gym: t.gym, badge: t.badge } : {}), ...(t.elite ? { elite: true } : {}),
     roster: rosters[i + 1].map(add), w: 0, l: 0, pf: 0, pa: 0, streak: 0,
   }))];
+  cpu.forEach((t, i) => { if (t.starters) setPlannedLineup(f.players, f.teams[i + 1], t.starters); });
+  f.gymsRev = KANTO_GYMS_REV;
   Object.assign(me, { w: 0, l: 0, pf: 0, pa: 0, streak: 0 });
   f.region = KANTO.id;
   f.weeks = f.teams.length - 1;
