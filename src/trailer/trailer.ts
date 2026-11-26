@@ -2949,10 +2949,10 @@ const regionSpot = (r: RegionDef, color: string): RegionSpot => ({
   name: r.name.toUpperCase(), gen: r.generation, color,
   badges: r.gyms.map((g) => g.badge ?? ''),
   leaders: r.gyms.map((g) => g.leader.toUpperCase()),
-  aces: r.gyms.map((g) => g.ace ?? g.roster?.[0] ?? 25),
+  aces: r.gyms.map((g) => g.star ?? 25),
   // "Johto Elite Four & Champion Lance" -> "ELITE FOUR & CHAMPION LANCE"
   champ: (r.finale.title ?? r.finale.leader).replace(new RegExp(`^${r.name} `), '').toUpperCase(),
-  champAce: r.finale.ace ?? r.finale.roster?.[0] ?? 149,
+  champAce: r.finale.star ?? 149,
 });
 const REGION_JOHTO = regionSpot(JOHTO, '#e8b923');
 const REGION_HOENN = regionSpot(HOENN, '#2f78d0');

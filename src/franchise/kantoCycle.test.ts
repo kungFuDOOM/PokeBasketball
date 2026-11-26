@@ -7,14 +7,24 @@ import {
   lineupOf, loadFranchise, recordGame, regionOf, regionStatus, rookieOnClock, rookiePick, saveFranchise, shouldReturnToKanto,
   startRookieDraft, weekGames, type Franchise,
 } from './league';
-import { draftKantoLeague, kantoPool } from './kantoDraft';
+import { draftCpuLeague, cpuDraftPool } from './kantoDraft';
+import { strengthOf } from '../screens/strength';
 import { HOENN, JOHTO, KANTO, KANTO_GYMS_REV, KANTO_RETURN_BUMP, SINNOH, openRegionIds, poolMons, regionTeams } from './regions';
 
-/** What the repair should give the eight gyms: the drafter, around the user's team and the Elite. */
+/** What the repair should give the nine CPU teams (gyms, then the Elite): the drafter, around only the user's team. */
 const rebuilt = (f: Franchise) => {
-  const held = new Set(f.teams.filter((t) => t.human || t.elite).flatMap((t) => t.roster.map((u) => f.players[u].dex)));
-  return draftKantoLeague(KANTO.gyms, 10, kantoPool().filter((m) => !held.has(m.dex))).map((r) => r.map((m) => m.dex));
+  const held = new Set(f.teams[0].roster.map((u) => f.players[u].dex));
+  return draftCpuLeague(regionTeams(KANTO), 10, cpuDraftPool().filter((m) => !held.has(m.dex))).map((r) => r.map((m) => m.dex));
 };
+
+const dexesOf = (f: Franchise, t: Franchise['teams'][number]) => t.roster.map((u) => f.players[u].dex);
+const eliteOf = (f: Franchise) => f.teams.find((t) => t.elite)!;
+
+/** The Elite plays strictly stronger than Giovanni, by the number on the matchup card. */
+function expectEliteAboveGiovanni(f: Franchise) {
+  const plays = (t: Franchise['teams'][number]) => strengthOf(lineupOf(f, t).starters.map((u) => monByDex(f.players[u].dex)), t.boost).total;
+  expect(plays(eliteOf(f))).toBeGreaterThan(plays(f.teams.find((t) => t.gym === 8)!));
+}
 
 const store = new Map<string, string>();
 vi.stubGlobal('localStorage', {
@@ -100,7 +110,6 @@ describe('Sinnoh championship cycle', () => {
     expect(regionStatus(f).next).toBeUndefined();
     expect(enterRegion(f, 'kanto')).toBe(false);
     expect(regionOf(f)).toBe(SINNOH);
-    expect(regionTeams(KANTO).every((t) => !t.roster)).toBe(true);
 
     const me = f.teams[0];
     const star = me.roster[0];
@@ -141,9 +150,10 @@ describe('Sinnoh championship cycle', () => {
     expect(f.players[star]).toMatchObject({ level: 8, xp: 17, bonus: { sht: 3, spd: 1 }, injury: 0 });
     expect(f.players[star].stats.pts).toBe(0);
     expect(f.players[kept]).toMatchObject({ dex: 140, king: true, level: 4, xp: 3, bonus: { pas: 1 } });
-    expect(f.freeAgents).toContain(oldCpu);
+    // Released, then free or re-signed by a Kanto team: the level stays either way, and never on the user's team.
+    expect([...f.freeAgents, ...f.teams.slice(1).flatMap((t) => t.roster)]).toContain(oldCpu);
     expect(f.players[oldCpu]).toMatchObject({ level: 5, bonus: { def: 2 } });
-    expect(f.teams.some((t) => t.roster.includes(oldCpu))).toBe(false);
+    expect(f.teams[0].roster).not.toContain(oldCpu);
     expect(f.history).toEqual(history);
     expect(f.titles).toEqual([{ regionId: 'kanto', season: 1 }, { regionId: 'johto', season: 2 }, { regionId: 'hoenn', season: 3 }, { regionId: 'sinnoh', season: 4 }]);
     expect(f.unlockedRegions).toEqual(['johto', 'hoenn', 'sinnoh']);
@@ -162,7 +172,7 @@ describe('Sinnoh championship cycle', () => {
     for (const t of f.teams.slice(1)) {
       expect(t.roster).toHaveLength(10);
       for (const u of t.roster) {
-        expect(f.players[u]).toMatchObject({ level: 1, xp: 0, bonus: {} });
+        if (u !== oldCpu) expect(f.players[u]).toMatchObject({ level: 1, xp: 0, bonus: {} });
         expect(monByDex(f.players[u].dex).name).toBeTruthy();
       }
     }
@@ -373,21 +383,33 @@ describe('Sinnoh championship cycle', () => {
     expect(f.teams.filter((t) => !t.human).every((t) => t.roster.length === 10)).toBe(true);
   });
 
-  it('a revision 3 save rebuilds only the Kanto CPU gyms, once, from every region', () => {
-    expect(KANTO_GYMS_REV).toBe(4);
+  it.each([3, 4, 5])('a revision %i save rebuilds the Kanto gyms and Elite, once, from every region', (rev) => {
+    expect(KANTO_GYMS_REV).toBe(6);
     const f = kanto();
     // Stand-in for the old gyms: reversed rosters, old boosts.
     const old = [0, 0, 1, 2, 2, 3, 4, 4];
     for (const t of f.teams.filter((x) => x.gym)) { t.roster.reverse(); t.boost = old[t.gym! - 1]; }
-    f.gymsRev = 3;
+    // A stand-in old Elite too: weak bench players swapped in, and the old +7.
+    const elite = eliteOf(f);
+    for (let i = 0; i < 5; i++) {
+      const weak = f.freeAgents.pop()!;
+      f.freeAgents.unshift(elite.roster[i]);
+      elite.roster[i] = weak;
+    }
+    elite.boost = 7;
+    const oldElite = dexesOf(f, elite);
+    f.gymsRev = rev;
     const mine = structuredClone(f.teams[0]);
-    const elite = structuredClone(f.teams.find((t) => t.elite)!);
+    const myPlayers = structuredClone(mine.roster.map((u) => f.players[u]));
     saveFranchise(f);
     const g = loadFranchise()!;
-    expect(g.gymsRev).toBe(4);
+    expect(g.gymsRev).toBe(6);
     expect(g.teams[0]).toEqual(mine);
-    expect(g.teams.find((t) => t.elite)!.roster).toEqual(elite.roster);
-    expect(g.teams.find((t) => t.elite)!.boost).toBe(elite.boost);
+    expect(g.teams[0].roster.map((u) => g.players[u])).toEqual(myPlayers);
+    expect(dexesOf(g, eliteOf(g))).toEqual(rebuilt(g)[8]);
+    expect(dexesOf(g, eliteOf(g))).not.toEqual(oldElite);
+    expect(eliteOf(g).boost).toBe(KANTO.finale.boost);
+    expectEliteAboveGiovanni(g);
     expect(g.teams.filter((t) => t.gym).map((t) => t.boost)).toEqual(KANTO.gyms.map((t) => t.boost));
     g.teams.filter((t) => t.gym).forEach((t) => expect(t.roster.map((u) => g.players[u].dex)).toEqual(rebuilt(g)[t.gym! - 1]));
     const refs = [...g.teams.flatMap((t) => t.roster), ...g.freeAgents];
@@ -418,8 +440,9 @@ describe('Sinnoh championship cycle', () => {
     expect(dexes).not.toContain(150);
     expect(g.teams[1].boost).toBe(KANTO.gyms[0].boost);
     expect(g.freeAgents.some((u) => g.players[u].dex === 150)).toBe(true);
-    const elite = f.teams.findIndex((t) => t.elite);
-    expect(g.teams[elite].roster.map((u) => g.players[u].dex)).toEqual(f.teams[elite].roster.map((u) => f.players[u].dex));
+    expect(dexesOf(g, eliteOf(g))).toEqual(rebuilt(g)[8]);
+    expect(eliteOf(g).boost).toBe(KANTO.finale.boost);
+    expectEliteAboveGiovanni(g);
     const uid = g.teams[1].roster[0];
     g.players[uid].level = 4;
     saveFranchise(g);
@@ -429,7 +452,7 @@ describe('Sinnoh championship cycle', () => {
     expect(again.teams[0].roster).toEqual(mine);
   });
 
-  it('a Kanto save with a Sinnoh title raises gym boosts to the design plus the return bump', () => {
+  it('a Kanto save with a Sinnoh title sets gym and Elite boosts to the design plus the return bump', () => {
     const f = kanto();
     f.region = 'kanto';
     f.season = 4;
@@ -438,8 +461,10 @@ describe('Sinnoh championship cycle', () => {
     delete f.gymsRev;
     saveFranchise(f);
     const g = loadFranchise()!;
-    // Gyms are set to the design plus the bump (lowered here). The Elite Four's stored boost is left alone.
-    expect(g.teams.slice(1).map((t) => t.boost)).toEqual(regionTeams(KANTO).map((t, i) => (t.elite ? 9 : t.boost + KANTO_RETURN_BUMP[i])));
+    // All nine are set to the design plus the bump (lowered here).
+    expect(g.teams.slice(1).map((t) => t.boost)).toEqual(regionTeams(KANTO).map((t, i) => t.boost + KANTO_RETURN_BUMP[i]));
+    expect(eliteOf(g).boost).toBe(KANTO.finale.boost + KANTO_RETURN_BUMP[8]);
+    expectEliteAboveGiovanni(g);
     expect(g.teams[0].roster).toEqual(f.teams[0].roster);
   });
 
@@ -451,8 +476,9 @@ describe('Sinnoh championship cycle', () => {
     const old = [10, 7, 8, 13, 13, 13, 15, 16];
     f.teams.filter((t) => t.gym).forEach((t) => { t.boost = old[t.gym! - 1]; });
     delete f.gymsRev;
+    eliteOf(f).boost = 7;
     const mine = structuredClone(f.teams[0]);
-    const elite = structuredClone(f.teams.find((t) => t.elite)!);
+    const myPlayers = structuredClone(mine.roster.map((u) => f.players[u]));
     saveFranchise(f);
 
     const g = loadFranchise()!;
@@ -462,9 +488,10 @@ describe('Sinnoh championship cycle', () => {
     for (const gone of [151, 145, 89]) expect(g.teams[1].roster.map((u) => g.players[u].dex)).not.toContain(gone);
     expect(g.teams.filter((t) => t.gym).map((t) => t.boost)).toEqual(KANTO.gyms.map((t) => t.boost));
     expect(g.teams[0]).toEqual(mine);
-    const kept = g.teams.find((t) => t.elite)!;
-    expect([kept.roster, kept.boost]).toEqual([elite.roster, elite.boost]);
-    expect(kept.roster.map((u) => g.players[u].dex)).toEqual(elite.roster.map((u) => f.players[u].dex));
+    expect(g.teams[0].roster.map((u) => g.players[u])).toEqual(myPlayers);
+    expect(dexesOf(g, eliteOf(g))).toEqual(rebuilt(g)[8]);
+    expect(eliteOf(g).boost).toBe(KANTO.finale.boost);
+    expectEliteAboveGiovanni(g);
     // All eight gyms are rebuilt by the drafter, and each star starts.
     g.teams.filter((t) => t.gym).forEach((t) => {
       expect(t.roster.map((u) => g.players[u].dex)).toEqual(rebuilt(g)[t.gym! - 1]);
@@ -501,6 +528,23 @@ describe('Sinnoh championship cycle', () => {
     expect(g.teams[1].roster).toContain(rhyperior);
     expect(g.players[rhyperior].level).toBe(7);
     expect(g.freeAgents).not.toContain(rhyperior);
+    expect(Object.keys(g.players)).toHaveLength(Object.keys(f.players).length);
+  });
+
+  it('a rebuilt Elite takes its species from free agency and keeps its level', () => {
+    const f = kanto();
+    const elite = eliteOf(f);
+    const arceus = elite.roster.find((u) => f.players[u].dex === 493)!;
+    expect(arceus).toBeTruthy();
+    elite.roster[elite.roster.indexOf(arceus)] = f.freeAgents.shift()!;
+    f.freeAgents.push(arceus);
+    f.players[arceus].level = 6;
+    f.gymsRev = 4;
+    saveFranchise(f);
+    const g = loadFranchise()!;
+    expect(eliteOf(g).roster).toContain(arceus);
+    expect(g.players[arceus].level).toBe(6);
+    expect(g.freeAgents).not.toContain(arceus);
     expect(Object.keys(g.players)).toHaveLength(Object.keys(f.players).length);
   });
 

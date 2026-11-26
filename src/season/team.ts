@@ -3,7 +3,7 @@
 import { POKEMON, monByDex, type Mon } from '../data/pokemon';
 import { bestLineup } from '../game/game';
 import { cpuPick, type DraftTeam } from '../screens/draft';
-import { draftKantoLeague, kantoPool } from '../franchise/kantoDraft';
+import { draftCpuLeague, cpuDraftPool } from '../franchise/kantoDraft';
 import { isNameBlocked, safeName } from '../nameFilter';
 import { abbr, fixAbbr, shuffle } from '../util';
 import { cleanName } from './share';
@@ -100,8 +100,8 @@ export function cpuRoster(pool: Mon[], size: number, types: DraftTeam['types'] =
  * (the user) keeps exactly those Pokémon and every other team drafts from the rest. `from` is the pool
  * (a franchise's open regions); `leftovers` is what is left of it.
  *
- * A league whose teams have a locked `star` (Kanto) uses the Kanto drafter instead: its CPU teams draft from every
- * Pokémon in the game (`kantoPool`), whatever `from` holds, less what a `fixed` user team owns (a star is kept even then).
+ * A league whose teams have a locked `star` (Kanto here) uses the CPU league drafter instead: its CPU teams draft from every
+ * Pokémon in the game (`cpuDraftPool`), whatever `from` holds, less what a `fixed` user team owns (a star is kept even then).
  */
 export function autoDraft(teams: DraftTeam[], size: number, fixed?: Mon[], from: Mon[] = POKEMON): { rosters: Mon[][]; leftovers: Mon[] } {
   const pool = [...from].sort((a, b) => b.ovr - a.ovr);
@@ -113,8 +113,8 @@ export function autoDraft(teams: DraftTeam[], size: number, fixed?: Mon[], from:
   }
   if (teams.some((t) => t.star != null)) {
     const held = new Set((fixed ?? []).map((m) => m.dex));
-    const cpu = kantoPool().filter((m) => !held.has(m.dex));
-    const drafted = draftKantoLeague(
+    const cpu = cpuDraftPool().filter((m) => !held.has(m.dex));
+    const drafted = draftCpuLeague(
       teams.map((t, i) => (fixed && i === 0 ? { human: true } : t)), size, cpu, fixed ? [] : pool);
     drafted.forEach((r, i) => { if (!(fixed && i === 0)) rosters[i] = r; });
     const used = new Set(rosters.flat().map((m) => m.dex));

@@ -1,7 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { EVOLUTIONS, POKEMON, POSITIONS, bodyOf, isRetired, monByDex, type Mon } from '../data/pokemon';
 import { GENERATED_ROWS } from '../data/generated';
-import { bestLineup } from '../game/game';
 import { RANKED_EXCLUDED, RANKED_LEGENDARIES, RANKED_POOL } from '../multiplayer/shared/roster';
 import { autoDraft } from '../season/team';
 import { championBannerHtml, regionCardHtml, standingsHtml } from '../screens/hub';
@@ -11,6 +10,7 @@ import {
   regionOf, regionStatus, regionTitles, rookieOnClock, rookiePick, saveFranchise, seasonWeeks, sign, startRookieDraft, venueOf, weekGames,
   type Franchise,
 } from './league';
+import { regionRosters } from './kantoDraft';
 import { shouldPlayMasterCutscene } from './moments';
 import { HOENN, JOHTO, REGIONS, SINNOH, inPool, openRegionIds, poolMons, regionTeams } from './regions';
 import type { Game } from '../game/game';
@@ -171,58 +171,6 @@ describe('Hoenn region data', () => {
     // Team names are unique across every region (the venue and the saved region are found by name).
     const names = REGIONS.flatMap((r) => regionTeams(r).map((t) => t.name));
     expect(new Set(names).size).toBe(names.length);
-  });
-
-  it('every roster: ten unique Pokémon, Gen 3 plus at most two on-type Gen 1-2 stars, ace first and starting, five natural positions', () => {
-    const starters = [252, 253, 254, 255, 256, 257, 258, 259, 260];
-    const legendaries = [144, 145, 146, 150, 151, 243, 244, 245, 249, 250, 251, 377, 378, 379, 380, 381, 382, 383, 384, 385, 386];
-    for (const t of regionTeams(HOENN)) {
-      const roster = t.roster!;
-      expect(roster, t.name).toHaveLength(10);
-      expect(new Set(roster).size).toBe(10);
-      expect(roster[0]).toBe(t.ace);
-      // Never a later generation.
-      for (const d of roster) expect(d, `${t.name}: #${d}`).toBeLessThanOrEqual(386);
-      // Star rule: up to two earlier-generation Pokémon, each of one of the team's types; the finale stays all Gen 3.
-      const earlier = roster.map(monByDex).filter((m) => m.dex < 252);
-      expect(earlier.length, t.name).toBeLessThanOrEqual(t.elite ? 0 : 2);
-      for (const m of earlier) expect(m.types.some((ty) => t.types.indexOf(ty) >= 0), `${t.name}: ${m.name}`).toBe(true);
-      // No Hoenn starters, no Geodude/Magnemite roster rows slipped in from the old guidance.
-      for (const d of [...starters, 74, 75, 81]) expect(roster).not.toContain(d);
-      const mons = roster.map(monByDex);
-      const { starters: five } = bestLineup(mons);
-      expect(five.map((m) => m.pos).sort(), t.name).toEqual(['C', 'PF', 'PG', 'SF', 'SG']);
-      expect(five.map((m) => m.dex)).toContain(t.ace);
-      expect(mons.some((m) => m.types.some((ty) => t.types.indexOf(ty) >= 0)), t.name).toBe(true);
-      // No legendaries anywhere.
-      for (const d of roster) expect(legendaries, `${t.name}: #${d}`).not.toContain(d);
-    }
-    const stars = (t: { roster?: number[] }) => t.roster!.filter((d) => d < 252);
-    const [roxanne] = HOENN.gyms;
-    expect(HOENN.finale.ace).toBe(376); // Metagross
-    expect(stars(HOENN.finale)).toEqual([]);
-    // Rustboro reads as a Rock gym again: Aggron leads, Aerodactyl and Kabutops are its two stars.
-    expect(roxanne.ace).toBe(306);
-    expect(stars(roxanne)).toEqual([142, 141]);
-  });
-
-  it("Hoenn's starting fives are strong, fully evolved and ramp like Kanto's (regression: Nosepass 63 / Baltoy 54 used to start at Rustboro)", () => {
-    const eff = (t: (typeof HOENN.gyms)[number]) => {
-      const mons = t.roster!.map(monByDex);
-      const { starters: five } = bestLineup(mons);
-      for (const m of five) {
-        expect(m.ovr, `${t.name}: ${m.name} starts`).toBeGreaterThanOrEqual(70);
-        expect((EVOLUTIONS[m.dex]?.to ?? []).filter((d) => d <= 386), `${t.name}: ${m.name} is unevolved`).toEqual([]);
-      }
-      expect(five.filter((m) => m.types.some((ty) => t.types.indexOf(ty) >= 0)).length, `${t.name}: on-type starters`).toBeGreaterThanOrEqual(2);
-      return five.reduce((a, m) => a + m.ovr, 0) / 5 + 2 + t.boost; // +2: five positions, as in the game
-    };
-    const gyms = HOENN.gyms.map(eff);
-    const elite = eff(HOENN.finale);
-    for (const e of [...gyms, elite]) expect(e).toBeGreaterThanOrEqual(84); // Kanto's gym 1 plays at about 83 once boosted
-    expect(gyms[7]).toBeGreaterThan(gyms[0] + 3);
-    expect(elite).toBeGreaterThan(Math.max(...gyms));
-    gyms.forEach((e, i) => { if (i) expect(e, `badge ${i + 1}`).toBeGreaterThan(gyms[i - 1] - 1.5); });
   });
 
   it("a Hoenn gym's players never evolve past Gen 3 in the league", () => {
@@ -395,8 +343,10 @@ describe('entering and playing Hoenn', () => {
     expect(regionOf(f)).toBe(HOENN);
     expect(f.teams[0]).toEqual(me);
     expect(f.teams.slice(1).map((t) => t.name)).toEqual(regionTeams(HOENN).map((t) => t.name));
-    f.teams.slice(1).forEach((t, i) => expect(t.roster.map((u) => f.players[u].dex)).toEqual(regionTeams(HOENN)[i].roster));
-    expect(Object.keys(f.players)).toHaveLength(before + 90);
+    expect(f.teams.slice(1).map((t) => t.roster.map((u) => f.players[u].dex)))
+      .toEqual(regionRosters(HOENN, f.teams[0].roster.map((u) => f.players[u].dex)).map((x) => x.map((m) => m.dex)));
+    expect(Object.keys(f.players).length).toBeGreaterThanOrEqual(before);
+    expect(Object.keys(f.players).length).toBeLessThan(before + 90);
     const refs = [...f.teams.flatMap((t) => t.roster), ...f.freeAgents];
     expect(new Set(refs).size).toBe(refs.length);
     for (const u of refs) expect(f.players[u]?.uid).toBe(u);

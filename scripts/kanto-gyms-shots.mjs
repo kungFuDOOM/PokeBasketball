@@ -1,7 +1,8 @@
-// Screenshots of the eight Kanto gym matchup cards (desktop), plus Brock's on a portrait phone. Usage:
+// Screenshots of the eight Kanto gym and the Indigo Elite matchup cards (desktop), plus Brock's on a portrait phone. Usage:
 //   npx vite --port 5199 --strictPort &   then   PORT=5199 node scripts/kanto-gyms-shots.mjs [outDir]
 // Each shot builds a new franchise in-page against the fixed 91 OVR test team (the user holds it, so the gyms and Elite
-// draft around it the way the app does), moves the schedule to the week the user plays that gym, and captures the hub's next-game card.
+// draft around it the way the app does), moves the schedule to the week the user plays that team, and captures the hub's next-game card.
+// The Elite has no `gym` number: its shot (`elite-four`) is found by the team's `elite` flag.
 import { chromium } from 'playwright-core';
 import { mkdirSync } from 'node:fs';
 const OUT = process.argv[2] ?? 'docs/screenshots/kanto-gyms';
@@ -11,6 +12,7 @@ const BASE = `http://localhost:${process.env.PORT ?? 5199}/`;
 const NAMES = ['brock', 'misty', 'surge', 'erika', 'koga', 'sabrina', 'blaine', 'giovanni'];
 const SHOTS = [
   ...NAMES.map((n, i) => ({ gym: i + 1, file: `gym${i + 1}-${n}`, vp: { width: 1280, height: 900 }, phone: false })),
+  { elite: true, file: 'elite-four', vp: { width: 1280, height: 900 }, phone: false },
   { gym: 1, file: 'brock-phone', vp: { width: 390, height: 844 }, phone: true },
 ];
 mkdirSync(OUT, { recursive: true });
@@ -20,7 +22,7 @@ for (const shot of SHOTS) {
   const ctx = await browser.newContext({ viewport: shot.vp, deviceScaleFactor: 2, hasTouch: shot.phone, isMobile: shot.phone });
   const page = await ctx.newPage();
   await page.goto(BASE, { waitUntil: 'networkidle' });
-  await page.evaluate(async ({ gym, team }) => {
+  await page.evaluate(async ({ gym, elite, team }) => {
     const L = await import('/src/franchise/league.ts');
     const R = await import('/src/franchise/regions.ts');
     const K = await import('/src/franchise/kantoDraft.ts');
@@ -33,10 +35,10 @@ for (const shot of SHOTS) {
     const f = L.createFranchise(teams, rosters, P.POKEMON.filter((m) => !used.has(m.dex)));
     f.unlockedRegions = ['johto', 'hoenn', 'sinnoh'];
     f.introShown = f.season;
-    const id = f.teams.find((t) => t.gym === gym).id;
+    const id = f.teams.find((t) => (elite ? t.elite : t.gym === gym)).id;
     f.week = f.games.find((g) => (g.home === 0 && g.away === id) || (g.away === 0 && g.home === id)).week;
     L.saveFranchise(f);
-  }, { gym: shot.gym, team: TEAM });
+  }, { gym: shot.gym, elite: shot.elite, team: TEAM });
   await page.goto(BASE, { waitUntil: 'networkidle' });
   await page.click('[data-go="continue"]');
   const card = page.locator('.card.next');

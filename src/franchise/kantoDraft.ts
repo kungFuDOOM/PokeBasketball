@@ -1,11 +1,12 @@
-// The Kanto gym drafter: each gym locks its star first, then the CPU teams take the best Pokémon left from the whole
-// game (every region in `POKEMON`), filling the five starting positions (one at a time) before any backup. There is no randomness, so the gyms come out the
-// same every time for the same held-back Pokémon.
+// The CPU league drafter for every region's gyms and final opponent: each team locks its star first, then the CPU teams
+// take the best Pokémon left from the whole game (every region in `POKEMON`), filling the five starting positions (one
+// at a time) before any backup. There is no randomness, so the teams come out the same every time for the same held-back
+// Pokémon.
 import { POKEMON, POSITIONS, monByDex, type Mon, type PokeType, type Pos } from '../data/pokemon';
 import { bestLineup } from '../game/game';
-import { KANTO, regionTeams } from './regions';
+import { KANTO, REGIONS, regionTeams, type RegionDef } from './regions';
 
-export interface KantoDraftTeam {
+export interface CpuDraftTeam {
   human?: boolean;
   types?: readonly PokeType[];
   /** Dex number of the locked star. Teams without one (the Indigo Elite) look for an on-type player early instead. */
@@ -18,16 +19,16 @@ export interface KantoDraftTeam {
 const ON_TYPE_BY_PICK = 3;
 
 /**
- * Everything a Kanto CPU team (the eight gyms and the Indigo Elite) may draft: every Pokémon in the game, from every
+ * Everything a CPU gym or final opponent may draft: every Pokémon in the game, from every
  * region, locked or not. This is only a CPU rule: the user's draft, free agents and trades use `poolMons`.
  */
-export const kantoPool = (): Mon[] => [...POKEMON];
+export const cpuDraftPool = (): Mon[] => [...POKEMON];
 
 /**
  * The next pick for a team: the best Pokémon in `pool` at a position it has no starter for, then at a position with no
  * backup, then anyone. The team's own type only breaks ties.
  */
-export function kantoNext(pool: readonly Mon[], roster: readonly Mon[], team: KantoDraftTeam = {}): Mon | undefined {
+export function cpuNext(pool: readonly Mon[], roster: readonly Mon[], team: CpuDraftTeam = {}): Mon | undefined {
   const isOn = (m: Mon) => m.types.some((t) => team.types?.includes(t));
   const count = (p: string) => roster.filter((m) => m.pos === p).length;
   let cands: readonly Mon[] = pool;
@@ -50,10 +51,10 @@ export function kantoNext(pool: readonly Mon[], roster: readonly Mon[], team: Ka
  * passes in the same order. A human team picks in the middle of that order, from `userPool`. Returns rosters in the
  * order of `teams`: the star first, then the other starters best first, then the backups.
  */
-export function draftKantoLeague(
-  teams: readonly KantoDraftTeam[],
+export function draftCpuLeague(
+  teams: readonly CpuDraftTeam[],
   size: number,
-  cpuPool: readonly Mon[] = kantoPool(),
+  cpuPool: readonly Mon[] = cpuDraftPool(),
   userPool: readonly Mon[] = [],
 ): Mon[][] {
   const taken = new Set<number>();
@@ -67,7 +68,7 @@ export function draftKantoLeague(
   if (human >= 0 && userPool.length) order.splice(Math.floor(order.length / 2), 0, human);
   const pick = (i: number, pos?: Pos) => {
     const free = (teams[i].human ? userPool : cpuPool).filter((m) => !taken.has(m.dex) && (!pos || m.pos === pos));
-    const m = kantoNext(free, rosters[i], teams[i].human ? {} : teams[i]);
+    const m = cpuNext(free, rosters[i], teams[i].human ? {} : teams[i]);
     if (!m) return;
     taken.add(m.dex);
     rosters[i].push(m);
@@ -86,16 +87,19 @@ export function draftKantoLeague(
 }
 
 /**
- * The nine Kanto CPU rosters (gyms in badge order, then the Elite) when the Pokémon in `held` are not available.
- * `held` is the user's team: no CPU team drafts those. The one exception is a locked star, which its gym keeps even
- * when the user holds it too. A star is never drafted by another team, held or not.
+ * A region's nine CPU rosters (gyms in badge order, then the final opponent) when the Pokémon in `held` are not
+ * available. `held` is the user's team: no CPU team drafts those. The one exception is a locked star, which its team
+ * keeps even when the user holds it too. A star is never drafted by another team in the region, held or not.
  */
-export function kantoRosters(held: readonly number[] = [], size = 10): Mon[][] {
-  return draftKantoLeague(regionTeams(KANTO), size, kantoPool().filter((m) => !held.includes(m.dex)));
+export function regionRosters(region: RegionDef, held: readonly number[] = [], size = 10): Mon[][] {
+  return draftCpuLeague(regionTeams(region), size, cpuDraftPool().filter((m) => !held.includes(m.dex)));
 }
 
-/** The star of the Kanto gym with this team name, if it is one. */
-export const kantoStarOf = (teamName: string): number | undefined => KANTO.gyms.find((g) => g.name === teamName)?.star;
+/** `regionRosters` for Kanto, the league the franchise draft and Quick Play use. */
+export const kantoRosters = (held: readonly number[] = [], size = 10): Mon[][] => regionRosters(KANTO, held, size);
+
+/** The locked star of the gym or final opponent with this team name, in any region (team names are unique). */
+export const starOf = (teamName: string): number | undefined => REGIONS.flatMap(regionTeams).find((t) => t.name === teamName)?.star;
 
 /** `bestLineup`, except that `star` (when on the roster) always starts, at its own position. */
 export function lineupWithStar(mons: Mon[], star?: number): { starters: Mon[]; bench: Mon[] } {

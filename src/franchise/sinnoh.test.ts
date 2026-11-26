@@ -1,7 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { EVOLUTIONS, POKEMON, POSITIONS, bodyOf, isRetired, monByDex } from '../data/pokemon';
 import { GENERATED_ROWS } from '../data/generated';
-import { bestLineup } from '../game/game';
 import { RANKED_EXCLUDED, RANKED_LEGENDARIES, RANKED_POOL } from '../multiplayer/shared/roster';
 import { autoDraft } from '../season/team';
 import { championBannerHtml, regionCardHtml } from '../screens/hub';
@@ -11,6 +10,7 @@ import {
   regionOf, regionStatus, regionTitles, rookieOnClock, rookiePick, saveFranchise, seasonWeeks, sign, startRookieDraft, venueOf, weekGames,
   type Franchise,
 } from './league';
+import { regionRosters } from './kantoDraft';
 import { HOENN, JOHTO, REGIONS, SINNOH, inPool, openRegionIds, poolMons, regionTeams } from './regions';
 import type { Game } from '../game/game';
 
@@ -188,57 +188,6 @@ describe('Sinnoh region data', () => {
     expect(new Set(names).size).toBe(names.length);
   });
 
-  it('every roster: ten unique Pokémon, Gen 4 plus at most two on-type Gen 1-3 stars, ace first and starting, five natural positions', () => {
-    const starters = [387, 388, 389, 390, 391, 392, 393, 394, 395];
-    // Every lore legendary and mythical Gen 1-4 has a card: none may be on a roster.
-    const legendaries = [...RANKED_LEGENDARIES, 480, 481, 482, 483, 484, 485, 486, 487, 488, 490, 491, 492, 493];
-    for (const t of regionTeams(SINNOH)) {
-      const roster = t.roster!;
-      expect(roster, t.name).toHaveLength(10);
-      expect(new Set(roster).size).toBe(10);
-      expect(roster[0]).toBe(t.ace);
-      for (const d of roster) expect(d, `${t.name}: #${d}`).toBeLessThanOrEqual(493);
-      const earlier = roster.map(monByDex).filter((m) => m.dex < 387);
-      expect(earlier.length, t.name).toBeLessThanOrEqual(t.elite ? 0 : 2);
-      for (const m of earlier) expect(m.types.some((ty) => t.types.indexOf(ty) >= 0), `${t.name}: ${m.name}`).toBe(true);
-      for (const d of starters) expect(roster).not.toContain(d);
-      const mons = roster.map(monByDex);
-      const { starters: five } = bestLineup(mons);
-      expect(five.map((m) => m.pos).sort(), t.name).toEqual(['C', 'PF', 'PG', 'SF', 'SG']);
-      expect(five.map((m) => m.dex)).toContain(t.ace);
-      expect(mons.some((m) => m.types.some((ty) => t.types.indexOf(ty) >= 0)), t.name).toBe(true);
-      for (const d of roster) expect(legendaries, `${t.name}: #${d}`).not.toContain(d);
-    }
-    const stars = (t: { roster?: number[] }) => t.roster!.filter((d) => d < 387);
-    expect(SINNOH.finale.ace).toBe(445); // Cynthia's Garchomp
-    expect(stars(SINNOH.finale)).toEqual([]);
-    expect(stars(SINNOH.gyms[0])).toEqual([142, 141]); // Roark: Aerodactyl, Kabutops
-    expect(stars(SINNOH.gyms[6])).toEqual([]); // Candice is all Gen 4
-  });
-
-  it("Sinnoh's starting fives are strong, fully evolved and ramp like Hoenn's", () => {
-    const eff = (t: (typeof SINNOH.gyms)[number]) => {
-      const mons = t.roster!.map(monByDex);
-      const { starters: five } = bestLineup(mons);
-      for (const m of five) {
-        expect(m.ovr, `${t.name}: ${m.name} starts`).toBeGreaterThanOrEqual(70);
-        expect((EVOLUTIONS[m.dex]?.to ?? []).filter((d) => d <= 493), `${t.name}: ${m.name} is unevolved`).toEqual([]);
-      }
-      expect(five.filter((m) => m.types.some((ty) => t.types.indexOf(ty) >= 0)).length, `${t.name}: on-type starters`).toBeGreaterThanOrEqual(2);
-      return five.reduce((a, m) => a + m.ovr, 0) / 5 + 2 + t.boost;
-    };
-    const gyms = SINNOH.gyms.map(eff);
-    const elite = eff(SINNOH.finale);
-    for (const e of [...gyms, elite]) expect(e).toBeGreaterThanOrEqual(84);
-    expect(gyms[7]).toBeGreaterThan(gyms[0] + 3);
-    expect(elite).toBeGreaterThan(Math.max(...gyms));
-    gyms.forEach((e, i) => { if (i) expect(e, `badge ${i + 1}`).toBeGreaterThan(gyms[i - 1] - 1.5); });
-  });
-
-  it("a Sinnoh gym's players may evolve within Gen 4 only (no Gen 5 forms in the data)", () => {
-    for (const t of regionTeams(SINNOH)) for (const d of t.roster!) for (const to of EVOLUTIONS[d]?.to ?? []) expect(to).toBeLessThanOrEqual(493);
-  });
-
   it('draws every Sinnoh badge', () => {
     const neutral = badgeSvg('Nope', true);
     for (const b of SINNOH.gyms.map((g) => g.badge!)) {
@@ -324,8 +273,10 @@ describe('unlocking and entering Sinnoh', () => {
     expect(regionOf(f)).toBe(SINNOH);
     expect(f.teams[0]).toEqual(me);
     expect(f.teams.slice(1).map((t) => t.name)).toEqual(regionTeams(SINNOH).map((t) => t.name));
-    f.teams.slice(1).forEach((t, i) => expect(t.roster.map((u) => f.players[u].dex)).toEqual(regionTeams(SINNOH)[i].roster));
-    expect(Object.keys(f.players)).toHaveLength(before + 90);
+    expect(f.teams.slice(1).map((t) => t.roster.map((u) => f.players[u].dex)))
+      .toEqual(regionRosters(SINNOH, f.teams[0].roster.map((u) => f.players[u].dex)).map((x) => x.map((m) => m.dex)));
+    expect(Object.keys(f.players).length).toBeGreaterThanOrEqual(before);
+    expect(Object.keys(f.players).length).toBeLessThan(before + 90);
     const refs = [...f.teams.flatMap((t) => t.roster), ...f.freeAgents];
     expect(new Set(refs).size).toBe(refs.length);
     expect(f.games.filter((g) => g.home === 0 || g.away === 0).map((g) => f.teams[g.home === 0 ? g.away : g.home].leader))

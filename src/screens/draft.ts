@@ -7,7 +7,7 @@ import { ordinal, snakePicks } from './draft.logic';
 import { monCard, summaryHtml, SWATCHES, typeChips } from './draftView';
 import { wireDraftShare } from '../season/draftShare';
 import { poolMons } from '../franchise/regions';
-import { kantoNext, kantoPool, kantoRosters } from '../franchise/kantoDraft';
+import { cpuNext, cpuDraftPool, kantoRosters } from '../franchise/kantoDraft';
 
 export { monCard, typeChips };
 
@@ -217,8 +217,8 @@ export function draftScreen(
     const want = kanto[slot][k];
     if (want && !gone.has(want.dex)) return want;
     const planned = new Set(kanto.flat().map((m) => m.dex));
-    const free = kantoPool().filter((m) => !gone.has(m.dex));
-    return kantoNext(free.filter((m) => !planned.has(m.dex)), rosters[t], team) ?? kantoNext(free, rosters[t], team)!;
+    const free = cpuDraftPool().filter((m) => !gone.has(m.dex));
+    return cpuNext(free.filter((m) => !planned.has(m.dex)), rosters[t], team) ?? cpuNext(free, rosters[t], team)!;
   };
   const size = state.rounds ?? 5;
   const picks = snakePicks(order, size);
