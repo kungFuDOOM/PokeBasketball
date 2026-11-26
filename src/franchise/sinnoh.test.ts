@@ -264,9 +264,11 @@ describe('the Sinnoh franchise pool', () => {
 
   it('a locked franchise drafts the legacy 15 but no new Gen 4; free agency and rookies follow the lock', () => {
     const f = kanto();
-    const owned = f.teams.flatMap((t) => t.roster).map((u) => f.players[u].dex);
-    expect(owned.some(fresh)).toBe(false);
-    expect(f.freeAgents.filter((u) => fresh(f.players[u].dex))).toHaveLength(92);
+    // The user still cannot draft a locked Gen 4. A Kanto gym may list a Gen 1 family's later evolution.
+    expect(f.teams[0].roster.some((u) => fresh(f.players[u].dex))).toBe(false);
+    const onGyms = f.teams.slice(1).flatMap((t) => t.roster.map((u) => f.players[u].dex)).filter(fresh);
+    for (const d of onGyms) expect(isKantoCpuMon({ dex: d }), `#${d}`).toBe(true);
+    expect(f.freeAgents.filter((u) => fresh(f.players[u].dex))).toHaveLength(92 - onGyms.length);
     const newFa = f.freeAgents.find((u) => fresh(f.players[u].dex))!;
     expect(canAcquire(f, newFa)).toBe(false);
     sign(f, f.teams[0].roster[9], newFa);

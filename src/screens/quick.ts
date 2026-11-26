@@ -1,7 +1,7 @@
 // Quick Play: pick any gym or the Elite Four, snake-draft five Pokémon against them, pick a floor, play.
 // Pure arcade: no stamina, no bench, nothing saved. Playing as My Drafted Team adds both benches (and stamina so subs matter).
 import { COURTS, courtFor, userCourt, type CourtStyle } from '../data/courts';
-import { POKEMON, POSITIONS, TYPE_COLORS, spriteUrl, type Mon } from '../data/pokemon';
+import { POKEMON, POSITIONS, TYPE_COLORS, monByDex, spriteUrl, type Mon } from '../data/pokemon';
 import { LEAGUE, USER_STYLE, contrastAway, simulate, type LeagueTeam } from '../franchise/league';
 import type { Audio } from '../game/audio';
 import { bestLineup, teamOvr, type Game } from '../game/game';
@@ -114,21 +114,32 @@ export function quickPlay(root: HTMLElement, settings: Settings, audio: Audio, a
     const saved = source === 'mine' ? loadDrafted() : null;
     drafted = null;
     picked = null;
+    // A gym with a hand-made roster fields that roster. The Elite Four still gets a CPU draft.
+    const cpuSide = (pool: Mon[], size: number) => {
+      if (!opp.roster?.length) return cpuRoster(pool, size, opp.types);
+      const mons = opp.roster.map((d) => monByDex(d));
+      const take = size >= mons.length ? mons : bestLineup(mons).starters;
+      for (const m of take) {
+        const i = pool.findIndex((p) => p.dex === m.dex);
+        if (i >= 0) pool.splice(i, 1);
+      }
+      return take;
+    };
     if (saved) {
       // My Drafted Team, no draft screen: its best five start and the other five come off the bench.
-      // The opponent gets a CPU-drafted ten as well, so both sides tire and sub the same way.
+      // The opponent gets a full ten as well, so both sides tire and sub the same way.
       const all = draftedMons(saved);
       const starters = draftedStarters(saved);
       const pool = POKEMON.filter((m) => !all.includes(m));
-      const theirs = bestLineup(cpuRoster(pool, 10, opp.types));
+      const theirs = bestLineup(cpuSide(pool, 10));
       drafted = { name: saved.name, ...saved.colors, bench: all.filter((m) => !starters.includes(m)), oppBench: theirs.bench };
       return matchup(opp, starters, theirs.starters, courtFor(opp));
     }
     if (source === 'random') {
-      // No draft screen: five random Pokémon against a CPU-drafted opponent.
+      // No draft screen: five random Pokémon against the opponent's starting five.
       const pool = POKEMON.filter(() => true);
       const picks = cpuRoster(pool, 5);
-      return matchup(opp, picks, cpuRoster(pool, 5, opp.types), courtFor(opp));
+      return matchup(opp, picks, cpuSide(pool, 5), courtFor(opp));
     }
     root.className = 'screen-draft';
     window.scrollTo(0, 0);

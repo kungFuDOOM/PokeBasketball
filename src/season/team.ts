@@ -96,22 +96,37 @@ export function cpuRoster(pool: Mon[], size: number, types: DraftTeam['types'] =
 
 /**
  * Drafts a whole league without the draft screen: snake order, CPU picks. When `fixed` is given, team 0
- * (the user) keeps exactly those Pokémon and every other team drafts from the rest. `from` is the pool
- * (a franchise's open regions); `leftovers` is what is left of it. `cpuOk` limits what the non-human teams may pick
- * (Kanto gyms: Gen 1 only); the human team and `fixed` rosters are never filtered.
+ * (the user) keeps exactly those Pokémon and every other team drafts from the rest. A CPU team with `roster`
+ * keeps that hand-made list instead of picking. `from` is the pool (a franchise's open regions); `leftovers` is
+ * what is left of it. `cpuOk` limits what the non-human teams may pick (the Indigo Elite: Gen 1 only); the human
+ * team and hand-made rosters are never filtered.
  */
+/** Drops every pool entry of `dex` (a hand-made roster is one species, even if the user already holds it). */
+function pullDex(pool: Mon[], dex: number) {
+  for (let i = pool.length - 1; i >= 0; i--) if (pool[i].dex === dex) pool.splice(i, 1);
+}
+
 export function autoDraft(teams: DraftTeam[], size: number, fixed?: Mon[], from: Mon[] = POKEMON, cpuOk?: (m: Mon) => boolean): { rosters: Mon[][]; leftovers: Mon[] } {
   const pool = [...from].sort((a, b) => b.ovr - a.ovr);
   const rosters: Mon[][] = teams.map(() => []);
+  const scripted = teams.map(() => false);
   if (fixed) {
     rosters[0] = [...fixed];
     // The user's own team may hold Pokémon from outside `from`: they are kept, and simply aren't in the pool.
-    for (const m of fixed) if (pool.indexOf(m) >= 0) pool.splice(pool.indexOf(m), 1);
+    for (const m of fixed) pullDex(pool, m.dex);
+  }
+  // Kanto's gyms (and any CPU team with a hand-made roster) keep that roster. The Elite still drafts.
+  for (let t = 0; t < teams.length; t++) {
+    const plan = teams[t].roster;
+    if (teams[t].human || !plan?.length || (fixed && t === 0)) continue;
+    rosters[t] = plan.slice(0, size).map((dex) => pool.find((m) => m.dex === dex) ?? monByDex(dex));
+    for (const m of rosters[t]) pullDex(pool, m.dex);
+    scripted[t] = true;
   }
   const order = shuffle(teams.map((_, i) => i));
   for (let round = 0; round < size; round++) {
     for (const t of round % 2 ? [...order].reverse() : order) {
-      if (fixed && t === 0) continue;
+      if ((fixed && t === 0) || scripted[t]) continue;
       const m = cpuPick(cpuOk && !teams[t].human ? pool.filter(cpuOk) : pool, rosters[t], teams[t].types);
       pool.splice(pool.indexOf(m), 1);
       rosters[t].push(m);

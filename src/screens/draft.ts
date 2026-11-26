@@ -1,4 +1,4 @@
-import { POSITIONS, RATING_LABELS, SPECIALS, TYPE_COLORS, spriteUrl, type Mon, type PokeType, type Pos, type Ratings } from '../data/pokemon';
+import { POSITIONS, RATING_LABELS, SPECIALS, TYPE_COLORS, monByDex, spriteUrl, type Mon, type PokeType, type Pos, type Ratings } from '../data/pokemon';
 import type { Audio } from '../game/audio';
 import { bestLineup, chemistry, teamOvr } from '../game/game';
 import { isNameBlocked } from '../nameFilter';
@@ -81,6 +81,8 @@ export interface DraftTeam {
   gym?: number;
   badge?: string;
   elite?: boolean;
+  /** Hand-made dex list. A CPU team with one keeps it, in order, instead of `cpuPick`. */
+  roster?: readonly number[];
 }
 
 /** Overall of the five who would start. */
@@ -200,6 +202,16 @@ export function draftScreen(
   const rosters: Mon[][] = teams.map(() => []);
   /** What team `t` may pick from by CPU logic: the whole board, or only what `opts.cpuOk` allows for CPU teams. */
   const cpuPool = (t: number) => (opts.cpuOk && !teams[t].human ? pool.filter(opts.cpuOk) : pool);
+  /**
+   * A CPU gym with a hand-made roster takes the next Pokémon on it. The Elite, and any CPU team without one, still
+   * uses `cpuPick`. A copy is used when the user already drafted that species, so the gym stays intact.
+   */
+  const cpuMon = (t: number): Mon => {
+    const plan = teams[t].roster;
+    const next = plan && !teams[t].human ? plan[rosters[t].length] : undefined;
+    if (next == null) return cpuPick(cpuPool(t), rosters[t], teams[t].types);
+    return pool.find((m) => m.dex === next) ?? monByDex(next);
+  };
   const size = state.rounds ?? 5;
   const picks = snakePicks(order, size);
   const me = teams.findIndex((t) => t.human);
@@ -378,7 +390,9 @@ export function draftScreen(
   const record = (m: Mon, note?: string) => {
     const t = picks[pick];
     state.taken.push(m.dex);
-    pool.splice(pool.indexOf(m), 1);
+    const i = pool.indexOf(m);
+    const j = i >= 0 ? i : pool.findIndex((p) => p.dex === m.dex);
+    if (j >= 0) pool.splice(j, 1);
     rosters[t].push(m);
     log.push(`${note ?? `${teams[t].human ? 'You' : teams[t].name} selected`} ${m.name} (${m.pos}, ${m.ovr})`);
     pick++;
@@ -431,7 +445,7 @@ export function draftScreen(
   const scheduleCpu = () => {
     window.clearTimeout(cpuTimer);
     if (!done && picks[pick] !== me) {
-      cpuTimer = window.setTimeout(() => take(cpuPick(cpuPool(picks[pick]), rosters[picks[pick]], teams[picks[pick]].types)), 280);
+      cpuTimer = window.setTimeout(() => take(cpuMon(picks[pick])), 280);
     }
   };
 
@@ -468,7 +482,7 @@ export function draftScreen(
     if (a === 'auto' && userTurn()) take(cpuPick(pool, rosters[me]));
     if (a === 'sim' && !done) {
       window.clearTimeout(cpuTimer);
-      while (pick < picks.length) record(cpuPick(cpuPool(picks[pick]), rosters[picks[pick]], teams[picks[pick]].types));
+      while (pick < picks.length) record(picks[pick] === me ? cpuPick(pool, rosters[me]) : cpuMon(picks[pick]));
       finish();
     }
   });

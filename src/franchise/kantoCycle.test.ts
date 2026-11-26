@@ -93,7 +93,8 @@ describe('Sinnoh championship cycle', () => {
     expect(regionStatus(f).next).toBeUndefined();
     expect(enterRegion(f, 'kanto')).toBe(false);
     expect(regionOf(f)).toBe(SINNOH);
-    expect(regionTeams(KANTO).every((t) => !t.roster)).toBe(true);
+    expect(KANTO.gyms.every((t) => t.roster?.length === 10)).toBe(true);
+    expect(KANTO.finale.roster).toBeUndefined();
 
     const me = f.teams[0];
     const star = me.roster[0];
@@ -368,13 +369,45 @@ describe('Sinnoh championship cycle', () => {
     expect(f.teams[0].roster.some((u) => f.players[u].dex > 151)).toBe(true);
   });
 
-  it('an existing save with a later-gen Pokémon on a Kanto gym still loads, and is not rewritten', () => {
-    const f = kanto(['johto', 'hoenn', 'sinnoh']);
-    const gymMon = f.teams[1].roster[0];
-    f.players[gymMon].dex = 376;
+  it('a Season 1 save with Mewtwo on Pewter rebuilds Brock and leaves the user team', () => {
+    const f = kanto();
+    const mine = [...f.teams[0].roster];
+    const userDex = mine.map((u) => f.players[u].dex);
+    const brock = f.teams[1];
+    f.players[brock.roster[0]].dex = 150;
+    brock.boost = 0;
+    f.season = 1;
+    f.region = 'kanto';
+    delete f.titles;
     saveFranchise(f);
-    const g = loadFranchise();
-    expect(g).not.toBeNull();
-    expect(g!.players[g!.teams[1].roster[0]].dex).toBe(376);
+    const g = loadFranchise()!;
+    expect(g.teams[0].roster).toEqual(mine);
+    expect(g.teams[0].roster.map((u) => g.players[u].dex)).toEqual(userDex);
+    const dexes = g.teams[1].roster.map((u) => g.players[u].dex);
+    expect(dexes).toEqual(KANTO.gyms[0].roster);
+    expect(dexes).not.toContain(150);
+    expect(g.teams[1].boost).toBe(KANTO.gyms[0].boost);
+    expect(g.freeAgents.some((u) => g.players[u].dex === 150)).toBe(true);
+    const elite = f.teams.findIndex((t) => t.elite);
+    expect(g.teams[elite].roster.map((u) => g.players[u].dex)).toEqual(f.teams[elite].roster.map((u) => f.players[u].dex));
+    const uid = g.teams[1].roster[0];
+    g.players[uid].level = 4;
+    saveFranchise(g);
+    const again = loadFranchise()!;
+    expect(again.teams[1].roster).toEqual(g.teams[1].roster);
+    expect(again.players[uid].level).toBe(4);
+    expect(again.teams[0].roster).toEqual(mine);
+  });
+
+  it('a Kanto save with a Sinnoh title raises gym boosts to the design plus the return bump', () => {
+    const f = kanto();
+    f.region = 'kanto';
+    f.season = 4;
+    f.titles = [{ regionId: 'sinnoh', season: 4 }];
+    for (const t of f.teams.slice(1)) t.boost = 0;
+    saveFranchise(f);
+    const g = loadFranchise()!;
+    expect(g.teams.slice(1).map((t) => t.boost)).toEqual(regionTeams(KANTO).map((t, i) => t.boost + KANTO_RETURN_BUMP[i]));
+    expect(g.teams[0].roster).toEqual(f.teams[0].roster);
   });
 });

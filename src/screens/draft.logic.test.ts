@@ -171,7 +171,9 @@ describe('themed CPU teams', () => {
         rosters[t].push(m);
       }
     }
-    // The live bug: an off-type 97 on the board and only weak on-type Pokémon. The team must not take an 80.
+    // Reach still wins for a CPU team that drafts (the Indigo Elite, Quick Play). Kanto's gyms do not: they keep the
+    // hand-made rosters in regions.ts, so this case is not how Brock picks.
+    // An off-type 97 on the board and only a weak on-type Pokémon. The drafting team must not take an 80.
     for (const r of [0, 0.5, 0.999999]) {
       const top = { ...pool[0], ovr: 97, types: ['Psychic'], pos: 'SF' } as Mon;
       const weak = { ...pool[1], ovr: 80, types: ['Grass'], pos: 'SF' } as Mon;
