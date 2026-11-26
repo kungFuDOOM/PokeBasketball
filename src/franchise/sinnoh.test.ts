@@ -11,7 +11,7 @@ import {
   regionOf, regionStatus, regionTitles, rookieOnClock, rookiePick, saveFranchise, seasonWeeks, sign, startRookieDraft, venueOf, weekGames,
   type Franchise,
 } from './league';
-import { HOENN, JOHTO, REGIONS, SINNOH, inPool, isKantoCpuMon, openRegionIds, poolMons, regionTeams } from './regions';
+import { HOENN, JOHTO, REGIONS, SINNOH, inPool, openRegionIds, poolMons, regionTeams } from './regions';
 import type { Game } from '../game/game';
 
 vi.stubGlobal('window', {});
@@ -31,7 +31,7 @@ const text = (html: string) => html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' '
 
 function kanto(unlocked: string[] = []): Franchise {
   const teams = [{ name: 'Me', abbr: 'MEE', color: '#3b6fd8', color2: '#16224a', human: true }, ...LEAGUE.map((t) => ({ ...t, human: false }))];
-  const { rosters, leftovers } = autoDraft(teams, 10, undefined, poolMons(openRegionIds(unlocked)), isKantoCpuMon);
+  const { rosters, leftovers } = autoDraft(teams, 10, undefined, poolMons(openRegionIds(unlocked)));
   const used = new Set([...rosters.flat(), ...leftovers]);
   const f = createFranchise(teams, rosters, [...leftovers, ...POKEMON.filter((m) => !used.has(m))]);
   if (unlocked.length) f.unlockedRegions = unlocked;
@@ -264,10 +264,9 @@ describe('the Sinnoh franchise pool', () => {
 
   it('a locked franchise drafts the legacy 15 but no new Gen 4; free agency and rookies follow the lock', () => {
     const f = kanto();
-    // The user still cannot draft a locked Gen 4. A Kanto gym may list a Gen 1 family's later evolution.
+    // The lock is the user's: Kanto's CPU teams draft from every region.
     expect(f.teams[0].roster.some((u) => fresh(f.players[u].dex))).toBe(false);
     const onGyms = f.teams.slice(1).flatMap((t) => t.roster.map((u) => f.players[u].dex)).filter(fresh);
-    for (const d of onGyms) expect(isKantoCpuMon({ dex: d }), `#${d}`).toBe(true);
     expect(f.freeAgents.filter((u) => fresh(f.players[u].dex))).toHaveLength(92 - onGyms.length);
     const newFa = f.freeAgents.find((u) => fresh(f.players[u].dex))!;
     expect(canAcquire(f, newFa)).toBe(false);

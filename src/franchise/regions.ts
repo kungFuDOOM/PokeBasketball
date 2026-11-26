@@ -1,7 +1,7 @@
 // Franchise regions, in the order they unlock: Kanto, then Johto, then Hoenn, then Sinnoh. Each region is plain data: its dex
 // range, eight gyms in badge order and one final opponent. A later region is a new entry here, not new season code
 // (see "Franchise regions" in the README).
-import { EVOLUTIONS, POKEMON, type Mon, type PokeType } from '../data/pokemon';
+import { POKEMON, type Mon, type PokeType } from '../data/pokemon';
 
 /** A CPU team in the league: a gym (with its badge) or the region's final opponent. */
 export interface LeagueTeam {
@@ -56,7 +56,7 @@ export interface RegionDef {
 }
 
 /** Bump when the Kanto gym stars, drafter or boosts change: older saves rebuild their gyms once on load. */
-export const KANTO_GYMS_REV = 3;
+export const KANTO_GYMS_REV = 4;
 
 export const KANTO: RegionDef = {
   id: 'kanto',
@@ -64,18 +64,19 @@ export const KANTO: RegionDef = {
   name: 'Kanto',
   generation: 1,
   dex: [1, 151],
-  // Each gym locks its star, then drafts the best Pokémon left at every other spot. The star is the gym's best Pokémon
-  // of its type or its legendary; Koga's Articuno and Giovanni's Mewtwo are legendaries that are off type. The boosts
-  // are small and ramp with the badges.
+  // Each gym locks its star, then drafts the best Pokémon left (from every region, see `kantoDraft.ts`) at every other
+  // spot. The star is the gym's best Gen 1 family Pokémon of its type or its legendary; Koga's Articuno and Giovanni's
+  // Mewtwo are legendaries that are off type. The boosts are small and are set so that game strength (card OVR plus
+  // boost) rises with every badge; they only fill the gaps the drafted cards leave, so they need not rise themselves.
   gyms: [
     { name: 'Pewter Boulders', abbr: 'PEW', color: '#a38c63', color2: '#2e271b', leader: 'Brock', types: ['Rock'], boost: 0, gym: 1, badge: 'Boulder', star: 464 },
     { name: 'Cerulean Cascades', abbr: 'CER', color: '#2bb3d6', color2: '#0b2c38', leader: 'Misty', types: ['Water'], boost: 0, gym: 2, badge: 'Cascade', star: 9 },
-    { name: 'Vermilion Thunder', abbr: 'VER', color: '#f2c522', color2: '#3a2f06', leader: 'Lt. Surge', types: ['Electric'], boost: 1, gym: 3, badge: 'Thunder', star: 145 },
+    { name: 'Vermilion Thunder', abbr: 'VER', color: '#f2c522', color2: '#3a2f06', leader: 'Lt. Surge', types: ['Electric'], boost: 0, gym: 3, badge: 'Thunder', star: 145 },
     { name: 'Celadon Rainbows', abbr: 'CEL', color: '#5cb85c', color2: '#13301a', leader: 'Erika', types: ['Grass'], boost: 2, gym: 4, badge: 'Rainbow', star: 3 },
     { name: 'Fuchsia Ninjas', abbr: 'FCH', color: '#b04fc4', color2: '#2d1236', leader: 'Koga', types: ['Poison'], boost: 2, gym: 5, badge: 'Soul', star: 144 },
-    { name: 'Saffron Psychics', abbr: 'SAF', color: '#f2668b', color2: '#3a1220', leader: 'Sabrina', types: ['Psychic'], boost: 3, gym: 6, badge: 'Marsh', star: 151 },
-    { name: 'Cinnabar Volcanoes', abbr: 'CIN', color: '#e8622c', color2: '#3d160b', leader: 'Blaine', types: ['Fire'], boost: 4, gym: 7, badge: 'Volcano', star: 146 },
-    { name: 'Viridian Quakes', abbr: 'VIR', color: '#7c9a3a', color2: '#1e2a0e', leader: 'Giovanni', types: ['Ground'], boost: 4, gym: 8, badge: 'Earth', star: 150 },
+    { name: 'Saffron Psychics', abbr: 'SAF', color: '#f2668b', color2: '#3a1220', leader: 'Sabrina', types: ['Psychic'], boost: 0, gym: 6, badge: 'Marsh', star: 151 },
+    { name: 'Cinnabar Volcanoes', abbr: 'CIN', color: '#e8622c', color2: '#3d160b', leader: 'Blaine', types: ['Fire'], boost: 2, gym: 7, badge: 'Volcano', star: 146 },
+    { name: 'Viridian Quakes', abbr: 'VIR', color: '#7c9a3a', color2: '#1e2a0e', leader: 'Giovanni', types: ['Ground'], boost: 1, gym: 8, badge: 'Earth', star: 150 },
   ],
   finale: { name: 'Indigo Elite', abbr: 'E4', color: '#d4a017', color2: '#2a2106', leader: 'The Elite Four', types: ['Ice', 'Fighting', 'Ghost', 'Dragon'], boost: 7, elite: true },
 };
@@ -234,43 +235,6 @@ export const openRegionIds = (unlocked: readonly string[] = []): string[] =>
 export function inPool(dex: number, open: readonly string[]): boolean {
   return !REGIONS.some((r) => open.indexOf(r.id) < 0 && dex >= r.dex[0] && dex <= r.dex[1] && !(r.open ?? []).includes(dex));
 }
-
-/**
- * Dex numbers of later-gen Pokémon whose evolution family contains a Gen 1 (dex 1-151) member, built from `EVOLUTIONS`
- * in both directions (a baby like Pichu is in Pikachu's family). Mamoswine, Togekiss, Garchomp and the like have no
- * Gen 1 relative, so they are not here.
- */
-const gen1FamilyDexes = (): ReadonlySet<number> => {
-  const adj = new Map<number, Set<number>>();
-  const link = (a: number, b: number) => {
-    if (!adj.has(a)) adj.set(a, new Set());
-    if (!adj.has(b)) adj.set(b, new Set());
-    adj.get(a)!.add(b);
-    adj.get(b)!.add(a);
-  };
-  for (const [from, e] of Object.entries(EVOLUTIONS)) for (const to of e.to) link(Number(from), to);
-  const out = new Set<number>();
-  const seen = new Set<number>();
-  for (const start of adj.keys()) {
-    if (seen.has(start)) continue;
-    const fam = [start];
-    seen.add(start);
-    for (let i = 0; i < fam.length; i++) for (const n of adj.get(fam[i])!) if (!seen.has(n)) { seen.add(n); fam.push(n); }
-    if (fam.some((d) => d <= KANTO.dex[1])) for (const d of fam) out.add(d);
-  }
-  return out;
-};
-let familyCache: ReadonlySet<number> | undefined;
-
-/** Whether `dex` is a later-gen Pokémon in a Gen 1 evolution family (Scizor, Steelix, Blissey, Pichu, ...). */
-export const isGen1FamilyDex = (dex: number): boolean => dex > KANTO.dex[1] && (familyCache ??= gen1FamilyDexes()).has(dex);
-
-/**
- * Kanto's CPU teams (the eight gyms and the Indigo Elite) draft Gen 1 plus later-gen Pokémon in a Gen 1 evolution
- * family, whatever the user's pool holds (including the Hoenn/Sinnoh `open` exceptions). This is only a CPU rule: the
- * user's draft, free agents and trades use `poolMons`.
- */
-export const isKantoCpuMon = (m: Pick<Mon, 'dex'>): boolean => (m.dex >= KANTO.dex[0] && m.dex <= KANTO.dex[1]) || isGen1FamilyDex(m.dex);
 
 /**
  * Extra boost for the nine Kanto CPU teams (gyms in badge order, then the Elite) when the league returns to Kanto after a

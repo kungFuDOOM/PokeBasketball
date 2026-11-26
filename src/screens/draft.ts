@@ -191,8 +191,8 @@ export function draftScreen(
   onDone: (rosters: Mon[][], leftovers: Mon[]) => void,
   onBack: () => void,
   onProgress: (state: DraftState) => void,
-  /** `customize: false` leaves out the rename / color picker on the draft-complete screen; `pool` replaces the draftable Pokémon; `cpuOk` limits what CPU teams (not you, not Auto-pick) may take. */
-  opts: { customize?: boolean; pool?: readonly Mon[]; cpuOk?: (m: Mon) => boolean } = {},
+  /** `customize: false` leaves out the rename / color picker on the draft-complete screen; `pool` replaces the draftable Pokémon. */
+  opts: { customize?: boolean; pool?: readonly Mon[] } = {},
 ) {
   const { teams, order } = state;
   // Own container so listeners die with the screen.
@@ -201,8 +201,6 @@ export function draftScreen(
   host.replaceChildren(root);
   const pool = [...(opts.pool ?? poolMons(state.regions))].sort((a, b) => b.ovr - a.ovr);
   const rosters: Mon[][] = teams.map(() => []);
-  /** What team `t` may pick from by CPU logic: the whole board, or only what `opts.cpuOk` allows for CPU teams. */
-  const cpuPool = (t: number) => (opts.cpuOk && !teams[t].human ? pool.filter(opts.cpuOk) : pool);
   /** Kanto drafts (some team has a locked star): the rosters the CPU teams are after. */
   const kanto = teams.some((t) => t.star != null) ? kantoRosters() : null;
   /**
@@ -212,7 +210,7 @@ export function draftScreen(
   const cpuMon = (t: number): Mon => {
     const team = teams[t];
     const slot = team.star != null ? team.gym! - 1 : team.elite && teams.length > 2 ? 8 : -1;
-    if (!kanto || team.human || slot < 0) return cpuPick(cpuPool(t), rosters[t], team.types);
+    if (!kanto || team.human || slot < 0) return cpuPick(pool, rosters[t], team.types);
     const k = rosters[t].length;
     if (k === 0 && team.star != null) return monByDex(team.star);
     const gone = new Set(state.taken);

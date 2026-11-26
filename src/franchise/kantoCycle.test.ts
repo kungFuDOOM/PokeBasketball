@@ -8,7 +8,7 @@ import {
   startRookieDraft, weekGames, type Franchise,
 } from './league';
 import { draftKantoLeague, kantoPool } from './kantoDraft';
-import { HOENN, JOHTO, KANTO, KANTO_GYMS_REV, KANTO_RETURN_BUMP, SINNOH, isKantoCpuMon, openRegionIds, poolMons, regionTeams } from './regions';
+import { HOENN, JOHTO, KANTO, KANTO_GYMS_REV, KANTO_RETURN_BUMP, SINNOH, openRegionIds, poolMons, regionTeams } from './regions';
 
 /** What the repair should give the eight gyms: the drafter, around the user's team and the Elite. */
 const rebuilt = (f: Franchise) => {
@@ -28,7 +28,7 @@ beforeEach(() => store.clear());
 
 function kanto(unlocked: string[] = []): Franchise {
   const teams = [{ name: 'Pallet Town', abbr: 'PAL', color: '#3b6fd8', color2: '#16224a', human: true }, ...LEAGUE.map((t) => ({ ...t, human: false }))];
-  const { rosters, leftovers } = autoDraft(teams, 10, undefined, poolMons(openRegionIds(unlocked)), isKantoCpuMon);
+  const { rosters, leftovers } = autoDraft(teams, 10, undefined, poolMons(openRegionIds(unlocked)));
   const used = new Set([...rosters.flat(), ...leftovers]);
   const f = createFranchise(teams, rosters, [...leftovers, ...POKEMON.filter((m) => !used.has(m))]);
   if (unlocked.length) f.unlockedRegions = unlocked;
@@ -338,41 +338,64 @@ describe('Sinnoh championship cycle', () => {
     expect(regionOf(earned).id).toBe('hoenn');
   });
 
-  /** Gyms and Elite: Gen 1 plus later-gen Pokémon in a Gen 1 evolution family (the production helper), never Garchomp and co. */
-  const gen1Only = (f: Franchise) => f.teams.filter((t) => !t.human).flatMap((t) => t.roster).every((u) => isKantoCpuMon({ dex: f.players[u].dex }));
+  const cpuAll = (f: Franchise) => cpuDex(f).flat();
 
-  it('a new Kanto franchise drafts its gyms and Elite from Gen 1 and its family evolutions only, while the user pool keeps the open exceptions', () => {
-    expect(poolMons(openRegionIds([])).some((m) => m.dex === 376 || m.dex === 445)).toBe(true);
+  it('a new Kanto franchise drafts its gyms and Elite from every region, locked or not, with no Pokémon on two teams', () => {
     for (const unlocked of [[], ['johto', 'hoenn', 'sinnoh']]) {
       for (let i = 0; i < 5; i++) {
         const f = kanto(unlocked);
         expect(f.teams.filter((t) => t.gym || t.elite)).toHaveLength(9);
-        expect(gen1Only(f)).toBe(true);
         for (const t of f.teams.filter((x) => !x.human)) expect(t.roster).toHaveLength(10);
-        // Later-gen Pokémon were not lost: they are in free agency (or on the user's team).
-        const rest = [...f.freeAgents, ...f.teams[0].roster];
-        expect(rest.some((u) => f.players[u].dex > 151)).toBe(true);
+        expect(cpuAll(f).some((d) => d > 151)).toBe(true);
+        const everyone = f.teams.flatMap((t) => t.roster.map((u) => f.players[u].dex));
+        expect(new Set(everyone).size).toBe(everyone.length);
+        // The rest were not lost: they are in free agency.
+        expect(new Set([...everyone, ...f.freeAgents.map((u) => f.players[u].dex)]).size).toBe(POKEMON.length);
       }
     }
   });
 
-  it('a Sinnoh title return redrafts the gyms from Gen 1 and family evolutions only, and the user keeps a later-gen roster', () => {
+  it('a Sinnoh title return redrafts the gyms from every region around the roster the user keeps', () => {
     const f = reachSinnoh();
     const me = f.teams[0];
     const held = new Set(me.roster.map((u) => f.players[u].dex));
     for (const [i, dex] of [376, 445, 384].entries()) if (!held.has(dex)) { held.delete(f.players[me.roster[i]].dex); f.players[me.roster[i]].dex = dex; held.add(dex); }
     const owned = [...me.roster];
-    const laterOwned = owned.filter((u) => f.players[u].dex > 151);
-    expect(laterOwned.length).toBeGreaterThanOrEqual(3);
     playOut(f, () => true);
     rookieDraft(f);
     expect(f.region).toBe('kanto');
-    expect(gen1Only(f)).toBe(true);
-    const banned = new Set([445, 376, 384, 373, 330, 448]); // Garchomp, Metagross, Rayquaza, Salamence, Flygon, Lucario
-    expect(f.teams.filter((t) => !t.human).flatMap((t) => t.roster).some((u) => banned.has(f.players[u].dex))).toBe(false);
+    expect(f.teams[0].roster).toEqual(owned);
+    const stars = KANTO.gyms.map((g) => g.star!);
+    const mine = f.teams[0].roster.map((u) => f.players[u].dex);
+    expect(cpuAll(f).filter((d) => mine.includes(d) && !stars.includes(d))).toEqual([]);
+    expect(new Set(cpuAll(f)).size).toBe(90);
+    expect(cpuAll(f).some((d) => d > 151)).toBe(true);
     expect(f.teams.filter((t) => !t.human).every((t) => t.roster.length === 10)).toBe(true);
-    for (const u of laterOwned) expect(f.teams[0].roster).toContain(u);
-    expect(f.teams[0].roster.some((u) => f.players[u].dex > 151)).toBe(true);
+  });
+
+  it('a revision 3 save rebuilds only the Kanto CPU gyms, once, from every region', () => {
+    expect(KANTO_GYMS_REV).toBe(4);
+    const f = kanto();
+    // Stand-in for the old gyms: reversed rosters, old boosts.
+    const old = [0, 0, 1, 2, 2, 3, 4, 4];
+    for (const t of f.teams.filter((x) => x.gym)) { t.roster.reverse(); t.boost = old[t.gym! - 1]; }
+    f.gymsRev = 3;
+    const mine = structuredClone(f.teams[0]);
+    const elite = structuredClone(f.teams.find((t) => t.elite)!);
+    saveFranchise(f);
+    const g = loadFranchise()!;
+    expect(g.gymsRev).toBe(4);
+    expect(g.teams[0]).toEqual(mine);
+    expect(g.teams.find((t) => t.elite)!.roster).toEqual(elite.roster);
+    expect(g.teams.find((t) => t.elite)!.boost).toBe(elite.boost);
+    expect(g.teams.filter((t) => t.gym).map((t) => t.boost)).toEqual(KANTO.gyms.map((t) => t.boost));
+    g.teams.filter((t) => t.gym).forEach((t) => expect(t.roster.map((u) => g.players[u].dex)).toEqual(rebuilt(g)[t.gym! - 1]));
+    const refs = [...g.teams.flatMap((t) => t.roster), ...g.freeAgents];
+    expect(new Set(refs).size).toBe(refs.length);
+    const rostered = g.teams.flatMap((t) => t.roster.map((u) => g.players[u].dex));
+    expect(new Set(rostered).size).toBe(rostered.length);
+    saveFranchise(g);
+    expect(loadFranchise()!.teams).toEqual(g.teams);
   });
 
   it('a Season 1 save with Mewtwo on Pewter rebuilds Brock and leaves the user team', () => {
@@ -472,7 +495,7 @@ describe('Sinnoh championship cycle', () => {
     brock.roster[brock.roster.indexOf(rhyperior)] = f.freeAgents.shift()!;
     f.freeAgents.push(rhyperior);
     f.players[rhyperior].level = 7;
-    f.gymsRev = 2;
+    f.gymsRev = 3;
     saveFranchise(f);
     const g = loadFranchise()!;
     expect(g.teams[1].roster).toContain(rhyperior);

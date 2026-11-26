@@ -1,6 +1,6 @@
 // Screenshots of the eight Kanto gym matchup cards (desktop), plus Brock's on a portrait phone. Usage:
 //   npx vite --port 5199 --strictPort &   then   PORT=5199 node scripts/kanto-gyms-shots.mjs [outDir]
-// Each shot builds a new franchise in-page against the fixed ~90 OVR test team (the user holds it, so the gyms and Elite
+// Each shot builds a new franchise in-page against the fixed 91 OVR test team (the user holds it, so the gyms and Elite
 // draft around it the way the app does), moves the schedule to the week the user plays that gym, and captures the hub's next-game card.
 import { chromium } from 'playwright-core';
 import { mkdirSync } from 'node:fs';
