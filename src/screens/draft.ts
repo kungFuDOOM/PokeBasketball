@@ -1,4 +1,4 @@
-import { POSITIONS, RATING_LABELS, SPECIALS, TYPE_COLORS, monByDex, spriteUrl, type Mon, type PokeType, type Pos, type Ratings } from '../data/pokemon';
+import { POKEMON, POSITIONS, RATING_LABELS, SPECIALS, TYPE_COLORS, monByDex, spriteUrl, type Mon, type PokeType, type Pos, type Ratings } from '../data/pokemon';
 import type { Audio } from '../game/audio';
 import { bestLineup, chemistry, teamOvr } from '../game/game';
 import { isNameBlocked } from '../nameFilter';
@@ -7,6 +7,7 @@ import { ordinal, snakePicks } from './draft.logic';
 import { monCard, summaryHtml, SWATCHES, typeChips } from './draftView';
 import { wireDraftShare } from '../season/draftShare';
 import { poolMons } from '../franchise/regions';
+import { kantoNext, kantoPool, kantoRosters } from '../franchise/kantoDraft';
 
 export { monCard, typeChips };
 
@@ -81,8 +82,8 @@ export interface DraftTeam {
   gym?: number;
   badge?: string;
   elite?: boolean;
-  /** Hand-made dex list. A CPU team with one keeps it, in order, instead of `cpuPick`. */
-  roster?: readonly number[];
+  /** A Kanto gym's locked star: its first pick, whatever else has been taken. */
+  star?: number;
 }
 
 /** Overall of the five who would start. */
@@ -202,15 +203,24 @@ export function draftScreen(
   const rosters: Mon[][] = teams.map(() => []);
   /** What team `t` may pick from by CPU logic: the whole board, or only what `opts.cpuOk` allows for CPU teams. */
   const cpuPool = (t: number) => (opts.cpuOk && !teams[t].human ? pool.filter(opts.cpuOk) : pool);
+  /** Kanto drafts (some team has a locked star): the rosters the CPU teams are after. */
+  const kanto = teams.some((t) => t.star != null) ? kantoRosters() : null;
   /**
-   * A CPU gym with a hand-made roster takes the next Pokémon on it. The Elite, and any CPU team without one, still
-   * uses `cpuPick`. A copy is used when the user already drafted that species, so the gym stays intact.
+   * A CPU pick. In a Kanto draft a gym (and, in a full league, the Elite) takes its star first, then its planned
+   * Pokémon in order. If one is already gone, it takes the best fit that no CPU team is planning on.
    */
   const cpuMon = (t: number): Mon => {
-    const plan = teams[t].roster;
-    const next = plan && !teams[t].human ? plan[rosters[t].length] : undefined;
-    if (next == null) return cpuPick(cpuPool(t), rosters[t], teams[t].types);
-    return pool.find((m) => m.dex === next) ?? monByDex(next);
+    const team = teams[t];
+    const slot = team.star != null ? team.gym! - 1 : team.elite && teams.length > 2 ? 8 : -1;
+    if (!kanto || team.human || slot < 0) return cpuPick(cpuPool(t), rosters[t], team.types);
+    const k = rosters[t].length;
+    if (k === 0 && team.star != null) return monByDex(team.star);
+    const gone = new Set(state.taken);
+    const want = kanto[slot][k];
+    if (want && !gone.has(want.dex)) return want;
+    const planned = new Set(kanto.flat().map((m) => m.dex));
+    const free = kantoPool().filter((m) => !gone.has(m.dex));
+    return kantoNext(free.filter((m) => !planned.has(m.dex)), rosters[t], team) ?? kantoNext(free, rosters[t], team)!;
   };
   const size = state.rounds ?? 5;
   const picks = snakePicks(order, size);
@@ -390,9 +400,9 @@ export function draftScreen(
   const record = (m: Mon, note?: string) => {
     const t = picks[pick];
     state.taken.push(m.dex);
-    const i = pool.indexOf(m);
-    const j = i >= 0 ? i : pool.findIndex((p) => p.dex === m.dex);
-    if (j >= 0) pool.splice(j, 1);
+    // A Kanto CPU pick need not be on the board: a locked region's Pokémon, or a copy of a star the user already holds.
+    const i = pool.findIndex((p) => p.dex === m.dex);
+    if (i >= 0) pool.splice(i, 1);
     rosters[t].push(m);
     log.push(`${note ?? `${teams[t].human ? 'You' : teams[t].name} selected`} ${m.name} (${m.pos}, ${m.ovr})`);
     pick++;
@@ -496,7 +506,9 @@ export function draftScreen(
   for (const dex of saved) {
     if (pick >= picks.length) break;
     // A Pokémon no longer in the game (older save): that pick becomes the team's best available.
-    record(pool.find((x) => x.dex === dex) ?? cpuPick(cpuPool(picks[pick]), rosters[picks[pick]], teams[picks[pick]].types));
+    const onBoard = pool.find((x) => x.dex === dex)
+      ?? (kanto && picks[pick] !== me ? POKEMON.find((x) => x.dex === dex) : undefined);
+    record(onBoard ?? (picks[pick] === me ? cpuPick(pool, rosters[me]) : cpuMon(picks[pick])));
   }
   if (saved.length) log.push(`Draft resumed at pick ${pick + 1}.`);
   if (pick >= picks.length) return finish();

@@ -1,17 +1,20 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { EVOLUTIONS, POKEMON, isRetired, monByDex } from '../data/pokemon';
-import { Game as RealGame, bestLineup, type Game } from '../game/game';
+import { POSITIONS, EVOLUTIONS, POKEMON, isRetired, monByDex } from '../data/pokemon';
+import { Game as RealGame, bestLineup, chemistry, type Game } from '../game/game';
 import { autoDraft } from '../season/team';
 import { badgeSvg } from '../ui/badges';
 import {
   LEAGUE, advance, atSeasonStart, awardRegion, canAcquire, createFranchise, enterRegion, finishRookieDraft, gameConfig, judgeTrade, loadDraft,
-  SCALE_BOOST_CAP, SCALE_MARGINS, effectiveStrength, scaledBoost,
+  lineupOf, SCALE_BOOST_CAP, SCALE_MARGINS, effectiveStrength, scaledBoost,
   loadFranchise, loadRegionProfile, recordGame, regionOf, regionStatus, regionTitles, rookieOnClock, rookiePick, saveDraft, saveFranchise,
   seasonWeeks, sign, simulate, startRookieDraft, venueOf, weekGames, type Franchise,
 } from './league';
 import { shouldPlayMasterCutscene } from './moments';
+import { RANKED_PRESETS } from '../multiplayer/ranked/presets';
+import { kantoRosters, lineupWithStar } from './kantoDraft';
+import { strengthOf } from '../screens/strength';
+import { RANKED_LEGENDARIES, RANKED_MAX_OVR } from '../multiplayer/shared/roster';
 import { HOENN, JOHTO, KANTO, REGIONS, SINNOH, inPool, nextRegion, isGen1FamilyDex, isKantoCpuMon, openRegionIds, poolMons, regionTeams } from './regions';
-import { RANKED_LEGENDARIES } from '../multiplayer/shared/roster';
 
 const store = new Map<string, string>();
 vi.stubGlobal('localStorage', {
@@ -75,66 +78,101 @@ describe('region data', () => {
   it('Kanto keeps its eight gyms and the Indigo Elite, and LEAGUE is exactly the Kanto league', () => {
     expect(KANTO.gyms.map((t) => t.badge)).toEqual(['Boulder', 'Cascade', 'Thunder', 'Rainbow', 'Soul', 'Marsh', 'Volcano', 'Earth']);
     expect(KANTO.gyms.map((t) => t.leader)).toEqual(['Brock', 'Misty', 'Lt. Surge', 'Erika', 'Koga', 'Sabrina', 'Blaine', 'Giovanni']);
-    expect(LEAGUE.map(({ roster: _r, ace: _a, ...t }) => t)).toEqual([
-      { name: 'Pewter Boulders', abbr: 'PEW', color: '#a38c63', color2: '#2e271b', leader: 'Brock', types: ['Rock'], boost: 0, gym: 1, badge: 'Boulder' },
-      { name: 'Cerulean Cascades', abbr: 'CER', color: '#2bb3d6', color2: '#0b2c38', leader: 'Misty', types: ['Water'], boost: 0, gym: 2, badge: 'Cascade' },
-      { name: 'Vermilion Thunder', abbr: 'VER', color: '#f2c522', color2: '#3a2f06', leader: 'Lt. Surge', types: ['Electric'], boost: 1, gym: 3, badge: 'Thunder' },
-      { name: 'Celadon Rainbows', abbr: 'CEL', color: '#5cb85c', color2: '#13301a', leader: 'Erika', types: ['Grass'], boost: 1, gym: 4, badge: 'Rainbow' },
-      { name: 'Fuchsia Ninjas', abbr: 'FCH', color: '#b04fc4', color2: '#2d1236', leader: 'Koga', types: ['Poison'], boost: 2, gym: 5, badge: 'Soul' },
-      { name: 'Saffron Psychics', abbr: 'SAF', color: '#f2668b', color2: '#3a1220', leader: 'Sabrina', types: ['Psychic'], boost: 2, gym: 6, badge: 'Marsh' },
-      { name: 'Cinnabar Volcanoes', abbr: 'CIN', color: '#e8622c', color2: '#3d160b', leader: 'Blaine', types: ['Fire'], boost: 3, gym: 7, badge: 'Volcano' },
-      { name: 'Viridian Quakes', abbr: 'VIR', color: '#7c9a3a', color2: '#1e2a0e', leader: 'Giovanni', types: ['Ground'], boost: 4, gym: 8, badge: 'Earth' },
+    expect(LEAGUE).toEqual([
+      { name: 'Pewter Boulders', abbr: 'PEW', color: '#a38c63', color2: '#2e271b', leader: 'Brock', types: ['Rock'], boost: 0, gym: 1, badge: 'Boulder', star: 464 },
+      { name: 'Cerulean Cascades', abbr: 'CER', color: '#2bb3d6', color2: '#0b2c38', leader: 'Misty', types: ['Water'], boost: 0, gym: 2, badge: 'Cascade', star: 9 },
+      { name: 'Vermilion Thunder', abbr: 'VER', color: '#f2c522', color2: '#3a2f06', leader: 'Lt. Surge', types: ['Electric'], boost: 1, gym: 3, badge: 'Thunder', star: 145 },
+      { name: 'Celadon Rainbows', abbr: 'CEL', color: '#5cb85c', color2: '#13301a', leader: 'Erika', types: ['Grass'], boost: 2, gym: 4, badge: 'Rainbow', star: 3 },
+      { name: 'Fuchsia Ninjas', abbr: 'FCH', color: '#b04fc4', color2: '#2d1236', leader: 'Koga', types: ['Poison'], boost: 2, gym: 5, badge: 'Soul', star: 144 },
+      { name: 'Saffron Psychics', abbr: 'SAF', color: '#f2668b', color2: '#3a1220', leader: 'Sabrina', types: ['Psychic'], boost: 3, gym: 6, badge: 'Marsh', star: 151 },
+      { name: 'Cinnabar Volcanoes', abbr: 'CIN', color: '#e8622c', color2: '#3d160b', leader: 'Blaine', types: ['Fire'], boost: 4, gym: 7, badge: 'Volcano', star: 146 },
+      { name: 'Viridian Quakes', abbr: 'VIR', color: '#7c9a3a', color2: '#1e2a0e', leader: 'Giovanni', types: ['Ground'], boost: 4, gym: 8, badge: 'Earth', star: 150 },
       { name: 'Indigo Elite', abbr: 'E4', color: '#d4a017', color2: '#2a2106', leader: 'The Elite Four', types: ['Ice', 'Fighting', 'Ghost', 'Dragon'], boost: 7, elite: true },
     ]);
   });
 
-  it('Kanto gyms field hand-made on-type fives, with one designed legendary from Vermilion on', () => {
-    const legends = new Set(RANKED_LEGENDARIES);
-    // Gym number -> the one legendary that starts. Brock, Misty and Erika have none.
-    const designed: Record<number, number | undefined> = { 3: 145, 5: 144, 6: 151, 7: 146, 8: 150 };
-    const rocks = new Set([76, 112, 464, 142, 141, 139]);
+  it('each Kanto gym locks its star, which is on type and starts', () => {
+    expect(KANTO.gyms.map((t) => monByDex(t.star!).name)).toEqual(
+      ['Rhyperior', 'Blastoise', 'Zapdos', 'Venusaur', 'Articuno', 'Mew', 'Moltres', 'Mewtwo']);
+    const rosters = kantoRosters();
+    KANTO.gyms.forEach((t, i) => {
+      const ace = monByDex(t.star!);
+      // The two designed exceptions: Koga's Articuno and Giovanni's Mewtwo are legendaries off the gym's type.
+      const onType = ace.types.some((ty) => t.types.includes(ty));
+      expect(onType, `${t.leader}: ${ace.name}`).toBe(t.leader !== 'Koga' && t.leader !== 'Giovanni');
+      expect(rosters[i][0].dex, t.leader).toBe(t.star);
+      expect(lineupWithStar(rosters[i], t.star).starters.map((m) => m.dex), t.leader).toContain(t.star);
+    });
+  });
+
+  it('Brock and Misty lock the better rated of their two candidates', () => {
+    expect(monByDex(464).ovr).toBeGreaterThan(monByDex(76).ovr); // Rhyperior over Golem
+    expect(monByDex(9).ovr).toBeGreaterThan(monByDex(130).ovr); // Blastoise over Gyarados
+  });
+
+  // The floor is 77, not 80: nine CPU fives share one pool, and Gen 1 families are thin at some positions (only six
+  // non-legendary shooting guards rate 80+). No gym needs more than one starter under 80. The second case is a fixed
+  // ~90 OVR test team: Alakazam, Lucario, Charizard, Garchomp, Snorlax.
+  it.each([
+    ['nothing held', [] as number[]],
+    ['the 90 OVR test team held', [65, 448, 6, 445, 143]],
+  ])('Kanto gyms draft a natural five, no weak starter and no extra legendary (%s)', (_, held) => {
+    const rosters = kantoRosters(held);
+    const strength: number[] = [];
     const seen = new Set<number>();
-    const cards: number[] = [];
-    const eff: number[] = [];
-    expect(KANTO.finale.roster).toBeUndefined();
-    for (const t of KANTO.gyms) {
-      const roster = t.roster!;
-      expect(roster, t.name).toHaveLength(10);
-      expect(new Set(roster).size, t.name).toBe(10);
-      expect(roster[0], t.name).toBe(t.ace);
-      for (const d of roster) {
-        expect(seen.has(d), `${t.name} shares #${d}`).toBe(false);
-        seen.add(d);
-        expect(isKantoCpuMon({ dex: d }), `${t.name} #${d}`).toBe(true);
-        expect(isRetired(d), `${t.name} #${d}`).toBe(false);
+    KANTO.gyms.forEach((t, i) => {
+      expect(rosters[i], t.leader).toHaveLength(10);
+      for (const m of rosters[i]) {
+        expect(seen.has(m.dex), `${t.leader} shares ${m.name}`).toBe(false);
+        seen.add(m.dex);
+        expect(isKantoCpuMon(m), m.name).toBe(true);
+        if (m.dex !== t.star) {
+          expect(held, m.name).not.toContain(m.dex);
+          expect(RANKED_LEGENDARIES, `${t.leader}: ${m.name}`).not.toContain(m.dex);
+        }
       }
-      const mons = roster.map(monByDex);
-      const { starters: five } = bestLineup(mons);
-      expect(five.map((m) => m.pos).sort(), t.name).toEqual(['C', 'PF', 'PG', 'SF', 'SG']);
-      expect(five.map((m) => m.dex), `${t.name} ace starts`).toContain(t.ace);
-      for (const m of five) {
-        expect(m.ovr, `${t.name}: ${m.name}`).toBeGreaterThanOrEqual(83);
-        expect(EVOLUTIONS[m.dex]?.to ?? [], `${t.name}: ${m.name} still evolves`).toEqual([]);
-      }
-      const onType = five.filter((m) => m.types.some((ty) => t.types.includes(ty))).length;
-      expect(onType, `${t.name} mostly on type`).toBeGreaterThanOrEqual(t.leader === 'Giovanni' ? 3 : 4);
-      const lore = roster.filter((d) => legends.has(d));
-      expect(lore, t.name).toEqual(designed[t.gym!] == null ? [] : [designed[t.gym!]]);
-      if (designed[t.gym!] != null) expect(five.map((m) => m.dex), `${t.name} legendary starts`).toContain(designed[t.gym!]);
-      expect(t.boost, t.name).toBeGreaterThanOrEqual(0);
-      expect(t.boost, t.name).toBeLessThanOrEqual(4);
-      const card = Math.round(five.reduce((s, m) => s + m.ovr, 0) / five.length);
-      // About 88 at Brock, climbing to about 94 at Giovanni. Each step stays within 1 of that line.
-      const target = 88 + (t.gym! - 1) * (6 / 7);
-      expect(Math.abs(card - target), `${t.name} card ${card}`).toBeLessThanOrEqual(1.15);
-      cards.push(card);
-      eff.push(effectiveStrength(five, t.boost));
-    }
-    expect(bestLineup(KANTO.gyms[0].roster!.map(monByDex)).starters.map((m) => m.dex)).toContain(76);
-    expect(bestLineup(KANTO.gyms[5].roster!.map(monByDex)).starters.map((m) => m.dex)).toContain(65);
-    expect(bestLineup(KANTO.gyms[0].roster!.map(monByDex)).starters.some((m) => rocks.has(m.dex))).toBe(true);
-    for (let i = 1; i < cards.length; i++) expect(cards[i], `gym ${i + 1}`).toBeGreaterThanOrEqual(cards[i - 1]);
-    for (let i = 1; i < eff.length; i++) expect(eff[i], `gym ${i + 1} effective`).toBeGreaterThan(eff[i - 1]);
+      const { starters } = lineupWithStar(rosters[i], t.star);
+      // PG, SG, SF, PF, C, each at their own position, so the card gets the lineup bonus.
+      expect(starters.map((m) => m.pos), t.leader).toEqual(POSITIONS);
+      expect(chemistry(starters), t.leader).toBeGreaterThanOrEqual(2);
+      for (const m of starters) expect(m.ovr, `${t.leader}: ${m.name}`).toBeGreaterThanOrEqual(77);
+      expect(starters.filter((m) => m.ovr < 80).length, t.leader).toBeLessThanOrEqual(1);
+      strength.push(strengthOf(starters, t.boost).total);
+    });
+    for (let i = 1; i < strength.length; i++) expect(strength[i], `gym ${i + 1}: ${strength}`).toBeGreaterThanOrEqual(strength[i - 1]);
+    expect(strength[7] - strength[0]).toBeGreaterThanOrEqual(5);
+    // The final boss is never weaker than the last gym.
+    const elite = lineupWithStar(rosters[KANTO.gyms.length]).starters;
+    expect(strengthOf(elite, KANTO.finale.boost).total).toBeGreaterThanOrEqual(strength[7]);
+  });
+
+  it('Kanto gym boosts are small and never drop', () => {
+    const b = KANTO.gyms.map((t) => t.boost);
+    expect(b).toEqual([0, 0, 1, 2, 2, 3, 4, 4]);
+  });
+
+  it('a new franchise drafts the same gyms every time, and every star starts', () => {
+    const f = kanto();
+    const planned = kantoRosters().map((r) => r.map((m) => m.dex));
+    KANTO.gyms.forEach((g) => {
+      const t = f.teams.find((x) => x.gym === g.gym)!;
+      expect(t.roster.map((u) => f.players[u].dex), g.leader).toEqual(planned[g.gym! - 1]);
+      expect(lineupOf(f, t).starters.map((u) => f.players[u].dex), g.leader).toContain(g.star);
+    });
+  });
+
+  it('a gym star keeps starting when a better player at its position joins', () => {
+    const f = kanto();
+    const brock = f.teams.find((t) => t.leader === 'Brock')!;
+    f.players[brock.roster[9]].dex = 149; // Dragonite, a center rated above Rhyperior
+    const five = lineupOf(f, brock).starters.map((u) => f.players[u].dex);
+    expect(five).toContain(464);
+    expect(five).not.toContain(149);
+  });
+
+  it('Ranked presets stay at 88 or below', () => {
+    expect(RANKED_MAX_OVR).toBeLessThanOrEqual(88);
+    for (const team of RANKED_PRESETS) for (const d of team.dex) expect(monByDex(d).ovr, `${team.name} #${d}`).toBeLessThanOrEqual(88);
   });
 
   it('a Kanto franchise still plays nine regular-season games, then semifinals and a final', () => {
@@ -454,12 +492,12 @@ describe('the franchise Pokémon pool', () => {
 
   it('autoDraft for a locked franchise drafts no Gen 2; unlocked, the CPU drafts them', () => {
     const f = kanto();
-    // The user still drafts from the locked pool. Gym family evolutions (Crobat, Kingdra, ...) are on the hand-made
-    // rosters, not drafted out of a locked region, and every one of them is a Gen 1 relative.
+    // The user still drafts from the locked pool. The gyms and Elite may draft Gen 1 family evolutions (Crobat, Kingdra, ...)
+    // from a locked region, and every one of them is a Gen 1 relative.
     expect(f.teams[0].roster.some((u) => gen2(f.players[u].dex))).toBe(false);
     const cpuGen2 = f.teams.slice(1).flatMap((t) => t.roster.filter((u) => gen2(f.players[u].dex)));
     for (const u of cpuGen2) expect(isKantoCpuMon({ dex: f.players[u].dex })).toBe(true);
-    // The held-back Pokémon still exist, in free agency, for later, less the ones a gym roster already fields.
+    // The held-back Pokémon still exist, in free agency, for later, less the ones the CPU teams drafted.
     expect(f.freeAgents.filter((u) => gen2(f.players[u].dex))).toHaveLength(100 - cpuGen2.length);
     // Unlocked: the Gen 2 pool opens for the user, but Kanto's gyms and Elite still draft Gen 1 only.
     const open = kanto(['johto']);
@@ -473,7 +511,7 @@ describe('the franchise Pokémon pool', () => {
     expect(unlocked.leftovers.some((m) => gen2(m.dex))).toBe(true);
     const { rosters, leftovers } = autoDraft([{ name: 'A', abbr: 'AAA', color: '#000', color2: '#fff', human: true }, ...LEAGUE.map((t) => ({ ...t, human: false }))], 10, mine, poolMons(['kanto']), isKantoCpuMon);
     expect(rosters[0]).toEqual(mine);
-    // The kanto-only pool has no Gen 2 left in it. Gym rosters may still list a Gen 1 family's later evolution.
+    // The kanto-only pool has no Gen 2 left in it. CPU rosters may still hold a Gen 1 family's later evolution.
     expect(leftovers.some((m) => gen2(m.dex))).toBe(false);
     expect(rosters.slice(1).flat().filter((m) => gen2(m.dex)).every((m) => isKantoCpuMon(m))).toBe(true);
     // A gym may field a species the user's team also holds. What is left of the pool is not on a roster.

@@ -25,7 +25,7 @@ describe('pokejam_match_setup', () => {
     expect(await setup(t, id)).toEqual({
       id, queue: 'ranked', status: 'active', host: host.id, guest: guest.id, seed: 555, quarter_len: 120, host_key: HK, guest_key: GK,
       host_name: 'SetupHost', guest_name: username,
-      host_roster: [78, 229, 94, 9, 154], guest_roster: [26, 123, 635, 373, 473],
+      host_roster: [78, 229, 94, 9, 208], guest_roster: [65, 123, 635, 373, 473],
     });
   });
 

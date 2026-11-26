@@ -1,6 +1,6 @@
 import { EVOLUTIONS, RATING_LABELS, isRetired, monByDex, positionWeights, withBonus, type Mon, type PokeType, type Ratings } from '../data/pokemon';
 import { kingKabutoCard } from '../kabuto/king';
-import { Game, bestLineup, chemistry } from '../game/game';
+import { Game, chemistry } from '../game/game';
 import { courtFor, userCourt } from '../data/courts';
 import type { Difficulty, GameConfig, PStats, TeamDef } from '../game/types';
 import type { DraftState } from '../screens/draft';
@@ -8,7 +8,9 @@ import { safeName } from '../nameFilter';
 import { fixAbbr } from '../util';
 import { USER_STYLE, contrastAway } from '../multiplayer/shared/matchSetup';
 import { autoDraft } from '../season/team';
-import { KANTO, KANTO_RETURN_BUMP, REGIONS, SINNOH, inPool, isKantoCpuMon, nextRegion, openRegionIds, poolMons, regionById, regionTeams, type LeagueTeam, type RegionDef } from './regions';
+import { strengthOf, type Strength } from '../screens/strength';
+import { draftKantoLeague, kantoPool, kantoStarOf, lineupWithStar } from './kantoDraft';
+import { KANTO, KANTO_GYMS_REV, KANTO_RETURN_BUMP, REGIONS, SINNOH, inPool, isKantoCpuMon, nextRegion, openRegionIds, poolMons, regionById, regionTeams, type LeagueTeam, type RegionDef } from './regions';
 
 const SAVE_KEY = 'pokejam.franchise.v1';
 /** XP needed to go from `level` to the next one; each level costs a bit more. */
@@ -102,6 +104,8 @@ export interface Franchise {
   games: FGame[];
   signedWeek: number;
   news: string[];
+  /** `KANTO_GYMS_REV` the Kanto gyms were built on. Missing or older: they are rebuilt once on load. */
+  gymsRev?: number;
   champion?: number;
   mvp?: string;
   /** This season's awards, set when the final ends. */
@@ -180,7 +184,8 @@ export function lineupOf(f: Franchise, t: FTeam): { starters: string[]; bench: s
     return { starters: order.slice(0, 5), bench: order.slice(5), out };
   }
   const byMon = new Map(healthy.map((u) => [monOf(f, u), u]));
-  const { starters, bench } = bestLineup([...byMon.keys()]);
+  // A Kanto gym's star always starts; every other team gets the plain best five.
+  const { starters, bench } = lineupWithStar([...byMon.keys()], t.human ? undefined : kantoStarOf(t.name));
   return { starters: starters.map((m) => byMon.get(m)!), bench: bench.map((m) => byMon.get(m)!), out };
 }
 
@@ -258,6 +263,7 @@ export function createFranchise(
     week: 1,
     phase: 'season',
     teams: teams.map((t, id) => ({ id, ...t, roster: rosters[id].map((m) => add(m)), w: 0, l: 0, pf: 0, pa: 0, streak: 0 })),
+    gymsRev: KANTO_GYMS_REV,
     players,
     freeAgents: leftovers.map((m) => add(m)),
     weeks: teams.length - 1,
@@ -320,37 +326,39 @@ function cleanTeams(teams: unknown, cpu: LeagueTeam[] = LEAGUE): boolean {
 }
 
 /**
- * Old Kanto saves drafted the gyms, so Brock could be starting Mewtwo. On load, rebuild each Kanto CPU gym from the
- * hand-made roster (the user's team and the Indigo Elite are left alone) and raise a stored boost that is still below
- * the current design. A save that has already come back from a Sinnoh title keeps the return bump on top of that.
- * A gym whose roster already matches is not replaced, so levels survive the next load.
+ * Old Kanto saves hold gyms from an earlier design (Brock could be starting Mewtwo). A save below `KANTO_GYMS_REV`
+ * rebuilds the eight Kanto CPU gyms once with the current drafter and sets their boosts (lowered as well as raised, plus
+ * the return bump after a Sinnoh title). The user's team and the Indigo Elite are never touched, and the gyms draft
+ * around what those two hold. It runs once per revision, so later trades and rookie picks stick. A Pokémon taken from
+ * free agency or an old gym roster keeps its levels.
  */
 function repairKantoGyms(f: Franchise): void {
-  if (regionOf(f).id !== KANTO.id) return;
+  if (regionOf(f).id !== KANTO.id || (f.gymsRev ?? 0) >= KANTO_GYMS_REV) return;
   const returned = (f.titles ?? []).some((t) => t.regionId === SINNOH.id);
-  const cpu = regionTeams(KANTO);
+  const gyms = f.teams.flatMap((t) => {
+    const i = t.human || t.elite ? -1 : KANTO.gyms.findIndex((g) => g.gym === t.gym);
+    return i < 0 ? [] : [{ t, i, def: KANTO.gyms[i] }];
+  });
+  const held = new Set(f.teams.filter((t) => t.human || t.elite).flatMap((t) => t.roster.map((u) => f.players[u]?.dex)));
+  const rosters = draftKantoLeague(gyms.map((g) => g.def), 10, kantoPool().filter((m) => !held.has(m.dex)));
+  // Release every old gym roster first: one gym's old player may be on another gym's new one.
+  for (const { t } of gyms) {
+    for (const u of t.roster) if (f.players[u] && !f.freeAgents.includes(u)) f.freeAgents.push(u);
+  }
   let n = Object.keys(f.players).reduce((a, k) => Math.max(a, /^p\d+$/.test(k) ? Number(k.slice(1)) + 1 : a), 0);
-  const fa = new Set(f.freeAgents);
-  for (const t of f.teams) {
-    if (t.human) continue;
-    const i = cpu.findIndex((g) => (t.elite ? !!g.elite : g.gym === t.gym));
-    if (i < 0) continue;
-    const def = cpu[i];
-    const want = def.boost + (returned ? (KANTO_RETURN_BUMP[i] ?? 0) : 0);
-    if ((t.boost ?? 0) < want) t.boost = want;
-    if (!t.gym || !def.roster) continue;
-    const have = t.roster.map((u) => f.players[u]?.dex);
-    const same = have.length === def.roster.length && new Set(have).size === def.roster.length && def.roster.every((d) => have.includes(d));
-    if (same) continue;
-    for (const u of t.roster) if (!fa.has(u) && f.players[u]) { f.freeAgents.push(u); fa.add(u); }
-    t.roster = def.roster.map((dex) => {
+  gyms.forEach(({ t, i, def }, k) => {
+    t.boost = def.boost + (returned ? (KANTO_RETURN_BUMP[i] ?? 0) : 0);
+    t.roster = rosters[k].map(({ dex }) => {
+      const at = f.freeAgents.findIndex((u) => f.players[u]?.dex === dex && !f.players[u].king);
+      if (at >= 0) return f.freeAgents.splice(at, 1)[0];
       while (f.players[`p${n}`]) n++;
       const uid = `p${n++}`;
       f.players[uid] = { uid, dex, level: 1, xp: 0, bonus: {}, stats: emptyStats(), ovrStart: monByDex(dex).ovr };
       return uid;
     });
     delete t.lineup;
-  }
+  });
+  f.gymsRev = KANTO_GYMS_REV;
 }
 
 export function loadFranchise(): Franchise | null {
@@ -695,6 +703,16 @@ export function gameConfig(f: Franchise, game: FGame, humanPlays: boolean, quart
   return { cfg, sides, uidOf };
 }
 
+/**
+ * How strong a side really plays in this game, as `effectiveStrength` rounded: team OVR (starting-five mean plus
+ * chemistry) plus the boost the engine will get (including a later region's scaling). Difficulty is not included.
+ */
+export function matchStrength(f: Franchise, game: FGame, teamId: number): Strength {
+  const { cfg, sides } = gameConfig(f, game, false, 1, 'pro');
+  const def = sides[0] === teamId ? cfg.home : cfg.away;
+  return strengthOf(def.roster, def.boost ?? 0);
+}
+
 /** Plays a CPU-controlled game with the real engine, yielding to the browser between slices. */
 export function simulate(cfg: ConstructorParameters<typeof Game>[0]): Promise<Game> {
   return new Promise((resolve) => {
@@ -876,15 +894,15 @@ function computeAwards(f: Franchise): Award[] {
 }
 
 /**
- * The eight gyms have hand-made rosters, so a return cannot reuse `enterRegion` only for them: the Indigo Elite
- * still drafts. Same snake as a new franchise. Gyms keep their rosters; the Elite picks from what is left, skipping
- * species the user already owns. Old CPU players become free agents and keep their levels.
+ * Kanto's gyms and Elite Four have no fixed rosters, so a return cannot reuse `enterRegion` (that stops when a
+ * roster is missing). Draft them the same way a new franchise does: snake order, each CPU's types, from the open
+ * pool, skipping species the user already owns. Old CPU players become free agents and keep their levels.
  */
 export function bringBackKanto(f: Franchise): void {
   const me = f.teams[0];
   const held = new Set(me.roster.map((u) => f.players[u].dex));
   const pool = poolMons(openRegions(f)).filter((m) => !held.has(m.dex));
-  // The Elite drafts Gen 1 only. The gyms keep their hand-made rosters. The user's kept roster may hold anyone.
+  // Gyms and Elite draft Gen 1 only; the user's kept roster may hold any open Pokémon.
   const cpu = regionTeams(KANTO);
   const draftTeams = [
     { name: me.name, abbr: me.abbr, color: me.color, color2: me.color2, human: true },
@@ -909,6 +927,7 @@ export function bringBackKanto(f: Franchise): void {
     ...(t.gym ? { gym: t.gym, badge: t.badge } : {}), ...(t.elite ? { elite: true } : {}),
     roster: rosters[i + 1].map(add), w: 0, l: 0, pf: 0, pa: 0, streak: 0,
   }))];
+  f.gymsRev = KANTO_GYMS_REV;
   Object.assign(me, { w: 0, l: 0, pf: 0, pa: 0, streak: 0 });
   f.region = KANTO.id;
   f.weeks = f.teams.length - 1;

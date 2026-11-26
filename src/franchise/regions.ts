@@ -17,18 +17,23 @@ export interface LeagueTeam {
   gym?: number;
   badge?: string;
   elite?: boolean;
-  /** Dex number of the team's star; always `roster[0]`. */
-  ace?: number;
-  /** Ten distinct dex numbers. Missing: the team drafts (the Indigo Elite). */
-  roster?: number[];
+  /**
+   * Kanto gyms: dex number of the star the gym locks before the draft. It always starts. The rest of the roster is
+   * drafted (see `kantoDraft.ts`).
+   */
+  star?: number;
 }
 
-/** A region's team. The Indigo Elite drafts; every gym brings a fixed roster (ace first). */
+/** A region's team. Kanto's teams draft their rosters; later regions bring a fixed roster (ace first). */
 export interface RegionTeam extends LeagueTeam {
   /** City, for the gym's floor. */
   city?: string;
   /** Display name for the final opponent, e.g. "Johto Elite Four & Champion Lance". */
   title?: string;
+  /** Dex number of the team's star; always `roster[0]`. */
+  ace?: number;
+  /** Ten distinct dex numbers. Missing: the team drafts (Kanto). */
+  roster?: number[];
 }
 
 export interface RegionDef {
@@ -50,42 +55,27 @@ export interface RegionDef {
   finale: RegionTeam;
 }
 
+/** Bump when the Kanto gym stars, drafter or boosts change: older saves rebuild their gyms once on load. */
+export const KANTO_GYMS_REV = 3;
+
 export const KANTO: RegionDef = {
   id: 'kanto',
   index: 0,
   name: 'Kanto',
   generation: 1,
   dex: [1, 151],
-  // Hand-made Gen 1 lines. `bestLineup` picks the five, one per position. The card OVR is that five's rounded
-  // mean: about 88 at Pewter, climbing to the low 90s at Viridian. Boosts stay 0-4. Brock and Misty have no
-  // legendary. From Vermilion on, each gym has exactly one and that one starts. Erika has none (Celebi is Gen 2).
+  // Each gym locks its star, then drafts the best Pokémon left at every other spot. The star is the gym's best Pokémon
+  // of its type or its legendary; Koga's Articuno and Giovanni's Mewtwo are legendaries that are off type. The boosts
+  // are small and ramp with the badges.
   gyms: [
-    // Golem starts at power forward. Aerodactyl, Kabutops and Rhyperior are the other rock stars. Dugtrio is the
-    // point guard: no rock plays PG. Onix, Omastar, Rhydon, Rhyhorn and Graveler are the bench.
-    { name: 'Pewter Boulders', abbr: 'PEW', color: '#a38c63', color2: '#2e271b', leader: 'Brock', types: ['Rock'], boost: 0, gym: 1, badge: 'Boulder',
-      ace: 76, roster: [76, 142, 141, 51, 464, 139, 95, 112, 111, 75] },
-    // Starmie, Kingdra, Vaporeon, Blastoise and Gyarados. All water.
-    { name: 'Cerulean Cascades', abbr: 'CER', color: '#2bb3d6', color2: '#0b2c38', leader: 'Misty', types: ['Water'], boost: 0, gym: 2, badge: 'Cascade',
-      ace: 121, roster: [121, 230, 134, 9, 130, 91, 55, 99, 73, 87] },
-    // Zapdos starts at small forward. Raichu, Electrode, Electivire and Magnezone fill the other four. All electric.
-    { name: 'Vermilion Thunder', abbr: 'VER', color: '#f2c522', color2: '#3a2f06', leader: 'Lt. Surge', types: ['Electric'], boost: 1, gym: 3, badge: 'Thunder',
-      ace: 145, roster: [145, 26, 101, 466, 462, 135, 25, 239, 172, 81] },
-    // No legendary. Venusaur starts at center, with Leafeon, Bellossom, Victreebel and Vileplume.
-    { name: 'Celadon Rainbows', abbr: 'CEL', color: '#5cb85c', color2: '#13301a', leader: 'Erika', types: ['Grass'], boost: 1, gym: 4, badge: 'Rainbow',
-      ace: 3, roster: [3, 470, 71, 45, 182, 465, 47, 114, 70, 69] },
-    // Articuno starts. Gen 1 has no Poison legendary. Crobat, Venomoth, Nidoqueen and Muk start with him.
-    { name: 'Fuchsia Ninjas', abbr: 'FCH', color: '#b04fc4', color2: '#2d1236', leader: 'Koga', types: ['Poison'], boost: 2, gym: 5, badge: 'Soul',
-      ace: 144, roster: [144, 169, 49, 31, 89, 24, 110, 94, 15, 42] },
-    // Mew stays at point guard. Alakazam starts at small forward beside Espeon, Hypno and Exeggutor.
-    { name: 'Saffron Psychics', abbr: 'SAF', color: '#f2668b', color2: '#3a1220', leader: 'Sabrina', types: ['Psychic'], boost: 2, gym: 6, badge: 'Marsh',
-      ace: 151, roster: [151, 65, 196, 97, 103, 122, 124, 199, 80, 64] },
-    // Moltres starts. Charizard is left off so he cannot take the wing. Ninetales, Magmortar and Flareon start.
-    // Dragonite is the center: Gen 1 has no fire center.
-    { name: 'Cinnabar Volcanoes', abbr: 'CIN', color: '#e8622c', color2: '#3d160b', leader: 'Blaine', types: ['Fire'], boost: 3, gym: 7, badge: 'Volcano',
-      ace: 146, roster: [146, 38, 467, 136, 149, 78, 59, 128, 463, 242] },
-    // Mewtwo starts. Nidoking, Steelix and Marowak are the ground stars. Persian is the point guard: Dugtrio plays for Brock.
-    { name: 'Viridian Quakes', abbr: 'VIR', color: '#7c9a3a', color2: '#1e2a0e', leader: 'Giovanni', types: ['Ground'], boost: 4, gym: 8, badge: 'Earth',
-      ace: 150, roster: [150, 53, 105, 34, 208, 28, 115, 106, 57, 237] },
+    { name: 'Pewter Boulders', abbr: 'PEW', color: '#a38c63', color2: '#2e271b', leader: 'Brock', types: ['Rock'], boost: 0, gym: 1, badge: 'Boulder', star: 464 },
+    { name: 'Cerulean Cascades', abbr: 'CER', color: '#2bb3d6', color2: '#0b2c38', leader: 'Misty', types: ['Water'], boost: 0, gym: 2, badge: 'Cascade', star: 9 },
+    { name: 'Vermilion Thunder', abbr: 'VER', color: '#f2c522', color2: '#3a2f06', leader: 'Lt. Surge', types: ['Electric'], boost: 1, gym: 3, badge: 'Thunder', star: 145 },
+    { name: 'Celadon Rainbows', abbr: 'CEL', color: '#5cb85c', color2: '#13301a', leader: 'Erika', types: ['Grass'], boost: 2, gym: 4, badge: 'Rainbow', star: 3 },
+    { name: 'Fuchsia Ninjas', abbr: 'FCH', color: '#b04fc4', color2: '#2d1236', leader: 'Koga', types: ['Poison'], boost: 2, gym: 5, badge: 'Soul', star: 144 },
+    { name: 'Saffron Psychics', abbr: 'SAF', color: '#f2668b', color2: '#3a1220', leader: 'Sabrina', types: ['Psychic'], boost: 3, gym: 6, badge: 'Marsh', star: 151 },
+    { name: 'Cinnabar Volcanoes', abbr: 'CIN', color: '#e8622c', color2: '#3d160b', leader: 'Blaine', types: ['Fire'], boost: 4, gym: 7, badge: 'Volcano', star: 146 },
+    { name: 'Viridian Quakes', abbr: 'VIR', color: '#7c9a3a', color2: '#1e2a0e', leader: 'Giovanni', types: ['Ground'], boost: 4, gym: 8, badge: 'Earth', star: 150 },
   ],
   finale: { name: 'Indigo Elite', abbr: 'E4', color: '#d4a017', color2: '#2a2106', leader: 'The Elite Four', types: ['Ice', 'Fighting', 'Ghost', 'Dragon'], boost: 7, elite: true },
 };
@@ -276,9 +266,9 @@ let familyCache: ReadonlySet<number> | undefined;
 export const isGen1FamilyDex = (dex: number): boolean => dex > KANTO.dex[1] && (familyCache ??= gen1FamilyDexes()).has(dex);
 
 /**
- * The Indigo Elite drafts Gen 1 plus later-gen Pokémon in a Gen 1 evolution family, whatever the user's pool holds
- * (including the Hoenn/Sinnoh `open` exceptions). The eight gyms do not draft: they keep the rosters above. This is
- * only a CPU rule: the user's draft, free agents and trades use `poolMons`.
+ * Kanto's CPU teams (the eight gyms and the Indigo Elite) draft Gen 1 plus later-gen Pokémon in a Gen 1 evolution
+ * family, whatever the user's pool holds (including the Hoenn/Sinnoh `open` exceptions). This is only a CPU rule: the
+ * user's draft, free agents and trades use `poolMons`.
  */
 export const isKantoCpuMon = (m: Pick<Mon, 'dex'>): boolean => (m.dex >= KANTO.dex[0] && m.dex <= KANTO.dex[1]) || isGen1FamilyDex(m.dex);
 
