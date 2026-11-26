@@ -140,13 +140,27 @@ function position(r, h, w) {
   return best;
 }
 
+// Positions chosen by hand in pokemon.ts. Those dexes are skipped in the loop below (`if (hand[id]) continue`),
+// so regenerating this file cannot put them back at the formula's position. The map is also applied
+// when a row is emitted, in case one of these dexes is ever generated again.
+const POSITION_OVERRIDES = {
+  244: 'PF', // Entei, was C
+  249: 'PF', // Lugia, was C
+  250: 'SF', // Ho-Oh, was C
+  381: 'SG', // Latios, was SF
+  483: 'PF', // Dialga, was C
+  484: 'SF', // Palkia, was C
+  487: 'PF', // Giratina, was C
+};
+
 const rows = [];
 for (let id = 1; id <= MAX_DEX; id++) {
   if (hand[id]) continue;
   const r = ratings(id);
   const name = nameOf[id].replace(/'/g, '’');
   const t = typesOf[body[id].id].filter(Boolean);
-  rows.push(`  [${id}, '${name}', [${t.map((x) => `'${x}'`).join(', ')}], '${position(r, body[id].h, body[id].w)}', ${KEYS.map((k) => r[k]).join(', ')}],`);
+  const pos = POSITION_OVERRIDES[id] ?? position(r, body[id].h, body[id].w);
+  rows.push(`  [${id}, '${name}', [${t.map((x) => `'${x}'`).join(', ')}], '${pos}', ${KEYS.map((k) => r[k]).join(', ')}],`);
 }
 
 // Evolutions between any two Pokémon the game has: level from the games' minimum level (Lv 16 -> 2, Lv 36 -> 4),

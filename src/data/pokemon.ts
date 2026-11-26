@@ -115,9 +115,11 @@ function archetype(pos: Pos, r: Ratings, ovr: number): string {
 export type Row = [number, string, PokeType[], Pos, number, number, number, number, number, number, number, number];
 
 const ROWS: Row[] = [
-  [150, 'Mewtwo', ['Psychic'], 'SF', 92, 96, 95, 88, 90, 86, 84, 86],
-  [249, 'Lugia', ['Psychic', 'Flying'], 'C', 88, 75, 84, 87, 89, 99, 92, 84],
-  [250, 'Ho-Oh', ['Fire', 'Flying'], 'C', 77, 81, 97, 88, 82, 93, 89, 80],
+  [150, 'Mewtwo', ['Psychic'], 'SF', 91, 95, 94, 88, 89, 86, 84, 86],
+  // Guardian moved to power forward: still the best shot blocker, modest shot, fast for a big.
+  [249, 'Lugia', ['Psychic', 'Flying'], 'PF', 88, 75, 87, 87, 90, 99, 94, 84],
+  // Sacred fire bird plays small forward: speed and shooting up, block down from center levels.
+  [250, 'Ho-Oh', ['Fire', 'Flying'], 'SF', 92, 92, 97, 84, 86, 80, 80, 80],
   [25, 'Pikachu', ['Electric'], 'PG', 94, 72, 62, 72, 66, 36, 42, 86],
   [65, 'Alakazam', ['Psychic'], 'PG', 86, 96, 55, 95, 60, 50, 50, 85],
   [94, 'Gengar', ['Ghost', 'Poison'], 'SF', 86, 84, 80, 72, 88, 70, 62, 86],
@@ -125,9 +127,9 @@ const ROWS: Row[] = [
   [448, 'Lucario', ['Fighting', 'Steel'], 'SG', 84, 86, 82, 78, 82, 58, 60, 84],
   [445, 'Garchomp', ['Dragon', 'Ground'], 'PF', 92, 66, 96, 60, 84, 84, 82, 70],
   [149, 'Dragonite', ['Dragon', 'Flying'], 'C', 74, 70, 92, 72, 76, 88, 92, 66],
-  // 93 to 97. Block stays at 89 so he remains a Stretch Big; inside is still the peak.
-  [384, 'Rayquaza', ['Dragon', 'Flying'], 'PF', 88, 89, 99, 68, 86, 89, 94, 70],
-  [151, 'Mew', ['Psychic'], 'PG', 92, 92, 80, 90, 78, 70, 68, 92],
+  // Block stays under 90 so he remains a Stretch Big; inside is still the peak. Overall 96.
+  [384, 'Rayquaza', ['Dragon', 'Flying'], 'PF', 88, 89, 97, 68, 86, 89, 94, 70],
+  [151, 'Mew', ['Psychic'], 'PG', 90, 90, 80, 90, 78, 70, 68, 92],
   // Speed +2 only. Overall stays 84 so Ranked preset Sky Hammers remains 425 and legal.
   [257, 'Blaziken', ['Fire', 'Fighting'], 'SF', 90, 76, 95, 68, 78, 74, 70, 80],
   [248, 'Tyranitar', ['Rock', 'Dark'], 'C', 60, 58, 94, 56, 82, 92, 92, 58],
@@ -200,7 +202,8 @@ const ROWS: Row[] = [
   [97, 'Hypno', ['Psychic'], 'PF', 56, 72, 70, 82, 80, 80, 78, 62],
   [475, 'Gallade', ['Psychic', 'Fighting'], 'SF', 82, 72, 90, 68, 88, 70, 68, 74],
   [437, 'Bronzong', ['Steel', 'Psychic'], 'C', 36, 58, 72, 60, 86, 92, 86, 46],
-  [381, 'Latios', ['Dragon', 'Psychic'], 'SF', 94, 92, 90, 82, 88, 76, 74, 86],
+  // Eon attacker moved to shooting guard: shot and speed stay the card, paint stats come down.
+  [381, 'Latios', ['Dragon', 'Psychic'], 'SG', 92, 94, 88, 78, 80, 62, 60, 88],
   [380, 'Latias', ['Dragon', 'Psychic'], 'SF', 92, 86, 84, 90, 92, 78, 76, 82],
   [124, 'Jynx', ['Ice', 'Psychic'], 'PG', 70, 84, 56, 86, 64, 56, 54, 80],
   // Fire
@@ -252,9 +255,9 @@ const ROWS: Row[] = [
   [80, 'Slowbro', ['Water', 'Psychic'], 'PF', 38, 84, 74, 80, 64, 78, 80, 62],
   [8, 'Wartortle', ['Water'], 'PG', 74, 78, 60, 72, 68, 46, 52, 74],
   [208, 'Steelix', ['Steel', 'Ground'], 'C', 50, 44, 90, 48, 82, 98, 92, 50],
-  // Override generated.ts. Same positions and stat order. Slaking 94 to 91, Deoxys 99 to 97.
+  // Override generated.ts. Slaking 94 to 91. Deoxys stays a three-level shooting guard, 99 down to 95.
   [289, 'Slaking', ['Normal'], 'C', 81, 74, 97, 65, 86, 80, 97, 72],
-  [386, 'Deoxys', ['Psychic'], 'SG', 97, 96, 97, 74, 83, 54, 64, 89],
+  [386, 'Deoxys', ['Psychic'], 'SG', 95, 94, 95, 74, 83, 54, 64, 89],
   // Johto and Hoenn starter lines. These override generated.ts. Finals above were buffed in place.
   // Basics +2 (Totodile's shot +3), middle evolutions +2 or +3, so each stage stays under its evolution.
   [152, 'Chikorita', ['Grass'], 'SG', 54, 60, 60, 59, 66, 57, 53, 57],
@@ -280,11 +283,17 @@ const ROWS: Row[] = [
   [393, 'Piplup', ['Water'], 'SG', 51, 64, 61, 58, 63, 49, 55, 56],
   [394, 'Prinplup', ['Water'], 'SG', 58, 72, 69, 67, 69, 61, 63, 63],
   [395, 'Empoleon', ['Water', 'Steel'], 'C', 62, 82, 84, 78, 80, 84, 82, 72],
-  // Sinnoh legendaries, held to the 97 ceiling Mewtwo, Rayquaza and Deoxys set (generated ratings had four at 98-99). Arceus is the one exception at 98 (inside 91 to 94).
-  [483, 'Dialga', ['Steel', 'Dragon'], 'C', 77, 92, 91, 80, 86, 96, 96, 78],
-  [486, 'Regigigas', ['Normal'], 'C', 80, 70, 95, 74, 88, 90, 95, 74],
-  [487, 'Giratina', ['Ghost', 'Dragon'], 'C', 77, 76, 88, 78, 84, 96, 97, 76],
-  [493, 'Arceus', ['Normal'], 'C', 90, 82, 94, 80, 87, 95, 95, 82],
+  // Ladder overrides. Attributes only: overall() is position-weighted, so these rows are tuned until it
+  // prints the target. Arceus is the only 97. Nothing is 98 or above. Generated ratings had four at 98-99.
+  // Dialga and Giratina move to power forward and stay rim protectors. Regigigas stays center, a step slower.
+  [483, 'Dialga', ['Steel', 'Dragon'], 'PF', 77, 92, 90, 80, 86, 94, 95, 78],
+  [486, 'Regigigas', ['Normal'], 'C', 74, 70, 95, 74, 88, 88, 95, 70],
+  [487, 'Giratina', ['Ghost', 'Dragon'], 'PF', 77, 76, 92, 78, 86, 96, 97, 76],
+  [493, 'Arceus', ['Normal'], 'C', 90, 82, 94, 80, 87, 94, 94, 82],
+  // Palkia and Entei were generated. Hand rows win, and gen-pokemon-data.mjs skips them, so the new
+  // positions survive a regen. Palkia is a shooting forward. Entei is a finishing power forward.
+  [484, 'Palkia', ['Water', 'Dragon'], 'SF', 92, 95, 93, 84, 88, 78, 78, 86],
+  [244, 'Entei', ['Fire'], 'PF', 83, 75, 92, 69, 81, 77, 89, 74],
 ];
 
 /**
