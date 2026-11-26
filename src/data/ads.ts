@@ -82,14 +82,11 @@ export const adTextOk = (s: string) => /^[A-Z0-9 $!?.,&+@#:'/%-]{1,24}$/.test(s.
 
 /** The sponsor panels in the courtside LED banner, left to right; together they replace the first (team/city) segment of a court's board text (the city already shows on the floor). Each half is independent (text, colors, tag, enabled). */
 export const BANNER_ADS: BannerAd[] = [
-  // Left house half: Slabz (paid). TO GO BACK TO THE $PJAM PANEL restore this entry to:
-  //   { enabled: true, tag: 'AD', text: '$PJAM · OFFICIAL POKEJAM TOKEN', bg: '#10122a', color: '#7dffb2', border: '#2fd37a', tagBg: '#2fd37a' }
-  // (and drop the url). The right half stays bookable; the live Slabz booking runs there too.
-  { enabled: true, tag: 'AD', text: 'SLABZ.COM', bg: '#1b1340', color: '#9fd3ff', border: '#7c5cff', tagBg: '#7c5cff', url: SLABZ_URL },
+  { enabled: true, tag: 'AD', text: '$PJAM · OFFICIAL POKEJAM TOKEN', bg: '#10122a', color: '#7dffb2', border: '#2fd37a', tagBg: '#2fd37a' },
   { enabled: true, tag: 'AD', text: 'YOUR AD HERE', bg: '#ffd23a', color: '#10122a', border: '#e03a2a', tagBg: '#e03a2a' },
 ];
 
-/** The fixed house half (Slabz; was $PJAM): every enabled panel except the last, which is the bookable half. */
+/** The fixed house half ($PJAM): every enabled panel except the last, which is the bookable half. */
 export const houseAds = (): BannerAd[] => BANNER_ADS.slice(0, -1).filter((a) => a.enabled);
 
 /** The last panel (YOUR AD HERE) is the bookable one: booked ads run there, or HOUSE_AD when nothing is booked. */

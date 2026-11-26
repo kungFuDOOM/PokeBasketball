@@ -15,10 +15,10 @@ describe('boardAfterAd', () => {
 });
 
 describe('BANNER_ADS', () => {
-  it('has a Slabz half and a YOUR AD HERE half as separate entries', () => {
+  it('has a $PJAM half and a YOUR AD HERE half as separate entries', () => {
     expect(BANNER_ADS).toHaveLength(2);
-    expect(BANNER_ADS[0].text).toBe('SLABZ.COM');
-    expect(BANNER_ADS[0].url).toBe(SLABZ_URL);
+    expect(BANNER_ADS[0].text).toBe('$PJAM · OFFICIAL POKEJAM TOKEN');
+    expect(BANNER_ADS[0].url).toBeUndefined();
     expect(BANNER_ADS[1].text).toBe('YOUR AD HERE');
     expect(BANNER_ADS[0]).not.toBe(BANNER_ADS[1]);
     for (const a of BANNER_ADS) expect(Object.keys(a).sort()).toEqual(Object.keys(a).includes('url') ? ['bg', 'border', 'color', 'enabled', 'tag', 'tagBg', 'text', 'url'] : ['bg', 'border', 'color', 'enabled', 'tag', 'tagBg', 'text']);
@@ -29,8 +29,8 @@ describe('BANNER_ADS', () => {
 });
 
 describe('the two halves', () => {
-  it('keeps Slabz as the fixed house half and YOUR AD HERE as the bookable half', () => {
-    expect(houseAds().map((a) => a.text)).toEqual(['SLABZ.COM']);
+  it('keeps $PJAM as the fixed house half and YOUR AD HERE as the bookable half', () => {
+    expect(houseAds().map((a) => a.text)).toEqual(['$PJAM · OFFICIAL POKEJAM TOKEN']);
     expect(bookableHalfOn()).toBe(true);
     // The unbooked bookable half looks exactly like main's YOUR AD HERE panel.
     const yours = BANNER_ADS[1];
