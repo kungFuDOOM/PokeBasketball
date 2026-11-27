@@ -1,5 +1,6 @@
 // The CPU league drafter for every region's gyms and final opponent. It is type-first: each team starts as many players
-// of its own types as the pool can legally supply, and only then looks at ratings. A starter has to clear
+// of its own types as the pool can legally supply, and only then looks at ratings (the `STRENGTH_FIRST` leaders are the
+// exception: they draft for ratings alone). A starter has to clear
 // `STARTER_FLOOR` (a card under it may only ride the bench, and only when no legal floor-clearing card can). An on-type
 // card is also skipped when it is more than `ON_TYPE_MARGIN` below the best legal off-type option at that position, and
 // the spot goes to that off-type card. A team still aims for `MIN_ON_TYPE` on-type starters and drops below that only
@@ -7,7 +8,8 @@
 // `onTypeSlots` works out for each position which teams can get a quality on-type starter there, and no pick may take
 // that away from another team. Each team locks its star. Then they draft from one board, so a Pokémon is on at most one
 // CPU team in a region: in turn from the final opponent down to gym 1, each takes its on-type starters, then in the same
-// order fills any spot left off type, and once every five is set they take backups. Regions are drafted separately, so
+// order fills any spot left off type, and once every five is set they take backups. A `STRENGTH_FIRST` team takes its
+// whole five in the first round of turns, after every team ahead of it has filled its own five. Regions are drafted separately, so
 // teams in different regions may share a Pokémon. A region's teams draft nothing newer than its generation, and its own
 // legendaries are the only ones open to them, up to each team's cap. There is no randomness, so the teams come out the
 // same every time for the same held-back Pokémon.
@@ -42,6 +44,14 @@ export const ON_TYPE_MARGIN = 8;
 export const NATIVE_EDGE = 2;
 /** Types a leader accepts on top of the gym's listed ones. */
 const SECOND_THEME: Record<string, readonly PokeType[]> = { Brock: ['Ground'] };
+
+/**
+ * Leaders who draft for strength instead of type. Nothing is reserved for them and they have no on-type target: in the
+ * first pass, at their turn, they take the best five they can. Their listed types are flavor (`isOnType` still reads them).
+ */
+export const STRENGTH_FIRST: readonly string[] = ['Pryce', 'Candice'];
+/** Whether the drafter treats `m` as one of the team's types: `isOnType`, never for a `STRENGTH_FIRST` leader. */
+const draftsAsOnType = (m: Mon, team: CpuDraftTeam): boolean => !STRENGTH_FIRST.includes(team.leader ?? '') && isOnType(m, team);
 
 /** The most legendaries a CPU team may hold on its whole roster, star included. */
 export const legendaryCap = (team: CpuDraftTeam): number => (team.elite ? 3 : (team.gym ?? 0) >= 5 ? 2 : 1);
@@ -143,7 +153,7 @@ function bestFive(options: readonly (readonly Mon[])[], team: CpuDraftTeam, cap:
     // Only the best of each kind (on or off type, legendary or not) can be in the best five.
     const seen = new Set<string>();
     const cands = preferred(list, native).filter((m) => {
-      const kind = `${isOnType(m, team)}${isLegendary(m.dex)}`;
+      const kind = `${draftsAsOnType(m, team)}${isLegendary(m.dex)}`;
       return !seen.has(kind) && !!seen.add(kind);
     });
     const next = new Map<number, Five>();
@@ -151,7 +161,7 @@ function bestFive(options: readonly (readonly Mon[])[], team: CpuDraftTeam, cap:
       for (const m of cands) {
         const legends = f.legends + (isLegendary(m.dex) ? 1 : 0);
         if (legends > cap && isLegendary(m.dex)) continue;
-        const g = { picks: [...f.picks, m], on: f.on + (isOnType(m, team) ? 1 : 0), legends, total: f.total + worth(m, native) };
+        const g = { picks: [...f.picks, m], on: f.on + (draftsAsOnType(m, team) ? 1 : 0), legends, total: f.total + worth(m, native) };
         const old = next.get(legends);
         if (!old || better(g, old)) next.set(legends, g);
       }
@@ -181,7 +191,9 @@ export function cpuNext(pool: readonly Mon[], roster: readonly Mon[], native?: r
  * taking each pick off it, so no two teams end up with the same Pokémon. `null` marks a team that doesn't draft here.
  * Turns go from the final opponent down to gym 1. First each team in turn takes its quality on-type starters, the most
  * `worth` it can without taking a player another team needs for its `onTypeSlots`; then each fills any spot still open
- * with the most `worth` left that clears `STARTER_FLOOR` (see `starterChoices`). Then the backups go one per team per
+ * with the most `worth` left that clears `STARTER_FLOOR` (see `starterChoices`). At a `STRENGTH_FIRST` team's turn in
+ * the first round, every team up to and including it fills its open spots, so it picks right after the teams ahead of
+ * it and before any later team's on-type picks (their `onTypeSlots` stay protected). Then the backups go one per team per
  * turn, one per position in turn. The legendary cap holds over each whole roster. A backup is never rated above the
  * starter at its position (an off-type one is rated below), so the coach keeps the drafted five. A card under the floor
  * is a backup only when no floor-clearing card can take the spot.
@@ -200,7 +212,7 @@ function fillRosters(pool: readonly Mon[], teams: readonly CpuDraftTeam[], roste
   // The starters so far: the first card the team took at each position.
   const fiveOf = (roster: readonly Mon[]) => POSITIONS.flatMap((pos) => roster.find((m) => m.pos === pos) ?? []);
   const needs = (i: number, pos: Pos) => !rosters[i]!.some((m) => m.pos === pos) && rosters[i]!.length < size;
-  const atPos = (i: number, pos: Pos, on: boolean) => legal(i).filter((m) => m.pos === pos && isOnType(m, teams[i]) === on);
+  const atPos = (i: number, pos: Pos, on: boolean) => legal(i).filter((m) => m.pos === pos && draftsAsOnType(m, teams[i]) === on);
   const qualityAt = (i: number, pos: Pos) =>
     (needs(i, pos) ? qualityOn(atPos(i, pos, true), bestOffType(atPos(i, pos, false), native), native) : []);
   // A team can only start `legendaryCap` legendaries. Reserving every on-type legendary locks cards it will never take
@@ -213,7 +225,7 @@ function fillRosters(pool: readonly Mon[], teams: readonly CpuDraftTeam[], roste
   /** Team `i`'s quality on-type options for a position it still has to fill. Weak cards and extra legendaries are not reserved. */
   const onType = (i: number, pos: Pos) =>
     qualityAt(i, pos).filter((m) => !isLegendary(m.dex) || keptLegends.get(i)!.has(m.dex));
-  const slots = onTypeSlots(order, onType, (i) => fiveOf(rosters[i]!).filter((m) => isOnType(m, teams[i])).length);
+  const slots = onTypeSlots(order, onType, (i) => fiveOf(rosters[i]!).filter((m) => draftsAsOnType(m, teams[i])).length);
   const before = rosters.map((r) => r?.length ?? 0);
   /**
    * The best off-type card team `i` can still have at `pos`. Teams that draft earlier and still need the position take
@@ -233,7 +245,9 @@ function fillRosters(pool: readonly Mon[], teams: readonly CpuDraftTeam[], roste
   const pickStarters = (i: number, onOnly: boolean) => {
     const options = POSITIONS.filter((p) => needs(i, p)).map((pos) => {
       const others = slots.get(pos)!.filter((t) => t !== i && needs(t, pos));
-      const seat = (m: Mon) => canSeat(others, (t) => onType(t, pos), m.dex);
+      // Nothing is taken while the options are built, so each other team's list is worked out once.
+      const theirs = new Map(others.map((t) => [t, onType(t, pos)]));
+      const seat = (m: Mon) => canSeat(others, (t) => theirs.get(t)!, m.dex);
       const ons = atPos(i, pos, true).filter(seat);
       const offs = atPos(i, pos, false).filter(seat);
       return starterChoices(ons, offs, realisticOff(i, pos, ons, offs), onOnly, native);
@@ -242,8 +256,12 @@ function fillRosters(pool: readonly Mon[], teams: readonly CpuDraftTeam[], roste
     for (const m of bestFive(options, teams[i], room, native).slice(0, size - rosters[i]!.length)) take(i, m);
   };
   // Every team takes its quality on-type starters before anyone fills a spot off type, so no filler pick costs a team a
-  // card that clears the floor and the margin.
-  for (const i of order) pickStarters(i, true);
+  // card that clears the floor and the margin. The exception: at a `STRENGTH_FIRST` team's turn, the teams ahead of it
+  // and then that team complete their fives, still keeping every seated team's on-type slot.
+  order.forEach((i, turn) => {
+    if (!STRENGTH_FIRST.includes(teams[i].leader ?? '')) return pickStarters(i, true);
+    for (const t of order.slice(0, turn + 1)) pickStarters(t, false);
+  });
   for (const i of order) pickStarters(i, false);
   // The new starters go best first.
   for (const i of order) rosters[i]!.splice(before[i], Infinity, ...ranked(rosters[i]!.slice(before[i])));
@@ -254,7 +272,7 @@ function fillRosters(pool: readonly Mon[], teams: readonly CpuDraftTeam[], roste
       if (roster.length !== held) continue;
       const five = fiveOf(roster);
       const benchable = (m: Mon) => !five.some((s) => s.pos === m.pos && s.dex !== teams[i].star
-        && (m.ovr > s.ovr || (m.ovr === s.ovr && !isOnType(m, teams[i]))));
+        && (m.ovr > s.ovr || (m.ovr === s.ovr && !draftsAsOnType(m, teams[i]))));
       const free = legal(i);
       const fit = free.filter(benchable);
       const m = cpuNext(fit.length ? fit : free, roster, native);

@@ -4,7 +4,7 @@ import { POKEMON, POSITIONS, monByDex, type Mon } from '../data/pokemon';
 import { chemistry } from '../game/game';
 import { strengthOf } from '../screens/strength';
 import { RANKED_LEGENDARIES, isLegendary } from '../multiplayer/shared/roster';
-import { MIN_ON_TYPE, NATIVE_EDGE, ON_TYPE_MARGIN, STARTER_FLOOR, cpuDraftPool, cpuNext, isOnType, legendaryCap, lineupWithStar, livePick, regionRosters } from './kantoDraft';
+import { MIN_ON_TYPE, NATIVE_EDGE, ON_TYPE_MARGIN, STARTER_FLOOR, STRENGTH_FIRST, cpuDraftPool, cpuNext, isOnType, legendaryCap, lineupWithStar, livePick, regionRosters } from './kantoDraft';
 import { HOENN, JOHTO, KANTO, MAX_BOOST, REGIONS, SINNOH, regionTeams, type RegionDef, type RegionTeam } from './regions';
 
 /** Alakazam, Lucario, Charizard, Garchomp, Snorlax: 91. */
@@ -23,17 +23,18 @@ const HELD: [string, number[]][] = [
  * supply three cards that clear `STARTER_FLOOR` and `ON_TYPE_MARGIN`:
  * Giovanni has Marowak and Nidoqueen; Dugtrio starts for Brock and Onix is more than 8 under Lapras.
  * Morty has Haunter and Gengar; Misdreavus is 71.
- * Pryce has Lapras; Jynx is 9 under Jolteon and the other ice finals are centers or under the floor. Gen 1 has no ice shooting guard.
  * Clair has Dragonite and Kingdra; Dragonair and Dratini are under the floor.
- * Candice has Weavile; the other ice cards are more than 8 under the forwards and center she can take.
  * Volkner drops to Raichu and Electivire when a much stronger small forward is free.
  */
-const THIN: Record<string, number> = { Giovanni: 2, Morty: 2, Pryce: 1, Clair: 2, Candice: 1, Volkner: 2 };
+const THIN: Record<string, number> = { Giovanni: 2, Morty: 2, Clair: 2, Volkner: 2 };
+
+/** `STRENGTH_FIRST` leaders have no on-type target at all. */
+const onTypeTarget = (leader: string): number => (STRENGTH_FIRST.includes(leader) ? 0 : THIN[leader] ?? MIN_ON_TYPE);
 
 /** The on-type starters each region's nine field (gyms in badge order, then the final) with the 91 test team held. */
 const ON_TYPE: Record<string, number[]> = {
   Kanto: [5, 5, 3, 4, 3, 4, 4, 2, 4],
-  Johto: [5, 4, 4, 2, 3, 3, 1, 2, 4],
+  Johto: [5, 4, 4, 2, 3, 3, 0, 2, 4],
   Hoenn: [4, 4, 3, 3, 3, 5, 3, 4, 5],
   Sinnoh: [4, 4, 4, 5, 4, 5, 1, 3, 5],
 };
@@ -185,7 +186,7 @@ describe('type first', () => {
     expect(MIN_ON_TYPE).toBe(3);
     for (const r of REGIONS) {
       for (const { t, five } of seats(r, held)) {
-        expect(five.filter((m) => isOnType(m, t)).length, `${t.name}: ${five.map((m) => m.name)}`).toBeGreaterThanOrEqual(THIN[t.leader] ?? MIN_ON_TYPE);
+        expect(five.filter((m) => isOnType(m, t)).length, `${t.name}: ${five.map((m) => m.name)}`).toBeGreaterThanOrEqual(onTypeTarget(t.leader));
         expect(five.map((m) => m.dex), t.name).toContain(t.star);
       }
     }
@@ -207,7 +208,7 @@ describe('type first', () => {
   it.each(HELD)('starts off type only when no on-type card clears the floor and the margin (%s)', (_, held) => {
     for (const r of REGIONS) {
       const all = seats(r, held);
-      for (const { t, five } of all) {
+      for (const { t, five } of all.filter((s) => !STRENGTH_FIRST.includes(s.t.leader))) {
         for (const off of five.filter((m) => m.dex !== t.star && !isOnType(m, t))) {
           const room = (m: Mon) => !isLegendary(m.dex) || legendsOf(five) - legendsOf([off]) < legendaryCap(t);
           const usable = leftAt(r, all, held, off.pos).filter((m) => isOnType(m, t) && m.ovr >= STARTER_FLOOR && room(m));
@@ -246,7 +247,8 @@ describe('type first', () => {
       for (const { t, five } of all) {
         for (const s of five.filter((m) => m.dex !== t.star)) {
           for (const m of leftAt(r, all, held, s.pos)) {
-            if (isLegendary(m.dex) || isOnType(m, t) !== isOnType(s, t)) continue;
+            // A `STRENGTH_FIRST` team has one kind: any type.
+            if (isLegendary(m.dex) || (!STRENGTH_FIRST.includes(t.leader) && isOnType(m, t) !== isOnType(s, t))) continue;
             expect(worth(m), `${t.name}: ${m.name} over ${s.name}`).toBeLessThanOrEqual(worth(s));
           }
         }
@@ -275,6 +277,22 @@ describe('type first', () => {
     for (const r of REGIONS) {
       for (const { t, roster, five } of seats(r, held)) {
         expect(five.map((m) => m.dex).sort(), t.name).toEqual(roster.slice(0, 5).map((m) => m.dex).sort());
+      }
+    }
+  });
+
+  it('Pryce and Candice draft for strength: only after every higher team has its five, ahead of every lower one', () => {
+    expect(STRENGTH_FIRST).toEqual(['Pryce', 'Candice']);
+    for (const r of [JOHTO, SINNOH]) {
+      const all = seats(r, TEAM);
+      const mine = all[6];
+      expect(STRENGTH_FIRST, r.name).toContain(mine.t.leader);
+      const stars = new Set(regionTeams(r).map((t) => t.star!));
+      // Whatever beats one of its starters at that position was off limits: held, a star, or a higher team's.
+      const gone = new Set([...TEAM, ...stars, ...[mine, all[7], all[8]].flatMap((s) => s.five.map((m) => m.dex))]);
+      for (const s of mine.five.filter((m) => m.dex !== mine.t.star)) {
+        const better = cpuDraftPool(r).filter((m) => m.pos === s.pos && !gone.has(m.dex) && !isLegendary(m.dex) && m.ovr > s.ovr + NATIVE_EDGE);
+        expect(better.map((m) => m.name), `${mine.t.leader} starts ${s.name}`).toEqual([]);
       }
     }
   });
@@ -346,9 +364,9 @@ describe('the difficulty curve', () => {
 
   it.each([
     [KANTO, [91, 92, 93, 95, 97, 99, 101, 101, 103]],
-    [JOHTO, [92, 93, 95, 96, 98, 99, 103, 102, 105]],
+    [JOHTO, [92, 93, 95, 96, 98, 99, 102, 102, 105]],
     [HOENN, [94, 94, 95, 97, 99, 101, 102, 105, 106]],
-    [SINNOH, [95, 95, 96, 98, 100, 103, 105, 106, 107]],
+    [SINNOH, [95, 95, 96, 98, 100, 103, 106, 106, 107]],
   ])('$name rises every badge against the 91 test team, up to its final opponent', (r, ramp) => {
     expect(strengthOf(TEAM.map(monByDex)).total).toBe(91);
     expect(strengths(r, TEAM)).toEqual(ramp);
@@ -359,6 +377,14 @@ describe('the difficulty curve', () => {
     for (const held of [...HELD.map(([, h]) => h), best]) {
       const s = strengths(JOHTO, held);
       expect(s[8], `${held}: ${s}`).toBeGreaterThanOrEqual(s[7]);
+    }
+  });
+
+  it('against the test team, no region\'s gym 8 plays under its gym 7, and each final plays at least its gym 8', () => {
+    for (const r of REGIONS) {
+      const s = strengths(r, TEAM);
+      expect(s[7], `${r.name}: ${s}`).toBeGreaterThanOrEqual(s[6]);
+      expect(s[8], `${r.name}: ${s}`).toBeGreaterThanOrEqual(s[7]);
     }
   });
 

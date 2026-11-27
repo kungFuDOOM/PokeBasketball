@@ -6,7 +6,7 @@ import { strengthOf } from '../screens/strength';
 import {
   LEAGUE, createFranchise, enterRegion, lineupOf, loadFranchise, matchStrength, saveFranchise, type Franchise, type FTeam,
 } from './league';
-import { cpuDraftPool, draftCpuLeague, regionRosters, starOf } from './kantoDraft';
+import { STRENGTH_FIRST, cpuDraftPool, draftCpuLeague, regionRosters, starOf } from './kantoDraft';
 import { GYMS_REV, HOENN, JOHTO, KANTO, KANTO_RETURN_BUMP, REGIONS, SINNOH, regionTeams, type RegionDef } from './regions';
 
 const store = new Map<string, string>();
@@ -47,7 +47,7 @@ const expected = (r: RegionDef, f: Franchise) => regionRosters(r, dexesOf(f, f.t
 describe('later-region stars', () => {
   it('keeps each ace as the star, with the two shared ones replaced', () => {
     const names = (r: RegionDef) => regionTeams(r).map((t) => monByDex(t.star!).name);
-    expect(names(JOHTO)).toEqual(['Crobat', 'Scizor', 'Snorlax', 'Gengar', 'Heracross', 'Steelix', 'Lapras', 'Dragonite', 'Tyranitar']);
+    expect(names(JOHTO)).toEqual(['Crobat', 'Scizor', 'Snorlax', 'Gengar', 'Heracross', 'Steelix', 'Venusaur', 'Dragonite', 'Tyranitar']);
     expect(names(HOENN)).toEqual(['Aggron', 'Hariyama', 'Manectric', 'Charizard', 'Slaking', 'Salamence', 'Espeon', 'Starmie', 'Metagross']);
     expect(names(SINNOH)).toEqual(['Rhyperior', 'Tangrowth', 'Lucario', 'Floatzel', 'Mismagius', 'Steelix', 'Weavile', 'Electivire', 'Garchomp']);
     expect(monByDex(HOENN.gyms[6].star!).types).toContain('Psychic');
@@ -57,7 +57,7 @@ describe('later-region stars', () => {
   it('are unique within a region, on the team type for every gym, and found by team name', () => {
     for (const r of LATER) {
       expect(new Set(regionTeams(r).map((t) => t.star)).size, r.name).toBe(9);
-      for (const t of r.gyms) expect(monByDex(t.star!).types.some((ty) => t.types.includes(ty)), t.leader).toBe(true);
+      for (const t of r.gyms.filter((g) => !STRENGTH_FIRST.includes(g.leader))) expect(monByDex(t.star!).types.some((ty) => t.types.includes(ty)), t.leader).toBe(true);
     }
     for (const r of REGIONS) for (const t of regionTeams(r)) expect(starOf(t.name), t.name).toBe(t.star);
     expect(starOf('Pallet Town')).toBeUndefined();
@@ -134,9 +134,9 @@ function oldSave(r: RegionDef, rev: number | undefined): Franchise {
 }
 
 describe('the later-region save repair', () => {
-  it.each(LATER.flatMap((r) => [[r.name, r, undefined], [r.name, r, 9], [r.name, r, 10], [r.name, r, 11]] as const))(
+  it.each(LATER.flatMap((r) => [[r.name, r, undefined], [r.name, r, 9], [r.name, r, 10], [r.name, r, 11], [r.name, r, 12]] as const))(
     'rebuilds an old %s save once and leaves the user team (revision %#)', (_, r, rev) => {
-      expect(GYMS_REV).toBe(12);
+      expect(GYMS_REV).toBe(13);
       const f = oldSave(r, rev);
       // A Sinnoh title on record: only Kanto adds the return bump.
       f.titles = [{ regionId: 'sinnoh', season: 1 }];

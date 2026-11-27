@@ -60,7 +60,7 @@ export interface RegionDef {
 }
 
 /** Bump when any region's gym stars, legendaries, drafter or boosts change: older saves rebuild their gyms and Elite once on load. */
-export const GYMS_REV = 12;
+export const GYMS_REV = 13;
 /** The name from when only Kanto's teams were rebuilt. */
 export const KANTO_GYMS_REV = GYMS_REV;
 
@@ -89,7 +89,8 @@ export const KANTO: RegionDef = {
 };
 
 /**
- * Johto, Hoenn and Sinnoh draft like Kanto: each gym and final opponent locks its star, then drafts type first from
+ * Johto, Hoenn and Sinnoh draft like Kanto: each gym and final opponent locks its star, then drafts type first (bar
+ * `STRENGTH_FIRST` in `kantoDraft.ts`: Pryce and Candice draft for strength, and their types are flavor) from
  * every generation up to the region's own (see `kantoDraft.ts`), with only the region's own legendaries and never a
  * Pokémon on the user's team (a team keeps its star even then). No Pokémon is on two teams of a region; other regions may use it. Boosts are all the boost a team
  * ever gets (bar `KANTO_RETURN_BUMP`). Against the 91 OVR test team each later region is harder overall, gyms 1-3 stay
@@ -109,7 +110,7 @@ export const JOHTO: RegionDef = {
     { name: 'Ecruteak Specters', abbr: 'ECR', city: 'Ecruteak City', color: '#6c4fa3', color2: '#1b1230', leader: 'Morty', types: ['Ghost'], boost: 11, gym: 4, badge: 'Fog', star: 94 },
     { name: 'Cianwood Crushers', abbr: 'CIA', city: 'Cianwood City', color: '#c0603a', color2: '#33170c', leader: 'Chuck', types: ['Fighting'], boost: 14, gym: 5, badge: 'Storm', star: 214 },
     { name: 'Olivine Irons', abbr: 'OLI', city: 'Olivine City', color: '#9aa6b2', color2: '#22282e', leader: 'Jasmine', types: ['Steel'], boost: 16, gym: 6, badge: 'Mineral', star: 208 },
-    { name: 'Mahogany Frost', abbr: 'MAH', city: 'Mahogany Town', color: '#7fd0e8', color2: '#0e2a33', leader: 'Pryce', types: ['Ice'], boost: 15, gym: 7, badge: 'Glacier', star: 131 },
+    { name: 'Mahogany Frost', abbr: 'MAH', city: 'Mahogany Town', color: '#7fd0e8', color2: '#0e2a33', leader: 'Pryce', types: ['Ice'], boost: 13, gym: 7, badge: 'Glacier', star: 3 },
     { name: 'Blackthorn Dragons', abbr: 'BLK', city: 'Blackthorn City', color: '#3d6fd8', color2: '#0f1a3a', leader: 'Clair', types: ['Dragon'], boost: 13, gym: 8, badge: 'Rising', star: 149 },
   ],
   finale: { name: 'Johto Elite', abbr: 'JOH', city: 'Indigo Plateau', title: 'Johto Elite Four & Champion Lance', color: '#b8323c', color2: '#2a0b0e',
@@ -159,10 +160,10 @@ export const SINNOH: RegionDef = {
     { name: 'Oreburgh Miners', abbr: 'ORE', city: 'Oreburgh City', color: '#8a8f99', color2: '#22252b', leader: 'Roark', types: ['Rock'], boost: 11, gym: 1, badge: 'Coal', star: 464 },
     { name: 'Eterna Blooms', abbr: 'ETE', city: 'Eterna City', color: '#5fb05a', color2: '#143018', leader: 'Gardenia', types: ['Grass'], boost: 10, gym: 2, badge: 'Forest', star: 465 },
     { name: 'Veilstone Brawlers', abbr: 'VEI', city: 'Veilstone City', color: '#c8553d', color2: '#34120b', leader: 'Maylene', types: ['Fighting'], boost: 9, gym: 3, badge: 'Cobble', star: 448 },
-    { name: 'Pastoria Marshes', abbr: 'PAS', city: 'Pastoria City', color: '#3f9bd6', color2: '#0d2a40', leader: 'Crasher Wake', types: ['Water'], boost: 11, gym: 4, badge: 'Fen', star: 419 },
+    { name: 'Pastoria Marshes', abbr: 'PAS', city: 'Pastoria City', color: '#3f9bd6', color2: '#0d2a40', leader: 'Crasher Wake', types: ['Water'], boost: 12, gym: 4, badge: 'Fen', star: 419 },
     { name: 'Hearthome Phantoms', abbr: 'HEA', city: 'Hearthome City', color: '#8a5ec4', color2: '#22123a', leader: 'Fantina', types: ['Ghost'], boost: 13, gym: 5, badge: 'Relic', star: 429 },
     { name: 'Canalave Anchors', abbr: 'CAN', city: 'Canalave City', color: '#7d8fa3', color2: '#1a222b', leader: 'Byron', types: ['Steel'], boost: 16, gym: 6, badge: 'Mine', star: 208 },
-    { name: 'Snowpoint Blizzards', abbr: 'SNO', city: 'Snowpoint City', color: '#9fdcf2', color2: '#10303d', leader: 'Candice', types: ['Ice'], boost: 15, gym: 7, badge: 'Icicle', star: 461 },
+    { name: 'Snowpoint Blizzards', abbr: 'SNO', city: 'Snowpoint City', color: '#9fdcf2', color2: '#10303d', leader: 'Candice', types: ['Ice'], boost: 16, gym: 7, badge: 'Icicle', star: 461 },
     { name: 'Sunyshore Voltage', abbr: 'SUN', city: 'Sunyshore City', color: '#f2cf2f', color2: '#3a3006', leader: 'Volkner', types: ['Electric'], boost: 16, gym: 8, badge: 'Beacon', star: 466 },
   ],
   // Cynthia's Garchomp leads.
