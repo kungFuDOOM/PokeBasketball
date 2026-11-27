@@ -13,7 +13,7 @@ import { shouldPlayMasterCutscene } from './moments';
 import { RANKED_PRESETS } from '../multiplayer/ranked/presets';
 import { kantoRosters, lineupWithStar, regionRosters } from './kantoDraft';
 import { RANKED_MAX_OVR } from '../multiplayer/shared/roster';
-import { HOENN, JOHTO, KANTO, REGIONS, SINNOH, inPool, nextRegion, openRegionIds, poolMons, regionTeams } from './regions';
+import { HOENN, JOHTO, KANTO, MAX_BOOST, REGIONS, SINNOH, inPool, nextRegion, openRegionIds, poolMons, regionTeams } from './regions';
 
 const store = new Map<string, string>();
 vi.stubGlobal('localStorage', {
@@ -78,15 +78,15 @@ describe('region data', () => {
     expect(KANTO.gyms.map((t) => t.badge)).toEqual(['Boulder', 'Cascade', 'Thunder', 'Rainbow', 'Soul', 'Marsh', 'Volcano', 'Earth']);
     expect(KANTO.gyms.map((t) => t.leader)).toEqual(['Brock', 'Misty', 'Lt. Surge', 'Erika', 'Koga', 'Sabrina', 'Blaine', 'Giovanni']);
     expect(LEAGUE).toEqual([
-      { name: 'Pewter Boulders', abbr: 'PEW', color: '#a38c63', color2: '#2e271b', leader: 'Brock', types: ['Rock'], boost: 1, gym: 1, badge: 'Boulder', star: 464 },
-      { name: 'Cerulean Cascades', abbr: 'CER', color: '#2bb3d6', color2: '#0b2c38', leader: 'Misty', types: ['Water'], boost: 0, gym: 2, badge: 'Cascade', star: 9 },
-      { name: 'Vermilion Thunder', abbr: 'VER', color: '#f2c522', color2: '#3a2f06', leader: 'Lt. Surge', types: ['Electric'], boost: 2, gym: 3, badge: 'Thunder', star: 145 },
-      { name: 'Celadon Rainbows', abbr: 'CEL', color: '#5cb85c', color2: '#13301a', leader: 'Erika', types: ['Grass'], boost: 3, gym: 4, badge: 'Rainbow', star: 3 },
-      { name: 'Fuchsia Ninjas', abbr: 'FCH', color: '#b04fc4', color2: '#2d1236', leader: 'Koga', types: ['Poison'], boost: 3, gym: 5, badge: 'Soul', star: 144 },
-      { name: 'Saffron Psychics', abbr: 'SAF', color: '#f2668b', color2: '#3a1220', leader: 'Sabrina', types: ['Psychic'], boost: 2, gym: 6, badge: 'Marsh', star: 151 },
-      { name: 'Cinnabar Volcanoes', abbr: 'CIN', color: '#e8622c', color2: '#3d160b', leader: 'Blaine', types: ['Fire'], boost: 3, gym: 7, badge: 'Volcano', star: 146 },
-      { name: 'Viridian Quakes', abbr: 'VIR', color: '#7c9a3a', color2: '#1e2a0e', leader: 'Giovanni', types: ['Ground'], boost: 3, gym: 8, badge: 'Earth', star: 150 },
-      { name: 'Indigo Elite', abbr: 'E4', color: '#d4a017', color2: '#2a2106', leader: 'The Elite Four', types: ['Ice', 'Fighting', 'Ghost', 'Dragon'], boost: 6, elite: true, star: 149 },
+      { name: 'Pewter Boulders', abbr: 'PEW', color: '#a38c63', color2: '#2e271b', leader: 'Brock', types: ['Rock'], boost: 5, gym: 1, badge: 'Boulder', star: 464 },
+      { name: 'Cerulean Cascades', abbr: 'CER', color: '#2bb3d6', color2: '#0b2c38', leader: 'Misty', types: ['Water'], boost: 4, gym: 2, badge: 'Cascade', star: 9 },
+      { name: 'Vermilion Thunder', abbr: 'VER', color: '#f2c522', color2: '#3a2f06', leader: 'Lt. Surge', types: ['Electric'], boost: 4, gym: 3, badge: 'Thunder', star: 145 },
+      { name: 'Celadon Rainbows', abbr: 'CEL', color: '#5cb85c', color2: '#13301a', leader: 'Erika', types: ['Grass'], boost: 8, gym: 4, badge: 'Rainbow', star: 3 },
+      { name: 'Fuchsia Ninjas', abbr: 'FCH', color: '#b04fc4', color2: '#2d1236', leader: 'Koga', types: ['Poison'], boost: 10, gym: 5, badge: 'Soul', star: 144 },
+      { name: 'Saffron Psychics', abbr: 'SAF', color: '#f2668b', color2: '#3a1220', leader: 'Sabrina', types: ['Psychic'], boost: 10, gym: 6, badge: 'Marsh', star: 151 },
+      { name: 'Cinnabar Volcanoes', abbr: 'CIN', color: '#e8622c', color2: '#3d160b', leader: 'Blaine', types: ['Fire'], boost: 11, gym: 7, badge: 'Volcano', star: 146 },
+      { name: 'Viridian Quakes', abbr: 'VIR', color: '#7c9a3a', color2: '#1e2a0e', leader: 'Giovanni', types: ['Ground'], boost: 11, gym: 8, badge: 'Earth', star: 150 },
+      { name: 'Indigo Elite', abbr: 'E4', color: '#d4a017', color2: '#2a2106', leader: 'The Elite Four', types: ['Ice', 'Fighting', 'Ghost', 'Dragon'], boost: 13, elite: true, star: 149 },
     ]);
   });
 
@@ -163,7 +163,7 @@ describe('region data', () => {
       // Difficulty is the starting five's rating plus the boost, not the boost alone: `laterRegions.test.ts` checks the ramps.
       expect(r.finale.elite).toBe(true);
       expect(r.finale.gym).toBeUndefined();
-      for (const t of regionTeams(r)) expect(Number.isInteger(t.boost) && t.boost >= 0 && t.boost <= (t.elite ? 6 : 4), t.name).toBe(true);
+      for (const t of regionTeams(r)) expect(Number.isInteger(t.boost) && t.boost >= 0 && t.boost <= MAX_BOOST, t.name).toBe(true);
     });
     expect(nextRegion(KANTO)).toBe(JOHTO);
     expect(nextRegion(JOHTO)).toBe(HOENN);

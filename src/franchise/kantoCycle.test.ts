@@ -383,8 +383,8 @@ describe('Sinnoh championship cycle', () => {
     expect(f.teams.filter((t) => !t.human).every((t) => t.roster.length === 10)).toBe(true);
   });
 
-  it.each([3, 4, 5, 6])('a revision %i save rebuilds the Kanto gyms and Elite, once, from every region', (rev) => {
-    expect(KANTO_GYMS_REV).toBe(7);
+  it.each([3, 4, 5, 6, 7, 8])('a revision %i save rebuilds the Kanto gyms and Elite, once, from every region', (rev) => {
+    expect(KANTO_GYMS_REV).toBe(9);
     const f = kanto();
     // Stand-in for the old gyms: reversed rosters, old boosts.
     const old = [0, 0, 1, 2, 2, 3, 4, 4];
@@ -403,7 +403,7 @@ describe('Sinnoh championship cycle', () => {
     const myPlayers = structuredClone(mine.roster.map((u) => f.players[u]));
     saveFranchise(f);
     const g = loadFranchise()!;
-    expect(g.gymsRev).toBe(7);
+    expect(g.gymsRev).toBe(9);
     expect(g.teams[0]).toEqual(mine);
     expect(g.teams[0].roster.map((u) => g.players[u])).toEqual(myPlayers);
     expect(dexesOf(g, eliteOf(g))).toEqual(rebuilt(g)[8]);

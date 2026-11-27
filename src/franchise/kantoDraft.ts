@@ -1,9 +1,11 @@
-// The CPU league drafter for every region's gyms and final opponent: each team locks its star first, then the CPU teams
-// draft type first from the whole game (every region in `POKEMON`, but only the region's own legendaries, only on-type
-// ones, and only up to each team's cap), filling the five starting positions (one at a time) before any backup. There is no randomness, so
-// the teams come out the same every time for the same held-back Pokémon.
+// The CPU league drafter for every region's gyms and final opponent. Each team locks its star. Then they draft from one
+// board, so a Pokémon is on at most one CPU team in a region: in turn from the final opponent down to gym 1, each takes
+// the strongest five it may legally field with its type theme from what is left, and once every five is set they take
+// backups. Regions are drafted separately, so teams in different regions may share a Pokémon. A region's own
+// legendaries are the only ones open to its teams, up to each team's cap. There is no randomness, so the teams come out
+// the same every time for the same held-back Pokémon.
 import { POKEMON, POSITIONS, monByDex, type Mon, type PokeType, type Pos } from '../data/pokemon';
-import { COVER, bestLineup } from '../game/game';
+import { bestLineup } from '../game/game';
 import { isLegendary } from '../multiplayer/shared/roster';
 import { KANTO, REGIONS, regionTeams, type RegionDef } from './regions';
 
@@ -16,207 +18,211 @@ export interface CpuDraftTeam {
   elite?: boolean;
 }
 
-/** An on-type Pokémon is taken unless the best off-type one at that spot is more than this many OVR better. */
-export const OFF_TYPE_MARGIN = 4;
-
-/** How many on-type starters a CPU team is after, star included. */
+/** How many on-type starters a CPU team fields, star included, when its type has that many. */
 export const MIN_ON_TYPE = 3;
-/** Type never gets a Pokémon rated under this picked over a better rated one. */
+/** An on-type card under this does not count toward `MIN_ON_TYPE`, unless it is the star: type never costs a team a weak starter. */
 export const ON_TYPE_FLOOR = 82;
-/** Picks this close in OVR count as equals, and each region takes a different one of them. */
-export const NEAR_EQUAL = 1;
 
 /** The most legendaries a CPU team may hold on its whole roster, star included. */
 export const legendaryCap = (team: CpuDraftTeam): number => (team.elite ? 3 : (team.gym ?? 0) >= 5 ? 2 : 1);
 
 export const isOnType = (m: Mon, team: CpuDraftTeam): boolean => m.types.some((t) => team.types?.includes(t));
 
+/** Whether a starter counts toward `MIN_ON_TYPE`. */
+const countsForTheme = (m: Mon, team: CpuDraftTeam): boolean => isOnType(m, team) && (m.ovr >= ON_TYPE_FLOOR || m.dex === team.star);
+
 /**
- * Everything `region`'s gyms and final opponent may draft: every non-legendary Pokémon in the game, from every region,
- * locked or not, plus the region's own legendaries (`RegionDef.legendaries`). This is only a CPU rule: the user's
+ * Everything `region`'s gyms and final opponent may draft: every non-legendary Pokémon in the game, from every region
+ * (earlier ones included), locked or not, plus the region's own legendaries (`RegionDef.legendaries`). This is only a CPU rule: the user's
  * draft, free agents and trades use `poolMons`.
  */
 export const cpuDraftPool = (region: RegionDef): Mon[] => POKEMON.filter((m) => !isLegendary(m.dex) || region.legendaries.includes(m.dex));
 
 const ranked = (mons: readonly Mon[]): Mon[] => [...mons].sort((a, b) => b.ovr - a.ovr || a.dex - b.dex);
 
-/**
- * The pick among the near equals: those within `NEAR_EQUAL` of the best in `mons` and not under `floor`, best first.
- * `turn` (a region's index) chooses which, so regions do not all take the same one. 0 takes the best.
- */
-function nearBest(mons: readonly Mon[], floor: number, turn: number): Mon | undefined {
-  const sorted = ranked(mons);
-  const band = sorted.filter((m) => m.ovr >= Math.max(sorted[0].ovr - NEAR_EQUAL, floor));
-  return band[turn % band.length] ?? sorted[0];
-}
+/** A five in the making: its picks, how many count toward the theme and are on type, its legendaries and its ratings. */
+interface Five { picks: Mon[]; theme: number; on: number; legends: number; total: number }
+
+/** More of the theme first (up to `MIN_ON_TYPE`), then the higher ratings, then more on type. */
+const better = (a: Five, b: Five): boolean =>
+  (Math.min(a.theme, MIN_ON_TYPE) - Math.min(b.theme, MIN_ON_TYPE) || a.total - b.total || a.on - b.on) > 0;
 
 /**
- * The Pokémon in `pool` a team may take. A CPU team with types only takes a legendary that is on type, and none past its
- * cap (its star is locked before this applies). Which legendaries are in the pool at all is the region's business
- * (`cpuDraftPool`).
+ * The strongest legal starting five that keeps every card in `have`: one natural player at each position still open,
+ * with as many theme players as possible up to `MIN_ON_TYPE`, and no more legendaries than `cap`. Returns only the
+ * new picks. It is exact: every combination that could matter is compared.
  */
-function allowedFor(pool: readonly Mon[], roster: readonly Mon[], team: CpuDraftTeam): readonly Mon[] {
-  if (team.human || !team.types?.length) return pool;
-  const room = roster.filter((m) => isLegendary(m.dex)).length < legendaryCap(team);
-  return pool.filter((m) => !isLegendary(m.dex) || (room && isOnType(m, team)));
-}
-
-/**
- * The next pick for a team, from the positions it has no starter for, then those with no backup, then any. A gym or
- * final opponent drafts type first: the best Pokémon of its types there, unless the best one there of any type is more
- * than `OFF_TYPE_MARGIN` OVR better, or the on-type one is under `ON_TYPE_FLOOR` and anyone is rated higher. Among near
- * equals, `turn` chooses (see `nearBest`), and an off-type pick passes over any that `wanted` says another team still
- * needs for its theme. A team with no `types` (the user) just takes the best.
- */
-export function cpuNext(
-  pool: readonly Mon[],
-  roster: readonly Mon[],
-  team: CpuDraftTeam = {},
-  turn = 0,
-  wanted: (m: Mon) => boolean = () => false,
-): Mon | undefined {
-  const count = (p: string) => roster.filter((m) => m.pos === p).length;
-  const themed = !team.human && !!team.types?.length;
-  const allowed = allowedFor(pool, roster, team);
-  let cands = allowed;
-  for (const depth of [1, 2]) {
-    const fit = allowed.filter((m) => count(m.pos) < depth);
-    if (fit.length) { cands = fit; break; }
+function bestFive(pool: readonly Mon[], have: readonly Mon[], team: CpuDraftTeam, cap: number): Mon[] {
+  const counts = (m: Mon) => countsForTheme(m, team);
+  const add = (f: Five, m: Mon, pick: boolean): Five => ({
+    picks: pick ? [...f.picks, m] : f.picks,
+    theme: f.theme + (counts(m) ? 1 : 0),
+    on: f.on + (isOnType(m, team) ? 1 : 0),
+    legends: f.legends + (isLegendary(m.dex) ? 1 : 0),
+    total: f.total + m.ovr,
+  });
+  const start = have.reduce((f, m) => add(f, m, false), { picks: [], theme: 0, on: 0, legends: 0, total: 0 } as Five);
+  let fives = [start];
+  for (const pos of POSITIONS) {
+    if (have.some((m) => m.pos === pos)) continue;
+    // Only the best few of each kind (on or off theme, legendary or not) can be in the best five.
+    const seen: Record<string, number> = {};
+    const cands = ranked(pool.filter((m) => m.pos === pos)).filter((m) => {
+      const kind = `${counts(m)}${isOnType(m, team)}${isLegendary(m.dex)}`;
+      return (seen[kind] = (seen[kind] ?? 0) + 1) === 1;
+    });
+    // The best partial five for each state that limits what can be added later.
+    const next = new Map<string, Five>();
+    for (const f of fives) {
+      for (const m of cands) {
+        if (isLegendary(m.dex) && f.legends >= cap) continue;
+        const g = add(f, m, true);
+        const key = `${Math.min(g.theme, MIN_ON_TYPE)},${g.legends}`;
+        const old = next.get(key);
+        if (!old || better(g, old)) next.set(key, g);
+      }
+    }
+    // Nobody legal at this position: the spot stays open for the backups to fill.
+    if (next.size) fives = [...next.values()];
   }
-  const top = ranked(cands)[0];
-  if (!themed || !top) return top;
-  /** The lowest OVR type gets taken at, here. */
-  const least = Math.max(top.ovr - OFF_TYPE_MARGIN, Math.min(top.ovr, ON_TYPE_FLOOR));
-  const on = cands.filter((m) => isOnType(m, team) && m.ovr >= least);
-  if (on.length) return nearBest(on, least, turn);
-  const floor = Math.min(top.ovr, ON_TYPE_FLOOR);
-  const spare = cands.filter((m) => m.ovr >= Math.max(top.ovr - NEAR_EQUAL, floor) && !wanted(m));
-  return nearBest(spare.length ? spare : cands, floor, turn);
+  return fives.reduce((a, b) => (better(b, a) ? b : a)).picks;
+}
+
+/** The best player left for a roster, ignoring types: at a position with no starter, then no backup, then any. */
+export function cpuNext(pool: readonly Mon[], roster: readonly Mon[]): Mon | undefined {
+  const free = pool.filter((m) => !roster.some((r) => r.dex === m.dex));
+  const count = (p: Pos) => roster.filter((m) => m.pos === p).length;
+  for (const depth of [1, 2]) {
+    const fit = free.filter((m) => count(m.pos) < depth);
+    if (fit.length) return ranked(fit)[0];
+  }
+  return ranked(free)[0];
 }
 
 /**
- * Drafts the CPU teams (and the user, if a team is `human`) to `size`. Stars are locked before anyone picks. Teams pick
- * one position at a time (PG to C), each time from the final opponent through gym 8 down to gym 1, so later gyms get the
- * first choice. The final opponent drafts by the same rules as the gyms. The starting fives take three rounds:
- * 1. Theme picks. Each team takes an on-type Pokémon at each spot where `cpuNext` would, and otherwise waits.
- * 2. A team short of `MIN_ON_TYPE` reaches past the margin, but never under `ON_TYPE_FLOOR`.
- * 3. The spots still open go to the best Pokémon left.
- * A CPU team never takes a starter under `ON_TYPE_FLOOR` in those rounds. When nobody it may take at a spot reaches it
- * (the data is short of shooting guards), the spot stays open until every other spot is filled, and then a spare player
- * from the closest covering position (`COVER`) starts there, at the cost of the lineup bonus. Such a team carries nobody
- * who would take the spot back: no one at that position, or ahead of the cover in `COVER`.
- * The backups follow in passes in the same order. A human team picks in the middle of that order, from `userPool`.
- * `turn` is the region's index: gyms use it to choose among near equals (see `nearBest`); the final opponent does not.
- * Returns rosters in the order of `teams`: the star first, then the other starters best first, then the backups. An
- * off-type backup is always rated below the starter at its position, so the coach never starts it over the theme.
+ * Fills the CPU teams' `rosters` (what each already holds, its star first) up to `size` from the one board `pool`,
+ * taking each pick off it, so no two teams end up with the same Pokémon. `null` marks a team that doesn't draft here.
+ * Turns go from the final opponent down to gym 1. First each team in turn reserves the on-type starters its theme
+ * needs, so no team loses them to another going off type. Then each completes its strongest legal five; then
+ * the backups go one per team per turn, one per position in turn. The legendary cap holds over each whole roster. A
+ * backup who is off type is rated below the starter at his position, so the coach never starts him over the theme.
+ */
+function fillRosters(pool: readonly Mon[], teams: readonly CpuDraftTeam[], rosters: (Mon[] | null)[], size: number): void {
+  const gone = new Set(rosters.flatMap((r) => r?.map((m) => m.dex) ?? []));
+  const rank = (i: number) => (teams[i].elite ? Infinity : teams[i].gym ?? 0);
+  const order = teams.map((_, i) => i).filter((i) => rosters[i]).sort((a, b) => rank(b) - rank(a));
+  const legends = (mons: readonly Mon[]) => mons.filter((m) => isLegendary(m.dex)).length;
+  const legal = (i: number) => {
+    const room = legends(rosters[i]!) < legendaryCap(teams[i]);
+    return pool.filter((m) => !gone.has(m.dex) && (room || !isLegendary(m.dex)));
+  };
+  const take = (i: number, m: Mon) => { rosters[i]!.push(m); gone.add(m.dex); };
+  // The starters so far: the first card the team took at each position.
+  const fiveOf = (roster: readonly Mon[]) => POSITIONS.flatMap((pos) => roster.find((m) => m.pos === pos) ?? []);
+  /** The picks that would complete team `i`'s strongest legal five from what is left, best first. */
+  const wanted = (i: number) => {
+    const roster = rosters[i]!;
+    const starters = fiveOf(roster);
+    if (starters.length === POSITIONS.length) return [];
+    const room = legendaryCap(teams[i]) - legends(roster.filter((m) => !starters.includes(m)));
+    return ranked(bestFive(legal(i), starters, teams[i], room));
+  };
+  const before = rosters.map((r) => r?.length ?? 0);
+  for (const i of order) {
+    let need = MIN_ON_TYPE - rosters[i]!.filter((m) => countsForTheme(m, teams[i])).length;
+    for (const m of wanted(i)) if (need > 0 && rosters[i]!.length < size && countsForTheme(m, teams[i])) { take(i, m); need--; }
+  }
+  for (const i of order) for (const m of wanted(i).slice(0, size - rosters[i]!.length)) take(i, m);
+  // The new starters go best first, reserved or not.
+  for (const i of order) rosters[i]!.splice(before[i], Infinity, ...ranked(rosters[i]!.slice(before[i])));
+  // By roster size, so a live draft resumed in the middle of a round takes its turns in the same order.
+  for (let held = 0; held < size; held++) {
+    for (const i of order) {
+      const roster = rosters[i]!;
+      if (roster.length !== held) continue;
+      const five = fiveOf(roster);
+      const benchable = (m: Mon) => isOnType(m, teams[i]) || !five.some((s) => s.pos === m.pos && s.dex !== teams[i].star && m.ovr >= s.ovr);
+      const free = legal(i);
+      const fit = free.filter(benchable);
+      const m = cpuNext(fit.length ? fit : free, roster);
+      if (m) take(i, m);
+    }
+  }
+}
+
+/**
+ * Drafts a league without the draft screen. Each CPU team starts with its star and they draft the rest from `cpuPool`
+ * together (see `fillRosters`), so no Pokémon is on two of them. A human team drafts from `userPool` as in a live draft: one pick per
+ * team per round, with the human in the middle of the order, and what a CPU team has taken by then is off the human's
+ * board. The CPU teams then draft without anything the human holds.
+ * Returns rosters in the order of `teams`: the star first, then the other starters best first, then the backups.
  */
 export function draftCpuLeague(
   teams: readonly CpuDraftTeam[],
   size: number,
   cpuPool: readonly Mon[],
   userPool: readonly Mon[] = [],
-  turn = 0,
 ): Mon[][] {
-  const taken = new Set<number>();
-  const rosters = teams.map((t): Mon[] => (!t.human && t.star != null ? [monByDex(t.star)] : []));
-  // Every gym's star is out before the first pick, so no other team can draft it.
-  for (const r of rosters) for (const m of r) taken.add(m.dex);
-  const locked = rosters.map((r) => r.length);
-  const rank = (i: number) => (teams[i].elite ? Infinity : teams[i].gym ?? 0);
-  const order = teams.map((_, i) => i).filter((i) => !teams[i].human).sort((a, b) => rank(b) - rank(a));
-  const human = teams.findIndex((t) => t.human);
-  if (human >= 0 && userPool.length) order.splice(Math.floor(order.length / 2), 0, human);
-  const freeFor = (i: number, pos?: Pos) =>
-    (teams[i].human ? userPool : cpuPool).filter((m) => !taken.has(m.dex) && (!pos || m.pos === pos));
-  const take = (i: number, m?: Mon) => {
-    if (!m) return;
-    taken.add(m.dex);
-    rosters[i].push(m);
+  const draftCpu = (held: ReadonlySet<number>) => {
+    const free = cpuPool.filter((m) => !held.has(m.dex));
+    // No team drafts another's star.
+    const stars = new Set(teams.map((t) => (t.human ? undefined : t.star)));
+    const rosters = teams.map((t) => (t.human ? null : t.star != null ? [monByDex(t.star)] : []));
+    fillRosters(free.filter((m) => !stars.has(m.dex)), teams, rosters, size);
+    return rosters.map((r) => r ?? []);
   };
-  const open = (i: number, pos: Pos) => rosters[i].length < size && !rosters[i].some((m) => m.pos === pos);
-  // The final opponent is meant to be the strongest, so it takes the best of near equals.
-  const turnOf = (i: number) => (teams[i].elite ? 0 : turn);
-  /** Whether another CPU team still has no starter at `m`'s position and would be on type with it. */
-  const wanted = (i: number, m: Mon) => order.some((j) => j !== i && !teams[j].human && isOnType(m, teams[j]) && open(j, m.pos));
-  const next = (i: number, from: readonly Mon[]) =>
-    cpuNext(from, rosters[i], teams[i].human ? {} : teams[i], turnOf(i), (m) => wanted(i, m));
-  const pick = (i: number, pos?: Pos) => take(i, next(i, freeFor(i, pos)));
-  /** Whether a CPU team has nobody of `ON_TYPE_FLOOR` or better to take at `pos`. */
-  const short = (i: number, pos: Pos) =>
-    !teams[i].human && !allowedFor(freeFor(i, pos), rosters[i], teams[i]).some((m) => m.ovr >= ON_TYPE_FLOOR);
-  // 1. Theme picks.
-  for (const pos of POSITIONS) {
-    for (const i of order) {
-      if (!open(i, pos) || short(i, pos)) continue;
-      if (teams[i].human) { pick(i, pos); continue; }
-      const m = next(i, freeFor(i, pos));
-      if (m && isOnType(m, teams[i])) take(i, m);
-    }
-  }
-  // 2. A team still short of `MIN_ON_TYPE` reaches for it, at the spot where staying on type costs the least. This comes
-  //    before any off-type pick, so nobody's filler takes another team's type.
-  for (const i of order) {
-    if (teams[i].human) continue;
-    while (rosters[i].filter((m) => isOnType(m, teams[i])).length < MIN_ON_TYPE) {
-      const reach = POSITIONS.filter((pos) => open(i, pos)).flatMap((pos) => {
-        const allowed = allowedFor(freeFor(i, pos), rosters[i], teams[i]);
-        const on = allowed.filter((m) => isOnType(m, teams[i]) && m.ovr >= ON_TYPE_FLOOR);
-        const m = on.length ? nearBest(on, ON_TYPE_FLOOR, turnOf(i)) : undefined;
-        return m ? [{ on: m, cost: ranked(allowed)[0].ovr - m.ovr }] : [];
-      }).sort((a, b) => a.cost - b.cost || b.on.ovr - a.on.ovr);
-      if (!reach.length) break;
-      take(i, reach[0].on);
-    }
-  }
-  // 3. Whatever is still open, PG to C.
-  for (const pos of POSITIONS) for (const i of order) if (open(i, pos) && !short(i, pos)) pick(i, pos);
-  // The spots nobody good enough plays: another position covers. With nobody to cover, the best natural one starts.
-  const covers = teams.map((): { slot: Pos; mon: Mon }[] => []);
-  for (const i of order) {
-    for (const slot of POSITIONS) {
-      if (!open(i, slot) || covers[i].some((c) => c.slot === slot)) continue;
-      const mon = COVER[slot]
-        .map((p) => next(i, freeFor(i, p).filter((m) => m.ovr >= ON_TYPE_FLOOR)))
-        .find((m) => !!m);
-      if (!mon) { pick(i, slot); continue; }
-      take(i, mon);
-      covers[i].push({ slot, mon });
-    }
-  }
-  /** Whether `m` on the bench would start at a covered spot instead of the cover. */
-  const uncovers = (i: number, m: Mon) => covers[i].some(({ slot, mon }) =>
-    m.pos === slot || (m.pos === mon.pos ? m.ovr >= mon.ovr : COVER[slot].indexOf(m.pos) < COVER[slot].indexOf(mon.pos)));
-  for (const i of order) {
-    // Best first, so a live draft (which takes these in order) goes after its best players early.
-    rosters[i] = [...rosters[i].slice(0, locked[i]), ...rosters[i].slice(locked[i]).sort((a, b) => b.ovr - a.ovr || a.dex - b.dex)];
-  }
-  // The five who start. The coach starts the best at each spot, so an off-type backup must be rated below the starter at
-  // its position, or it would take that spot and undo the theme.
-  const fives = rosters.map((r) => [...r]);
-  const benchable = (i: number, m: Mon) =>
-    !!teams[i].human || (!uncovers(i, m) && (isOnType(m, teams[i]) || !fives[i].some((s) => s.pos === m.pos && m.ovr >= s.ovr)));
+  const human = teams.findIndex((t) => t.human);
+  if (human < 0 || !userPool.length) return draftCpu(new Set());
+  const plan = draftCpu(new Set());
+  const rank = (i: number) => (teams[i].elite ? Infinity : teams[i].gym ?? 0);
+  const order = teams.map((_, i) => i).filter((i) => i !== human).sort((a, b) => rank(b) - rank(a));
+  order.splice(Math.floor(order.length / 2), 0, human);
+  const gone = new Set<number>(teams.flatMap((t) => (!t.human && t.star != null ? [t.star] : [])));
+  const mine: Mon[] = [];
   for (let n = 0; n < size; n++) {
     for (const i of order) {
-      if (rosters[i].length > n) continue;
-      const free = freeFor(i);
-      const fit = free.filter((m) => benchable(i, m));
-      take(i, next(i, fit.length ? fit : free));
+      if (i !== human) {
+        if (plan[i][n]) gone.add(plan[i][n].dex);
+        continue;
+      }
+      const m = cpuNext(userPool.filter((x) => !gone.has(x.dex)), mine);
+      if (m) { mine.push(m); gone.add(m.dex); }
     }
   }
+  const rosters = draftCpu(new Set(mine.map((m) => m.dex)));
+  rosters[human] = mine;
   return rosters;
 }
 
 /**
  * A region's nine CPU rosters (gyms in badge order, then the final opponent) when the Pokémon in `held` are not
  * available. `held` is the user's team: no CPU team drafts those. The one exception is a locked star, which its team
- * keeps even when the user holds it too. A star is never drafted by another team in the region, held or not.
+ * keeps even when the user holds it too. A star is never drafted by another team in the region, held or not. No
+ * Pokémon is on two of the nine.
  */
 export function regionRosters(region: RegionDef, held: readonly number[] = [], size = 10): Mon[][] {
-  return draftCpuLeague(regionTeams(region), size, cpuDraftPool(region).filter((m) => !held.includes(m.dex)), [], region.index);
+  return draftCpuLeague(regionTeams(region), size, cpuDraftPool(region).filter((m) => !held.includes(m.dex)));
 }
 
 /** `regionRosters` for Kanto, the league the franchise draft and Quick Play use. */
 export const kantoRosters = (held: readonly number[] = [], size = 10): Mon[][] => regionRosters(KANTO, held, size);
+
+/**
+ * The next pick for one gym or final opponent in a live draft. `picks` is what each of `regionTeams` holds so far (an
+ * empty list for one that hasn't picked or isn't in this draft) and `held` is the user's picks. While every team's
+ * picks still follow `regionRosters` around `held`, it is the team's next card there. Once the user has taken someone a
+ * team had already passed, all nine re-plan from what they hold, so nothing is ever taken twice.
+ */
+export function livePick(region: RegionDef, slot: number, picks: readonly (readonly Mon[])[], held: readonly number[] = [], size = 10): Mon | undefined {
+  const teams = regionTeams(region);
+  if (!picks[slot]?.length) return monByDex(teams[slot].star!);
+  const plan = regionRosters(region, held, size);
+  if (picks.every((p, i) => p.every((m, k) => plan[i][k]?.dex === m.dex))) return plan[slot][picks[slot].length];
+  const rosters = teams.map((t, i) => (picks[i]?.length ? [...picks[i]] : [monByDex(t.star!)]));
+  const stars = new Set(teams.map((t) => t.star));
+  fillRosters(cpuDraftPool(region).filter((m) => !held.includes(m.dex) && !stars.has(m.dex)), teams, rosters, size);
+  return rosters[slot][picks[slot].length];
+}
 
 /** The locked star of the gym or final opponent with this team name, in any region (team names are unique). */
 export const starOf = (teamName: string): number | undefined => REGIONS.flatMap(regionTeams).find((t) => t.name === teamName)?.star;

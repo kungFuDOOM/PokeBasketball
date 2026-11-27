@@ -34,6 +34,9 @@ export const TUTORIAL_QUARTER = 90;
 /** Fixed seed: every tutorial plays out the same way for the same inputs. */
 export const TUTORIAL_SEED = 20261031;
 
+/** The practice opponent's boost: its own, so tuning the league's gyms never makes the tutorial harder. */
+export const TUTORIAL_BOOST = 1;
+
 /** Quarter length for drill games: the game clock stands still in a drill, this is only a backstop. */
 export const DRILL_QUARTER = 600;
 
@@ -50,7 +53,7 @@ export function tutorialConfig(settings: Settings, drill?: DrillId): GameConfig 
   const home: TeamDef = { name, abbr: abbr(name), ...USER_STYLE, roster: mine, human: true };
   const away = contrastAway(home, {
     name: gym.name, abbr: gym.abbr, color: gym.color, color2: gym.color2,
-    roster: theirs, human: false, boost: gym.boost, coach: gym.leader,
+    roster: theirs, human: false, boost: TUTORIAL_BOOST, coach: gym.leader,
   });
   return {
     home,

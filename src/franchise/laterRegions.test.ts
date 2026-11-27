@@ -84,10 +84,10 @@ describe('entering a later region', () => {
       const g = f.games.find((x) => (x.home === 0 && x.away === t.id) || (x.away === 0 && x.home === t.id))!;
       expect(matchStrength(f, g, t.id).total, t.name).toBe(strengthOf(fiveOf(f, t), t.boost).total);
     }
-    // Gyms never drop from badge to badge (`cpuDraft.test.ts` lists the ties), and the final opponent is well clear.
+    // Gyms 1-3 are well under gyms 6-8, and the final opponent is the hardest (`cpuDraft.test.ts` has each ramp).
     const ramp = plays(f);
-    for (let i = 1; i < 8; i++) expect(ramp[i], `${ramp}`).toBeGreaterThanOrEqual(ramp[i - 1]);
-    expect(ramp[8] - ramp[7], `${ramp}`).toBeGreaterThanOrEqual(2);
+    expect(Math.min(...ramp.slice(5, 8)) - Math.max(...ramp.slice(0, 3)), `${ramp}`).toBeGreaterThanOrEqual(3);
+    expect(ramp[8], `${ramp}`).toBeGreaterThan(Math.max(...ramp.slice(0, 8)));
   });
 
   it('signs a drafted species out of free agency with its level, and never touches the user team', () => {
@@ -134,9 +134,9 @@ function oldSave(r: RegionDef, rev: number | undefined): Franchise {
 }
 
 describe('the later-region save repair', () => {
-  it.each(LATER.flatMap((r) => [[r.name, r, undefined], [r.name, r, 6]] as const))(
+  it.each(LATER.flatMap((r) => [[r.name, r, undefined], [r.name, r, 8]] as const))(
     'rebuilds an old %s save once and leaves the user team (revision %#)', (_, r, rev) => {
-      expect(GYMS_REV).toBe(7);
+      expect(GYMS_REV).toBe(9);
       const f = oldSave(r, rev);
       // A Sinnoh title on record: only Kanto adds the return bump.
       f.titles = [{ regionId: 'sinnoh', season: 1 }];
@@ -156,6 +156,8 @@ describe('the later-region save repair', () => {
       expect(strength[8]).toBeGreaterThan(strength[7]);
       const refs = [...g.teams.flatMap((t) => t.roster), ...g.freeAgents];
       expect(new Set(refs).size).toBe(refs.length);
+      const cpu = g.teams.slice(1).flatMap((t) => dexesOf(g, t));
+      expect(new Set(cpu).size).toBe(cpu.length);
       // Species already in the save are signed again; only the few the fake old gym wrote over are new.
       expect(Object.keys(g.players).length).toBeLessThanOrEqual(count + OLD[r.id].gym1.length);
 
@@ -182,7 +184,7 @@ describe('the later-region save repair', () => {
 describe('Kanto drafts the same way', () => {
   it('from its own CPU pool, with its boosts and return bump', () => {
     expect(regionRosters(KANTO, TEAM)).toEqual(draftCpuLeague(regionTeams(KANTO), 10, cpuDraftPool(KANTO).filter((m) => !TEAM.includes(m.dex))));
-    expect(regionTeams(KANTO).map((t) => t.boost)).toEqual([1, 0, 2, 3, 3, 2, 3, 3, 6]);
+    expect(regionTeams(KANTO).map((t) => t.boost)).toEqual([5, 4, 4, 8, 10, 10, 11, 11, 13]);
     expect(KANTO_RETURN_BUMP).toEqual([1, 1, 2, 2, 2, 2, 1, 2, 2]);
   });
 });

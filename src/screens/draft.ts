@@ -1,4 +1,4 @@
-import { POKEMON, POSITIONS, RATING_LABELS, SPECIALS, TYPE_COLORS, monByDex, spriteUrl, type Mon, type PokeType, type Pos, type Ratings } from '../data/pokemon';
+import { POKEMON, POSITIONS, RATING_LABELS, SPECIALS, TYPE_COLORS, spriteUrl, type Mon, type PokeType, type Pos, type Ratings } from '../data/pokemon';
 import type { Audio } from '../game/audio';
 import { bestLineup, chemistry, teamOvr } from '../game/game';
 import { isNameBlocked } from '../nameFilter';
@@ -7,9 +7,8 @@ import { ordinal, snakePicks } from './draft.logic';
 import { monCard, summaryHtml, SWATCHES, typeChips } from './draftView';
 import { wireDraftShare } from '../season/draftShare';
 import { poolMons } from '../franchise/regions';
-import { cpuNext, cpuDraftPool, kantoRosters, legendaryCap } from '../franchise/kantoDraft';
-import { KANTO } from '../franchise/regions';
-import { isLegendary } from '../multiplayer/shared/roster';
+import { livePick } from '../franchise/kantoDraft';
+import { KANTO, regionTeams } from '../franchise/regions';
 
 export { monCard, typeChips };
 
@@ -203,25 +202,18 @@ export function draftScreen(
   host.replaceChildren(root);
   const pool = [...(opts.pool ?? poolMons(state.regions))].sort((a, b) => b.ovr - a.ovr);
   const rosters: Mon[][] = teams.map(() => []);
-  /** Kanto drafts (some team has a locked star): the rosters the CPU teams are after. */
-  const kanto = teams.some((t) => t.star != null) ? kantoRosters() : null;
+  /** A gym's or the Elite's place in `regionTeams(KANTO)`; -1 for any other team. */
+  const gymSlot = (team: (typeof teams)[number]) => (team.human || team.star == null ? -1 : regionTeams(KANTO).findIndex((d) => d.name === team.name));
   /**
-   * A CPU pick. In a Kanto draft a gym or the Elite takes its star first, then its planned Pokémon in order. If one is
-   * already gone (or would break the team's legendary cap), it takes the best fit that no CPU team is planning on.
+   * A CPU pick. A gym or the Elite takes its star first, then drafts as the nine Kanto teams do together (`livePick`),
+   * around what each already holds and what the user has taken, so no two of them end up with the same Pokémon.
    */
   const cpuMon = (t: number): Mon => {
-    const team = teams[t];
-    const slot = team.elite ? 8 : team.star != null ? team.gym! - 1 : -1;
-    if (!kanto || team.human || slot < 0) return cpuPick(pool, rosters[t], team.types);
-    const k = rosters[t].length;
-    if (k === 0 && team.star != null) return monByDex(team.star);
-    const gone = new Set(state.taken);
-    const want = kanto[slot][k];
-    const capped = rosters[t].filter((m) => isLegendary(m.dex)).length >= legendaryCap(team);
-    if (want && !gone.has(want.dex) && !(capped && isLegendary(want.dex))) return want;
-    const planned = new Set(kanto.flat().map((m) => m.dex));
-    const free = cpuDraftPool(KANTO).filter((m) => !gone.has(m.dex));
-    return cpuNext(free.filter((m) => !planned.has(m.dex)), rosters[t], team) ?? cpuNext(free, rosters[t], team)!;
+    const slot = gymSlot(teams[t]);
+    if (slot < 0) return cpuPick(pool, rosters[t], teams[t].types);
+    const held = rosters.flatMap((r, i) => (teams[i].human ? r.map((m) => m.dex) : []));
+    const seated = regionTeams(KANTO).map((_, s) => rosters[teams.findIndex((x) => gymSlot(x) === s)] ?? []);
+    return livePick(KANTO, slot, seated, held, state.rounds ?? 5) ?? cpuPick(pool, rosters[t], teams[t].types);
   };
   const size = state.rounds ?? 5;
   const picks = snakePicks(order, size);
@@ -401,7 +393,7 @@ export function draftScreen(
   const record = (m: Mon, note?: string) => {
     const t = picks[pick];
     state.taken.push(m.dex);
-    // A Kanto CPU pick need not be on the board: a locked region's Pokémon, or a copy of a star the user already holds.
+    // A gym's pick need not be on the board: a locked region's Pokémon, or a star the user holds.
     const i = pool.findIndex((p) => p.dex === m.dex);
     if (i >= 0) pool.splice(i, 1);
     rosters[t].push(m);
@@ -508,7 +500,7 @@ export function draftScreen(
     if (pick >= picks.length) break;
     // A Pokémon no longer in the game (older save): that pick becomes the team's best available.
     const onBoard = pool.find((x) => x.dex === dex)
-      ?? (kanto && picks[pick] !== me ? POKEMON.find((x) => x.dex === dex) : undefined);
+      ?? (teams[picks[pick]].star != null && picks[pick] !== me ? POKEMON.find((x) => x.dex === dex) : undefined);
     record(onBoard ?? (picks[pick] === me ? cpuPick(pool, rosters[me]) : cpuMon(picks[pick])));
   }
   if (saved.length) log.push(`Draft resumed at pick ${pick + 1}.`);

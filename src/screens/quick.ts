@@ -31,7 +31,7 @@ export interface QuickActions {
 }
 
 const levelLabel = (t: LeagueTeam) =>
-  t.elite ? 'Final boss' : t.gym! <= 2 ? `Gym ${t.gym} · Easier` : t.gym! >= 7 ? `Gym ${t.gym} · Tough` : `Gym ${t.gym}`;
+  t.elite ? 'Final boss' : t.gym! <= 3 ? `Gym ${t.gym} · Easier` : t.gym! >= 6 ? `Gym ${t.gym} · Tough` : `Gym ${t.gym}`;
 
 function lineupHtml(mons: Mon[]): string {
   return `<ul class="lineup">${[...mons].sort((a, b) => POSITIONS.indexOf(a.pos) - POSITIONS.indexOf(b.pos)).map((m) =>
