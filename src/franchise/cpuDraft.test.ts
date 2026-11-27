@@ -21,22 +21,34 @@ const HELD: [string, number[]][] = [
 /**
  * Fewest on-type starters a leader manages across `HELD`, when that is under `MIN_ON_TYPE`. Each pool really cannot
  * supply three cards that clear `STARTER_FLOOR` and `ON_TYPE_MARGIN`:
- * Giovanni has Marowak and Nidoqueen; Dugtrio starts for Brock and Onix is more than 8 under Lapras.
+ * Giovanni has Marowak and Nidoqueen; Dugtrio and Onix are more than 8 under the free off-type cards.
  * Morty has Haunter and Gengar; Misdreavus is 71.
  * Clair has Dragonite and Kingdra; Dragonair and Dratini are under the floor.
  * Volkner drops to Raichu and Electivire when a much stronger small forward is free.
  */
 const THIN: Record<string, number> = { Giovanni: 2, Morty: 2, Clair: 2, Volkner: 2 };
 
+/**
+ * Leaders who stop at two only for some of `HELD`, because a stronger team claims a legendary first: with the 86 team
+ * held Byron takes Giratina off type ahead of Fantina, and with Mew and Deoxys held Steven starts Latias ahead of Tate &
+ * Liza.
+ */
+const OUTRANKED: Record<string, Record<string, number>> = {
+  'an 86 team held': { Fantina: 2 },
+  'five legendaries held': { 'Tate & Liza': 2 },
+  'the ten best held': { 'Tate & Liza': 2 },
+};
+
 /** `STRENGTH_FIRST` leaders have no on-type target at all. */
-const onTypeTarget = (leader: string): number => (STRENGTH_FIRST.includes(leader) ? 0 : THIN[leader] ?? MIN_ON_TYPE);
+const onTypeTarget = (leader: string, held: string): number =>
+  (STRENGTH_FIRST.includes(leader) ? 0 : OUTRANKED[held]?.[leader] ?? THIN[leader] ?? MIN_ON_TYPE);
 
 /** The on-type starters each region's nine field (gyms in badge order, then the final) with the 91 test team held. */
 const ON_TYPE: Record<string, number[]> = {
-  Kanto: [5, 5, 3, 4, 3, 4, 4, 2, 4],
-  Johto: [5, 4, 4, 2, 3, 3, 0, 2, 4],
+  Kanto: [4, 4, 3, 3, 3, 4, 4, 2, 4],
+  Johto: [3, 3, 4, 2, 3, 3, 0, 2, 4],
   Hoenn: [4, 4, 3, 3, 3, 5, 3, 4, 5],
-  Sinnoh: [4, 4, 4, 5, 4, 5, 1, 3, 5],
+  Sinnoh: [4, 4, 4, 5, 3, 4, 1, 3, 5],
 };
 
 interface Seat { t: RegionTeam; roster: Mon[]; five: Mon[] }
@@ -182,11 +194,11 @@ describe('type first', () => {
     }
   });
 
-  it.each(HELD)('every gym and final starts at least three on type, star included (%s)', (_, held) => {
+  it.each(HELD)('every gym and final starts at least three on type, star included (%s)', (label, held) => {
     expect(MIN_ON_TYPE).toBe(3);
     for (const r of REGIONS) {
       for (const { t, five } of seats(r, held)) {
-        expect(five.filter((m) => isOnType(m, t)).length, `${t.name}: ${five.map((m) => m.name)}`).toBeGreaterThanOrEqual(onTypeTarget(t.leader));
+        expect(five.filter((m) => isOnType(m, t)).length, `${t.name}: ${five.map((m) => m.name)}`).toBeGreaterThanOrEqual(onTypeTarget(t.leader, label));
         expect(five.map((m) => m.dex), t.name).toContain(t.star);
       }
     }
@@ -216,7 +228,9 @@ describe('type first', () => {
           const bestOff = Math.max(off.ovr, ...offsLeft.map((m) => m.ovr));
           // A leftover on-type card within the margin of that off-type option should have started.
           expect(usable.filter((m) => bestOff - m.ovr <= ON_TYPE_MARGIN).map((m) => m.name), `${t.name} starts ${off.name}`).toEqual([]);
-          const wasted = all.flatMap((s) => (s.t === t ? [] : s.five.filter((m) => m.pos === off.pos && m.dex !== s.t.star
+          // A stronger team (later in `all`) may take it off type: it has first claim.
+          const weaker = all.slice(0, all.findIndex((s) => s.t === t));
+          const wasted = weaker.flatMap((s) => (s.five.filter((m) => m.pos === off.pos && m.dex !== s.t.star
             && !isOnType(m, s.t) && isOnType(m, t) && !isLegendary(m.dex) && m.ovr >= STARTER_FLOOR && bestOff - m.ovr <= ON_TYPE_MARGIN)));
           expect(wasted.map((m) => m.name), `${t.name} starts ${off.name}`).toEqual([]);
         }
@@ -251,6 +265,25 @@ describe('type first', () => {
             if (isLegendary(m.dex) || (!STRENGTH_FIRST.includes(t.leader) && isOnType(m, t) !== isOnType(s, t))) continue;
             expect(worth(m), `${t.name}: ${m.name} over ${s.name}`).toBeLessThanOrEqual(worth(s));
           }
+        }
+      }
+    }
+  });
+
+  it.each(HELD)('stronger teams pick first: no weaker team or leftover card beats a starter of its kind, legendaries included (%s)', (_, held) => {
+    for (const r of REGIONS) {
+      const all = seats(r, held);
+      const worth = (m: Mon) => m.ovr + (m.dex >= r.dex[0] && m.dex <= r.dex[1] ? NATIVE_EDGE : 0);
+      const stars = new Set(regionTeams(r).map((t) => t.star!));
+      // `all` runs gym 1 to the final, which is the reverse of the draft order.
+      for (const [i, { t, five }] of all.entries()) {
+        const gone = new Set([...held, ...stars, ...all.slice(i).flatMap((s) => s.five.map((m) => m.dex))]);
+        const open = cpuDraftPool(r).filter((m) => !gone.has(m.dex));
+        for (const s of five.filter((m) => m.dex !== t.star)) {
+          const kind = (m: Mon) => STRENGTH_FIRST.includes(t.leader) || isOnType(m, t) === isOnType(s, t);
+          const room = (m: Mon) => !isLegendary(m.dex) || legendsOf(five) - legendsOf([s]) < legendaryCap(t);
+          const taken = open.filter((m) => m.pos === s.pos && kind(m) && room(m) && worth(m) > worth(s));
+          expect(taken.map((m) => m.name), `${t.name}: over ${s.name}`).toEqual([]);
         }
       }
     }
@@ -363,21 +396,19 @@ describe('the difficulty curve', () => {
   const mean = (a: number[]) => a.reduce((x, y) => x + y, 0) / a.length;
 
   it.each([
-    [KANTO, [91, 92, 93, 95, 97, 99, 101, 101, 103]],
+    [KANTO, [91, 92, 93, 95, 97, 99, 100, 101, 103]],
     [JOHTO, [92, 93, 95, 96, 98, 99, 103, 103, 106]],
     [HOENN, [94, 94, 95, 97, 99, 101, 104, 106, 107]],
-    [SINNOH, [95, 95, 96, 98, 100, 103, 106, 106, 107]],
+    [SINNOH, [95, 95, 96, 98, 100, 103, 106, 106, 108]],
   ])('$name rises every badge against the 91 test team, up to its final opponent', (r, ramp) => {
     expect(strengthOf(TEAM.map(monByDex)).total).toBe(91);
     expect(strengths(r, TEAM)).toEqual(ramp);
   });
 
-  it('Johto\'s final never plays under Clair, whichever of these is held', () => {
+  // The one known flip. With Lugia and Ho-Oh held too, type first leaves Lance an 86 card to Clair's 89.
+  it('Johto\'s final plays under Clair only when Johto\'s own ten best are held', () => {
     const best = [...cpuDraftPool(JOHTO)].sort((a, b) => b.ovr - a.ovr).slice(0, 10).map((m) => m.dex);
-    for (const held of [...HELD.map(([, h]) => h), best]) {
-      const s = strengths(JOHTO, held);
-      expect(s[8], `${held}: ${s}`).toBeGreaterThanOrEqual(s[7]);
-    }
+    expect(strengths(JOHTO, best).slice(6)).toEqual([101, 103, 100]);
   });
 
   it('against the test team, no region\'s gym 8 plays under its gym 7, and each final plays at least its gym 8', () => {
@@ -398,10 +429,17 @@ describe('the difficulty curve', () => {
     expect(n[6]).toBeGreaterThan(h[6]);
   });
 
-  it.each(HELD)('Hoenn\'s gym 8 never plays under its gym 7, nor its final under its gym 8 (%s)', (_, held) => {
-    const s = strengths(HOENN, held);
-    expect(s[7], `${s}`).toBeGreaterThanOrEqual(s[6]);
-    expect(s[8], `${s}`).toBeGreaterThanOrEqual(s[7]);
+  it.each(HELD)('no region\'s gym 8 plays under its gym 7, nor its final under its gym 8 (%s)', (_, held) => {
+    for (const r of REGIONS) {
+      const s = strengths(r, held);
+      expect(s[7], `${r.name}: ${s}`).toBeGreaterThanOrEqual(s[6]);
+      expect(s[8], `${r.name}: ${s}`).toBeGreaterThanOrEqual(s[7]);
+    }
+  });
+
+  it('against the test team, Johto\'s gym 7, gym 8 and final play at least 103, 103 and 106', () => {
+    const s = strengths(JOHTO, TEAM);
+    [103, 103, 106].forEach((v, i) => expect(s[6 + i], `${s}`).toBeGreaterThanOrEqual(v));
   });
 
   it.each(HELD)('gyms 1-3 are at least 3 under every one of gyms 6-8 (%s)', (_, held) => {
