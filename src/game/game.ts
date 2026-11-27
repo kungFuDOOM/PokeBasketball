@@ -55,7 +55,7 @@ export function staminaOf(mon: Mon): number {
 }
 
 /** For a lineup slot with nobody at that position: which positions can cover it, closest first. */
-const COVER: Record<Pos, Pos[]> = {
+export const COVER: Record<Pos, Pos[]> = {
   PG: ['SG', 'SF', 'PF', 'C'],
   SG: ['PG', 'SF', 'PF', 'C'],
   SF: ['SG', 'PF', 'PG', 'C'],

@@ -7,7 +7,9 @@ import { ordinal, snakePicks } from './draft.logic';
 import { monCard, summaryHtml, SWATCHES, typeChips } from './draftView';
 import { wireDraftShare } from '../season/draftShare';
 import { poolMons } from '../franchise/regions';
-import { cpuNext, cpuDraftPool, kantoRosters } from '../franchise/kantoDraft';
+import { cpuNext, cpuDraftPool, kantoRosters, legendaryCap } from '../franchise/kantoDraft';
+import { KANTO } from '../franchise/regions';
+import { isLegendary } from '../multiplayer/shared/roster';
 
 export { monCard, typeChips };
 
@@ -204,20 +206,21 @@ export function draftScreen(
   /** Kanto drafts (some team has a locked star): the rosters the CPU teams are after. */
   const kanto = teams.some((t) => t.star != null) ? kantoRosters() : null;
   /**
-   * A CPU pick. In a Kanto draft a gym (and, in a full league, the Elite) takes its star first, then its planned
-   * Pokémon in order. If one is already gone, it takes the best fit that no CPU team is planning on.
+   * A CPU pick. In a Kanto draft a gym or the Elite takes its star first, then its planned Pokémon in order. If one is
+   * already gone (or would break the team's legendary cap), it takes the best fit that no CPU team is planning on.
    */
   const cpuMon = (t: number): Mon => {
     const team = teams[t];
-    const slot = team.star != null ? team.gym! - 1 : team.elite && teams.length > 2 ? 8 : -1;
+    const slot = team.elite ? 8 : team.star != null ? team.gym! - 1 : -1;
     if (!kanto || team.human || slot < 0) return cpuPick(pool, rosters[t], team.types);
     const k = rosters[t].length;
     if (k === 0 && team.star != null) return monByDex(team.star);
     const gone = new Set(state.taken);
     const want = kanto[slot][k];
-    if (want && !gone.has(want.dex)) return want;
+    const capped = rosters[t].filter((m) => isLegendary(m.dex)).length >= legendaryCap(team);
+    if (want && !gone.has(want.dex) && !(capped && isLegendary(want.dex))) return want;
     const planned = new Set(kanto.flat().map((m) => m.dex));
-    const free = cpuDraftPool().filter((m) => !gone.has(m.dex));
+    const free = cpuDraftPool(KANTO).filter((m) => !gone.has(m.dex));
     return cpuNext(free.filter((m) => !planned.has(m.dex)), rosters[t], team) ?? cpuNext(free, rosters[t], team)!;
   };
   const size = state.rounds ?? 5;

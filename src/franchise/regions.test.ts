@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { POSITIONS, POKEMON, monByDex } from '../data/pokemon';
-import { Game as RealGame, chemistry, type Game } from '../game/game';
+import { POKEMON, monByDex } from '../data/pokemon';
+import { Game as RealGame, type Game } from '../game/game';
 import { autoDraft } from '../season/team';
 import { badgeSvg } from '../ui/badges';
 import {
@@ -11,8 +11,7 @@ import {
 } from './league';
 import { shouldPlayMasterCutscene } from './moments';
 import { RANKED_PRESETS } from '../multiplayer/ranked/presets';
-import { cpuDraftPool, kantoRosters, lineupWithStar, regionRosters } from './kantoDraft';
-import { strengthOf } from '../screens/strength';
+import { kantoRosters, lineupWithStar, regionRosters } from './kantoDraft';
 import { RANKED_MAX_OVR } from '../multiplayer/shared/roster';
 import { HOENN, JOHTO, KANTO, REGIONS, SINNOH, inPool, nextRegion, openRegionIds, poolMons, regionTeams } from './regions';
 
@@ -79,15 +78,15 @@ describe('region data', () => {
     expect(KANTO.gyms.map((t) => t.badge)).toEqual(['Boulder', 'Cascade', 'Thunder', 'Rainbow', 'Soul', 'Marsh', 'Volcano', 'Earth']);
     expect(KANTO.gyms.map((t) => t.leader)).toEqual(['Brock', 'Misty', 'Lt. Surge', 'Erika', 'Koga', 'Sabrina', 'Blaine', 'Giovanni']);
     expect(LEAGUE).toEqual([
-      { name: 'Pewter Boulders', abbr: 'PEW', color: '#a38c63', color2: '#2e271b', leader: 'Brock', types: ['Rock'], boost: 0, gym: 1, badge: 'Boulder', star: 464 },
+      { name: 'Pewter Boulders', abbr: 'PEW', color: '#a38c63', color2: '#2e271b', leader: 'Brock', types: ['Rock'], boost: 1, gym: 1, badge: 'Boulder', star: 464 },
       { name: 'Cerulean Cascades', abbr: 'CER', color: '#2bb3d6', color2: '#0b2c38', leader: 'Misty', types: ['Water'], boost: 0, gym: 2, badge: 'Cascade', star: 9 },
-      { name: 'Vermilion Thunder', abbr: 'VER', color: '#f2c522', color2: '#3a2f06', leader: 'Lt. Surge', types: ['Electric'], boost: 0, gym: 3, badge: 'Thunder', star: 145 },
-      { name: 'Celadon Rainbows', abbr: 'CEL', color: '#5cb85c', color2: '#13301a', leader: 'Erika', types: ['Grass'], boost: 2, gym: 4, badge: 'Rainbow', star: 3 },
-      { name: 'Fuchsia Ninjas', abbr: 'FCH', color: '#b04fc4', color2: '#2d1236', leader: 'Koga', types: ['Poison'], boost: 2, gym: 5, badge: 'Soul', star: 144 },
-      { name: 'Saffron Psychics', abbr: 'SAF', color: '#f2668b', color2: '#3a1220', leader: 'Sabrina', types: ['Psychic'], boost: 0, gym: 6, badge: 'Marsh', star: 151 },
-      { name: 'Cinnabar Volcanoes', abbr: 'CIN', color: '#e8622c', color2: '#3d160b', leader: 'Blaine', types: ['Fire'], boost: 2, gym: 7, badge: 'Volcano', star: 146 },
-      { name: 'Viridian Quakes', abbr: 'VIR', color: '#7c9a3a', color2: '#1e2a0e', leader: 'Giovanni', types: ['Ground'], boost: 1, gym: 8, badge: 'Earth', star: 150 },
-      { name: 'Indigo Elite', abbr: 'E4', color: '#d4a017', color2: '#2a2106', leader: 'The Elite Four', types: ['Ice', 'Fighting', 'Ghost', 'Dragon'], boost: 3, elite: true },
+      { name: 'Vermilion Thunder', abbr: 'VER', color: '#f2c522', color2: '#3a2f06', leader: 'Lt. Surge', types: ['Electric'], boost: 2, gym: 3, badge: 'Thunder', star: 145 },
+      { name: 'Celadon Rainbows', abbr: 'CEL', color: '#5cb85c', color2: '#13301a', leader: 'Erika', types: ['Grass'], boost: 3, gym: 4, badge: 'Rainbow', star: 3 },
+      { name: 'Fuchsia Ninjas', abbr: 'FCH', color: '#b04fc4', color2: '#2d1236', leader: 'Koga', types: ['Poison'], boost: 3, gym: 5, badge: 'Soul', star: 144 },
+      { name: 'Saffron Psychics', abbr: 'SAF', color: '#f2668b', color2: '#3a1220', leader: 'Sabrina', types: ['Psychic'], boost: 2, gym: 6, badge: 'Marsh', star: 151 },
+      { name: 'Cinnabar Volcanoes', abbr: 'CIN', color: '#e8622c', color2: '#3d160b', leader: 'Blaine', types: ['Fire'], boost: 3, gym: 7, badge: 'Volcano', star: 146 },
+      { name: 'Viridian Quakes', abbr: 'VIR', color: '#7c9a3a', color2: '#1e2a0e', leader: 'Giovanni', types: ['Ground'], boost: 3, gym: 8, badge: 'Earth', star: 150 },
+      { name: 'Indigo Elite', abbr: 'E4', color: '#d4a017', color2: '#2a2106', leader: 'The Elite Four', types: ['Ice', 'Fighting', 'Ghost', 'Dragon'], boost: 6, elite: true, star: 149 },
     ]);
   });
 
@@ -110,71 +109,12 @@ describe('region data', () => {
     expect(monByDex(9).ovr).toBeGreaterThan(monByDex(130).ovr); // Blastoise over Gyarados
   });
 
-  it('the Kanto CPU teams draft from every Pokémon in the game', () => {
-    expect(cpuDraftPool()).toEqual(POKEMON);
+  it('the Kanto CPU teams draft non-legendaries from every region', () => {
     const cpu = kantoRosters().flat();
     // Every region shows up on the CPU rosters, Gen 1 relatives or not.
     for (const r of REGIONS) expect(cpu.some((m) => m.dex >= r.dex[0] && m.dex <= r.dex[1]), r.name).toBe(true);
-    expect(cpu.map((m) => m.name)).toEqual(expect.arrayContaining(['Arceus', 'Rayquaza', 'Garchomp', 'Metagross']));
-  });
-
-  const TEST_TEAM = [65, 448, 6, 445, 143]; // Alakazam, Lucario, Charizard, Garchomp, Snorlax: 91.
-
-  it.each([
-    ['nothing held', [] as number[]],
-    ['the 91 test team held', TEST_TEAM],
-    ['an 86 team held', [26, 123, 94, 68, 464]],
-    ['five legendaries held', [151, 386, 150, 384, 493]],
-    ['the ten best held', [151, 386, 150, 384, 493, 249, 483, 250, 484, 487]],
-  ])('Kanto CPU rosters share no Pokémon, avoid the user team and start a natural five of 84+ (%s)', (_, held) => {
-    const rosters = kantoRosters(held);
-    const stars = KANTO.gyms.map((g) => g.star!);
-    expect(rosters).toHaveLength(9);
-    const all = rosters.flat().map((m) => m.dex);
-    expect(new Set(all).size).toBe(all.length);
-    rosters.forEach((r, i) => {
-      const t = regionTeams(KANTO)[i];
-      expect(r, t.leader).toHaveLength(10);
-      for (const m of r) {
-        // A gym keeps its star even when the user holds it; nothing else of the user's is drafted.
-        if (m.dex !== t.star) expect(held, m.name).not.toContain(m.dex);
-        if (stars.includes(m.dex)) expect(m.dex, `${t.leader}: ${m.name}`).toBe(t.star);
-      }
-      const { starters } = lineupWithStar(r, t.star);
-      expect(starters.map((m) => m.pos), t.leader).toEqual(POSITIONS);
-      expect(chemistry(starters), t.leader).toBe(2);
-      for (const m of starters) if (m.dex !== t.star) expect(m.ovr, `${t.leader}: ${m.name}`).toBeGreaterThanOrEqual(84);
-      if (t.star != null) expect(starters.map((m) => m.dex), t.leader).toContain(t.star);
-    });
-  });
-
-  const strengths = (held: number[]) => {
-    const rosters = kantoRosters(held);
-    return regionTeams(KANTO).map((t, i) => strengthOf(lineupWithStar(rosters[i], t.star).starters, t.boost).total);
-  };
-
-  it.each([
-    ['nothing held', [] as number[]],
-    ['the 91 test team held', TEST_TEAM],
-    ['an 86 team held', [26, 123, 94, 68, 464]],
-  ])('game strength rises with every badge and the Elite tops Giovanni (%s)', (_, held) => {
-    const all = strengths(held);
-    const gyms = all.slice(0, 8);
-    for (let i = 1; i < 8; i++) expect(gyms[i], `gym ${i + 1}: ${gyms}`).toBeGreaterThan(gyms[i - 1]);
-    for (const s of gyms.slice(5)) expect(s).toBeGreaterThanOrEqual(92);
-    expect(all[8]).toBeGreaterThan(gyms[7]);
-  });
-
-  it('against the 91 test team the ramp runs 88 to 96, then the Elite at 99', () => {
-    expect(strengthOf(TEST_TEAM.map(monByDex)).total).toBe(91);
-    expect(strengths(TEST_TEAM)).toEqual([88, 89, 90, 92, 93, 94, 95, 96, 99]);
-  });
-
-  it('Kanto gym boosts are small, 0 to 4', () => {
-    const b = KANTO.gyms.map((t) => t.boost);
-    expect(b).toEqual([0, 0, 0, 2, 2, 0, 2, 1]);
-    for (const x of b) expect(x >= 0 && x <= 4).toBe(true);
-    expect(KANTO.finale.boost).toBe(3);
+    expect(cpu.map((m) => m.name)).toEqual(expect.arrayContaining(['Garchomp', 'Metagross']));
+    for (const name of ['Arceus', 'Rayquaza']) expect(cpu.map((m) => m.name)).not.toContain(name);
   });
 
   it('a new franchise drafts the same gyms every time, and every star starts', () => {
@@ -223,7 +163,7 @@ describe('region data', () => {
       // Difficulty is the starting five's rating plus the boost, not the boost alone: `laterRegions.test.ts` checks the ramps.
       expect(r.finale.elite).toBe(true);
       expect(r.finale.gym).toBeUndefined();
-      for (const t of regionTeams(r)) expect(Number.isInteger(t.boost) && t.boost >= 0 && t.boost <= 4, t.name).toBe(true);
+      for (const t of regionTeams(r)) expect(Number.isInteger(t.boost) && t.boost >= 0 && t.boost <= (t.elite ? 6 : 4), t.name).toBe(true);
     });
     expect(nextRegion(KANTO)).toBe(JOHTO);
     expect(nextRegion(JOHTO)).toBe(HOENN);

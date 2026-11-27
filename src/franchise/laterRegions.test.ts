@@ -1,13 +1,12 @@
-// Johto, Hoenn and Sinnoh draft like Kanto: stars, the full-pool draft, the strength ramp and the old-save rebuild.
+// Johto, Hoenn and Sinnoh draft like Kanto (the rules are in cpuDraft.test.ts): stars, entering and the old-save rebuild.
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { POKEMON, POSITIONS, monByDex } from '../data/pokemon';
-import { chemistry } from '../game/game';
+import { POKEMON, monByDex } from '../data/pokemon';
 import { autoDraft } from '../season/team';
 import { strengthOf } from '../screens/strength';
 import {
   LEAGUE, createFranchise, enterRegion, lineupOf, loadFranchise, matchStrength, saveFranchise, type Franchise, type FTeam,
 } from './league';
-import { cpuDraftPool, draftCpuLeague, lineupWithStar, regionRosters, starOf } from './kantoDraft';
+import { cpuDraftPool, draftCpuLeague, regionRosters, starOf } from './kantoDraft';
 import { GYMS_REV, HOENN, JOHTO, KANTO, KANTO_RETURN_BUMP, REGIONS, SINNOH, regionTeams, type RegionDef } from './regions';
 
 const store = new Map<string, string>();
@@ -77,69 +76,20 @@ describe('later-region stars', () => {
   });
 });
 
-describe('the later-region draft', () => {
-  it.each([
-    ['nothing held', [] as number[]],
-    ['the 91 test team held', TEAM],
-    ['an 86 team held', [26, 123, 94, 68, 464]],
-    ['five legendaries held', [151, 386, 150, 384, 493]],
-  ])('draws from the full pool, shares nothing and starts a natural five with 84+ beside the star (%s)', (_, held) => {
-    for (const r of LATER) {
-      const rosters = regionRosters(r, held);
-      const defs = regionTeams(r);
-      const stars = defs.map((t) => t.star!);
-      const all = rosters.flat().map((m) => m.dex);
-      expect(all).toHaveLength(90);
-      expect(new Set(all).size, r.name).toBe(90);
-      // Pokémon from later generations than the region's own show up too.
-      for (const x of REGIONS) expect(rosters.flat().some((m) => m.dex >= x.dex[0] && m.dex <= x.dex[1]), `${r.name}: ${x.name}`).toBe(true);
-      rosters.forEach((roster, i) => {
-        const t = defs[i];
-        expect(roster[0].dex, t.name).toBe(t.star);
-        for (const m of roster) {
-          if (m.dex !== t.star) expect(held, `${t.name}: ${m.name}`).not.toContain(m.dex);
-          if (stars.includes(m.dex)) expect(m.dex, `${t.name}: ${m.name}`).toBe(t.star);
-        }
-        const { starters } = lineupWithStar(roster, t.star);
-        expect(starters.map((m) => m.pos), t.name).toEqual(POSITIONS);
-        expect(chemistry(starters)).toBe(2);
-        for (const m of starters) if (m.dex !== t.star) expect(m.ovr, `${t.name}: ${m.name}`).toBeGreaterThanOrEqual(84);
-        expect(starters.map((m) => m.dex), t.name).toContain(t.star);
-      });
-    }
-  });
-
-  it('only stars start below 84', () => {
-    const low = LATER.flatMap((r) => regionRosters(r, TEAM).flatMap((x, i) =>
-      lineupWithStar(x, regionTeams(r)[i].star).starters.filter((m) => m.ovr < 84).map((m) => `${m.name} ${m.ovr}`)));
-    expect(low).toEqual(['Gengar 83', 'Heracross 83', 'Hariyama 83', 'Manectric 81', 'Floatzel 80', 'Mismagius 81']);
-  });
-});
-
-describe('later-region strength against the 91 test team', () => {
-  it.each([
-    [JOHTO, [90, 91, 92, 93, 94, 95, 96, 97, 99]],
-    [HOENN, [89, 90, 91, 92, 93, 94, 95, 96, 99]],
-    [SINNOH, [89, 90, 91, 92, 93, 94, 95, 96, 99]],
-  ])('$name rises with every badge and the final tops gym 8, on boosts of 0 to 4', (r, ramp) => {
-    expect(strengthOf(TEAM.map(monByDex)).total).toBe(91);
+describe('entering a later region', () => {
+  it.each(LATER)('seats the $name drafter around the user team, and the matchup card shows its strength', (r) => {
     const f = enter(r);
     expect(f.teams.slice(1).map((t) => dexesOf(f, t))).toEqual(expected(r, f));
-    expect(plays(f)).toEqual(ramp);
-    for (let i = 1; i < 8; i++) expect(ramp[i]).toBeGreaterThan(ramp[i - 1]);
-    expect(ramp[0]).toBeGreaterThanOrEqual(88);
-    expect(ramp[7]).toBeGreaterThanOrEqual(96);
-    expect(ramp[8]).toBeGreaterThanOrEqual(ramp[7] + 2);
     for (const t of f.teams.slice(1)) {
-      expect(t.boost! >= 0 && t.boost! <= 4, t.name).toBe(true);
-      // The matchup card shows that same number.
       const g = f.games.find((x) => (x.home === 0 && x.away === t.id) || (x.away === 0 && x.home === t.id))!;
-      expect(matchStrength(f, g, t.id).total, t.name).toBe(ramp[t.id - 1]);
+      expect(matchStrength(f, g, t.id).total, t.name).toBe(strengthOf(fiveOf(f, t), t.boost).total);
     }
+    // Gyms never drop from badge to badge (`cpuDraft.test.ts` lists the ties), and the final opponent is well clear.
+    const ramp = plays(f);
+    for (let i = 1; i < 8; i++) expect(ramp[i], `${ramp}`).toBeGreaterThanOrEqual(ramp[i - 1]);
+    expect(ramp[8] - ramp[7], `${ramp}`).toBeGreaterThanOrEqual(2);
   });
-});
 
-describe('entering a later region', () => {
   it('signs a drafted species out of free agency with its level, and never touches the user team', () => {
     const f = testFranchise();
     const star = regionRosters(JOHTO, TEAM)[0][0].dex;
@@ -184,9 +134,9 @@ function oldSave(r: RegionDef, rev: number | undefined): Franchise {
 }
 
 describe('the later-region save repair', () => {
-  it.each(LATER.flatMap((r) => [[r.name, r, undefined], [r.name, r, 5]] as const))(
+  it.each(LATER.flatMap((r) => [[r.name, r, undefined], [r.name, r, 6]] as const))(
     'rebuilds an old %s save once and leaves the user team (revision %#)', (_, r, rev) => {
-      expect(GYMS_REV).toBe(6);
+      expect(GYMS_REV).toBe(7);
       const f = oldSave(r, rev);
       // A Sinnoh title on record: only Kanto adds the return bump.
       f.titles = [{ regionId: 'sinnoh', season: 1 }];
@@ -229,10 +179,10 @@ describe('the later-region save repair', () => {
   });
 });
 
-describe('Kanto is unchanged', () => {
-  it('drafts the same way and keeps its boosts and return bump', () => {
-    expect(regionRosters(KANTO, TEAM)).toEqual(draftCpuLeague(regionTeams(KANTO), 10, cpuDraftPool().filter((m) => !TEAM.includes(m.dex))));
-    expect(regionTeams(KANTO).map((t) => t.boost)).toEqual([0, 0, 0, 2, 2, 0, 2, 1, 3]);
+describe('Kanto drafts the same way', () => {
+  it('from its own CPU pool, with its boosts and return bump', () => {
+    expect(regionRosters(KANTO, TEAM)).toEqual(draftCpuLeague(regionTeams(KANTO), 10, cpuDraftPool(KANTO).filter((m) => !TEAM.includes(m.dex))));
+    expect(regionTeams(KANTO).map((t) => t.boost)).toEqual([1, 0, 2, 3, 3, 2, 3, 3, 6]);
     expect(KANTO_RETURN_BUMP).toEqual([1, 1, 2, 2, 2, 2, 1, 2, 2]);
   });
 });

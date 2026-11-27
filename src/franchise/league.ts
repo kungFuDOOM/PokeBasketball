@@ -361,7 +361,7 @@ function repairCpuTeams(f: Franchise): void {
     return i < 0 ? [] : [{ t, i, def: defs[i] }];
   });
   const held = new Set(f.teams.filter((t) => !cpu.some((c) => c.t === t)).flatMap((t) => t.roster.map((u) => f.players[u]?.dex)));
-  const drafted = draftCpuLeague(cpu.map((c) => c.def), 10, cpuDraftPool().filter((m) => !held.has(m.dex)));
+  const drafted = draftCpuLeague(cpu.map((c) => c.def), 10, cpuDraftPool(region).filter((m) => !held.has(m.dex)), [], region.index);
   const rosters = signCpuRosters(f, cpu.map((c) => c.t), drafted);
   cpu.forEach(({ t, i, def }, k) => {
     t.boost = def.boost + (returned ? (KANTO_RETURN_BUMP[i] ?? 0) : 0);

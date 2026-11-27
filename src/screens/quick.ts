@@ -116,10 +116,9 @@ export function quickPlay(root: HTMLElement, settings: Settings, audio: Audio, a
     const saved = source === 'mine' ? loadDrafted() : null;
     drafted = null;
     picked = null;
-    // A gym fields the same drafted ten as in a franchise, less what you bring (never its star). The Elite still drafts.
-    const cpuSide = (pool: Mon[], size: number, held: Mon[]) => {
-      if (opp.star == null) return cpuRoster(pool, size, opp.types);
-      const ten = lineupWithStar(kantoRosters(held.map((m) => m.dex))[opp.gym! - 1], opp.star);
+    // A gym or the Elite fields the same drafted ten as in a franchise, less what you bring (never its star).
+    const cpuSide = (size: number, held: Mon[]) => {
+      const ten = lineupWithStar(kantoRosters(held.map((m) => m.dex))[opp.elite ? 8 : opp.gym! - 1], opp.star);
       return size >= 10 ? [...ten.starters, ...ten.bench] : ten.starters;
     };
     if (saved) {
@@ -127,8 +126,7 @@ export function quickPlay(root: HTMLElement, settings: Settings, audio: Audio, a
       // The opponent gets a full ten as well, so both sides tire and sub the same way.
       const all = draftedMons(saved);
       const starters = draftedStarters(saved);
-      const pool = POKEMON.filter((m) => !all.includes(m));
-      const theirs = lineupWithStar(cpuSide(pool, 10, all), opp.star);
+      const theirs = lineupWithStar(cpuSide(10, all), opp.star);
       drafted = { name: saved.name, ...saved.colors, bench: all.filter((m) => !starters.includes(m)), oppBench: theirs.bench };
       return matchup(opp, starters, theirs.starters, courtFor(opp));
     }
@@ -136,7 +134,7 @@ export function quickPlay(root: HTMLElement, settings: Settings, audio: Audio, a
       // No draft screen: five random Pokémon against the opponent's five.
       const pool = POKEMON.filter(() => true);
       const picks = cpuRoster(pool, 5);
-      return matchup(opp, picks, cpuSide(pool, 5, picks), courtFor(opp));
+      return matchup(opp, picks, cpuSide(5, picks), courtFor(opp));
     }
     root.className = 'screen-draft';
     window.scrollTo(0, 0);

@@ -14,7 +14,7 @@ import { HOENN, JOHTO, KANTO, KANTO_GYMS_REV, KANTO_RETURN_BUMP, SINNOH, openReg
 /** What the repair should give the nine CPU teams (gyms, then the Elite): the drafter, around only the user's team. */
 const rebuilt = (f: Franchise) => {
   const held = new Set(f.teams[0].roster.map((u) => f.players[u].dex));
-  return draftCpuLeague(regionTeams(KANTO), 10, cpuDraftPool().filter((m) => !held.has(m.dex))).map((r) => r.map((m) => m.dex));
+  return draftCpuLeague(regionTeams(KANTO), 10, cpuDraftPool(KANTO).filter((m) => !held.has(m.dex))).map((r) => r.map((m) => m.dex));
 };
 
 const dexesOf = (f: Franchise, t: Franchise['teams'][number]) => t.roster.map((u) => f.players[u].dex);
@@ -350,7 +350,7 @@ describe('Sinnoh championship cycle', () => {
 
   const cpuAll = (f: Franchise) => cpuDex(f).flat();
 
-  it('a new Kanto franchise drafts its gyms and Elite from every region, locked or not, with no Pokémon on two teams', () => {
+  it('a new Kanto franchise drafts its gyms and Elite from every region, locked or not (legendaries from Kanto only), with no Pokémon on two teams', () => {
     for (const unlocked of [[], ['johto', 'hoenn', 'sinnoh']]) {
       for (let i = 0; i < 5; i++) {
         const f = kanto(unlocked);
@@ -383,8 +383,8 @@ describe('Sinnoh championship cycle', () => {
     expect(f.teams.filter((t) => !t.human).every((t) => t.roster.length === 10)).toBe(true);
   });
 
-  it.each([3, 4, 5])('a revision %i save rebuilds the Kanto gyms and Elite, once, from every region', (rev) => {
-    expect(KANTO_GYMS_REV).toBe(6);
+  it.each([3, 4, 5, 6])('a revision %i save rebuilds the Kanto gyms and Elite, once, from every region', (rev) => {
+    expect(KANTO_GYMS_REV).toBe(7);
     const f = kanto();
     // Stand-in for the old gyms: reversed rosters, old boosts.
     const old = [0, 0, 1, 2, 2, 3, 4, 4];
@@ -403,7 +403,7 @@ describe('Sinnoh championship cycle', () => {
     const myPlayers = structuredClone(mine.roster.map((u) => f.players[u]));
     saveFranchise(f);
     const g = loadFranchise()!;
-    expect(g.gymsRev).toBe(6);
+    expect(g.gymsRev).toBe(7);
     expect(g.teams[0]).toEqual(mine);
     expect(g.teams[0].roster.map((u) => g.players[u])).toEqual(myPlayers);
     expect(dexesOf(g, eliteOf(g))).toEqual(rebuilt(g)[8]);
@@ -534,17 +534,17 @@ describe('Sinnoh championship cycle', () => {
   it('a rebuilt Elite takes its species from free agency and keeps its level', () => {
     const f = kanto();
     const elite = eliteOf(f);
-    const arceus = elite.roster.find((u) => f.players[u].dex === 493)!;
-    expect(arceus).toBeTruthy();
-    elite.roster[elite.roster.indexOf(arceus)] = f.freeAgents.shift()!;
-    f.freeAgents.push(arceus);
-    f.players[arceus].level = 6;
+    const dragonite = elite.roster.find((u) => f.players[u].dex === 149)!;
+    expect(dragonite).toBeTruthy();
+    elite.roster[elite.roster.indexOf(dragonite)] = f.freeAgents.shift()!;
+    f.freeAgents.push(dragonite);
+    f.players[dragonite].level = 6;
     f.gymsRev = 4;
     saveFranchise(f);
     const g = loadFranchise()!;
-    expect(eliteOf(g).roster).toContain(arceus);
-    expect(g.players[arceus].level).toBe(6);
-    expect(g.freeAgents).not.toContain(arceus);
+    expect(eliteOf(g).roster).toContain(dragonite);
+    expect(g.players[dragonite].level).toBe(6);
+    expect(g.freeAgents).not.toContain(dragonite);
     expect(Object.keys(g.players)).toHaveLength(Object.keys(f.players).length);
   });
 
