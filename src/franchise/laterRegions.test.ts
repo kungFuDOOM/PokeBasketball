@@ -134,9 +134,9 @@ function oldSave(r: RegionDef, rev: number | undefined): Franchise {
 }
 
 describe('the later-region save repair', () => {
-  it.each(LATER.flatMap((r) => [[r.name, r, undefined], [r.name, r, 9]] as const))(
+  it.each(LATER.flatMap((r) => [[r.name, r, undefined], [r.name, r, 9], [r.name, r, 10]] as const))(
     'rebuilds an old %s save once and leaves the user team (revision %#)', (_, r, rev) => {
-      expect(GYMS_REV).toBe(10);
+      expect(GYMS_REV).toBe(11);
       const f = oldSave(r, rev);
       // A Sinnoh title on record: only Kanto adds the return bump.
       f.titles = [{ regionId: 'sinnoh', season: 1 }];
@@ -184,7 +184,7 @@ describe('the later-region save repair', () => {
 describe('Kanto drafts the same way', () => {
   it('from its own CPU pool, with its boosts and return bump', () => {
     expect(regionRosters(KANTO, TEAM)).toEqual(draftCpuLeague(regionTeams(KANTO), 10, cpuDraftPool(KANTO).filter((m) => !TEAM.includes(m.dex)), [], KANTO.dex));
-    expect(regionTeams(KANTO).map((t) => t.boost)).toEqual([13, 6, 8, 15, 17, 16, 16, 18, 18]);
+    expect(regionTeams(KANTO).map((t) => t.boost)).toEqual([11, 6, 9, 15, 13, 16, 15, 13, 16]);
     expect(KANTO_RETURN_BUMP).toEqual([1, 1, 2, 2, 2, 2, 1, 2, 2]);
   });
 });

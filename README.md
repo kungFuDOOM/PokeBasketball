@@ -58,9 +58,9 @@ Every region's eight gyms and final opponent follow the same rules (`src/franchi
 - **Star lock.** Each of the nine locks a star before anyone picks. It always starts, even if you own that Pokémon too. No other team in the region can draft it. (The Indigo Elite's is Dragonite.)
 - **One board per region.** Within a region, no Pokémon (legendaries included) is on two CPU teams. Teams in different regions may use the same one.
 - **Generation limits.** Kanto's teams draft Gen 1 only (#1-151), Johto's #1-251, Hoenn's #1-386 and Sinnoh's #1-493. Nothing newer is on any of them, and their Pokémon don't evolve past the limit during a season.
-- **Type first.** A team starts as many Pokémon of its types as the pool legally allows, ahead of ratings. Either type of a dual type counts; a final opponent's types are all its members'; Brock takes Ground as well as Rock. Starters only play their natural position, so before anyone picks, the drafter works out for each position which teams can get an on-type starter there, and no pick may take that away. When a position runs short, the thinnest types are served first.
+- **Type first.** A team starts as many Pokémon of its types as the pool legally supplies, ahead of ratings, once each card clears the starter floor (74). An on-type card more than 8 OVR under the best off-type option that team can actually take is skipped, and that off-type card starts. Either type of a dual type counts; a final opponent's types are all its members'; Brock takes Ground as well as Rock. Starters only play their natural position, so before anyone picks, the drafter works out for each position which teams can get a quality on-type starter there, and no pick may take that away. When a position runs short, the thinnest types are served first. A card under 74 can only ride the bench, and only when no floor-clearing card can.
 - **Order.** Turns go from the final opponent to gym 8 down to gym 1. First every team takes its on-type starters, then in the same order fills any spot left. Backups follow once every five is set, one per team per turn. A live draft takes picks one at a time but plans the same way.
-- **At least three.** Every gym and final starts three or more on type, usually four or five. The off-type spots are positions where no legal on-type Pokémon is left. Weak on-type Pokémon still start ahead of stronger off-type ones, and the boost makes up the difference.
+- **At least three.** Every gym and final aims for three or more on type, star included, and most still field four or five. It drops below three only when three cards cannot clear both the floor and the 8 OVR margin: Giovanni, Morty, Jasmine, Clair and Volkner stop at two, and Pryce and Candice at one. Off-type spots are the ones where the on-type card missed one of those checks.
 - **Own generation.** Among near-equal choices, a team takes its region's own generation: it wins against an earlier one rated up to 2 higher (`NATIVE_EDGE`).
 - **Legendary cap.** Legendaries and mythicals (`RANKED_LEGENDARIES`) on the whole roster, star included: at most 1 for gyms 1-4, 2 for gyms 5-8 and 3 for the final opponent. One may fill an off-type spot.
 - **Regional legendaries.** A region's teams only draft its own (`legendaries` in `regions.ts`). Non-legendaries come from the region's generation and every earlier one, locked or not. Your own draft, free agents and trades are not affected.
@@ -74,14 +74,14 @@ Every region's eight gyms and final opponent follow the same rules (`src/franchi
 
 - **Your team.** No team drafts a Pokémon on your team (a team keeps its star even then). In a live draft, a Pokémon a CPU team takes is off your board.
 - **Bench.** Backups are the best left, one per position in turn. A backup is never rated above the starter at its position, and an off-type one is rated below (unless that starter is the star), so the drafted five start. The draft has no randomness.
-- **Curve.** Boosts are fixed whole numbers from 0 to 23 (`MAX_BOOST`); a rating still stops at 99 in games. They never read your team's rating. Against a 91 OVR team, game strength (card OVR plus boost) is:
+- **Curve.** Boosts are fixed whole numbers from 0 to 16 (`MAX_BOOST`); a rating still stops at 99 in games. They never read your team's rating. Against a 91 OVR team, game strength (card OVR plus boost) is:
 
 | Region | Gyms 1-3 | Gyms 4-5 | Gyms 6-8 | Final |
 | --- | --- | --- | --- | --- |
-| Kanto | 91 92 93 | 95 97 | 99 100 101 | 102 |
-| Johto | 92 93 94 | 96 98 | 100 101 102 | 103 |
-| Hoenn | 93 94 95 | 97 99 | 101 102 103 | 106 |
-| Sinnoh | 94 95 96 | 98 100 | 102 103 104 | 107 |
+| Kanto | 91 92 93 | 95 97 | 99 101 100 | 102 |
+| Johto | 92 93 94 | 96 98 | 100 102 102 | 105 |
+| Hoenn | 94 94 95 | 97 99 | 101 102 105 | 106 |
+| Sinnoh | 95 95 96 | 98 100 | 102 105 106 | 107 |
 
   The table is for that 91 OVR team's five held back. Because no team drafts your Pokémon, what you hold can move a team by a few points; holding a region's legendaries can bring it level with or below the region before in places. Gyms 1-3 stay at least 3 under gyms 6-8 for every roster in the tests. The return to Kanto after a Sinnoh title adds 1 or 2 more (`KANTO_RETURN_BUMP`).
 

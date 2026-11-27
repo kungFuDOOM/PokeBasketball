@@ -4,7 +4,7 @@ import { POKEMON, POSITIONS, monByDex, type Mon } from '../data/pokemon';
 import { chemistry } from '../game/game';
 import { strengthOf } from '../screens/strength';
 import { RANKED_LEGENDARIES, isLegendary } from '../multiplayer/shared/roster';
-import { MIN_ON_TYPE, NATIVE_EDGE, cpuDraftPool, cpuNext, isOnType, legendaryCap, lineupWithStar, livePick, regionRosters } from './kantoDraft';
+import { MIN_ON_TYPE, NATIVE_EDGE, ON_TYPE_MARGIN, STARTER_FLOOR, cpuDraftPool, cpuNext, isOnType, legendaryCap, lineupWithStar, livePick, regionRosters } from './kantoDraft';
 import { HOENN, JOHTO, KANTO, MAX_BOOST, REGIONS, SINNOH, regionTeams, type RegionDef, type RegionTeam } from './regions';
 
 /** Alakazam, Lucario, Charizard, Garchomp, Snorlax: 91. */
@@ -19,17 +19,24 @@ const HELD: [string, number[]][] = [
 ];
 
 /**
- * Teams that may start fewer than `MIN_ON_TYPE` on type, each with a reason that its pool is exhausted. There are none:
- * every gym and final opponent manages three with every roster in `HELD`.
+ * Fewest on-type starters a leader manages across `HELD`, when that is under `MIN_ON_TYPE`. Each pool really cannot
+ * supply three cards that clear `STARTER_FLOOR` and `ON_TYPE_MARGIN`:
+ * Giovanni has Marowak and Nidoqueen; Dugtrio starts for Brock and Onix is more than 8 under Lapras.
+ * Morty has Haunter and Gengar; Misdreavus is 71.
+ * Jasmine has Steelix and Skarmory; Magneton is more than 8 under the guard she can take, and Forretress is a center.
+ * Pryce has Lapras; Jynx is 9 under Jolteon and the other ice finals are centers or under the floor.
+ * Clair has Dragonite and Kingdra; Dragonair and Dratini are under the floor.
+ * Candice has Weavile; the other ice cards are more than 8 under the forwards and center she can take.
+ * Volkner drops to Raichu and Electivire when a much stronger small forward is free.
  */
-const THIN: Record<string, number> = {};
+const THIN: Record<string, number> = { Giovanni: 2, Morty: 2, Jasmine: 2, Pryce: 1, Clair: 2, Candice: 1, Volkner: 2 };
 
 /** The on-type starters each region's nine field (gyms in badge order, then the final) with the 91 test team held. */
 const ON_TYPE: Record<string, number[]> = {
-  Kanto: [4, 5, 3, 4, 4, 4, 4, 4, 5],
-  Johto: [5, 5, 5, 3, 4, 3, 4, 4, 5],
-  Hoenn: [4, 5, 3, 5, 5, 5, 5, 5, 5],
-  Sinnoh: [4, 5, 5, 5, 5, 5, 5, 4, 5],
+  Kanto: [5, 5, 3, 3, 3, 4, 3, 2, 4],
+  Johto: [5, 4, 4, 2, 3, 2, 1, 2, 4],
+  Hoenn: [4, 4, 3, 3, 3, 5, 3, 4, 5],
+  Sinnoh: [4, 3, 4, 5, 4, 5, 1, 3, 5],
 };
 
 interface Seat { t: RegionTeam; roster: Mon[]; five: Mon[] }
@@ -198,18 +205,36 @@ describe('type first', () => {
   };
   const legendsOf = (mons: readonly Mon[]) => mons.filter((m) => isLegendary(m.dex)).length;
 
-  it.each(HELD)('starts off type only where the on-type pool is exhausted (%s)', (_, held) => {
+  it.each(HELD)('starts off type only when no on-type card clears the floor and the margin (%s)', (_, held) => {
     for (const r of REGIONS) {
       const all = seats(r, held);
       for (const { t, five } of all) {
         for (const off of five.filter((m) => m.dex !== t.star && !isOnType(m, t))) {
-          // Every on-type player at the position is the user's, a locked star, or starting on type for someone else.
-          const usable = leftAt(r, all, held, off.pos).filter((m) => isOnType(m, t)
-            && (!isLegendary(m.dex) || legendsOf(five) - legendsOf([off]) < legendaryCap(t)));
-          expect(usable.map((m) => m.name), `${t.name} starts ${off.name}`).toEqual([]);
-          // Nor is another team starting one off type that this team could have had.
-          const wasted = all.flatMap((s) => (s.t === t ? [] : s.five.filter((m) => m.pos === off.pos && m.dex !== s.t.star && !isOnType(m, s.t) && isOnType(m, t))));
-          expect(wasted.filter((m) => !isLegendary(m.dex)).map((m) => m.name), `${t.name} starts ${off.name}`).toEqual([]);
+          const room = (m: Mon) => !isLegendary(m.dex) || legendsOf(five) - legendsOf([off]) < legendaryCap(t);
+          const usable = leftAt(r, all, held, off.pos).filter((m) => isOnType(m, t) && m.ovr >= STARTER_FLOOR && room(m));
+          const offsLeft = leftAt(r, all, held, off.pos).filter((m) => !isOnType(m, t) && m.ovr >= STARTER_FLOOR);
+          const bestOff = Math.max(off.ovr, ...offsLeft.map((m) => m.ovr));
+          // A leftover on-type card within the margin of that off-type option should have started.
+          expect(usable.filter((m) => bestOff - m.ovr <= ON_TYPE_MARGIN).map((m) => m.name), `${t.name} starts ${off.name}`).toEqual([]);
+          const wasted = all.flatMap((s) => (s.t === t ? [] : s.five.filter((m) => m.pos === off.pos && m.dex !== s.t.star
+            && !isOnType(m, s.t) && isOnType(m, t) && !isLegendary(m.dex) && m.ovr >= STARTER_FLOOR && bestOff - m.ovr <= ON_TYPE_MARGIN)));
+          expect(wasted.map((m) => m.name), `${t.name} starts ${off.name}`).toEqual([]);
+        }
+      }
+    }
+  });
+
+  it.each(HELD)('a starter under the floor means no floor card was left at the position (%s)', (_, held) => {
+    expect(STARTER_FLOOR).toBe(74);
+    expect(ON_TYPE_MARGIN).toBe(8);
+    for (const r of REGIONS) {
+      const all = seats(r, held);
+      for (const { t, five } of all) {
+        for (const s of five) {
+          if (s.ovr >= STARTER_FLOOR) continue;
+          const better = leftAt(r, all, held, s.pos).filter((m) => m.ovr >= STARTER_FLOOR
+            && (!isLegendary(m.dex) || legendsOf(five) - legendsOf([s]) < legendaryCap(t)));
+          expect(better.map((m) => `${m.name} ${m.ovr}`), `${t.name} starts ${s.name} ${s.ovr}`).toEqual([]);
         }
       }
     }
@@ -321,10 +346,10 @@ describe('the difficulty curve', () => {
   const mean = (a: number[]) => a.reduce((x, y) => x + y, 0) / a.length;
 
   it.each([
-    [KANTO, [91, 92, 93, 95, 97, 99, 100, 101, 102]],
-    [JOHTO, [92, 93, 94, 96, 98, 100, 101, 102, 103]],
-    [HOENN, [93, 94, 95, 97, 99, 101, 102, 103, 106]],
-    [SINNOH, [94, 95, 96, 98, 100, 102, 103, 104, 107]],
+    [KANTO, [91, 92, 93, 95, 97, 99, 101, 100, 102]],
+    [JOHTO, [92, 93, 94, 96, 98, 100, 102, 102, 105]],
+    [HOENN, [94, 94, 95, 97, 99, 101, 102, 105, 106]],
+    [SINNOH, [95, 95, 96, 98, 100, 102, 105, 106, 107]],
   ])('$name rises every badge against the 91 test team, up to its final opponent', (r, ramp) => {
     expect(strengthOf(TEAM.map(monByDex)).total).toBe(91);
     expect(strengths(r, TEAM)).toEqual(ramp);
@@ -355,7 +380,7 @@ describe('the difficulty curve', () => {
     for (const r of REGIONS) {
       const s = strengths(r, held);
       expect(Math.min(...s.slice(6)), `${r.name}: ${s}`).toBeGreaterThanOrEqual(Math.max(...s.slice(0, 6)));
-      expect(s[8], `${r.name}: ${s}`).toBeGreaterThanOrEqual(s[7] - 1);
+      expect(s[8], `${r.name}: ${s}`).toBeGreaterThanOrEqual(s[7]);
     }
   });
 
@@ -389,7 +414,7 @@ describe('the difficulty curve', () => {
   });
 
   it('boosts are whole numbers from 0 to the cap', () => {
-    expect(MAX_BOOST).toBe(23);
+    expect(MAX_BOOST).toBe(16);
     for (const r of REGIONS) {
       for (const t of regionTeams(r)) expect(Number.isInteger(t.boost) && t.boost >= 0 && t.boost <= MAX_BOOST, t.name).toBe(true);
     }

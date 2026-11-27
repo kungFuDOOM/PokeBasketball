@@ -1,12 +1,16 @@
 // The CPU league drafter for every region's gyms and final opponent. It is type-first: each team starts as many players
-// of its own types as the pool can legally supply, and only then looks at ratings. Players only start at their natural
-// position, so before anyone picks, `onTypeSlots` works out for each position which teams can get an on-type starter
-// there, and no pick may take that away from another team. Each team locks its star. Then they draft from one board, so
-// a Pokémon is on at most one CPU team in a region: in turn from the final opponent down to gym 1, each takes its
-// on-type starters, then in the same order fills any spot left off type, and once every five is set they take backups. Regions are drafted separately, so teams in different regions may share
-// a Pokémon. A region's teams draft nothing newer than its generation, and its own legendaries are the only ones open to
-// them, up to each team's cap. There is no randomness, so the teams come out the same every time for the same held-back
-// Pokémon.
+// of its own types as the pool can legally supply, and only then looks at ratings. A starter has to clear
+// `STARTER_FLOOR` (a card under it may only ride the bench, and only when no legal floor-clearing card can). An on-type
+// card is also skipped when it is more than `ON_TYPE_MARGIN` below the best legal off-type option at that position, and
+// the spot goes to that off-type card. A team still aims for `MIN_ON_TYPE` on-type starters and drops below that only
+// when three cards cannot clear both checks. Players only start at their natural position, so before anyone picks,
+// `onTypeSlots` works out for each position which teams can get a quality on-type starter there, and no pick may take
+// that away from another team. Each team locks its star. Then they draft from one board, so a Pokémon is on at most one
+// CPU team in a region: in turn from the final opponent down to gym 1, each takes its on-type starters, then in the same
+// order fills any spot left off type, and once every five is set they take backups. Regions are drafted separately, so
+// teams in different regions may share a Pokémon. A region's teams draft nothing newer than its generation, and its own
+// legendaries are the only ones open to them, up to each team's cap. There is no randomness, so the teams come out the
+// same every time for the same held-back Pokémon.
 import { POKEMON, POSITIONS, monByDex, type Mon, type PokeType, type Pos } from '../data/pokemon';
 import { bestLineup } from '../game/game';
 import { isLegendary } from '../multiplayer/shared/roster';
@@ -22,8 +26,15 @@ export interface CpuDraftTeam {
   elite?: boolean;
 }
 
-/** The fewest on-type starters, star included, a CPU team fields unless its on-type pool is exhausted. */
+/** The fewest on-type starters, star included, a CPU team fields unless its quality on-type pool is exhausted. */
 export const MIN_ON_TYPE = 3;
+/** A starter is never rated under this. A card under it may sit on the bench only when nothing at the floor can. */
+export const STARTER_FLOOR = 74;
+/**
+ * An on-type starter more than this far under the best legal off-type option at its position is skipped, and that
+ * off-type card starts instead. The gap is raw OVR, not the native-generation tie-break.
+ */
+export const ON_TYPE_MARGIN = 8;
 /**
  * How much a Pokémon of the region's own generation is preferred by: it is taken over one from an earlier region that is
  * rated up to this much higher, so later regions don't all field the same names.
@@ -57,6 +68,33 @@ type Dex = readonly [number, number] | undefined;
 const preferred = (mons: readonly Mon[], native: Dex): Mon[] => {
   const own = (m: Mon) => worth(m, native) - m.ovr;
   return [...mons].sort((a, b) => worth(b, native) - worth(a, native) || own(b) - own(a) || a.dex - b.dex);
+};
+
+/**
+ * On-type cards from `ons` that may start against the best off-type option `off`: they clear `STARTER_FLOOR`, and they
+ * are at most `ON_TYPE_MARGIN` under that off-type card. Nothing under the floor is offered. `off` is omitted when the
+ * position has no off-type card that clears the floor.
+ */
+const qualityOn = (ons: readonly Mon[], off: Mon | undefined, native: Dex): Mon[] => {
+  const onFloor = ons.filter((m) => m.ovr >= STARTER_FLOOR);
+  if (!off || off.ovr < STARTER_FLOOR) return preferred(onFloor, native);
+  return preferred(onFloor.filter((m) => off.ovr - m.ovr <= ON_TYPE_MARGIN), native);
+};
+
+/** The best off-type card in `offs` that clears the floor, if there is one. */
+const bestOffType = (offs: readonly Mon[], native: Dex): Mon | undefined =>
+  preferred(offs.filter((m) => m.ovr >= STARTER_FLOOR), native)[0];
+
+/**
+ * Who may start at one position. `onOnly` is the on-type pass. Otherwise the quality on-type cards plus every off-type
+ * card that clears the floor. When nobody clears the floor, the single best card starts: type does not pull in a weaker one.
+ */
+const starterChoices = (ons: readonly Mon[], offs: readonly Mon[], off: Mon | undefined, onOnly: boolean, native: Dex): Mon[] => {
+  const onOk = qualityOn(ons, off, native);
+  if (onOnly) return onOk;
+  const offFloor = offs.filter((m) => m.ovr >= STARTER_FLOOR);
+  if (onOk.length || offFloor.length) return [...onOk, ...preferred(offFloor, native)];
+  return preferred([...ons, ...offs], native).slice(0, 1);
 };
 
 /** Whether every team in `teams` can be given its own player from `options(team)`, leaving out `skip` (bipartite matching). */
@@ -141,10 +179,12 @@ export function cpuNext(pool: readonly Mon[], roster: readonly Mon[], native?: r
 /**
  * Fills the CPU teams' `rosters` (what each already holds, its star first) up to `size` from the one board `pool`,
  * taking each pick off it, so no two teams end up with the same Pokémon. `null` marks a team that doesn't draft here.
- * Turns go from the final opponent down to gym 1. First each team in turn takes its on-type starters, the most
+ * Turns go from the final opponent down to gym 1. First each team in turn takes its quality on-type starters, the most
  * `worth` it can without taking a player another team needs for its `onTypeSlots`; then each fills any spot still open
- * with the most `worth` left. Then the backups go one per team per turn, one per position in turn. The legendary cap holds over each whole roster. A backup is never
- * rated above the starter at its position (an off-type one is rated below), so the coach keeps the drafted five.
+ * with the most `worth` left that clears `STARTER_FLOOR` (see `starterChoices`). Then the backups go one per team per
+ * turn, one per position in turn. The legendary cap holds over each whole roster. A backup is never rated above the
+ * starter at its position (an off-type one is rated below), so the coach keeps the drafted five. A card under the floor
+ * is a backup only when no floor-clearing card can take the spot.
  * `native` is the region's own dex range (see `NATIVE_EDGE`).
  */
 function fillRosters(pool: readonly Mon[], teams: readonly CpuDraftTeam[], rosters: (Mon[] | null)[], size: number, native: Dex): void {
@@ -160,23 +200,51 @@ function fillRosters(pool: readonly Mon[], teams: readonly CpuDraftTeam[], roste
   // The starters so far: the first card the team took at each position.
   const fiveOf = (roster: readonly Mon[]) => POSITIONS.flatMap((pos) => roster.find((m) => m.pos === pos) ?? []);
   const needs = (i: number, pos: Pos) => !rosters[i]!.some((m) => m.pos === pos) && rosters[i]!.length < size;
-  /** Team `i`'s on-type options for a position it still has to fill. */
-  const onType = (i: number, pos: Pos) => (needs(i, pos) ? legal(i).filter((m) => m.pos === pos && isOnType(m, teams[i])) : []);
+  const atPos = (i: number, pos: Pos, on: boolean) => legal(i).filter((m) => m.pos === pos && isOnType(m, teams[i]) === on);
+  const qualityAt = (i: number, pos: Pos) =>
+    (needs(i, pos) ? qualityOn(atPos(i, pos, true), bestOffType(atPos(i, pos, false), native), native) : []);
+  // A team can only start `legendaryCap` legendaries. Reserving every on-type legendary locks cards it will never take
+  // (the cap is spent on its best one) and keeps an earlier team from starting them.
+  const keptLegends = new Map(order.map((i) => {
+    const room = legendaryCap(teams[i]) - legends(rosters[i]!);
+    const legs = preferred(POSITIONS.flatMap((pos) => qualityAt(i, pos).filter((m) => isLegendary(m.dex))), native);
+    return [i, new Set(legs.slice(0, Math.max(0, room)).map((m) => m.dex))] as const;
+  }));
+  /** Team `i`'s quality on-type options for a position it still has to fill. Weak cards and extra legendaries are not reserved. */
+  const onType = (i: number, pos: Pos) =>
+    qualityAt(i, pos).filter((m) => !isLegendary(m.dex) || keptLegends.get(i)!.has(m.dex));
   const slots = onTypeSlots(order, onType, (i) => fiveOf(rosters[i]!).filter((m) => isOnType(m, teams[i])).length);
   const before = rosters.map((r) => r?.length ?? 0);
-  /** Team `i` takes the best five it can from `from` at its open positions, keeping every seated team's on-type slot. */
-  const pickStarters = (i: number, from: (m: Mon) => boolean) => {
+  /**
+   * The best off-type card team `i` can still have at `pos`. Teams that draft earlier and still need the position take
+   * the best open cards before `i`'s off-type pass, so those cards are not the comparison for the margin.
+   */
+  const realisticOff = (i: number, pos: Pos, ons: readonly Mon[], offs: readonly Mon[]): Mon | undefined => {
+    const earlier = order.slice(0, order.indexOf(i)).filter((t) => needs(t, pos)).length;
+    const mine = new Set(ons.map((m) => m.dex));
+    const left = preferred([...offs, ...ons], native).slice(earlier).filter((m) => !mine.has(m.dex));
+    return bestOffType(left, native) ?? preferred(left, native)[0];
+  };
+  /**
+   * Team `i` takes the best five it can at its open positions, keeping every seated team's on-type slot. `onOnly` is the
+   * first pass (quality on-type). The second pass fills what is left with the best legal card, still refusing an
+   * on-type card that misses the floor or the margin.
+   */
+  const pickStarters = (i: number, onOnly: boolean) => {
     const options = POSITIONS.filter((p) => needs(i, p)).map((pos) => {
       const others = slots.get(pos)!.filter((t) => t !== i && needs(t, pos));
-      const free = legal(i).filter((m) => m.pos === pos && from(m));
-      return free.filter((m) => canSeat(others, (t) => onType(t, pos), m.dex));
+      const seat = (m: Mon) => canSeat(others, (t) => onType(t, pos), m.dex);
+      const ons = atPos(i, pos, true).filter(seat);
+      const offs = atPos(i, pos, false).filter(seat);
+      return starterChoices(ons, offs, realisticOff(i, pos, ons, offs), onOnly, native);
     }).filter((list) => list.length);
     const room = legendaryCap(teams[i]) - legends(rosters[i]!);
     for (const m of bestFive(options, teams[i], room, native).slice(0, size - rosters[i]!.length)) take(i, m);
   };
-  // Every team takes its on-type starters before anyone fills a spot off type, so no filler pick costs a team its type.
-  for (const i of order) pickStarters(i, (m) => isOnType(m, teams[i]));
-  for (const i of order) pickStarters(i, () => true);
+  // Every team takes its quality on-type starters before anyone fills a spot off type, so no filler pick costs a team a
+  // card that clears the floor and the margin.
+  for (const i of order) pickStarters(i, true);
+  for (const i of order) pickStarters(i, false);
   // The new starters go best first.
   for (const i of order) rosters[i]!.splice(before[i], Infinity, ...ranked(rosters[i]!.slice(before[i])));
   // By roster size, so a live draft resumed in the middle of a round takes its turns in the same order.
