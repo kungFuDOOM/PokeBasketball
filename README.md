@@ -80,8 +80,8 @@ Every region's eight gyms and final opponent follow the same rules (`src/franchi
 | Region | Gyms 1-3 | Gyms 4-5 | Gyms 6-8 | Final |
 | --- | --- | --- | --- | --- |
 | Kanto | 91 92 93 | 95 97 | 99 101 101 | 103 |
-| Johto | 92 93 95 | 96 98 | 99 102 102 | 105 |
-| Hoenn | 94 94 95 | 97 99 | 101 102 105 | 106 |
+| Johto | 92 93 95 | 96 98 | 99 103 103 | 106 |
+| Hoenn | 94 94 95 | 97 99 | 101 104 106 | 107 |
 | Sinnoh | 95 95 96 | 98 100 | 103 106 106 | 107 |
 
   The table is for that 91 OVR team's five held back. Because no team drafts your Pokémon, what you hold can move a team by a few points; holding a region's legendaries can bring it level with or below the region before in places. Gyms 1-3 stay at least 3 under gyms 6-8 for every roster in the tests. The return to Kanto after a Sinnoh title adds 1 or 2 more (`KANTO_RETURN_BUMP`).

@@ -21,9 +21,9 @@ Gym 3 Whitney (Normal): Persian 76 PG, Houndoom† 84 SG, Dodrio 77 SF, Ursaring
 Gym 4 Morty (Ghost): Electrode† 84 PG, Haunter 78 SG, ★Gengar 83 SF, Nidoking† 83 PF, Suicune† 85 C [Poliwrath† 81 PF, Exeggutor† 78 C, Xatu† 76 SG, Arbok† 76 SF, Misdreavus 71 PG] 85+11=96 · 2 on-type
 Gym 5 Chuck (Fighting): Celebi† 82 PG, Primeape 78 SG, Hitmonlee 78 SF, ★Heracross 83 PF, Meganium† 87 C [Donphan† 80 PF, Dewgong† 79 C, Jynx† 78 PG, Tauros† 77 SF, Butterfree† 76 SG] 84+14=98 · 3 on-type
 Gym 6 Jasmine (Steel): Ninetales† 85 PG, Magneton 78 SG, Vaporeon† 81 SF, Skarmory 75 PF, ★Steelix 87 C [Muk† 82 C, Electabuzz† 79 PG, Kabutops† 78 SF, Charmeleon† 76 SG, Granbull† 73 PF] 83+16=99 · 3 on-type
-Gym 7 Pryce (Ice): Jolteon† 87 PG, Raikou† 88 SG, Typhlosion† 85 SF, Blastoise† 88 PF, ★Venusaur† 88 C [Cloyster 83 C, Hitmonchan† 78 SG, Ampharos† 77 PF, Victreebel† 77 SF, Wartortle† 74 PG] 89+13=102 · 0 on-type
-Gym 8 Clair (Dragon): Raichu† 87 PG, Kingdra 83 SG, Feraligatr† 86 SF, Entei† 88 PF, ★Dragonite 90 C [Machamp† 83 PF, Arcanine† 80 SF, Ponyta† 78 SG, Slowking† 74 C, Sneasel† 73 PG] 89+13=102 · 2 on-type
-Elite Champion Lance (Psychic/Poison/Fighting/Dark/Dragon): Starmie 86 PG, Espeon 84 SG, Ho-Oh† 94 SF, Nidoqueen 83 PF, ★Tyranitar 89 C [Lapras† 84 C, Pikachu† 80 PG, Rhydon† 79 PF, Kadabra 77 SG, Stantler† 73 SF] 89+16=105 · 4 on-type
+Gym 7 Pryce (Ice): Jolteon† 87 PG, Raikou† 88 SG, Typhlosion† 85 SF, Blastoise† 88 PF, ★Venusaur† 88 C [Cloyster 83 C, Hitmonchan† 78 SG, Ampharos† 77 PF, Victreebel† 77 SF, Wartortle† 74 PG] 89+14=103 · 0 on-type
+Gym 8 Clair (Dragon): Raichu† 87 PG, Kingdra 83 SG, Feraligatr† 86 SF, Entei† 88 PF, ★Dragonite 90 C [Machamp† 83 PF, Arcanine† 80 SF, Ponyta† 78 SG, Slowking† 74 C, Sneasel† 73 PG] 89+14=103 · 2 on-type
+Elite Champion Lance (Psychic/Poison/Fighting/Dark/Dragon): Starmie 86 PG, Espeon 84 SG, Ho-Oh† 94 SF, Nidoqueen 83 PF, ★Tyranitar 89 C [Lapras† 84 C, Pikachu† 80 PG, Rhydon† 79 PF, Kadabra 77 SG, Stantler† 73 SF] 89+17=106 · 4 on-type
 
 ## Hoenn
 Gym 1 Roxanne (Rock): Jolteon† 87 PG, Aerodactyl 81 SG, Kabutops 78 SF, Rhydon 79 PF, ★Aggron 89 C [Rapidash† 83 PG, Regice† 80 C, Kingler† 78 PF, Sharpedo† 76 SF, Butterfree† 76 SG] 85+9=94 · 4 on-type
@@ -32,9 +32,9 @@ Gym 3 Wattson (Electric): ★Manectric 81 PG, Magneton 78 SG, Typhlosion† 85 S
 Gym 4 Flannery (Fire): Ninetales 85 PG, Houndoom 84 SG, ★Charizard 91 SF, Blastoise† 88 PF, Regirock† 90 C [Electrode† 84 PG, Gengar† 83 SF, Muk† 82 C, Flareon 79 PF, Hitmonchan† 78 SG] 90+7=97 · 3 on-type
 Gym 5 Norman (Normal): Sceptile† 88 PG, Kingdra† 83 SG, Tauros 77 SF, Kangaskhan 81 PF, ★Slaking 91 C [Steelix† 87 C, Ninjask† 80 PG, Donphan† 80 PF, Haunter† 78 SG, Arbok† 76 SF] 86+13=99 · 3 on-type
 Gym 6 Winona (Flying): Crobat 87 PG, Scyther 83 SG, Dodrio 77 SF, ★Salamence 87 PF, Dragonite 90 C [Meganium† 87 C, Heracross† 83 PF, Golduck† 79 SG, Jynx† 78 PG, Shiftry† 74 SF] 87+14=101 · 5 on-type
-Gym 7 Tate & Liza (Psychic): Gardevoir 83 PG, ★Espeon 84 SG, Latias 91 SF, Groudon† 92 PF, Tyranitar† 89 C [Gyarados† 87 C, Nidoking† 83 PF, Pikachu† 80 PG, Ponyta† 78 SG, Victreebel† 77 SF] 90+12=102 · 3 on-type
-Gym 8 Juan (Water): ★Starmie 86 PG, Deoxys† 95 SG, Feraligatr 86 SF, Swampert 87 PF, Kyogre 92 C [Milotic 85 PF, Cloyster 83 C, Vaporeon 81 SF, Ivysaur† 78 SG, Grovyle† 75 PG] 91+14=105 · 4 on-type
-Elite Champion Steven (Dark/Ghost/Ice/Dragon/Steel): Jirachi 82 PG, Latios 93 SG, Scizor 86 SF, Rayquaza 96 PF, ★Metagross 90 C [Venusaur† 88 C, Nidoqueen† 83 PF, Marowak† 82 SG, Electabuzz† 79 PG, Umbreon 78 SF] 91+15=106 · 5 on-type
+Gym 7 Tate & Liza (Psychic): Gardevoir 83 PG, ★Espeon 84 SG, Latias 91 SF, Groudon† 92 PF, Tyranitar† 89 C [Gyarados† 87 C, Nidoking† 83 PF, Pikachu† 80 PG, Ponyta† 78 SG, Victreebel† 77 SF] 90+14=104 · 3 on-type
+Gym 8 Juan (Water): ★Starmie 86 PG, Deoxys† 95 SG, Feraligatr 86 SF, Swampert 87 PF, Kyogre 92 C [Milotic 85 PF, Cloyster 83 C, Vaporeon 81 SF, Ivysaur† 78 SG, Grovyle† 75 PG] 91+15=106 · 4 on-type
+Elite Champion Steven (Dark/Ghost/Ice/Dragon/Steel): Jirachi 82 PG, Latios 93 SG, Scizor 86 SF, Rayquaza 96 PF, ★Metagross 90 C [Venusaur† 88 C, Nidoqueen† 83 PF, Marowak† 82 SG, Electabuzz† 79 PG, Umbreon 78 SF] 91+16=107 · 5 on-type
 
 ## Sinnoh
 Gym 1 Roark (Rock): Jolteon† 87 PG, Aerodactyl 81 SG, Kabutops 78 SF, Rampardos 79 PF, ★Rhyperior 85 C [Venusaur† 88 C, Shaymin† 82 PG, Golduck† 79 SG, Staraptor† 77 PF, Froslass† 75 SF] 84+11=95 · 4 on-type

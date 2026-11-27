@@ -364,8 +364,8 @@ describe('the difficulty curve', () => {
 
   it.each([
     [KANTO, [91, 92, 93, 95, 97, 99, 101, 101, 103]],
-    [JOHTO, [92, 93, 95, 96, 98, 99, 102, 102, 105]],
-    [HOENN, [94, 94, 95, 97, 99, 101, 102, 105, 106]],
+    [JOHTO, [92, 93, 95, 96, 98, 99, 103, 103, 106]],
+    [HOENN, [94, 94, 95, 97, 99, 101, 104, 106, 107]],
     [SINNOH, [95, 95, 96, 98, 100, 103, 106, 106, 107]],
   ])('$name rises every badge against the 91 test team, up to its final opponent', (r, ramp) => {
     expect(strengthOf(TEAM.map(monByDex)).total).toBe(91);
@@ -388,10 +388,20 @@ describe('the difficulty curve', () => {
     }
   });
 
-  it('Sinnoh is above Hoenn at gyms 6 and 7 against the test team', () => {
-    const [h, n] = [strengths(HOENN, TEAM), strengths(SINNOH, TEAM)];
+  it('against the test team, Hoenn tops Johto at every late slot, and Sinnoh is at least level with Hoenn', () => {
+    const [j, h, n] = [JOHTO, HOENN, SINNOH].map((r) => strengths(r, TEAM));
+    for (const i of [5, 6, 7, 8]) {
+      expect(h[i], `slot ${i}`).toBeGreaterThan(j[i]);
+      expect(n[i], `slot ${i}`).toBeGreaterThanOrEqual(h[i]);
+    }
     expect(n[5]).toBeGreaterThan(h[5]);
     expect(n[6]).toBeGreaterThan(h[6]);
+  });
+
+  it.each(HELD)('Hoenn\'s gym 8 never plays under its gym 7, nor its final under its gym 8 (%s)', (_, held) => {
+    const s = strengths(HOENN, held);
+    expect(s[7], `${s}`).toBeGreaterThanOrEqual(s[6]);
+    expect(s[8], `${s}`).toBeGreaterThanOrEqual(s[7]);
   });
 
   it.each(HELD)('gyms 1-3 are at least 3 under every one of gyms 6-8 (%s)', (_, held) => {

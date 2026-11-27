@@ -383,8 +383,8 @@ describe('Sinnoh championship cycle', () => {
     expect(f.teams.filter((t) => !t.human).every((t) => t.roster.length === 10)).toBe(true);
   });
 
-  it.each([3, 4, 5, 6, 7, 8, 9, 10, 11, 12])('a revision %i save rebuilds the Kanto gyms and Elite, once', (rev) => {
-    expect(KANTO_GYMS_REV).toBe(13);
+  it.each([3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13])('a revision %i save rebuilds the Kanto gyms and Elite, once', (rev) => {
+    expect(KANTO_GYMS_REV).toBe(14);
     const f = kanto();
     // Stand-in for the old gyms: reversed rosters, old boosts.
     const old = [0, 0, 1, 2, 2, 3, 4, 4];

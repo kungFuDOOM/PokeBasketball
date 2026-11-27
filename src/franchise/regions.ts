@@ -60,7 +60,7 @@ export interface RegionDef {
 }
 
 /** Bump when any region's gym stars, legendaries, drafter or boosts change: older saves rebuild their gyms and Elite once on load. */
-export const GYMS_REV = 13;
+export const GYMS_REV = 14;
 /** The name from when only Kanto's teams were rebuilt. */
 export const KANTO_GYMS_REV = GYMS_REV;
 
@@ -94,7 +94,7 @@ export const KANTO: RegionDef = {
  * every generation up to the region's own (see `kantoDraft.ts`), with only the region's own legendaries and never a
  * Pokémon on the user's team (a team keeps its star even then). No Pokémon is on two teams of a region; other regions may use it. Boosts are all the boost a team
  * ever gets (bar `KANTO_RETURN_BUMP`). Against the 91 OVR test team each later region is harder overall, gyms 1-3 stay
- * well under gyms 6-8, and the finals play at 105 (Johto), 106 (Hoenn) and 107 (Sinnoh), each at or above its gym 8.
+ * well under gyms 6-8, and the finals play at 106 (Johto), 107 (Hoenn) and 107 (Sinnoh), each at or above its gym 8.
  */
 export const JOHTO: RegionDef = {
   id: 'johto',
@@ -110,11 +110,11 @@ export const JOHTO: RegionDef = {
     { name: 'Ecruteak Specters', abbr: 'ECR', city: 'Ecruteak City', color: '#6c4fa3', color2: '#1b1230', leader: 'Morty', types: ['Ghost'], boost: 11, gym: 4, badge: 'Fog', star: 94 },
     { name: 'Cianwood Crushers', abbr: 'CIA', city: 'Cianwood City', color: '#c0603a', color2: '#33170c', leader: 'Chuck', types: ['Fighting'], boost: 14, gym: 5, badge: 'Storm', star: 214 },
     { name: 'Olivine Irons', abbr: 'OLI', city: 'Olivine City', color: '#9aa6b2', color2: '#22282e', leader: 'Jasmine', types: ['Steel'], boost: 16, gym: 6, badge: 'Mineral', star: 208 },
-    { name: 'Mahogany Frost', abbr: 'MAH', city: 'Mahogany Town', color: '#7fd0e8', color2: '#0e2a33', leader: 'Pryce', types: ['Ice'], boost: 13, gym: 7, badge: 'Glacier', star: 3 },
-    { name: 'Blackthorn Dragons', abbr: 'BLK', city: 'Blackthorn City', color: '#3d6fd8', color2: '#0f1a3a', leader: 'Clair', types: ['Dragon'], boost: 13, gym: 8, badge: 'Rising', star: 149 },
+    { name: 'Mahogany Frost', abbr: 'MAH', city: 'Mahogany Town', color: '#7fd0e8', color2: '#0e2a33', leader: 'Pryce', types: ['Ice'], boost: 14, gym: 7, badge: 'Glacier', star: 3 },
+    { name: 'Blackthorn Dragons', abbr: 'BLK', city: 'Blackthorn City', color: '#3d6fd8', color2: '#0f1a3a', leader: 'Clair', types: ['Dragon'], boost: 14, gym: 8, badge: 'Rising', star: 149 },
   ],
   finale: { name: 'Johto Elite', abbr: 'JOH', city: 'Indigo Plateau', title: 'Johto Elite Four & Champion Lance', color: '#b8323c', color2: '#2a0b0e',
-    leader: 'Will · Koga · Bruno · Karen · Champion Lance', types: ['Psychic', 'Poison', 'Fighting', 'Dark', 'Dragon'], boost: 16, elite: true, star: 248 },
+    leader: 'Will · Koga · Bruno · Karen · Champion Lance', types: ['Psychic', 'Poison', 'Fighting', 'Dark', 'Dragon'], boost: 17, elite: true, star: 248 },
 };
 
 /**
@@ -136,11 +136,11 @@ export const HOENN: RegionDef = {
     { name: 'Lavaridge Flames', abbr: 'LAV', city: 'Lavaridge Town', color: '#e2492f', color2: '#3a120b', leader: 'Flannery', types: ['Fire'], boost: 7, gym: 4, badge: 'Heat', star: 6 },
     { name: 'Petalburg Balance', abbr: 'PET', city: 'Petalburg City', color: '#a8a77a', color2: '#2a2a1c', leader: 'Norman', types: ['Normal'], boost: 13, gym: 5, badge: 'Balance', star: 289 },
     { name: 'Fortree Feathers', abbr: 'FOR', city: 'Fortree City', color: '#6fb7e8', color2: '#0f2a3a', leader: 'Winona', types: ['Flying'], boost: 14, gym: 6, badge: 'Feather', star: 373 },
-    { name: 'Mossdeep Minds', abbr: 'MOS', city: 'Mossdeep City', color: '#e05a9c', color2: '#3a1026', leader: 'Tate & Liza', types: ['Psychic'], boost: 12, gym: 7, badge: 'Mind', star: 196 },
-    { name: 'Sootopolis Rain', abbr: 'SOO', city: 'Sootopolis City', color: '#2f78d0', color2: '#0c1e38', leader: 'Juan', types: ['Water'], boost: 14, gym: 8, badge: 'Rain', star: 121 },
+    { name: 'Mossdeep Minds', abbr: 'MOS', city: 'Mossdeep City', color: '#e05a9c', color2: '#3a1026', leader: 'Tate & Liza', types: ['Psychic'], boost: 14, gym: 7, badge: 'Mind', star: 196 },
+    { name: 'Sootopolis Rain', abbr: 'SOO', city: 'Sootopolis City', color: '#2f78d0', color2: '#0c1e38', leader: 'Juan', types: ['Water'], boost: 15, gym: 8, badge: 'Rain', star: 121 },
   ],
   finale: { name: 'Hoenn Elite', abbr: 'EVR', city: 'Ever Grande City', title: 'Hoenn Elite Four & Champion Steven', color: '#5b7fa6', color2: '#141f2c',
-    leader: 'Sidney · Phoebe · Glacia · Drake · Champion Steven', types: ['Dark', 'Ghost', 'Ice', 'Dragon', 'Steel'], boost: 15, elite: true, star: 376 },
+    leader: 'Sidney · Phoebe · Glacia · Drake · Champion Steven', types: ['Dark', 'Ghost', 'Ice', 'Dragon', 'Steel'], boost: 16, elite: true, star: 376 },
 };
 
 /**

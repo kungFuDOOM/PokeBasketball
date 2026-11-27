@@ -134,9 +134,9 @@ function oldSave(r: RegionDef, rev: number | undefined): Franchise {
 }
 
 describe('the later-region save repair', () => {
-  it.each(LATER.flatMap((r) => [[r.name, r, undefined], [r.name, r, 9], [r.name, r, 10], [r.name, r, 11], [r.name, r, 12]] as const))(
+  it.each(LATER.flatMap((r) => [[r.name, r, undefined], [r.name, r, 9], [r.name, r, 10], [r.name, r, 11], [r.name, r, 12], [r.name, r, 13]] as const))(
     'rebuilds an old %s save once and leaves the user team (revision %#)', (_, r, rev) => {
-      expect(GYMS_REV).toBe(13);
+      expect(GYMS_REV).toBe(14);
       const f = oldSave(r, rev);
       // A Sinnoh title on record: only Kanto adds the return bump.
       f.titles = [{ regionId: 'sinnoh', season: 1 }];
