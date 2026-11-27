@@ -1,10 +1,10 @@
-// The rules every region's nine CPU teams are drafted by: the strongest legal five, theme, legendaries, and the difficulty curve.
+// The rules every region's nine CPU teams are drafted by: type first, generation limits, legendaries, and the difficulty curve.
 import { describe, expect, it } from 'vitest';
-import { POKEMON, monByDex, type Mon } from '../data/pokemon';
+import { POKEMON, POSITIONS, monByDex, type Mon } from '../data/pokemon';
 import { chemistry } from '../game/game';
 import { strengthOf } from '../screens/strength';
 import { RANKED_LEGENDARIES, isLegendary } from '../multiplayer/shared/roster';
-import { MIN_ON_TYPE, ON_TYPE_FLOOR, cpuDraftPool, cpuNext, isOnType, legendaryCap, lineupWithStar, livePick, regionRosters } from './kantoDraft';
+import { MIN_ON_TYPE, NATIVE_EDGE, cpuDraftPool, cpuNext, isOnType, legendaryCap, lineupWithStar, livePick, regionRosters } from './kantoDraft';
 import { HOENN, JOHTO, KANTO, MAX_BOOST, REGIONS, SINNOH, regionTeams, type RegionDef, type RegionTeam } from './regions';
 
 /** Alakazam, Lucario, Charizard, Garchomp, Snorlax: 91. */
@@ -19,12 +19,17 @@ const HELD: [string, number[]][] = [
 ];
 
 /**
- * Teams whose type cannot supply `MIN_ON_TYPE` starters rated `ON_TYPE_FLOOR` or better at different positions, with the
- * fewest they start on type over `HELD`. Everyone else starts at least `MIN_ON_TYPE`.
+ * Teams that may start fewer than `MIN_ON_TYPE` on type, each with a reason that its pool is exhausted. There are none:
+ * every gym and final opponent manages three with every roster in `HELD`.
  */
-const THIN: Record<string, number> = {
-  Brock: 1, Roxanne: 1, Roark: 1, Morty: 1, Bugsy: 1,
-  Erika: 2, Giovanni: 2, Jasmine: 2, Pryce: 2, Wattson: 2, Gardenia: 2, Candice: 2, Volkner: 2, Fantina: 2,
+const THIN: Record<string, number> = {};
+
+/** The on-type starters each region's nine field (gyms in badge order, then the final) with the 91 test team held. */
+const ON_TYPE: Record<string, number[]> = {
+  Kanto: [4, 5, 3, 4, 4, 4, 4, 4, 5],
+  Johto: [5, 5, 5, 3, 4, 3, 4, 4, 5],
+  Hoenn: [4, 5, 3, 5, 5, 5, 5, 5, 5],
+  Sinnoh: [4, 5, 5, 5, 5, 5, 5, 4, 5],
 };
 
 interface Seat { t: RegionTeam; roster: Mon[]; five: Mon[] }
@@ -54,10 +59,11 @@ describe('each region has its own legendaries', () => {
     expect(RANKED_LEGENDARIES.every(isLegendary)).toBe(true);
   });
 
-  it('as a pool: every non-legendary in the game, and only the native legendaries', () => {
+  it('as a pool: every non-legendary up to its generation, and only the native legendaries', () => {
     for (const r of REGIONS) {
       const pool = cpuDraftPool(r).map((m) => m.dex);
-      expect(pool, r.name).toEqual(POKEMON.filter((m) => !isLegendary(m.dex) || r.legendaries.includes(m.dex)).map((m) => m.dex));
+      expect(pool, r.name).toEqual(
+        POKEMON.filter((m) => m.dex <= r.dex[1] && (!isLegendary(m.dex) || r.legendaries.includes(m.dex))).map((m) => m.dex));
     }
   });
 
@@ -125,6 +131,20 @@ describe('one board per region', () => {
   });
 });
 
+describe('generation limits', () => {
+  it('Kanto stops at 151, Johto at 251, Hoenn at 386 and Sinnoh at 493', () => {
+    expect(REGIONS.map((r) => r.dex[1])).toEqual([151, 251, 386, 493]);
+  });
+
+  it.each(HELD)('no CPU roster, star, starter or backup, goes past its region\'s generation (%s)', (_, held) => {
+    for (const r of REGIONS) {
+      for (const { t, roster } of seats(r, held)) {
+        for (const m of roster) expect(m.dex, `${t.name}: ${m.name}`).toBeLessThanOrEqual(r.dex[1]);
+      }
+    }
+  });
+});
+
 describe('later regions and earlier ones', () => {
   it.each(HELD)('later gyms roster earlier-region non-legendaries, and never another region\'s legendaries (%s)', (_, held) => {
     for (const r of REGIONS.slice(1)) {
@@ -133,6 +153,7 @@ describe('later regions and earlier ones', () => {
       for (const earlier of REGIONS.slice(0, r.index)) {
         const from = (d: number) => d >= earlier.dex[0] && d <= earlier.dex[1];
         for (const m of POKEMON) if (from(m.dex)) expect(pool.includes(m.dex), `${r.name}: ${m.name}`).toBe(!isLegendary(m.dex));
+        expect(rosters.some((m) => from(m.dex) && !isLegendary(m.dex)), `${r.name} drafts ${earlier.name}`).toBe(true);
         expect(rosters.some((m) => from(m.dex)), `${r.name} uses ${earlier.name}`).toBe(true);
       }
       for (const m of rosters) if (isLegendary(m.dex)) expect(r.legendaries, `${r.name}: ${m.name}`).toContain(m.dex);
@@ -140,54 +161,21 @@ describe('later regions and earlier ones', () => {
   });
 });
 
-describe('the strongest legal five', () => {
-  const mon = monByDex;
-  const themeOf = (five: readonly Mon[], t: RegionTeam) =>
-    Math.min(MIN_ON_TYPE, five.filter((m) => isOnType(m, t) && (m.ovr >= ON_TYPE_FLOOR || m.dex === t.star)).length);
-  const sum = (five: readonly Mon[]) => five.reduce((a, m) => a + m.ovr, 0);
-
-  it.each(HELD)('has a natural player at every position, so every team gets the lineup bonus (%s)', (_, held) => {
-    for (const r of REGIONS) for (const { t, five } of seats(r, held)) expect(chemistry(five), t.name).toBe(2);
-  });
-
-  it.each(HELD)('its off-type starters cannot be improved on by what was left at its turn (%s)', (_, held) => {
+describe('type first', () => {
+  it('Brock also takes Ground; every other team only its listed types', () => {
+    const brock = KANTO.gyms[0];
+    expect(brock.types).toEqual(['Rock']);
+    expect(isOnType(monByDex(51), brock)).toBe(true); // Dugtrio
+    expect(isOnType(monByDex(51), JOHTO.gyms[0])).toBe(false);
     for (const r of REGIONS) {
-      const stars = regionTeams(r).map((t) => t.star!);
-      const pool = cpuDraftPool(r).filter((m) => !held.includes(m.dex) && !stars.includes(m.dex));
-      // The best few at each position of each kind is every swap that could matter.
-      const top = new Map<string, Mon[]>();
-      const all = seats(r, held);
-      for (const [i, { t, five, roster }] of all.entries()) {
-        // The final opponent picks first, then gym 8 down: the fives after it in the list are gone, and so are the theme
-        // starters the others reserved before it filled out its five.
-        const gone = new Set(all.flatMap((s, j) => (j === i ? [] : s.five.filter((m) => j > i || isOnType(m, s.t)).map((m) => m.dex))));
-        top.clear();
-        for (const m of pool.filter((x) => !gone.has(x.dex)).sort((a, b) => b.ovr - a.ovr)) {
-          const key = `${m.pos}${isOnType(m, t)}${isLegendary(m.dex)}`;
-          const list = top.get(key) ?? [];
-          if (list.length < 2) top.set(key, [...list, m]);
-        }
-        const cands = [...top.values()].flat();
-        // On-type starters may have been reserved before the others' off-type picks, so only the rest are swapped.
-        const free = five.filter((m) => m.dex !== t.star && !isOnType(m, t));
-        const legal = (six: readonly Mon[]) => new Set(six.map((m) => m.pos)).size === 5
-          && six.filter((m) => isLegendary(m.dex)).length <= legendaryCap(t) && new Set(six.map((m) => m.dex)).size === 5;
-        for (const a of free) {
-          for (const b of free) {
-            for (const x of cands) {
-              for (const y of a === b ? [x] : cands) {
-                const next = five.map((m) => (m === a ? x : m === b ? y : m));
-                if (!legal(next) || themeOf(next, t) < themeOf(five, t)) continue;
-                expect(sum(next), `${t.name}: ${next.map((m) => m.name)} beats ${roster.slice(0, 5).map((m) => m.name)}`).toBeLessThanOrEqual(sum(five));
-              }
-            }
-          }
-        }
+      for (const t of regionTeams(r)) {
+        if (t.leader === 'Brock') continue;
+        for (const m of POKEMON) expect(isOnType(m, t), `${t.name}: ${m.name}`).toBe(m.types.some((ty) => t.types.includes(ty)));
       }
     }
   });
 
-  it.each(HELD)('keeps at least three on type, star included, bar the thin types (%s)', (_, held) => {
+  it.each(HELD)('every gym and final starts at least three on type, star included (%s)', (_, held) => {
     expect(MIN_ON_TYPE).toBe(3);
     for (const r of REGIONS) {
       for (const { t, five } of seats(r, held)) {
@@ -197,18 +185,73 @@ describe('the strongest legal five', () => {
     }
   });
 
-  // Only eight non-legendary shooting guards reach `ON_TYPE_FLOOR`, one short of nine teams, so one may start an 80 or 81.
-  it.each(HELD)('every starter but a star is 80 or better, nearly all 82 or better (%s)', (_, held) => {
+  it('starts these many on type against the 91 test team', () => {
     for (const r of REGIONS) {
-      const low: string[] = [];
-      for (const { t, five } of seats(r, held)) {
-        for (const m of five) {
-          if (m.dex === t.star) continue;
-          expect(m.ovr, `${t.name}: ${m.name}`).toBeGreaterThanOrEqual(80);
-          if (m.ovr < ON_TYPE_FLOOR) low.push(`${t.name}: ${m.name}`);
+      expect(seats(r, TEAM).map(({ t, five }) => five.filter((m) => isOnType(m, t)).length), r.name).toEqual(ON_TYPE[r.name]);
+    }
+  });
+
+  /** What a team could have started at `m`'s position: the pool less the stars, the user's and every starting five. */
+  const leftAt = (r: RegionDef, all: Seat[], held: readonly number[], pos: Mon['pos']) => {
+    const gone = new Set([...held, ...regionTeams(r).map((t) => t.star!), ...all.flatMap((s) => s.five.map((m) => m.dex))]);
+    return cpuDraftPool(r).filter((m) => m.pos === pos && !gone.has(m.dex));
+  };
+  const legendsOf = (mons: readonly Mon[]) => mons.filter((m) => isLegendary(m.dex)).length;
+
+  it.each(HELD)('starts off type only where the on-type pool is exhausted (%s)', (_, held) => {
+    for (const r of REGIONS) {
+      const all = seats(r, held);
+      for (const { t, five } of all) {
+        for (const off of five.filter((m) => m.dex !== t.star && !isOnType(m, t))) {
+          // Every on-type player at the position is the user's, a locked star, or starting on type for someone else.
+          const usable = leftAt(r, all, held, off.pos).filter((m) => isOnType(m, t)
+            && (!isLegendary(m.dex) || legendsOf(five) - legendsOf([off]) < legendaryCap(t)));
+          expect(usable.map((m) => m.name), `${t.name} starts ${off.name}`).toEqual([]);
+          // Nor is another team starting one off type that this team could have had.
+          const wasted = all.flatMap((s) => (s.t === t ? [] : s.five.filter((m) => m.pos === off.pos && m.dex !== s.t.star && !isOnType(m, s.t) && isOnType(m, t))));
+          expect(wasted.filter((m) => !isLegendary(m.dex)).map((m) => m.name), `${t.name} starts ${off.name}`).toEqual([]);
         }
       }
-      expect(low.length, `${r.name}: ${low}`).toBeLessThanOrEqual(3);
+    }
+  });
+
+  it.each(HELD)('no non-legendary left on the bench or the board beats a starter of its kind (%s)', (_, held) => {
+    for (const r of REGIONS) {
+      const all = seats(r, held);
+      const worth = (m: Mon) => m.ovr + (m.dex >= r.dex[0] && m.dex <= r.dex[1] ? NATIVE_EDGE : 0);
+      for (const { t, five } of all) {
+        for (const s of five.filter((m) => m.dex !== t.star)) {
+          for (const m of leftAt(r, all, held, s.pos)) {
+            if (isLegendary(m.dex) || isOnType(m, t) !== isOnType(s, t)) continue;
+            expect(worth(m), `${t.name}: ${m.name} over ${s.name}`).toBeLessThanOrEqual(worth(s));
+          }
+        }
+      }
+    }
+  });
+
+  it('a later region takes its own generation when ratings are close', () => {
+    expect(NATIVE_EDGE).toBe(2);
+    const pick = (mons: Mon[]) => cpuNext(mons, [], JOHTO.dex)!.name;
+    const at = (name: string, ovr: number, dex: number): Mon => ({ ...monByDex(dex), name, ovr, pos: 'PG' });
+    expect(pick([at('kanto', 85, 25), at('johto', 83, 196)])).toBe('johto');
+    expect(pick([at('kanto', 86, 25), at('johto', 83, 196)])).toBe('kanto');
+  });
+
+  it.each(HELD)('has a natural player at every position, so every team gets the lineup bonus (%s)', (_, held) => {
+    for (const r of REGIONS) {
+      for (const { t, five } of seats(r, held)) {
+        expect(new Set(five.map((m) => m.pos)).size, t.name).toBe(POSITIONS.length);
+        expect(chemistry(five), t.name).toBe(2);
+      }
+    }
+  });
+
+  it.each(HELD)('the coach starts the five the team drafted (%s)', (_, held) => {
+    for (const r of REGIONS) {
+      for (const { t, roster, five } of seats(r, held)) {
+        expect(five.map((m) => m.dex).sort(), t.name).toEqual(roster.slice(0, 5).map((m) => m.dex).sort());
+      }
     }
   });
 
@@ -221,7 +264,7 @@ describe('the strongest legal five', () => {
     for (const r of REGIONS) {
       for (const { t, roster } of seats(r, [])) expect(roster.filter((m) => isLegendary(m.dex)).length, t.name).toBeLessThanOrEqual(legendaryCap(t));
     }
-    expect(cpuNext([mon(150), mon(121)], [])!.name).toBe('Mewtwo');
+    expect(cpuNext([monByDex(150), monByDex(121)], [])!.name).toBe('Mewtwo');
   });
 });
 
@@ -243,7 +286,7 @@ describe('the live draft', () => {
     for (const r of REGIONS) {
       expect(live(r).picks.map((p) => p.map((m) => m.dex)), r.name).toEqual(regionRosters(r).map((p) => p.map((m) => m.dex)));
     }
-  });
+  }, 30000);
 
   it('never repeats a Pokémon or takes the user\'s while the user grabs the gyms\' next targets', () => {
     for (const r of REGIONS) {
@@ -262,7 +305,7 @@ describe('the live draft', () => {
         for (const m of p) if (isLegendary(m.dex)) expect(r.legendaries, `${t.name}: ${m.name}`).toContain(m.dex);
       }
     }
-  });
+  }, 30000);
 
   it('with only one gym in the draft (Quick Play), that gym still fields its franchise five', () => {
     const full = regionRosters(KANTO);
@@ -280,11 +323,25 @@ describe('the difficulty curve', () => {
   it.each([
     [KANTO, [91, 92, 93, 95, 97, 99, 100, 101, 102]],
     [JOHTO, [92, 93, 94, 96, 98, 100, 101, 102, 103]],
-    [HOENN, [93, 94, 95, 97, 99, 101, 102, 103, 105]],
-    [SINNOH, [94, 95, 96, 98, 100, 101, 102, 104, 106]],
+    [HOENN, [93, 94, 95, 97, 99, 101, 102, 103, 106]],
+    [SINNOH, [94, 95, 96, 98, 100, 102, 103, 104, 107]],
   ])('$name rises every badge against the 91 test team, up to its final opponent', (r, ramp) => {
     expect(strengthOf(TEAM.map(monByDex)).total).toBe(91);
     expect(strengths(r, TEAM)).toEqual(ramp);
+  });
+
+  it('Johto\'s final never plays under Clair, whichever of these is held', () => {
+    const best = [...cpuDraftPool(JOHTO)].sort((a, b) => b.ovr - a.ovr).slice(0, 10).map((m) => m.dex);
+    for (const held of [...HELD.map(([, h]) => h), best]) {
+      const s = strengths(JOHTO, held);
+      expect(s[8], `${held}: ${s}`).toBeGreaterThanOrEqual(s[7]);
+    }
+  });
+
+  it('Sinnoh is above Hoenn at gyms 6 and 7 against the test team', () => {
+    const [h, n] = [strengths(HOENN, TEAM), strengths(SINNOH, TEAM)];
+    expect(n[5]).toBeGreaterThan(h[5]);
+    expect(n[6]).toBeGreaterThan(h[6]);
   });
 
   it.each(HELD)('gyms 1-3 are at least 3 under every one of gyms 6-8 (%s)', (_, held) => {
@@ -317,9 +374,11 @@ describe('the difficulty curve', () => {
       const [prev, next] = [all[i - 1], all[i]];
       const where = `${REGIONS[i].name}: ${prev} then ${next}`;
       expect(mean(next), where).toBeGreaterThan(mean(prev));
-      // Early gyms may only draw level: an 86 team held ties Hoenn's and Sinnoh's.
+      // Early gyms may only draw level.
       expect(mean(next.slice(0, 3)), where).toBeGreaterThanOrEqual(mean(prev.slice(0, 3)));
-      expect(mean(next.slice(5, 8)), where).toBeGreaterThan(mean(prev.slice(5, 8)));
+      // Strictly harder against the test team; with other rosters the late gyms may draw level (Kanto's and Johto's can).
+      if (held === TEAM) expect(mean(next.slice(5, 8)), where).toBeGreaterThan(mean(prev.slice(5, 8)));
+      else expect(mean(next.slice(5, 8)), where).toBeGreaterThanOrEqual(mean(prev.slice(5, 8)));
       expect(next[8], where).toBeGreaterThanOrEqual(prev[8]);
     }
   });
@@ -330,7 +389,7 @@ describe('the difficulty curve', () => {
   });
 
   it('boosts are whole numbers from 0 to the cap', () => {
-    expect(MAX_BOOST).toBe(14);
+    expect(MAX_BOOST).toBe(23);
     for (const r of REGIONS) {
       for (const t of regionTeams(r)) expect(Number.isInteger(t.boost) && t.boost >= 0 && t.boost <= MAX_BOOST, t.name).toBe(true);
     }

@@ -7,7 +7,7 @@ import { ordinal, snakePicks } from './draft.logic';
 import { monCard, summaryHtml, SWATCHES, typeChips } from './draftView';
 import { wireDraftShare } from '../season/draftShare';
 import { poolMons } from '../franchise/regions';
-import { livePick } from '../franchise/kantoDraft';
+import { cpuDraftPool, livePick } from '../franchise/kantoDraft';
 import { KANTO, regionTeams } from '../franchise/regions';
 
 export { monCard, typeChips };
@@ -213,7 +213,9 @@ export function draftScreen(
     if (slot < 0) return cpuPick(pool, rosters[t], teams[t].types);
     const held = rosters.flatMap((r, i) => (teams[i].human ? r.map((m) => m.dex) : []));
     const seated = regionTeams(KANTO).map((_, s) => rosters[teams.findIndex((x) => gymSlot(x) === s)] ?? []);
-    return livePick(KANTO, slot, seated, held, state.rounds ?? 5) ?? cpuPick(pool, rosters[t], teams[t].types);
+    // The fallback stays inside the gyms' own pool, so it can't hand one a later generation either.
+    const legal = new Set(cpuDraftPool(KANTO).map((m) => m.dex));
+    return livePick(KANTO, slot, seated, held, state.rounds ?? 5) ?? cpuPick(pool.filter((m) => legal.has(m.dex)), rosters[t], teams[t].types);
   };
   const size = state.rounds ?? 5;
   const picks = snakePicks(order, size);

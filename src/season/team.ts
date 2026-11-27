@@ -116,7 +116,7 @@ export function autoDraft(teams: DraftTeam[], size: number, fixed?: Mon[], from:
     const held = new Set((fixed ?? []).map((m) => m.dex));
     const cpu = cpuDraftPool(KANTO).filter((m) => !held.has(m.dex));
     const drafted = draftCpuLeague(
-      teams.map((t, i) => (fixed && i === 0 ? { human: true } : t)), size, cpu, fixed ? [] : pool);
+      teams.map((t, i) => (fixed && i === 0 ? { human: true } : t)), size, cpu, fixed ? [] : pool, KANTO.dex);
     drafted.forEach((r, i) => { if (!(fixed && i === 0)) rosters[i] = r; });
     const used = new Set(rosters.flat().map((m) => m.dex));
     return { rosters, leftovers: pool.filter((m) => !used.has(m.dex)) };

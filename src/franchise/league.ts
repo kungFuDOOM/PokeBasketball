@@ -361,7 +361,7 @@ function repairCpuTeams(f: Franchise): void {
     return i < 0 ? [] : [{ t, i, def: defs[i] }];
   });
   const held = new Set(f.teams.filter((t) => !cpu.some((c) => c.t === t)).flatMap((t) => t.roster.map((u) => f.players[u]?.dex)));
-  const drafted = draftCpuLeague(cpu.map((c) => c.def), 10, cpuDraftPool(region).filter((m) => !held.has(m.dex)));
+  const drafted = draftCpuLeague(cpu.map((c) => c.def), 10, cpuDraftPool(region).filter((m) => !held.has(m.dex)), [], region.dex);
   const rosters = signCpuRosters(f, cpu.map((c) => c.t), drafted);
   cpu.forEach(({ t, i, def }, k) => {
     t.boost = def.boost + (returned ? (KANTO_RETURN_BUMP[i] ?? 0) : 0);
@@ -738,14 +738,14 @@ function levelUp(p: FPlayer, rng = Math.random): string[] {
 }
 
 /**
- * Where a player on `team` may evolve to. A later region's gyms and final opponent never evolve a player into a later
- * generation than the region's own (a Piloswine of theirs stays one in Johto), whatever they drafted; everyone else
- * evolves freely.
+ * Where a player on `team` may evolve to. A region's gyms and final opponent never evolve a player into a later
+ * generation than the region's own (a Rhydon of theirs stays one in Kanto, a Piloswine in Johto), whatever they hold;
+ * the user's evolve freely.
  */
 function evolutionsFor(f: Franchise, team: number, to: number[]): number[] {
   const t = f.teams[team];
   const r = regionOf(f);
-  return t && !t.human && r.index > 0 ? to.filter((d) => d <= r.dex[1]) : to;
+  return t && !t.human ? to.filter((d) => d <= r.dex[1]) : to;
 }
 
 /** Applies a finished engine game to the league: score, standings, stats, XP, level-ups and evolutions. */
