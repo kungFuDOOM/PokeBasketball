@@ -31,7 +31,7 @@ describe('the Pack Battles judge', () => {
     const [h, g] = games[0].score;
     // Swap the seed on the row: the judge replays a different game, which can't match the signed inputs' result.
     const real = await judgeBattle(row);
-    const other = await judgeBattle({ ...row, seed: 90 });
+    const other = await judgeBattle({ ...row, seed: 123 });
     expect(real.verdict!.score).toEqual([h, g]);
     expect(other.verdict!.score).not.toEqual([h, g]);
   }, 300_000);

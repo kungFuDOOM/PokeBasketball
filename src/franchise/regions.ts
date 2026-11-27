@@ -25,7 +25,7 @@ export interface LeagueTeam {
 }
 
 /** The largest boost a gym or final opponent may carry. */
-export const MAX_BOOST = 16;
+export const MAX_BOOST = 17;
 
 /** A region's team. Every region's teams draft their rosters around their stars; later regions add a city. */
 export interface RegionTeam extends LeagueTeam {
@@ -60,7 +60,7 @@ export interface RegionDef {
 }
 
 /** Bump when any region's gym stars, legendaries, drafter or boosts change: older saves rebuild their gyms and Elite once on load. */
-export const GYMS_REV = 11;
+export const GYMS_REV = 12;
 /** The name from when only Kanto's teams were rebuilt. */
 export const KANTO_GYMS_REV = GYMS_REV;
 
@@ -74,18 +74,18 @@ export const KANTO: RegionDef = {
   // Each gym locks its star; then the nine draft from one board, type first, from Gen 1 only (see `kantoDraft.ts`).
   // The star is the gym's best Gen 1 family Pokémon of its type or its legendary. Boosts are fixed numbers that take each drafted card
   // to a set game strength (card OVR plus boost) against the 91 OVR test team; they never read the user's rating. Here:
-  // 91, 92, 93 for gyms 1-3, then 95, 97, 99, 101, 100, and 102 for the Elite.
+  // 91, 92, 93 for gyms 1-3, then 95, 97, 99, 101, 101, and 103 for the Elite. Giovanni plays at least even with Blaine.
   gyms: [
     { name: 'Pewter Boulders', abbr: 'PEW', color: '#a38c63', color2: '#2e271b', leader: 'Brock', types: ['Rock'], boost: 11, gym: 1, badge: 'Boulder', star: 112 },
     { name: 'Cerulean Cascades', abbr: 'CER', color: '#2bb3d6', color2: '#0b2c38', leader: 'Misty', types: ['Water'], boost: 6, gym: 2, badge: 'Cascade', star: 9 },
-    { name: 'Vermilion Thunder', abbr: 'VER', color: '#f2c522', color2: '#3a2f06', leader: 'Lt. Surge', types: ['Electric'], boost: 9, gym: 3, badge: 'Thunder', star: 145 },
-    { name: 'Celadon Rainbows', abbr: 'CEL', color: '#5cb85c', color2: '#13301a', leader: 'Erika', types: ['Grass'], boost: 15, gym: 4, badge: 'Rainbow', star: 3 },
-    { name: 'Fuchsia Ninjas', abbr: 'FCH', color: '#b04fc4', color2: '#2d1236', leader: 'Koga', types: ['Poison'], boost: 13, gym: 5, badge: 'Soul', star: 144 },
+    { name: 'Vermilion Thunder', abbr: 'VER', color: '#f2c522', color2: '#3a2f06', leader: 'Lt. Surge', types: ['Electric'], boost: 8, gym: 3, badge: 'Thunder', star: 145 },
+    { name: 'Celadon Rainbows', abbr: 'CEL', color: '#5cb85c', color2: '#13301a', leader: 'Erika', types: ['Grass'], boost: 14, gym: 4, badge: 'Rainbow', star: 3 },
+    { name: 'Fuchsia Ninjas', abbr: 'FCH', color: '#b04fc4', color2: '#2d1236', leader: 'Koga', types: ['Poison'], boost: 12, gym: 5, badge: 'Soul', star: 144 },
     { name: 'Saffron Psychics', abbr: 'SAF', color: '#f2668b', color2: '#3a1220', leader: 'Sabrina', types: ['Psychic'], boost: 16, gym: 6, badge: 'Marsh', star: 151 },
-    { name: 'Cinnabar Volcanoes', abbr: 'CIN', color: '#e8622c', color2: '#3d160b', leader: 'Blaine', types: ['Fire'], boost: 15, gym: 7, badge: 'Volcano', star: 146 },
+    { name: 'Cinnabar Volcanoes', abbr: 'CIN', color: '#e8622c', color2: '#3d160b', leader: 'Blaine', types: ['Fire'], boost: 16, gym: 7, badge: 'Volcano', star: 146 },
     { name: 'Viridian Quakes', abbr: 'VIR', color: '#7c9a3a', color2: '#1e2a0e', leader: 'Giovanni', types: ['Ground'], boost: 13, gym: 8, badge: 'Earth', star: 150 },
   ],
-  finale: { name: 'Indigo Elite', abbr: 'E4', color: '#d4a017', color2: '#2a2106', leader: 'The Elite Four', types: ['Ice', 'Fighting', 'Ghost', 'Dragon'], boost: 16, elite: true, star: 149 },
+  finale: { name: 'Indigo Elite', abbr: 'E4', color: '#d4a017', color2: '#2a2106', leader: 'The Elite Four', types: ['Ice', 'Fighting', 'Ghost', 'Dragon'], boost: 17, elite: true, star: 149 },
 };
 
 /**
@@ -109,7 +109,7 @@ export const JOHTO: RegionDef = {
     { name: 'Ecruteak Specters', abbr: 'ECR', city: 'Ecruteak City', color: '#6c4fa3', color2: '#1b1230', leader: 'Morty', types: ['Ghost'], boost: 11, gym: 4, badge: 'Fog', star: 94 },
     { name: 'Cianwood Crushers', abbr: 'CIA', city: 'Cianwood City', color: '#c0603a', color2: '#33170c', leader: 'Chuck', types: ['Fighting'], boost: 14, gym: 5, badge: 'Storm', star: 214 },
     { name: 'Olivine Irons', abbr: 'OLI', city: 'Olivine City', color: '#9aa6b2', color2: '#22282e', leader: 'Jasmine', types: ['Steel'], boost: 16, gym: 6, badge: 'Mineral', star: 208 },
-    { name: 'Mahogany Frost', abbr: 'MAH', city: 'Mahogany Town', color: '#7fd0e8', color2: '#0e2a33', leader: 'Pryce', types: ['Ice'], boost: 14, gym: 7, badge: 'Glacier', star: 131 },
+    { name: 'Mahogany Frost', abbr: 'MAH', city: 'Mahogany Town', color: '#7fd0e8', color2: '#0e2a33', leader: 'Pryce', types: ['Ice'], boost: 15, gym: 7, badge: 'Glacier', star: 131 },
     { name: 'Blackthorn Dragons', abbr: 'BLK', city: 'Blackthorn City', color: '#3d6fd8', color2: '#0f1a3a', leader: 'Clair', types: ['Dragon'], boost: 13, gym: 8, badge: 'Rising', star: 149 },
   ],
   finale: { name: 'Johto Elite', abbr: 'JOH', city: 'Indigo Plateau', title: 'Johto Elite Four & Champion Lance', color: '#b8323c', color2: '#2a0b0e',
@@ -157,7 +157,7 @@ export const SINNOH: RegionDef = {
   open: [392, 405, 437, 445, 448, 454, 461, 462, 464, 465, 466, 468, 470, 473, 475],
   gyms: [
     { name: 'Oreburgh Miners', abbr: 'ORE', city: 'Oreburgh City', color: '#8a8f99', color2: '#22252b', leader: 'Roark', types: ['Rock'], boost: 11, gym: 1, badge: 'Coal', star: 464 },
-    { name: 'Eterna Blooms', abbr: 'ETE', city: 'Eterna City', color: '#5fb05a', color2: '#143018', leader: 'Gardenia', types: ['Grass'], boost: 9, gym: 2, badge: 'Forest', star: 465 },
+    { name: 'Eterna Blooms', abbr: 'ETE', city: 'Eterna City', color: '#5fb05a', color2: '#143018', leader: 'Gardenia', types: ['Grass'], boost: 10, gym: 2, badge: 'Forest', star: 465 },
     { name: 'Veilstone Brawlers', abbr: 'VEI', city: 'Veilstone City', color: '#c8553d', color2: '#34120b', leader: 'Maylene', types: ['Fighting'], boost: 9, gym: 3, badge: 'Cobble', star: 448 },
     { name: 'Pastoria Marshes', abbr: 'PAS', city: 'Pastoria City', color: '#3f9bd6', color2: '#0d2a40', leader: 'Crasher Wake', types: ['Water'], boost: 11, gym: 4, badge: 'Fen', star: 419 },
     { name: 'Hearthome Phantoms', abbr: 'HEA', city: 'Hearthome City', color: '#8a5ec4', color2: '#22123a', leader: 'Fantina', types: ['Ghost'], boost: 13, gym: 5, badge: 'Relic', star: 429 },

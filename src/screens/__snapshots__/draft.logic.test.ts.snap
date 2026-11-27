@@ -11,8 +11,8 @@ exports[`cpuPick > full 4-team 10-round CPU draft is stable for a seed 1`] = `
     145,
     470,
     482,
-    254,
-    244,
+    445,
+    461,
   ],
   [
     483,
@@ -23,8 +23,8 @@ exports[`cpuPick > full 4-team 10-round CPU draft is stable for a seed 1`] = `
     6,
     243,
     377,
-    154,
-    143,
+    144,
+    254,
   ],
   [
     150,
@@ -34,9 +34,9 @@ exports[`cpuPick > full 4-team 10-round CPU draft is stable for a seed 1`] = `
     487,
     26,
     376,
-    144,
-    445,
     392,
+    135,
+    143,
   ],
   [
     493,
@@ -47,8 +47,8 @@ exports[`cpuPick > full 4-team 10-round CPU draft is stable for a seed 1`] = `
     146,
     380,
     65,
-    248,
-    448,
+    244,
+    3,
   ],
 ]
 `;

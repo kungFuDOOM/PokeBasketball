@@ -23,20 +23,19 @@ const HELD: [string, number[]][] = [
  * supply three cards that clear `STARTER_FLOOR` and `ON_TYPE_MARGIN`:
  * Giovanni has Marowak and Nidoqueen; Dugtrio starts for Brock and Onix is more than 8 under Lapras.
  * Morty has Haunter and Gengar; Misdreavus is 71.
- * Jasmine has Steelix and Skarmory; Magneton is more than 8 under the guard she can take, and Forretress is a center.
- * Pryce has Lapras; Jynx is 9 under Jolteon and the other ice finals are centers or under the floor.
+ * Pryce has Lapras; Jynx is 9 under Jolteon and the other ice finals are centers or under the floor. Gen 1 has no ice shooting guard.
  * Clair has Dragonite and Kingdra; Dragonair and Dratini are under the floor.
  * Candice has Weavile; the other ice cards are more than 8 under the forwards and center she can take.
  * Volkner drops to Raichu and Electivire when a much stronger small forward is free.
  */
-const THIN: Record<string, number> = { Giovanni: 2, Morty: 2, Jasmine: 2, Pryce: 1, Clair: 2, Candice: 1, Volkner: 2 };
+const THIN: Record<string, number> = { Giovanni: 2, Morty: 2, Pryce: 1, Clair: 2, Candice: 1, Volkner: 2 };
 
 /** The on-type starters each region's nine field (gyms in badge order, then the final) with the 91 test team held. */
 const ON_TYPE: Record<string, number[]> = {
-  Kanto: [5, 5, 3, 3, 3, 4, 3, 2, 4],
-  Johto: [5, 4, 4, 2, 3, 2, 1, 2, 4],
+  Kanto: [5, 5, 3, 4, 3, 4, 4, 2, 4],
+  Johto: [5, 4, 4, 2, 3, 3, 1, 2, 4],
   Hoenn: [4, 4, 3, 3, 3, 5, 3, 4, 5],
-  Sinnoh: [4, 3, 4, 5, 4, 5, 1, 3, 5],
+  Sinnoh: [4, 4, 4, 5, 4, 5, 1, 3, 5],
 };
 
 interface Seat { t: RegionTeam; roster: Mon[]; five: Mon[] }
@@ -346,10 +345,10 @@ describe('the difficulty curve', () => {
   const mean = (a: number[]) => a.reduce((x, y) => x + y, 0) / a.length;
 
   it.each([
-    [KANTO, [91, 92, 93, 95, 97, 99, 101, 100, 102]],
-    [JOHTO, [92, 93, 94, 96, 98, 100, 102, 102, 105]],
+    [KANTO, [91, 92, 93, 95, 97, 99, 101, 101, 103]],
+    [JOHTO, [92, 93, 95, 96, 98, 99, 103, 102, 105]],
     [HOENN, [94, 94, 95, 97, 99, 101, 102, 105, 106]],
-    [SINNOH, [95, 95, 96, 98, 100, 102, 105, 106, 107]],
+    [SINNOH, [95, 95, 96, 98, 100, 103, 105, 106, 107]],
   ])('$name rises every badge against the 91 test team, up to its final opponent', (r, ramp) => {
     expect(strengthOf(TEAM.map(monByDex)).total).toBe(91);
     expect(strengths(r, TEAM)).toEqual(ramp);
@@ -414,7 +413,7 @@ describe('the difficulty curve', () => {
   });
 
   it('boosts are whole numbers from 0 to the cap', () => {
-    expect(MAX_BOOST).toBe(16);
+    expect(MAX_BOOST).toBe(17);
     for (const r of REGIONS) {
       for (const t of regionTeams(r)) expect(Number.isInteger(t.boost) && t.boost >= 0 && t.boost <= MAX_BOOST, t.name).toBe(true);
     }

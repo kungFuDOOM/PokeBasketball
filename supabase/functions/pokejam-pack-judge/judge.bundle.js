@@ -1139,7 +1139,7 @@ var ROWS = [
   [229, "Houndoom", ["Dark", "Fire"], "SG", 88, 82, 78, 66, 84, 58, 58, 82],
   [637, "Volcarona", ["Bug", "Fire"], "SF", 78, 88, 72, 72, 72, 72, 66, 74],
   // Ground
-  [105, "Marowak", ["Ground"], "SG", 70, 82, 74, 64, 80, 62, 64, 72],
+  [105, "Marowak", ["Ground"], "SG", 77, 82, 77, 76, 80, 62, 64, 77],
   [530, "Excadrill", ["Ground", "Steel"], "SF", 84, 66, 92, 58, 80, 70, 70, 76],
   [383, "Groudon", ["Ground"], "PF", 74, 70, 96, 60, 84, 94, 96, 62],
   [382, "Kyogre", ["Water"], "C", 68, 88, 88, 70, 76, 93, 96, 60],
@@ -1167,6 +1167,17 @@ var ROWS = [
   [628, "Braviary", ["Normal", "Flying"], "PF", 78, 62, 90, 60, 82, 80, 84, 64],
   [697, "Tyrantrum", ["Rock", "Dragon"], "C", 66, 54, 95, 54, 82, 88, 90, 58],
   [959, "Tinkaton", ["Fairy", "Steel"], "SG", 80, 82, 84, 70, 90, 66, 60, 78],
+  // Gen 1 shooting guards. Nine Kanto teams each need one, and only eight cleared 74. These stay under 88 and under
+  // their evolutions (Venusaur, Charizard, Rapidash, Gengar, Poliwrath, Magnezone).
+  [2, "Ivysaur", ["Grass", "Poison"], "SG", 75, 79, 74, 74, 74, 58, 58, 74],
+  [5, "Charmeleon", ["Fire"], "SG", 73, 77, 73, 72, 73, 55, 57, 73],
+  [12, "Butterfree", ["Bug", "Flying"], "SG", 73, 77, 73, 72, 73, 54, 55, 73],
+  [49, "Venomoth", ["Bug", "Poison"], "SG", 77, 77, 72, 72, 72, 61, 61, 72],
+  [57, "Primeape", ["Fighting"], "SG", 80, 75, 81, 71, 75, 56, 64, 71],
+  [61, "Poliwhirl", ["Water"], "SG", 77, 77, 72, 72, 72, 55, 60, 72],
+  [77, "Ponyta", ["Fire"], "SG", 77, 78, 74, 74, 74, 53, 56, 74],
+  [82, "Magneton", ["Electric", "Steel"], "SG", 72, 83, 72, 72, 74, 67, 59, 72],
+  [93, "Haunter", ["Ghost", "Poison"], "SG", 80, 83, 69, 69, 70, 52, 49, 73],
   // Position calls: same ratings as the formula, played where they fit
   [17, "Pidgeotto", ["Normal", "Flying"], "SF", 66, 60, 65, 56, 67, 52, 58, 61],
   [162, "Furret", ["Normal"], "SF", 77, 60, 75, 58, 72, 63, 68, 66],

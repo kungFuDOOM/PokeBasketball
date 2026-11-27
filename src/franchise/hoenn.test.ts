@@ -105,8 +105,8 @@ describe('Gen 3 data (#252-386)', () => {
   it('leaves every other Pokémon exactly as it was (digests pinned from the Johto branch)', () => {
     const others = POKEMON.filter((m) => !gen3(m.dex) && !newGen4(m.dex));
     expect(others).toHaveLength(277);
-    // Digest moved when the legendary ladder retuned the Gen 1-2 cards in this set.
-    expect(fnv(JSON.stringify(others))).toBe('a9052cf6');
+    // Digest moved when the Gen 1 shooting guards were buffed (and earlier, when the legendary ladder retuned Gen 1-2).
+    expect(fnv(JSON.stringify(others))).toBe('cd39cc80');
     // Evolutions of the Pokémon that were in the game before Sinnoh, leaving out the new Sinnoh forms they gained (Eevee -> Glaceon).
     const before = Object.entries(EVOLUTIONS).filter(([k]) => !gen3(Number(k)) && !newGen4(Number(k)))
       .map(([k, e]) => [k, { level: e.level, to: e.to.filter((d) => !newGen4(d)) }]).filter(([, e]) => (e as { to: number[] }).to.length);
