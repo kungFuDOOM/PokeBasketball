@@ -160,7 +160,7 @@ export function quickPlay(root: HTMLElement, settings: Settings, audio: Audio, a
       <div class="nx-team" style="--tc:${color}">
         <span class="where">${esc(sub)}</span>
         <h3 class="${mine ? 'nx-name' : ''}">${esc(name)}</h3>
-        ${strengthHtml(strengthOf(mons, boost))}
+        ${strengthHtml(strengthOf(mons, boost), '', !mine)}
         ${lineupHtml(mons)}
         ${bench.length ? `<p class="note nx-bench-lbl">Bench</p><div class="nx-bench">${lineupHtml(bench)}</div>` : ''}
       </div>`;

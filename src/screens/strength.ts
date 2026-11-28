@@ -16,7 +16,10 @@ export function strengthOf(starters: Mon[], boost = 0): Strength {
   return { ovr, chem: chemistry(starters), boost, total: Math.round(ovr + boost) };
 }
 
-export function strengthHtml(s: Strength, record = ''): string {
+/** A CPU card passes `hideOvr`: Team OVR next to Game strength would show how far the team is boosted. */
+export function strengthHtml(s: Strength, record = '', hideOvr = false): string {
+  const plays = `<span class="nx-plays">Game strength <b>${s.total}</b></span>`;
+  if (hideOvr) return `<p class="nx-str">${record ? `<span>${record}</span>` : ''}${plays}</p>`;
   const lineup = s.chem ? `OVR includes +${s.chem} lineup bonus` : 'No lineup bonus';
-  return `<p class="nx-str"><span>${record ? `${record} · ` : ''}${s.ovr} OVR</span><span class="nx-plays">Game strength <b>${s.total}</b></span><small>${lineup}</small></p>`;
+  return `<p class="nx-str"><span>${record ? `${record} · ` : ''}${s.ovr} OVR</span>${plays}<small>${lineup}</small></p>`;
 }
