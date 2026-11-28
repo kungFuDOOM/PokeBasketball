@@ -1,4 +1,5 @@
-// The CPU league drafter for every region's gyms and final opponent. It is type-first: each team starts as many players
+// The CPU league drafter for gyms and final opponents. The game no longer drafts with it: franchise and Quick Play gyms
+// field the fixed rosters in `gymRosters.ts`, which it produced; tests and scripts still use it. It is type-first: each team starts as many players
 // of its own types as the pool can legally supply, and only then looks at ratings (the `STRENGTH_FIRST` leaders are the
 // exception: they draft for ratings alone). A starter has to clear
 // `STARTER_FLOOR` (a card under it may only ride the bench, and only when no legal floor-clearing card can). An on-type

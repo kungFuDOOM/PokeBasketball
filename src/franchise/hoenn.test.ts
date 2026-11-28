@@ -10,7 +10,7 @@ import {
   regionOf, regionStatus, regionTitles, rookieOnClock, rookiePick, saveFranchise, seasonWeeks, sign, startRookieDraft, venueOf, weekGames,
   type Franchise,
 } from './league';
-import { regionRosters } from './kantoDraft';
+import { GYM_ROSTERS } from './gymRosters';
 import { shouldPlayMasterCutscene } from './moments';
 import { HOENN, JOHTO, REGIONS, SINNOH, inPool, openRegionIds, poolMons, regionTeams } from './regions';
 import type { Game } from '../game/game';
@@ -345,7 +345,7 @@ describe('entering and playing Hoenn', () => {
     expect(f.teams[0]).toEqual(me);
     expect(f.teams.slice(1).map((t) => t.name)).toEqual(regionTeams(HOENN).map((t) => t.name));
     expect(f.teams.slice(1).map((t) => t.roster.map((u) => f.players[u].dex)))
-      .toEqual(regionRosters(HOENN, f.teams[0].roster.map((u) => f.players[u].dex)).map((x) => x.map((m) => m.dex)));
+      .toEqual(GYM_ROSTERS.hoenn);
     expect(Object.keys(f.players).length).toBeGreaterThanOrEqual(before);
     expect(Object.keys(f.players).length).toBeLessThan(before + 90);
     const refs = [...f.teams.flatMap((t) => t.roster), ...f.freeAgents];

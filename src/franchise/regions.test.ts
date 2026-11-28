@@ -11,7 +11,8 @@ import {
 } from './league';
 import { shouldPlayMasterCutscene } from './moments';
 import { RANKED_PRESETS } from '../multiplayer/ranked/presets';
-import { kantoRosters, lineupWithStar, regionRosters } from './kantoDraft';
+import { kantoRosters, lineupWithStar } from './kantoDraft';
+import { GYM_ROSTERS } from './gymRosters';
 import { RANKED_MAX_OVR } from '../multiplayer/shared/roster';
 import { HOENN, JOHTO, KANTO, MAX_BOOST, REGIONS, SINNOH, inPool, nextRegion, openRegionIds, poolMons, regionTeams } from './regions';
 
@@ -546,7 +547,7 @@ describe('entering Johto', () => {
     expect(f.teams.map((t) => t.id)).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
     expect(f.teams.slice(1).map((t) => t.name)).toEqual(regionTeams(JOHTO).map((t) => t.name));
     expect(f.teams.slice(1).map((t) => t.roster.map((u) => f.players[u].dex)))
-      .toEqual(regionRosters(JOHTO, f.teams[0].roster.map((u) => f.players[u].dex)).map((x) => x.map((m) => m.dex)));
+      .toEqual(GYM_ROSTERS.johto);
     // Released to free agency; a Johto team may sign one straight back.
     for (const u of oldCpu) expect([...f.freeAgents, ...f.teams.slice(1).flatMap((t) => t.roster)]).toContain(u);
     // Every player belongs to exactly one place, and every reference resolves.

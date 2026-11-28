@@ -1,4 +1,4 @@
-import { POKEMON, POSITIONS, RATING_LABELS, SPECIALS, TYPE_COLORS, spriteUrl, type Mon, type PokeType, type Pos, type Ratings } from '../data/pokemon';
+import { POSITIONS, RATING_LABELS, SPECIALS, TYPE_COLORS, spriteUrl, type Mon, type PokeType, type Pos, type Ratings } from '../data/pokemon';
 import type { Audio } from '../game/audio';
 import { bestLineup, chemistry, teamOvr } from '../game/game';
 import { isNameBlocked } from '../nameFilter';
@@ -7,8 +7,6 @@ import { ordinal, snakePicks } from './draft.logic';
 import { monCard, summaryHtml, SWATCHES, typeChips } from './draftView';
 import { wireDraftShare } from '../season/draftShare';
 import { poolMons } from '../franchise/regions';
-import { cpuDraftPool, livePick } from '../franchise/kantoDraft';
-import { KANTO, regionTeams } from '../franchise/regions';
 
 export { monCard, typeChips };
 
@@ -83,8 +81,6 @@ export interface DraftTeam {
   gym?: number;
   badge?: string;
   elite?: boolean;
-  /** A Kanto gym's locked star: its first pick, whatever else has been taken. */
-  star?: number;
 }
 
 /** Overall of the five who would start. */
@@ -192,8 +188,8 @@ export function draftScreen(
   onDone: (rosters: Mon[][], leftovers: Mon[]) => void,
   onBack: () => void,
   onProgress: (state: DraftState) => void,
-  /** `customize: false` leaves out the rename / color picker on the draft-complete screen; `pool` replaces the draftable Pokémon. */
-  opts: { customize?: boolean; pool?: readonly Mon[] } = {},
+  /** `customize: false` leaves out the rename / color picker on the draft-complete screen; `pool` replaces the draftable Pokémon; `cpuOk` limits what CPU teams (not you, not Auto-pick) may take. */
+  opts: { customize?: boolean; pool?: readonly Mon[]; cpuOk?: (m: Mon) => boolean } = {},
 ) {
   const { teams, order } = state;
   // Own container so listeners die with the screen.
@@ -202,21 +198,8 @@ export function draftScreen(
   host.replaceChildren(root);
   const pool = [...(opts.pool ?? poolMons(state.regions))].sort((a, b) => b.ovr - a.ovr);
   const rosters: Mon[][] = teams.map(() => []);
-  /** A gym's or the Elite's place in `regionTeams(KANTO)`; -1 for any other team. */
-  const gymSlot = (team: (typeof teams)[number]) => (team.human || team.star == null ? -1 : regionTeams(KANTO).findIndex((d) => d.name === team.name));
-  /**
-   * A CPU pick. A gym or the Elite takes its star first, then drafts as the nine Kanto teams do together (`livePick`),
-   * around what each already holds and what the user has taken, so no two of them end up with the same Pokémon.
-   */
-  const cpuMon = (t: number): Mon => {
-    const slot = gymSlot(teams[t]);
-    if (slot < 0) return cpuPick(pool, rosters[t], teams[t].types);
-    const held = rosters.flatMap((r, i) => (teams[i].human ? r.map((m) => m.dex) : []));
-    const seated = regionTeams(KANTO).map((_, s) => rosters[teams.findIndex((x) => gymSlot(x) === s)] ?? []);
-    // The fallback stays inside the gyms' own pool, so it can't hand one a later generation either.
-    const legal = new Set(cpuDraftPool(KANTO).map((m) => m.dex));
-    return livePick(KANTO, slot, seated, held, state.rounds ?? 5) ?? cpuPick(pool.filter((m) => legal.has(m.dex)), rosters[t], teams[t].types);
-  };
+  /** What team `t` may pick from by CPU logic: the whole board, or only what `opts.cpuOk` allows for CPU teams. */
+  const cpuPool = (t: number) => (opts.cpuOk && !teams[t].human ? pool.filter(opts.cpuOk) : pool);
   const size = state.rounds ?? 5;
   const picks = snakePicks(order, size);
   const me = teams.findIndex((t) => t.human);
@@ -395,9 +378,7 @@ export function draftScreen(
   const record = (m: Mon, note?: string) => {
     const t = picks[pick];
     state.taken.push(m.dex);
-    // A gym's pick need not be on the board: a locked region's Pokémon, or a star the user holds.
-    const i = pool.findIndex((p) => p.dex === m.dex);
-    if (i >= 0) pool.splice(i, 1);
+    pool.splice(pool.indexOf(m), 1);
     rosters[t].push(m);
     log.push(`${note ?? `${teams[t].human ? 'You' : teams[t].name} selected`} ${m.name} (${m.pos}, ${m.ovr})`);
     pick++;
@@ -450,7 +431,7 @@ export function draftScreen(
   const scheduleCpu = () => {
     window.clearTimeout(cpuTimer);
     if (!done && picks[pick] !== me) {
-      cpuTimer = window.setTimeout(() => take(cpuMon(picks[pick])), 280);
+      cpuTimer = window.setTimeout(() => take(cpuPick(cpuPool(picks[pick]), rosters[picks[pick]], teams[picks[pick]].types)), 280);
     }
   };
 
@@ -487,7 +468,7 @@ export function draftScreen(
     if (a === 'auto' && userTurn()) take(cpuPick(pool, rosters[me]));
     if (a === 'sim' && !done) {
       window.clearTimeout(cpuTimer);
-      while (pick < picks.length) record(picks[pick] === me ? cpuPick(pool, rosters[me]) : cpuMon(picks[pick]));
+      while (pick < picks.length) record(cpuPick(cpuPool(picks[pick]), rosters[picks[pick]], teams[picks[pick]].types));
       finish();
     }
   });
@@ -501,9 +482,7 @@ export function draftScreen(
   for (const dex of saved) {
     if (pick >= picks.length) break;
     // A Pokémon no longer in the game (older save): that pick becomes the team's best available.
-    const onBoard = pool.find((x) => x.dex === dex)
-      ?? (teams[picks[pick]].star != null && picks[pick] !== me ? POKEMON.find((x) => x.dex === dex) : undefined);
-    record(onBoard ?? (picks[pick] === me ? cpuPick(pool, rosters[me]) : cpuMon(picks[pick])));
+    record(pool.find((x) => x.dex === dex) ?? cpuPick(cpuPool(picks[pick]), rosters[picks[pick]], teams[picks[pick]].types));
   }
   if (saved.length) log.push(`Draft resumed at pick ${pick + 1}.`);
   if (pick >= picks.length) return finish();

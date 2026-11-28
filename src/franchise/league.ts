@@ -8,7 +8,8 @@ import { safeName } from '../nameFilter';
 import { fixAbbr } from '../util';
 import { USER_STYLE, contrastAway } from '../multiplayer/shared/matchSetup';
 import { strengthOf, type Strength } from '../screens/strength';
-import { cpuDraftPool, draftCpuLeague, lineupWithStar, regionRosters, starOf } from './kantoDraft';
+import { lineupWithStar, starOf } from './kantoDraft';
+import { gymRosters } from './gymRosters';
 import { GYMS_REV, KANTO, KANTO_RETURN_BUMP, REGIONS, SINNOH, inPool, nextRegion, openRegionIds, regionById, regionTeams, type LeagueTeam, type RegionDef } from './regions';
 
 const SAVE_KEY = 'pokejam.franchise.v1';
@@ -256,7 +257,7 @@ export function createFranchise(
     players[uid] = { uid, dex: m.dex, level: 1, xp: 0, bonus: {}, stats: emptyStats(), ovrStart: withBonus(m.dex, {}).ovr };
     return uid;
   };
-  return {
+  const f: Franchise = {
     version: 1,
     season: 1,
     week: 1,
@@ -271,6 +272,23 @@ export function createFranchise(
     news: [],
     history: [],
   };
+  seatFixedGyms(f);
+  return f;
+}
+
+/**
+ * A new franchise's gyms and Elite field their fixed Kanto rosters, whatever the draft gave those teams (their picks join
+ * free agency). The user's team is untouched.
+ */
+function seatFixedGyms(f: Franchise) {
+  const defs = regionTeams(KANTO);
+  const fixed = gymRosters(KANTO);
+  const gyms = f.teams.flatMap((t) => {
+    const i = t.human ? -1 : defs.findIndex((d) => d.name === t.name);
+    return i < 0 ? [] : [{ t, i }];
+  });
+  const rosters = signCpuRosters(f, gyms.map((g) => g.t), gyms.map((g) => fixed[g.i]));
+  gyms.forEach(({ t }, k) => { t.roster = rosters[k]; });
 }
 
 export function saveFranchise(f: Franchise) {
@@ -325,7 +343,7 @@ function cleanTeams(teams: unknown, cpu: LeagueTeam[] = LEAGUE): boolean {
 }
 
 /**
- * Puts drafted rosters (dex numbers) into the save and returns their uids. Every player on an `old` roster is released
+ * Puts CPU rosters (dex numbers) into the save and returns their uids. Every player on an `old` roster is released
  * first, since one team's old player may be on another team's new one. A drafted species already in free agency is
  * signed with its levels; otherwise the player is new.
  */
@@ -345,11 +363,10 @@ function signCpuRosters(f: Franchise, old: readonly FTeam[], rosters: readonly M
 }
 
 /**
- * Old saves hold CPU teams from an earlier design (Brock could be starting Mewtwo, later regions had fixed rosters). A
- * save below `GYMS_REV` rebuilds its current region's eight gyms and final opponent once, in one draft with the current
- * drafter, and sets their boosts (lowered as well as raised; Kanto adds the return bump after a Sinnoh title). The
- * user's team is never touched: the nine draft around what it holds, as in a new season there. It runs once per
- * revision, so later trades and rookie picks stick.
+ * Old saves hold CPU teams from an earlier design (Brock could be starting Mewtwo, gyms were drafted around the user). A
+ * save below `GYMS_REV` reloads its current region's eight gyms and final opponent once, with their fixed rosters and
+ * boosts (lowered as well as raised; Kanto adds the return bump after a Sinnoh title). The user's team is never
+ * touched. It runs once per revision, so later trades and rookie picks stick.
  */
 function repairCpuTeams(f: Franchise): void {
   if ((f.gymsRev ?? 0) >= GYMS_REV) return;
@@ -360,9 +377,8 @@ function repairCpuTeams(f: Franchise): void {
     const i = t.human ? -1 : defs.findIndex((d) => (d.elite ? t.elite : d.gym === t.gym));
     return i < 0 ? [] : [{ t, i, def: defs[i] }];
   });
-  const held = new Set(f.teams.filter((t) => !cpu.some((c) => c.t === t)).flatMap((t) => t.roster.map((u) => f.players[u]?.dex)));
-  const drafted = draftCpuLeague(cpu.map((c) => c.def), 10, cpuDraftPool(region).filter((m) => !held.has(m.dex)), [], region.dex);
-  const rosters = signCpuRosters(f, cpu.map((c) => c.t), drafted);
+  const fixed = gymRosters(region);
+  const rosters = signCpuRosters(f, cpu.map((c) => c.t), cpu.map((c) => fixed[c.i]));
   cpu.forEach(({ t, i, def }, k) => {
     t.boost = def.boost + (returned ? (KANTO_RETURN_BUMP[i] ?? 0) : 0);
     t.roster = rosters[k];
@@ -574,13 +590,12 @@ export function regionStatus(f: Franchise): RegionStatus {
 }
 
 /**
- * Swaps in a region's nine CPU teams, drafted around the Pokémon the user holds (see `regionRosters`); the old CPU
+ * Swaps in a region's nine CPU teams with their fixed rosters (`gymRosters.ts`); the old CPU
  * players join free agency. `bump` is added to each team's boost, in the order of `regionTeams`.
  */
 function seatRegion(f: Franchise, r: RegionDef, bump: readonly number[] = []) {
   const me = f.teams[0];
-  const drafted = regionRosters(r, me.roster.map((u) => f.players[u].dex));
-  const rosters = signCpuRosters(f, f.teams.filter((t) => !t.human), drafted);
+  const rosters = signCpuRosters(f, f.teams.filter((t) => !t.human), gymRosters(r));
   f.teams = [me, ...regionTeams(r).map((t, i): FTeam => ({
     id: i + 1, name: t.name, abbr: t.abbr, color: t.color, color2: t.color2, human: false, leader: t.leader, types: [...t.types], boost: t.boost + (bump[i] ?? 0),
     ...(t.gym ? { gym: t.gym, badge: t.badge } : {}), ...(t.elite ? { elite: true } : {}),
@@ -596,8 +611,8 @@ function seatRegion(f: Franchise, r: RegionDef, bump: readonly number[] = []) {
 
 /**
  * Moves the league to an unlocked region at the start of a season. The user's team keeps everything (id, players,
- * levels, lineup, name and colors). The old CPU players join free agency and the region's teams draft around the
- * user's. Schedule and records start over; history, titles and awards stay.
+ * levels, lineup, name and colors). The old CPU players join free agency and the region's teams come in with their
+ * fixed rosters. Schedule and records start over; history, titles and awards stay.
  */
 export function enterRegion(f: Franchise, id: string): boolean {
   const st = regionStatus(f);
@@ -878,7 +893,7 @@ function computeAwards(f: Franchise): Award[] {
 }
 
 /**
- * The return to Kanto after a Sinnoh title: the Kanto teams draft around the user's roster like any region's
+ * The return to Kanto after a Sinnoh title: the Kanto teams take their fixed rosters like any region's
  * (`seatRegion`), with the return bump on their boosts. Old CPU players become free agents and keep their levels.
  */
 export function bringBackKanto(f: Franchise): void {

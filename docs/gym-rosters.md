@@ -1,5 +1,7 @@
 # Gym rosters (themed pass)
 
+These are the fixed franchise rosters (`src/franchise/gymRosters.ts`), captured from the drafter.
+
 Held: the 91 test team (Alakazam, Lucario, Charizard, Garchomp, Snorlax; card 91, game 91).
 Each line is starting five, then bench in brackets, then card OVR + boost = game strength. ★ is the gym star. † is off-type.
 
