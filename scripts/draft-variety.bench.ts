@@ -29,7 +29,7 @@ function draft(mode: 'old' | 'new', fixedSlot: number | null): number[] {
   const order = fixedSlot === null ? shuffle(teams.map((_, i) => i)) : (() => { const o = shuffle(teams.slice(1).map((_, i) => i + 1)); o.splice(fixedSlot - 1, 0, 0); return o; })();
   const rosters: Mon[][] = teams.map(() => []);
   for (const t of snakePicks(order, ROUNDS)) {
-    const m = t === 0 ? pool[0] : (mode === 'new' ? cpuPick : oldPick)(pool, rosters[t], teams[t].types);
+    const m = t === 0 ? pool[0] : (mode === 'new' ? cpuPick(pool, rosters[t]) : oldPick(pool, rosters[t], teams[t].types));
     pool.splice(pool.indexOf(m), 1);
     rosters[t].push(m);
   }

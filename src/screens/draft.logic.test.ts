@@ -2,7 +2,7 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { POKEMON, POSITIONS, type Mon } from '../data/pokemon';
 import { bestLineup, teamOvr } from '../game/game';
-import { countAt, CPU_REACH, cpuPick, posTrackHtml, STAR_BONUS, STAR_BY_PICK, targetPer } from './draft';
+import { countAt, cpuPick, posTrackHtml, targetPer } from './draft';
 import { snakePicks } from './draft.logic';
 
 const pool = [...POKEMON].sort((a, b) => b.ovr - a.ovr);
@@ -21,11 +21,11 @@ beforeAll(() => { vi.stubGlobal('window', {}); });
 afterEach(() => vi.restoreAllMocks());
 
 /** Runs a full snake draft of CPU picks, like "Sim rest" does. */
-function simDraft(order: number[], size: number, types: (string[] | undefined)[]) {
+function simDraft(order: number[], size: number) {
   const left = [...pool];
   const rosters: Mon[][] = order.map(() => []);
   for (const t of snakePicks(order, size)) {
-    const m = cpuPick(left, rosters[t], types[t] as never);
+    const m = cpuPick(left, rosters[t]);
     left.splice(left.indexOf(m), 1);
     rosters[t].push(m);
   }
@@ -68,7 +68,7 @@ describe('cpuPick', () => {
     let roster: Mon[] = [];
     let left = [...pool];
     for (let i = 0; i < 6; i++) {
-      const m = cpuPick(left, roster, i % 2 ? ['Fire', 'Water'] : []);
+      const m = cpuPick(left, roster);
       picks.push(`${m.dex}`);
       roster = [...roster, m];
       left = left.filter((x) => x !== m);
@@ -79,56 +79,13 @@ describe('cpuPick', () => {
     seeded(2);
     expect(cpuPick([pool[5]], [])).toBe(pool[5]);
   });
-  it('nudges toward an open position (+5) over a filled one (+0) at equal rating', () => {
-    vi.spyOn(Math, 'random').mockReturnValue(0);
-    const a = { ...pool.find((m) => m.pos === 'PG')!, ovr: 80 } as Mon;
-    const b = { ...pool.find((m) => m.pos === 'C')!, ovr: 80 } as Mon;
-    expect(cpuPick([a, b], [{ ...a }, { ...a }])).toBe(b);
-    expect(cpuPick([a, b], [{ ...b }, { ...b }])).toBe(a);
-  });
-  it('favors team types by +8', () => {
-    vi.spyOn(Math, 'random').mockReturnValue(0);
-    const a = { ...pool[0], ovr: 70, types: ['Fire'], pos: 'PG' } as Mon;
-    const b = { ...pool[1], ovr: 76, types: ['Grass'], pos: 'PG' } as Mon;
-    expect(cpuPick([a, b], [], ['Fire'])).toBe(a);
-    expect(cpuPick([a, b], [], [])).toBe(b);
-  });
-  it('never reaches more than CPU_REACH below the best available, whatever the noise', () => {
-    for (const r of [0, 0.5, 0.999999]) {
-      const rest = [...pool].reverse();
-      const roster = POKEMON.filter((m) => m.pos === 'C').slice(0, 2);
-      const m = cpuPick(rest, roster, ['Fire', 'Water', 'Grass'], () => r);
-      expect(m.ovr).toBeGreaterThanOrEqual(pool[0].ovr - CPU_REACH);
-    }
-    seeded(7);
-    for (let i = 0; i < 300; i++) {
-      const left = [...pool];
-      const m = cpuPick(left, [], ['Fire']);
-      expect(m.ovr).toBeGreaterThanOrEqual(left[0].ovr - CPU_REACH);
-    }
-  });
-  it('is less predictable: different players come off the top from draft to draft', () => {
-    seeded(11);
-    const firsts = new Set(Array.from({ length: 60 }, () => cpuPick(pool, [], []).dex));
-    expect(firsts.size).toBeGreaterThanOrEqual(5);
-  });
-  it('still fills positions: a 10-round draft covers (almost) every slot, a 5-round draft most of them', () => {
+  it('a 10-round draft fills every position with two', () => {
     seeded(5);
-    let missing = 0;
-    let slots = 0;
-    let covered = 0;
-    let teams5 = 0;
-    for (let run = 0; run < 20; run++) {
-      for (const r of simDraft([0, 1, 2, 3, 4, 5], 10, []).rosters) for (const p of POSITIONS) { slots++; if (!countAt(r, p)) missing++; }
-      for (const r of simDraft([0, 1], 5, []).rosters) { teams5++; covered += POSITIONS.filter((p) => countAt(r, p)).length; }
-    }
-    expect(missing / slots).toBeLessThan(0.01);
-    // Averages ~3.9 of 5 across seeds; a 5-round draft can't always cover every slot.
-    expect(covered / teams5).toBeGreaterThanOrEqual(3.75);
+    for (const r of simDraft([0, 1, 2, 3, 4, 5], 10).rosters) for (const p of POSITIONS) expect(countAt(r, p)).toBe(2);
   });
   it('full 4-team 10-round CPU draft is stable for a seed', () => {
     seeded(99);
-    const { rosters, left } = simDraft([2, 0, 3, 1], 10, [['Fire'], undefined, ['Water', 'Ice'], []]);
+    const { rosters, left } = simDraft([2, 0, 3, 1], 10);
     expect(rosters.map((r) => r.map((m) => m.dex))).toMatchSnapshot();
     expect(left).toHaveLength(pool.length - 40);
     expect(rosters.map((r) => teamOvr(bestLineup(r).starters))).toMatchSnapshot();
@@ -155,72 +112,3 @@ describe('posTrackHtml (need/thin/ok classes)', () => {
     expect(posTrackHtml([pg[0], pg[1]], 10).match(/class="ok"/g)).toHaveLength(1);
   });
 });
-
-describe('themed CPU teams', () => {
-  const themes = [['Fire'], ['Water', 'Ice'], ['Grass'], ['Electric'], ['Psychic'], ['Dragon']];
-  const isOn = (m: Mon, ty: string[]) => m.types.some((t) => ty.includes(t));
-  it('never passes the top players for its type star: every pick stays within CPU_REACH of the best left', () => {
-    seeded(21);
-    for (let run = 0; run < 40; run++) {
-      const left = [...pool];
-      const rosters: Mon[][] = themes.map(() => []);
-      for (const t of snakePicks([0, 1, 2, 3, 4, 5], 10)) {
-        const m = cpuPick(left, rosters[t], themes[t] as never);
-        expect(m.ovr).toBeGreaterThanOrEqual(left[0].ovr - CPU_REACH);
-        left.splice(left.indexOf(m), 1);
-        rosters[t].push(m);
-      }
-    }
-    // The live bug: an off-type 97 on the board and only weak on-type Pokémon. The team must not take an 80.
-    for (const r of [0, 0.5, 0.999999]) {
-      const top = { ...pool[0], ovr: 97, types: ['Psychic'], pos: 'SF' } as Mon;
-      const weak = { ...pool[1], ovr: 80, types: ['Grass'], pos: 'SF' } as Mon;
-      expect(cpuPick([top, weak], [], ['Grass'], () => r)).toBe(top);
-      expect(cpuPick([top, weak], [pool[2], pool[3]].map((m) => ({ ...m, types: ['Normal'] }) as Mon), ['Grass'], () => r)).toBe(top);
-    }
-  });
-  it(`favors an on-type star by +${STAR_BONUS} while it has none`, () => {
-    vi.spyOn(Math, 'random').mockReturnValue(0);
-    const a = { ...pool[0], ovr: 90, types: ['Fire'], pos: 'PG' } as Mon;
-    const b = { ...pool[1], ovr: 90 + STAR_BONUS - 1, types: ['Grass'], pos: 'PG' } as Mon;
-    expect(cpuPick([a, b], [], ['Fire'])).toBe(a);
-    expect(cpuPick([a, b], [], [])).toBe(b);
-    expect(cpuPick([a, b], [{ ...a, pos: 'C' }], ['Fire'])).toBe(b);
-  });
-  it(`every themed team has an on-type player by pick ${STAR_BY_PICK}; later picks are not type-biased`, () => {
-    seeded(7);
-    let on3 = 0;
-    let teams = 0;
-    let laterOn = 0;
-    let later = 0;
-    let base = 0;
-    for (let run = 0; run < 40; run++) {
-      const { rosters } = simDraft([0, 1, 2, 3, 4, 5], 10, themes);
-      rosters.forEach((r, i) => {
-        teams++;
-        const first = r.findIndex((m) => isOn(m, themes[i]));
-        if (first >= 0 && first < STAR_BY_PICK) on3++;
-        for (const m of r.slice(first + 1)) { later++; if (isOn(m, themes[i])) laterOn++; }
-        base += pool.filter((m) => isOn(m, themes[i])).length / pool.length;
-      });
-    }
-    // A team misses only when no on-type Pokémon is within CPU_REACH of the best one left (the 7-OVR cap always wins, see
-    // the reach test above). The Sinnoh legendaries keep a few more 94+ cards on the board early: 4 Grass teams of 240.
-    expect(on3).toBeGreaterThanOrEqual(teams - 6);
-    // After the star, the on-type share stays near the pool's base rate.
-    expect(Math.abs(laterOn / later - base / teams)).toBeLessThan(0.08);
-  });
-  it(`takes the best on-type Pokémon in reach at pick ${STAR_BY_PICK} if it still has none`, () => {
-    const roster = [pool[0], pool[1]].map((m) => ({ ...m, types: ['Normal'] }) as Mon);
-    const offs = [0, 1, 2].map((i) => ({ ...pool[i + 2], ovr: 90 - i, types: ['Water'], pos: 'C' }) as Mon);
-    const on = { ...pool[5], ovr: 85, types: ['Fire'], pos: 'PG' } as Mon;
-    for (const r of [0, 0.999999]) expect(cpuPick([...offs, on], roster, ['Fire'], () => r)).toBe(on);
-  });
-  it('falls back to the best fit when no on-type Pokémon are left', () => {
-    seeded(3);
-    const noFire = pool.filter((m) => !m.types.includes('Fire'));
-    const m = cpuPick(noFire, [], ['Fire']);
-    expect(noFire).toContain(m);
-  });
-});
-

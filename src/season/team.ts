@@ -2,7 +2,7 @@
 // Format is documented in docs/drafted-team.md.
 import { POKEMON, monByDex, type Mon } from '../data/pokemon';
 import { bestLineup } from '../game/game';
-import { cpuPick, type DraftTeam } from '../screens/draft';
+import { cpuPick, cpuTeamPick, type DraftTeam } from '../screens/draft';
 import { isNameBlocked, safeName } from '../nameFilter';
 import { abbr, fixAbbr, shuffle } from '../util';
 import { cleanName } from './share';
@@ -83,11 +83,11 @@ export const draftedStarters = (t: DraftedTeam): Mon[] => bestLineup(draftedMons
 
 export type TeamSource = 'draft' | 'mine' | 'random';
 
-/** Five random Pokémon (or a bench-less lineup) drafted CPU-style from `pool`, which loses the picks. */
-export function cpuRoster(pool: Mon[], size: number, types: DraftTeam['types'] = []): Mon[] {
+/** A roster of `size` drafted CPU-style from `pool`, which loses the picks. */
+export function cpuRoster(pool: Mon[], size: number): Mon[] {
   const roster: Mon[] = [];
   while (roster.length < size && pool.length) {
-    const m = cpuPick(pool, roster, types);
+    const m = cpuPick(pool, roster);
     pool.splice(pool.indexOf(m), 1);
     roster.push(m);
   }
@@ -95,12 +95,12 @@ export function cpuRoster(pool: Mon[], size: number, types: DraftTeam['types'] =
 }
 
 /**
- * Drafts a whole league without the draft screen: snake order, CPU picks. When `fixed` is given, team 0
- * (the user) keeps exactly those Pokémon and every other team drafts from the rest. `from` is the pool
- * (a franchise's open regions); `leftovers` is what is left of it. `cpuOk` limits what the non-human teams may pick
- * (Kanto gyms: Gen 1 only); the human team and `fixed` rosters are never filtered.
+ * Drafts a whole league without the draft screen: snake order, CPU teams picking as in the draft screen and a human
+ * team getting Auto-pick. When `fixed` is given, team 0 (the user) keeps exactly those Pokémon and every other
+ * team drafts from the rest. `from` is the pool
+ * (a franchise's open regions); `leftovers` is what is left of it.
  */
-export function autoDraft(teams: DraftTeam[], size: number, fixed?: Mon[], from: Mon[] = POKEMON, cpuOk?: (m: Mon) => boolean): { rosters: Mon[][]; leftovers: Mon[] } {
+export function autoDraft(teams: DraftTeam[], size: number, fixed?: Mon[], from: Mon[] = POKEMON): { rosters: Mon[][]; leftovers: Mon[] } {
   const pool = [...from].sort((a, b) => b.ovr - a.ovr);
   const rosters: Mon[][] = teams.map(() => []);
   if (fixed) {
@@ -112,7 +112,7 @@ export function autoDraft(teams: DraftTeam[], size: number, fixed?: Mon[], from:
   for (let round = 0; round < size; round++) {
     for (const t of round % 2 ? [...order].reverse() : order) {
       if (fixed && t === 0) continue;
-      const m = cpuPick(cpuOk && !teams[t].human ? pool.filter(cpuOk) : pool, rosters[t], teams[t].types);
+      const m = (teams[t].human ? cpuPick : cpuTeamPick)(pool, rosters[t]);
       pool.splice(pool.indexOf(m), 1);
       rosters[t].push(m);
     }

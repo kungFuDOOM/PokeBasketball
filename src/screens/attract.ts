@@ -42,8 +42,8 @@ export function prefersStatic(): boolean {
 function randomGame(): Game {
   const [a, b] = shuffle([...LEAGUE]).slice(0, 2);
   const pool: Mon[] = shuffle([...POKEMON]);
-  const home = { name: a.name, abbr: a.abbr, color: a.color, color2: a.color2, roster: cpuRoster(pool, 5, a.types), human: false };
-  const away = contrastAway(home, { name: b.name, abbr: b.abbr, color: b.color, color2: b.color2, roster: cpuRoster(pool, 5, b.types), human: false });
+  const home = { name: a.name, abbr: a.abbr, color: a.color, color2: a.color2, roster: cpuRoster(pool, 5), human: false };
+  const away = contrastAway(home, { name: b.name, abbr: b.abbr, color: b.color, color2: b.color2, roster: cpuRoster(pool, 5), human: false });
   return new Game({ home, away, quarterLen: 45, difficulty: 'allstar', court: COURTS[a.name] ?? courtFor(a) });
 }
 
