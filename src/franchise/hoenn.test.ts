@@ -105,15 +105,16 @@ describe('Gen 3 data (#252-386)', () => {
   it('leaves every other Pokémon exactly as it was (digests pinned from the Johto branch)', () => {
     const others = POKEMON.filter((m) => !gen3(m.dex) && !newGen4(m.dex));
     expect(others).toHaveLength(277);
-    // Digest moved when the Gen 1 shooting guards were buffed (and earlier, when the legendary ladder retuned Gen 1-2).
-    expect(fnv(JSON.stringify(others))).toBe('cd39cc80');
+    // Digest moved with the gym depth buffs (and earlier, with the Gen 1 shooting guards and the legendary ladder).
+    expect(fnv(JSON.stringify(others))).toBe('fc0be5e');
     // Evolutions of the Pokémon that were in the game before Sinnoh, leaving out the new Sinnoh forms they gained (Eevee -> Glaceon).
     const before = Object.entries(EVOLUTIONS).filter(([k]) => !gen3(Number(k)) && !newGen4(Number(k)))
       .map(([k, e]) => [k, { level: e.level, to: e.to.filter((d) => !newGen4(d)) }]).filter(([, e]) => (e as { to: number[] }).to.length);
     expect(fnv(JSON.stringify(before))).toBe('922c9a81');
     // Hoenn hand-tuned cards. Sceptile, Blaziken and Swampert were buffed with the other Gen 3 starters.
-    // Latios and Rayquaza sit in this fourteen; the legendary ladder retuned both.
-    expect(fnv(JSON.stringify(POKEMON.filter((m) => LEGACY.indexOf(m.dex) >= 0)))).toBe('660db61c');
+    // Latios and Rayquaza sit in this fourteen; the legendary ladder retuned both. The gym depth buffs raised Gardevoir,
+    // Mawile and Milotic.
+    expect(fnv(JSON.stringify(POKEMON.filter((m) => LEGACY.indexOf(m.dex) >= 0)))).toBe('f4e79f55');
     expect(monByDex(376)).toMatchObject({ name: 'Metagross', pos: 'C', types: ['Steel', 'Psychic'], r: { spd: 58, sht: 64, ins: 90, pas: 70, def: 84, blk: 94, reb: 90, hnd: 60 } });
   });
 
