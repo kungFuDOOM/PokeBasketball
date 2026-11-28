@@ -89,7 +89,7 @@ export function nextCard(f: Franchise, settings: Settings): string {
       <span class="where">${where}${t.gym ? ` · Gym ${t.gym}` : t.elite ? ' · Final boss' : ''}</span>
       <h3>${esc(t.name)}</h3>
       ${t.leader && !t.human ? `<p class="leader">${t.elite ? '' : 'Gym Leader '}${esc(t.leader)}${t.badge ? ` · ${esc(t.badge)} Badge on the line` : ''}</p>` : ''}
-      ${strengthHtml(matchStrength(f, g, t.id), g.round ? '' : rec(t))}
+      ${strengthHtml(matchStrength(f, g, t.id), g.round ? '' : rec(t), !t.human)}
       ${lineup(f, t)}
     </div>`;
   const title = g.round === 'final' ? 'The Final' : g.round === 'semi' ? 'Semifinal' : weekLabel(f);
