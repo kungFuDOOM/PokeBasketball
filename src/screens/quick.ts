@@ -4,7 +4,9 @@ import { COURTS, courtFor, userCourt, type CourtStyle } from '../data/courts';
 import { POKEMON, POSITIONS, TYPE_COLORS, spriteUrl, type Mon } from '../data/pokemon';
 import { LEAGUE, USER_STYLE, contrastAway, simulate, type LeagueTeam } from '../franchise/league';
 import type { Audio } from '../game/audio';
-import { bestLineup, teamOvr, type Game } from '../game/game';
+import { type Game } from '../game/game';
+import { kantoRosters, lineupWithStar } from '../franchise/kantoDraft';
+import { strengthHtml, strengthOf } from './strength';
 import type { TeamDef } from '../game/types';
 import { cpuRoster, draftedMons, draftedStarters, loadDrafted, renameDrafted, type TeamSource } from '../season/team';
 import { inlineRename } from '../ui/teamName';
@@ -29,7 +31,7 @@ export interface QuickActions {
 }
 
 const levelLabel = (t: LeagueTeam) =>
-  t.elite ? 'Final boss' : t.gym! <= 2 ? `Gym ${t.gym} · Easier` : t.gym! >= 7 ? `Gym ${t.gym} · Tough` : `Gym ${t.gym}`;
+  t.elite ? 'Final boss' : t.gym! <= 3 ? `Gym ${t.gym} · Easier` : t.gym! >= 6 ? `Gym ${t.gym} · Tough` : `Gym ${t.gym}`;
 
 function lineupHtml(mons: Mon[]): string {
   return `<ul class="lineup">${[...mons].sort((a, b) => POSITIONS.indexOf(a.pos) - POSITIONS.indexOf(b.pos)).map((m) =>
@@ -114,21 +116,25 @@ export function quickPlay(root: HTMLElement, settings: Settings, audio: Audio, a
     const saved = source === 'mine' ? loadDrafted() : null;
     drafted = null;
     picked = null;
+    // A gym or the Elite fields the same drafted ten as in a franchise, less what you bring (never its star).
+    const cpuSide = (size: number, held: Mon[]) => {
+      const ten = lineupWithStar(kantoRosters(held.map((m) => m.dex))[opp.elite ? 8 : opp.gym! - 1], opp.star);
+      return size >= 10 ? [...ten.starters, ...ten.bench] : ten.starters;
+    };
     if (saved) {
       // My Drafted Team, no draft screen: its best five start and the other five come off the bench.
-      // The opponent gets a CPU-drafted ten as well, so both sides tire and sub the same way.
+      // The opponent gets a full ten as well, so both sides tire and sub the same way.
       const all = draftedMons(saved);
       const starters = draftedStarters(saved);
-      const pool = POKEMON.filter((m) => !all.includes(m));
-      const theirs = bestLineup(cpuRoster(pool, 10, opp.types));
+      const theirs = lineupWithStar(cpuSide(10, all), opp.star);
       drafted = { name: saved.name, ...saved.colors, bench: all.filter((m) => !starters.includes(m)), oppBench: theirs.bench };
       return matchup(opp, starters, theirs.starters, courtFor(opp));
     }
     if (source === 'random') {
-      // No draft screen: five random Pokémon against a CPU-drafted opponent.
+      // No draft screen: five random Pokémon against the opponent's five.
       const pool = POKEMON.filter(() => true);
       const picks = cpuRoster(pool, 5);
-      return matchup(opp, picks, cpuRoster(pool, 5, opp.types), courtFor(opp));
+      return matchup(opp, picks, cpuSide(5, picks), courtFor(opp));
     }
     root.className = 'screen-draft';
     window.scrollTo(0, 0);
@@ -147,11 +153,11 @@ export function quickPlay(root: HTMLElement, settings: Settings, audio: Audio, a
     root.className = 'screen-quick';
     window.scrollTo(0, 0);
     const venues: CourtStyle[] = [userCourt(userName()), ...Object.entries(COURTS).filter(([k]) => k !== 'Pallet Town').map(([, c]) => c)];
-    const side = (name: string, color: string, sub: string, mons: Mon[], bench: Mon[] = [], mine = false) => `
+    const side = (name: string, color: string, sub: string, mons: Mon[], bench: Mon[] = [], mine = false, boost = 0) => `
       <div class="nx-team" style="--tc:${color}">
         <span class="where">${esc(sub)}</span>
         <h3 class="${mine ? 'nx-name' : ''}">${esc(name)}</h3>
-        <p>${teamOvr(mons)} OVR</p>
+        ${strengthHtml(strengthOf(mons, boost))}
         ${lineupHtml(mons)}
         ${bench.length ? `<p class="note nx-bench-lbl">Bench</p><div class="nx-bench">${lineupHtml(bench)}</div>` : ''}
       </div>`;
@@ -162,7 +168,7 @@ export function quickPlay(root: HTMLElement, settings: Settings, audio: Audio, a
           <div class="nx-cols">
             ${side(userName(), user().color, drafted ? 'You · My Drafted Team' : 'You', mine, drafted?.bench, true)}
             <div class="vs">VS</div>
-            ${side(opp.name, opp.color, opp.elite ? 'Final boss' : `Gym Leader ${opp.leader}`, theirs, drafted?.oppBench)}
+            ${side(opp.name, opp.color, opp.elite ? 'Final boss' : `Gym Leader ${opp.leader}`, theirs, drafted?.oppBench, false, opp.boost)}
           </div>
           <div class="field venue">Venue
             <select id="venue">${venues.map((v, i) => `<option value="${i}" ${v.venue === court.venue ? 'selected' : ''}>${esc(v.venue)}</option>`).join('')}</select>

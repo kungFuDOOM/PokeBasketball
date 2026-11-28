@@ -57,12 +57,15 @@ export const RANKED_LEGENDARIES: readonly number[] = [
   492, // Shaymin
 ];
 
+/** Whether `dex` is on the `RANKED_LEGENDARIES` list (legendaries and mythicals). */
+export const isLegendary = (dex: number): boolean => RANKED_LEGENDARIES.includes(dex);
+
 /** No Ranked preset member may be rated above this. */
 export const RANKED_MAX_OVR = 88;
 
 /** Whether a Pokémon may be on a Ranked preset team: OVR at most RANKED_MAX_OVR and not a legendary. */
 export function isRankedLegal(m: Mon): boolean {
-  return m.ovr <= RANKED_MAX_OVR && !RANKED_LEGENDARIES.includes(m.dex);
+  return m.ovr <= RANKED_MAX_OVR && !isLegendary(m.dex);
 }
 
 // Ranked balance: change the caps here.

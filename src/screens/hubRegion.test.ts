@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { POKEMON } from '../data/pokemon';
 import { LEAGUE, awardRegion, createFranchise, enterRegion, finishRookieDraft, rookieOnClock, rookiePick, seasonWeeks, startRookieDraft, type Franchise } from '../franchise/league';
-import { isKantoCpuMon, openRegionIds, poolMons } from '../franchise/regions';
+import { openRegionIds, poolMons } from '../franchise/regions';
 import { autoDraft } from '../season/team';
 import { championBannerHtml, nextCard, regionCardHtml, standingsHtml } from './hub';
 import type { Settings } from './menu';
@@ -21,7 +21,7 @@ const text = (html: string) => html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' '
 
 function kanto(unlocked: string[] = []): Franchise {
   const teams = [{ name: 'Me', abbr: 'MEE', color: '#3b6fd8', color2: '#16224a', human: true }, ...LEAGUE.map((t) => ({ ...t, human: false }))];
-  const { rosters, leftovers } = autoDraft(teams, 10, undefined, poolMons(openRegionIds(unlocked)), isKantoCpuMon);
+  const { rosters, leftovers } = autoDraft(teams, 10, undefined, poolMons(openRegionIds(unlocked)));
   const used = new Set([...rosters.flat(), ...leftovers]);
   const f = createFranchise(teams, rosters, [...leftovers, ...POKEMON.filter((m) => !used.has(m))]);
   if (unlocked.length) f.unlockedRegions = unlocked;
@@ -88,7 +88,7 @@ describe('hub: the next region', () => {
     const card = text(nextCard(f, settings));
     expect(card).toContain('Violet Soar');
     expect(card).toContain('Gym Leader Falkner · Zephyr Badge on the line');
-    expect(card).toMatch(/\d+ OVR/);
+    expect(card).toMatch(/\d+ OVR\s*Game strength\s*\d+/);
     // The standings keep the Johto Elite's full coach label, as text and as a title (the line wraps on phones).
     expect(standingsHtml(f)).toContain('<small title="Will · Koga · Bruno · Karen · Champion Lance">Will · Koga · Bruno · Karen · Champion Lance</small>');
   });

@@ -1,14 +1,15 @@
 import { EVOLUTIONS, RATING_LABELS, isRetired, monByDex, positionWeights, withBonus, type Mon, type PokeType, type Ratings } from '../data/pokemon';
 import { kingKabutoCard } from '../kabuto/king';
-import { Game, bestLineup, chemistry } from '../game/game';
+import { Game } from '../game/game';
 import { courtFor, userCourt } from '../data/courts';
 import type { Difficulty, GameConfig, PStats, TeamDef } from '../game/types';
 import type { DraftState } from '../screens/draft';
 import { safeName } from '../nameFilter';
 import { fixAbbr } from '../util';
 import { USER_STYLE, contrastAway } from '../multiplayer/shared/matchSetup';
-import { autoDraft } from '../season/team';
-import { KANTO, KANTO_RETURN_BUMP, REGIONS, inPool, isKantoCpuMon, nextRegion, openRegionIds, poolMons, regionById, regionTeams, type LeagueTeam, type RegionDef } from './regions';
+import { strengthOf, type Strength } from '../screens/strength';
+import { cpuDraftPool, draftCpuLeague, lineupWithStar, regionRosters, starOf } from './kantoDraft';
+import { GYMS_REV, KANTO, KANTO_RETURN_BUMP, REGIONS, SINNOH, inPool, nextRegion, openRegionIds, regionById, regionTeams, type LeagueTeam, type RegionDef } from './regions';
 
 const SAVE_KEY = 'pokejam.franchise.v1';
 /** XP needed to go from `level` to the next one; each level costs a bit more. */
@@ -102,6 +103,8 @@ export interface Franchise {
   games: FGame[];
   signedWeek: number;
   news: string[];
+  /** `GYMS_REV` the CPU teams were built on. Missing or older: the region's gyms and Elite are rebuilt once on load. */
+  gymsRev?: number;
   champion?: number;
   mvp?: string;
   /** This season's awards, set when the final ends. */
@@ -180,7 +183,8 @@ export function lineupOf(f: Franchise, t: FTeam): { starters: string[]; bench: s
     return { starters: order.slice(0, 5), bench: order.slice(5), out };
   }
   const byMon = new Map(healthy.map((u) => [monOf(f, u), u]));
-  const { starters, bench } = bestLineup([...byMon.keys()]);
+  // A gym's or final opponent's star always starts; every other team gets the plain best five.
+  const { starters, bench } = lineupWithStar([...byMon.keys()], t.human ? undefined : starOf(t.name));
   return { starters: starters.map((m) => byMon.get(m)!), bench: bench.map((m) => byMon.get(m)!), out };
 }
 
@@ -258,6 +262,7 @@ export function createFranchise(
     week: 1,
     phase: 'season',
     teams: teams.map((t, id) => ({ id, ...t, roster: rosters[id].map((m) => add(m)), w: 0, l: 0, pf: 0, pa: 0, streak: 0 })),
+    gymsRev: GYMS_REV,
     players,
     freeAgents: leftovers.map((m) => add(m)),
     weeks: teams.length - 1,
@@ -319,6 +324,53 @@ function cleanTeams(teams: unknown, cpu: LeagueTeam[] = LEAGUE): boolean {
   return true;
 }
 
+/**
+ * Puts drafted rosters (dex numbers) into the save and returns their uids. Every player on an `old` roster is released
+ * first, since one team's old player may be on another team's new one. A drafted species already in free agency is
+ * signed with its levels; otherwise the player is new.
+ */
+function signCpuRosters(f: Franchise, old: readonly FTeam[], rosters: readonly Mon[][]): string[][] {
+  for (const t of old) {
+    for (const u of t.roster) if (f.players[u] && !f.freeAgents.includes(u)) f.freeAgents.push(u);
+  }
+  let n = Object.keys(f.players).reduce((a, k) => Math.max(a, /^p\d+$/.test(k) ? Number(k.slice(1)) + 1 : a), 0);
+  return rosters.map((r) => r.map(({ dex }) => {
+    const at = f.freeAgents.findIndex((u) => f.players[u]?.dex === dex && !f.players[u].king);
+    if (at >= 0) return f.freeAgents.splice(at, 1)[0];
+    while (f.players[`p${n}`]) n++;
+    const uid = `p${n++}`;
+    f.players[uid] = { uid, dex, level: 1, xp: 0, bonus: {}, stats: emptyStats(), ovrStart: monByDex(dex).ovr };
+    return uid;
+  }));
+}
+
+/**
+ * Old saves hold CPU teams from an earlier design (Brock could be starting Mewtwo, later regions had fixed rosters). A
+ * save below `GYMS_REV` rebuilds its current region's eight gyms and final opponent once, in one draft with the current
+ * drafter, and sets their boosts (lowered as well as raised; Kanto adds the return bump after a Sinnoh title). The
+ * user's team is never touched: the nine draft around what it holds, as in a new season there. It runs once per
+ * revision, so later trades and rookie picks stick.
+ */
+function repairCpuTeams(f: Franchise): void {
+  if ((f.gymsRev ?? 0) >= GYMS_REV) return;
+  const region = regionOf(f);
+  const returned = region.id === KANTO.id && (f.titles ?? []).some((t) => t.regionId === SINNOH.id);
+  const defs = regionTeams(region);
+  const cpu = f.teams.flatMap((t) => {
+    const i = t.human ? -1 : defs.findIndex((d) => (d.elite ? t.elite : d.gym === t.gym));
+    return i < 0 ? [] : [{ t, i, def: defs[i] }];
+  });
+  const held = new Set(f.teams.filter((t) => !cpu.some((c) => c.t === t)).flatMap((t) => t.roster.map((u) => f.players[u]?.dex)));
+  const drafted = draftCpuLeague(cpu.map((c) => c.def), 10, cpuDraftPool(region).filter((m) => !held.has(m.dex)), [], region.dex);
+  const rosters = signCpuRosters(f, cpu.map((c) => c.t), drafted);
+  cpu.forEach(({ t, i, def }, k) => {
+    t.boost = def.boost + (returned ? (KANTO_RETURN_BUMP[i] ?? 0) : 0);
+    t.roster = rosters[k];
+    delete t.lineup;
+  });
+  f.gymsRev = GYMS_REV;
+}
+
 export function loadFranchise(): Franchise | null {
   try {
     const raw = localStorage.getItem(SAVE_KEY);
@@ -328,6 +380,7 @@ export function loadFranchise(): Franchise | null {
     if (!cleanTeams(f.teams, regionTeams(regionById(f.region) ?? KANTO))) return null;
     reconcileRegions(f, loadRegionProfile());
     retireLegacy(f);
+    repairCpuTeams(f);
     // Saved `king: true` players are kept as they are (King card, level, xp, bonus, ovrStart): no migration.
     const earned = earnedUnlocks(f);
     if (earned.some((id) => loadRegionProfile().indexOf(id) < 0)) saveRegionProfile(earned);
@@ -521,44 +574,42 @@ export function regionStatus(f: Franchise): RegionStatus {
 }
 
 /**
+ * Swaps in a region's nine CPU teams, drafted around the Pokémon the user holds (see `regionRosters`); the old CPU
+ * players join free agency. `bump` is added to each team's boost, in the order of `regionTeams`.
+ */
+function seatRegion(f: Franchise, r: RegionDef, bump: readonly number[] = []) {
+  const me = f.teams[0];
+  const drafted = regionRosters(r, me.roster.map((u) => f.players[u].dex));
+  const rosters = signCpuRosters(f, f.teams.filter((t) => !t.human), drafted);
+  f.teams = [me, ...regionTeams(r).map((t, i): FTeam => ({
+    id: i + 1, name: t.name, abbr: t.abbr, color: t.color, color2: t.color2, human: false, leader: t.leader, types: [...t.types], boost: t.boost + (bump[i] ?? 0),
+    ...(t.gym ? { gym: t.gym, badge: t.badge } : {}), ...(t.elite ? { elite: true } : {}),
+    roster: rosters[i], w: 0, l: 0, pf: 0, pa: 0, streak: 0,
+  }))];
+  f.gymsRev = GYMS_REV;
+  Object.assign(me, { w: 0, l: 0, pf: 0, pa: 0, streak: 0 });
+  f.region = r.id;
+  f.weeks = f.teams.length - 1;
+  // The new-season preview plays again, with the new region's teams.
+  delete f.introShown;
+}
+
+/**
  * Moves the league to an unlocked region at the start of a season. The user's team keeps everything (id, players,
- * levels, lineup, name and colors). The old CPU players join free agency; the region's teams come in with new
- * players from its data. Schedule and records start over; history, titles and awards stay.
+ * levels, lineup, name and colors). The old CPU players join free agency and the region's teams draft around the
+ * user's. Schedule and records start over; history, titles and awards stay.
  */
 export function enterRegion(f: Franchise, id: string): boolean {
   const st = regionStatus(f);
   const r = st.next;
   if (!r || r.id !== id || !st.canEnter) return false;
   const from = regionOf(f);
-  const cpu = regionTeams(r);
-  if (cpu.some((t) => !t.roster || t.roster.length < 5)) return false;
-  const fa = new Set(f.freeAgents);
-  for (const t of f.teams) {
-    if (t.human) continue;
-    for (const u of t.roster) if (!fa.has(u) && f.players[u]) { f.freeAgents.push(u); fa.add(u); }
-  }
-  let n = Object.keys(f.players).reduce((a, k) => Math.max(a, /^p\d+$/.test(k) ? Number(k.slice(1)) + 1 : a), 0);
-  const add = (dex: number) => {
-    while (f.players[`p${n}`]) n++;
-    const uid = `p${n++}`;
-    f.players[uid] = { uid, dex, level: 1, xp: 0, bonus: {}, stats: emptyStats(), ovrStart: monByDex(dex).ovr };
-    return uid;
-  };
-  const me = f.teams[0];
-  f.teams = [me, ...cpu.map((t, i): FTeam => ({
-    id: i + 1, name: t.name, abbr: t.abbr, color: t.color, color2: t.color2, human: false, leader: t.leader, types: [...t.types], boost: t.boost,
-    ...(t.gym ? { gym: t.gym, badge: t.badge } : {}), ...(t.elite ? { elite: true } : {}),
-    roster: t.roster!.map(add), w: 0, l: 0, pf: 0, pa: 0, streak: 0,
-  }))];
-  Object.assign(me, { w: 0, l: 0, pf: 0, pa: 0, streak: 0 });
-  f.region = r.id;
-  f.weeks = f.teams.length - 1;
+  seatRegion(f, r);
   f.week = 1;
   f.games = schedule(f.teams.length, false);
   f.signedWeek = 0;
-  // The new-season preview plays again, with the new region's teams.
-  delete f.introShown;
-  f.news = [`Welcome to the ${r.name} League! ${cpu[0].leader} and the ${cpu[0].name} are first.`, `The ${from.name} teams' players are now free agents.`];
+  const first = r.gyms[0];
+  f.news = [`Welcome to the ${r.name} League! ${first.leader} and the ${first.name} are first.`, `The ${from.name} teams' players are now free agents.`];
   return true;
 }
 
@@ -622,42 +673,27 @@ export function venueOf(f: Franchise, teamId: number) {
   };
 }
 
-/** How far above the user's effective strength a later region's gym 1..8 and its finale (last) aim to be. */
-export const SCALE_MARGINS = [1, 1.5, 2, 2.5, 3, 3.5, 4, 4, 5];
-/** The most EXTRA boost a scaled gym can get on top of its fixed design boost. */
-export const SCALE_BOOST_CAP = 12;
-
-const meanOvr = (mons: Mon[]) => (mons.length ? mons.reduce((s, m) => s + m.ovr, 0) / mons.length : 0);
-/** Effective strength in a game: starting-five mean + chemistry + boost. */
-export const effectiveStrength = (starters: Mon[], boost = 0) => meanOvr(starters) + chemistry(starters) + boost;
-
-/**
- * A later-region gym's boost for this game: its fixed design, raised so that its effective strength is at least the
- * user's plus a margin that grows by badge (the finale most). Never below the fixed boost; the extra on top of it is
- * at most the cap (so total = design boost + up to SCALE_BOOST_CAP). Recomputed at every game setup, so trades and upgrades count.
- */
-export function scaledBoost(userStarters: Mon[], userBoost: number, gymStarters: Mon[], gymBoost: number, slot: number): number {
-  const margin = SCALE_MARGINS[Math.min(Math.max(slot, 1), SCALE_MARGINS.length) - 1];
-  const need = effectiveStrength(userStarters, userBoost) + margin - effectiveStrength(gymStarters, gymBoost);
-  return gymBoost + Math.min(SCALE_BOOST_CAP, Math.max(0, need));
-}
-
 /** Teams as seen by the engine: the user's team is always engine team 0 so the controls stay the same. */
 export function gameConfig(f: Franchise, game: FGame, humanPlays: boolean, quarterLen: number, difficulty: Difficulty, autoSubs = true) {
   const userIn = game.home === 0 || game.away === 0;
   const sides: [number, number] = userIn ? [0, game.home === 0 ? game.away : game.home] : [game.home, game.away];
   const a = teamDef(f, sides[0], humanPlays && sides[0] === 0);
   const b = teamDef(f, sides[1], false);
-  // Later regions: the gym (or finale) the user faces is scaled to the user's current five. Kanto and CPU-only games keep the fixed boost.
-  const opp = f.teams[sides[1]];
-  if (userIn && regionOf(f).index > 0 && (opp.gym || opp.elite)) {
-    b.def.boost = scaledBoost(a.def.roster, a.def.boost ?? 0, b.def.roster, opp.boost ?? 0, opp.elite ? SCALE_MARGINS.length : opp.gym!);
-  }
   // Two blues (you vs Misty) are hard to tell apart on the floor: give the second team a contrasting color.
   b.def = contrastAway(a.def, b.def);
   const uidOf = new Map([...a.uidOf, ...b.uidOf]);
   const cfg: GameConfig = { home: a.def, away: b.def, quarterLen, difficulty, court: venueOf(f, game.home), stamina: true, injuries: true, userAutoSubs: autoSubs };
   return { cfg, sides, uidOf };
+}
+
+/**
+ * How strong a side really plays in this game: team OVR (starting-five mean plus chemistry) plus the boost the engine
+ * will get (the team's fixed boost), rounded. Difficulty is not included.
+ */
+export function matchStrength(f: Franchise, game: FGame, teamId: number): Strength {
+  const { cfg, sides } = gameConfig(f, game, false, 1, 'pro');
+  const def = sides[0] === teamId ? cfg.home : cfg.away;
+  return strengthOf(def.roster, def.boost ?? 0);
 }
 
 /** Plays a CPU-controlled game with the real engine, yielding to the browser between slices. */
@@ -702,13 +738,14 @@ function levelUp(p: FPlayer, rng = Math.random): string[] {
 }
 
 /**
- * Where a player on `team` may evolve to. A later region's gyms and final opponent never field a Pokémon from a later
- * generation than the region's own (Pryce's Piloswine stays a Piloswine in Johto); everyone else evolves freely.
+ * Where a player on `team` may evolve to. A region's gyms and final opponent never evolve a player into a later
+ * generation than the region's own (a Rhydon of theirs stays one in Kanto, a Piloswine in Johto), whatever they hold;
+ * the user's evolve freely.
  */
 function evolutionsFor(f: Franchise, team: number, to: number[]): number[] {
   const t = f.teams[team];
   const r = regionOf(f);
-  return t && !t.human && r.index > 0 ? to.filter((d) => d <= r.dex[1]) : to;
+  return t && !t.human ? to.filter((d) => d <= r.dex[1]) : to;
 }
 
 /** Applies a finished engine game to the league: score, standings, stats, XP, level-ups and evolutions. */
@@ -841,43 +878,11 @@ function computeAwards(f: Franchise): Award[] {
 }
 
 /**
- * Kanto's gyms and Elite Four have no fixed rosters, so a return cannot reuse `enterRegion` (that stops when a
- * roster is missing). Draft them the same way a new franchise does: snake order, each CPU's types, from the open
- * pool, skipping species the user already owns. Old CPU players become free agents and keep their levels.
+ * The return to Kanto after a Sinnoh title: the Kanto teams draft around the user's roster like any region's
+ * (`seatRegion`), with the return bump on their boosts. Old CPU players become free agents and keep their levels.
  */
 export function bringBackKanto(f: Franchise): void {
-  const me = f.teams[0];
-  const held = new Set(me.roster.map((u) => f.players[u].dex));
-  const pool = poolMons(openRegions(f)).filter((m) => !held.has(m.dex));
-  // Gyms and Elite draft Gen 1 only; the user's kept roster may hold any open Pokémon.
-  const cpu = regionTeams(KANTO);
-  const draftTeams = [
-    { name: me.name, abbr: me.abbr, color: me.color, color2: me.color2, human: true },
-    ...cpu.map((t) => ({ ...t, human: false })),
-  ];
-  // `fixed` only skips the user's picks. Those objects are already out of `pool` (removed by dex above).
-  const { rosters } = autoDraft(draftTeams, 10, me.roster.map((u) => monByDex(f.players[u].dex)), pool, isKantoCpuMon);
-  const fa = new Set(f.freeAgents);
-  for (const t of f.teams) {
-    if (t.human) continue;
-    for (const u of t.roster) if (!fa.has(u) && f.players[u]) { f.freeAgents.push(u); fa.add(u); }
-  }
-  let n = Object.keys(f.players).reduce((a, k) => Math.max(a, /^p\d+$/.test(k) ? Number(k.slice(1)) + 1 : a), 0);
-  const add = (m: Mon) => {
-    while (f.players[`p${n}`]) n++;
-    const uid = `p${n++}`;
-    f.players[uid] = { uid, dex: m.dex, level: 1, xp: 0, bonus: {}, stats: emptyStats(), ovrStart: withBonus(m.dex, {}).ovr };
-    return uid;
-  };
-  f.teams = [me, ...cpu.map((t, i): FTeam => ({
-    id: i + 1, name: t.name, abbr: t.abbr, color: t.color, color2: t.color2, human: false, leader: t.leader, types: [...t.types], boost: t.boost + (KANTO_RETURN_BUMP[i] ?? 0),
-    ...(t.gym ? { gym: t.gym, badge: t.badge } : {}), ...(t.elite ? { elite: true } : {}),
-    roster: rosters[i + 1].map(add), w: 0, l: 0, pf: 0, pa: 0, streak: 0,
-  }))];
-  Object.assign(me, { w: 0, l: 0, pf: 0, pa: 0, streak: 0 });
-  f.region = KANTO.id;
-  f.weeks = f.teams.length - 1;
-  delete f.introShown;
+  seatRegion(f, KANTO, KANTO_RETURN_BUMP);
 }
 
 /** Same rosters and levels, fresh schedule and records. A title in the last region (Sinnoh) first brings the league back to Kanto. */

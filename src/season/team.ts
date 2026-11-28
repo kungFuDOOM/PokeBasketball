@@ -3,6 +3,8 @@
 import { POKEMON, monByDex, type Mon } from '../data/pokemon';
 import { bestLineup } from '../game/game';
 import { cpuPick, type DraftTeam } from '../screens/draft';
+import { draftCpuLeague, cpuDraftPool } from '../franchise/kantoDraft';
+import { KANTO } from '../franchise/regions';
 import { isNameBlocked, safeName } from '../nameFilter';
 import { abbr, fixAbbr, shuffle } from '../util';
 import { cleanName } from './share';
@@ -97,10 +99,12 @@ export function cpuRoster(pool: Mon[], size: number, types: DraftTeam['types'] =
 /**
  * Drafts a whole league without the draft screen: snake order, CPU picks. When `fixed` is given, team 0
  * (the user) keeps exactly those Pokémon and every other team drafts from the rest. `from` is the pool
- * (a franchise's open regions); `leftovers` is what is left of it. `cpuOk` limits what the non-human teams may pick
- * (Kanto gyms: Gen 1 only); the human team and `fixed` rosters are never filtered.
+ * (a franchise's open regions); `leftovers` is what is left of it.
+ *
+ * A league whose teams have a locked `star` (Kanto here) uses the CPU league drafter instead: its CPU teams draft from
+ * Kanto's CPU pool (`cpuDraftPool`), whatever `from` holds, less what a `fixed` user team owns (a star is kept even then).
  */
-export function autoDraft(teams: DraftTeam[], size: number, fixed?: Mon[], from: Mon[] = POKEMON, cpuOk?: (m: Mon) => boolean): { rosters: Mon[][]; leftovers: Mon[] } {
+export function autoDraft(teams: DraftTeam[], size: number, fixed?: Mon[], from: Mon[] = POKEMON): { rosters: Mon[][]; leftovers: Mon[] } {
   const pool = [...from].sort((a, b) => b.ovr - a.ovr);
   const rosters: Mon[][] = teams.map(() => []);
   if (fixed) {
@@ -108,11 +112,20 @@ export function autoDraft(teams: DraftTeam[], size: number, fixed?: Mon[], from:
     // The user's own team may hold Pokémon from outside `from`: they are kept, and simply aren't in the pool.
     for (const m of fixed) if (pool.indexOf(m) >= 0) pool.splice(pool.indexOf(m), 1);
   }
+  if (teams.some((t) => t.star != null)) {
+    const held = new Set((fixed ?? []).map((m) => m.dex));
+    const cpu = cpuDraftPool(KANTO).filter((m) => !held.has(m.dex));
+    const drafted = draftCpuLeague(
+      teams.map((t, i) => (fixed && i === 0 ? { human: true } : t)), size, cpu, fixed ? [] : pool, KANTO.dex);
+    drafted.forEach((r, i) => { if (!(fixed && i === 0)) rosters[i] = r; });
+    const used = new Set(rosters.flat().map((m) => m.dex));
+    return { rosters, leftovers: pool.filter((m) => !used.has(m.dex)) };
+  }
   const order = shuffle(teams.map((_, i) => i));
   for (let round = 0; round < size; round++) {
     for (const t of round % 2 ? [...order].reverse() : order) {
       if (fixed && t === 0) continue;
-      const m = cpuPick(cpuOk && !teams[t].human ? pool.filter(cpuOk) : pool, rosters[t], teams[t].types);
+      const m = cpuPick(pool, rosters[t], teams[t].types);
       pool.splice(pool.indexOf(m), 1);
       rosters[t].push(m);
     }
