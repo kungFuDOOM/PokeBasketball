@@ -1963,6 +1963,8 @@ body:has(.pause-btn) .music-btn:not(.docked) {
   font: 700 clamp(0.72rem, 1.9vw, 1rem) var(--sport); letter-spacing: 0.04em; text-transform: uppercase; color: var(--fg);
 }
 .s5-card i { font: 0.5rem var(--pixel); font-style: normal; color: var(--muted); }
+/* Gym ratings in opponent previews wear their card tier. */
+.intro-team li i[class^='t-'], .s5-card i[class^='t-'] { color: var(--tier2); }
 .s5-skip {
   position: absolute; right: 14px; bottom: calc(9% + 12px); pointer-events: auto;
   font: 0.6rem var(--pixel); color: var(--fg); background: rgba(10, 13, 31, 0.7);

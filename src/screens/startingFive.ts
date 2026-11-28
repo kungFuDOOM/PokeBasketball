@@ -8,7 +8,8 @@ import type { Audio } from '../game/audio';
 import { teamOvr, type Game } from '../game/game';
 import type { TeamId } from '../game/types';
 import type { Voice } from '../game/voice';
-import { esc } from '../util';
+import { esc, tier } from '../util';
+import { shownBoost, shownOvr } from './strength';
 
 /** Seconds: the title card, each team's five, the stagger between cards, and the fade into the game. */
 export const TITLE = 1.6;
@@ -50,16 +51,20 @@ function openLine(): string {
 function teamHtml(g: Game, t: TeamId, mine: boolean): string {
   const def = g.teams[t];
   const five = g.players.filter((p) => p.team === t).sort((a, b) => a.slot - b.slot);
-  const cards = five.map((p, i) => `
+  const boost = shownBoost(def);
+  const cards = five.map((p, i) => {
+    const ovr = shownOvr(p.mon, boost);
+    return `
     <li class="s5-card" style="--d:${(0.35 + i * STAGGER).toFixed(2)}s">
       <b>${p.mon.pos}</b>
       <img alt="" src="${spriteUrl(p.mon.dex)}">
       <span>${esc(p.mon.name)}</span>
-      <i>${p.mon.ovr}</i>
-    </li>`).join('');
+      <i${boost ? ` class="t-${tier(ovr)}"` : ''}>${ovr}</i>
+    </li>`;
+  }).join('');
   return `
     <section class="s5-team${mine ? ' mine' : ''}" data-t="${t}" style="--tc:${def.color};--tc2:${def.color2}">
-      <header class="s5-head"><small>${mine ? 'Your starting five' : 'Starting five'}</small><strong>${esc(def.name)}</strong><em>OVR ${teamOvr(def.roster)}</em></header>
+      <header class="s5-head"><small>${mine ? 'Your starting five' : 'Starting five'}</small><strong>${esc(def.name)}</strong>${boost ? '' : `<em>OVR ${teamOvr(def.roster)}</em>`}</header>
       <ol class="s5-row">${cards}</ol>
     </section>`;
 }
