@@ -61,10 +61,10 @@ const LINES: [string, number[]][] = [
 
 const GEN1: Record<number, Card> = {
   1: { pos: 'SG', role: 'Role Player', ovr: 57, r: rate(52, 63, 58, 59, 61, 48, 49, 56) },
-  2: { pos: 'SG', role: 'Role Player', ovr: 78, r: rate(75, 79, 74, 74, 74, 58, 58, 74) },
+  2: { pos: 'SG', role: 'Role Player', ovr: 65, r: rate(60, 69, 65, 65, 67, 58, 58, 63) },
   3: { pos: 'C', role: 'Rim Protector', ovr: 88, r: rate(52, 66, 89, 74, 74, 90, 93, 56) },
   4: { pos: 'PG', role: 'Role Player', ovr: 59, r: rate(63, 63, 58, 57, 63, 43, 47, 60) },
-  5: { pos: 'SG', role: 'Role Player', ovr: 76, r: rate(73, 77, 73, 72, 73, 55, 57, 73) },
+  5: { pos: 'SG', role: 'Role Player', ovr: 68, r: rate(71, 70, 66, 64, 69, 55, 57, 67) },
   6: { pos: 'SF', role: 'Three-Level Scorer', ovr: 91, r: rate(90, 90, 96, 72, 82, 80, 80, 80) },
   7: { pos: 'PG', role: 'Role Player', ovr: 64, r: rate(66, 70, 52, 64, 60, 40, 46, 66) },
   8: { pos: 'PG', role: 'Role Player', ovr: 74, r: rate(74, 78, 60, 72, 68, 46, 52, 74) },
@@ -118,7 +118,7 @@ describe('Johto and Hoenn starter buffs', () => {
     expect(monByDex(260).r.blk).toBeLessThan(90);
   });
 
-  it('leaves the Kanto starters, aside from the Ivysaur and Charmeleon shooting-guard buffs, and the tuned legendaries', () => {
+  it('leaves the Kanto starters and the tuned legendaries exactly as they are', () => {
     for (const [dex, want] of Object.entries(GEN1)) {
       const m = monByDex(Number(dex));
       expect(m.pos, m.name).toBe(want.pos);

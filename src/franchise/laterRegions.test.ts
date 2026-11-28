@@ -8,6 +8,7 @@ import {
 } from './league';
 import { STRENGTH_FIRST, cpuDraftPool, draftCpuLeague, regionRosters, starOf } from './kantoDraft';
 import { GYM_ROSTERS } from './gymRosters';
+import { gymMonByDex } from './gymRatings';
 import { GYMS_REV, HOENN, JOHTO, KANTO, KANTO_RETURN_BUMP, REGIONS, SINNOH, regionTeams, type RegionDef } from './regions';
 
 const store = new Map<string, string>();
@@ -40,7 +41,7 @@ function enter(r: RegionDef, f = testFranchise()): Franchise {
 }
 
 const dexesOf = (f: Franchise, t: FTeam) => t.roster.map((u) => f.players[u].dex);
-const fiveOf = (f: Franchise, t: FTeam) => lineupOf(f, t).starters.map((u) => monByDex(f.players[u].dex));
+const fiveOf = (f: Franchise, t: FTeam) => lineupOf(f, t).starters.map((u) => gymMonByDex(f.players[u].dex));
 const plays = (f: Franchise) => f.teams.slice(1).map((t) => strengthOf(fiveOf(f, t), t.boost).total);
 /** What the app should seat for `r`: its fixed rosters. */
 const expected = (r: RegionDef) => GYM_ROSTERS[r.id];

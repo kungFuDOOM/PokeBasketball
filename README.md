@@ -53,7 +53,7 @@ Poké Jam has two modes.
 
 ### Gym rosters
 
-Every region's eight gyms and final opponent field fixed, hand-set rosters of ten (`src/franchise/gymRosters.ts`, listed in [`docs/gym-rosters.md`](docs/gym-rosters.md)). They don't depend on your team, so a gym may field a Pokémon you also have. Each team's star is first on its roster and always starts. A gym's Pokémon don't evolve past its region's generation during a season. The game no longer seats teams with `src/franchise/kantoDraft.ts`, the drafter that produced these rosters.
+Every region's eight gyms and final opponent field fixed, hand-set rosters of ten (`src/franchise/gymRosters.ts`, listed in [`docs/gym-rosters.md`](docs/gym-rosters.md)). They don't depend on your team, so a gym may field a Pokémon you also have. Some cards rate higher while a gym or the Elite holds them (`src/franchise/gymRatings.ts`), here and as Quick Play's fixed gym opponents; your draft, your team and free agents use the base card, so a gym player you trade for returns to it. Each team's star is first on its roster and always starts. A gym's Pokémon don't evolve past its region's generation during a season. The game no longer seats teams with `src/franchise/kantoDraft.ts`, the drafter that produced these rosters.
 
 - **Curve.** Boosts are fixed whole numbers from 0 to 17 (`MAX_BOOST`); a rating still stops at 99 in games. They never read your team's rating. Against a 91 OVR team, game strength (card OVR plus boost) is:
 
