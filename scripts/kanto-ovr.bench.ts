@@ -8,7 +8,7 @@ import { bestLineup, chemistry } from '../src/game/game';
 import { autoDraft } from '../src/season/team';
 import { withKingKabuto } from '../src/kabuto/king';
 import { LEAGUE, bringBackKanto, createFranchise, monOf, type Franchise } from '../src/franchise/league';
-import { isKantoCpuMon, openRegionIds, poolMons } from '../src/franchise/regions';
+import { openRegionIds, poolMons } from '../src/franchise/regions';
 
 vi.stubGlobal('localStorage', { getItem: () => null, setItem: () => {}, removeItem: () => {}, key: () => null, length: 0 });
 const N = Number(process.env.OVR_N ?? 40);
@@ -16,7 +16,7 @@ const ALL = ['johto', 'hoenn', 'sinnoh'];
 
 function draft(unlocked: string[]): Franchise {
   const teams = [{ name: 'Pallet Town', abbr: 'PAL', color: '#3b6fd8', color2: '#16224a', human: true }, ...LEAGUE.map((t) => ({ ...t, human: false }))];
-  const { rosters, leftovers } = autoDraft(teams, 10, undefined, withKingKabuto(poolMons(openRegionIds(unlocked))), isKantoCpuMon);
+  const { rosters, leftovers } = autoDraft(teams, 10, undefined, withKingKabuto(poolMons(openRegionIds(unlocked))));
   const used = new Set([...rosters.flat(), ...leftovers]);
   const f = createFranchise(teams, rosters, [...leftovers, ...POKEMON.filter((m) => !used.has(m))]);
   if (unlocked.length) f.unlockedRegions = unlocked;

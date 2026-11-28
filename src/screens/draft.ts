@@ -10,39 +10,16 @@ import { poolMons } from '../franchise/regions';
 
 export { monCard, typeChips };
 
-/** CPU picks only consider players within this many OVR of the best one left, so nobody reaches far. */
-export const CPU_REACH = 7;
-
-/** While a themed team has no on-type player yet, on-type Pokémon get this much extra value. */
-export const STAR_BONUS = 8;
-/** A themed team that still has no on-type player by this pick (1-based) takes the best on-type one in reach. */
-export const STAR_BY_PICK = 3;
-
 /**
- * CPU general manager: best available, nudged toward open positions, with enough noise that it sometimes reaches
- * for a slightly lower-rated fit. It never takes anyone more than CPU_REACH below the best player left, so a team
- * never passes on a 97 for an 80. A themed team wants its star to be one of its types: until it has an on-type
- * player, on-type Pokémon get +STAR_BONUS, and by its STAR_BY_PICK-th pick it takes the best on-type Pokémon in
- * reach (if there is none, it picks normally). Once it has one, type doesn't matter.
+ * CPU general manager (and Auto-pick): the highest-OVR player that fits an open roster slot, at most two per position.
+ * If every position left on the board is full, the highest OVR. `rng` only breaks ties between equal OVRs.
  */
-export function cpuPick(pool: Mon[], roster: Mon[], types: PokeType[] = [], rng: () => number = Math.random): Mon {
-  const isOn = (m: Mon) => m.types.some((t) => types.includes(t));
-  const wantStar = types.length > 0 && !roster.some(isOn);
-  const count = (pos: string) => roster.filter((m) => m.pos === pos).length;
-  const floor = Math.max(...pool.map((m) => m.ovr)) - CPU_REACH;
-  let cands = pool.filter((m) => m.ovr >= floor);
-  if (wantStar && roster.length >= STAR_BY_PICK - 1) {
-    const on = cands.filter(isOn);
-    if (on.length) cands = on;
-  }
-  let best = cands[0] ?? pool[0];
-  let bs = -Infinity;
-  for (const m of cands) {
-    const need = [5, 2, 0][Math.min(2, count(m.pos))];
-    const s = m.ovr + need + (wantStar && isOn(m) ? STAR_BONUS : 0) + rng() * 9;
-    if (s > bs) { bs = s; best = m; }
-  }
-  return best;
+export function cpuPick(pool: Mon[], roster: Mon[], rng: () => number = Math.random): Mon {
+  const fits = pool.filter((m) => countAt(roster, m.pos) < 2);
+  const cands = fits.length ? fits : pool;
+  const top = Math.max(...cands.map((m) => m.ovr));
+  const tied = cands.filter((m) => m.ovr === top);
+  return tied[Math.floor(rng() * tied.length)];
 }
 
 /** A Pokémon's scouting card. `canPick` null leaves off the draft button (roster browser). */
@@ -188,8 +165,8 @@ export function draftScreen(
   onDone: (rosters: Mon[][], leftovers: Mon[]) => void,
   onBack: () => void,
   onProgress: (state: DraftState) => void,
-  /** `customize: false` leaves out the rename / color picker on the draft-complete screen; `pool` replaces the draftable Pokémon; `cpuOk` limits what CPU teams (not you, not Auto-pick) may take. */
-  opts: { customize?: boolean; pool?: readonly Mon[]; cpuOk?: (m: Mon) => boolean } = {},
+  /** `customize: false` leaves out the rename / color picker on the draft-complete screen; `pool` replaces the draftable Pokémon. */
+  opts: { customize?: boolean; pool?: readonly Mon[] } = {},
 ) {
   const { teams, order } = state;
   // Own container so listeners die with the screen.
@@ -198,8 +175,6 @@ export function draftScreen(
   host.replaceChildren(root);
   const pool = [...(opts.pool ?? poolMons(state.regions))].sort((a, b) => b.ovr - a.ovr);
   const rosters: Mon[][] = teams.map(() => []);
-  /** What team `t` may pick from by CPU logic: the whole board, or only what `opts.cpuOk` allows for CPU teams. */
-  const cpuPool = (t: number) => (opts.cpuOk && !teams[t].human ? pool.filter(opts.cpuOk) : pool);
   const size = state.rounds ?? 5;
   const picks = snakePicks(order, size);
   const me = teams.findIndex((t) => t.human);
@@ -431,7 +406,7 @@ export function draftScreen(
   const scheduleCpu = () => {
     window.clearTimeout(cpuTimer);
     if (!done && picks[pick] !== me) {
-      cpuTimer = window.setTimeout(() => take(cpuPick(cpuPool(picks[pick]), rosters[picks[pick]], teams[picks[pick]].types)), 280);
+      cpuTimer = window.setTimeout(() => take(cpuPick(pool, rosters[picks[pick]])), 280);
     }
   };
 
@@ -468,7 +443,7 @@ export function draftScreen(
     if (a === 'auto' && userTurn()) take(cpuPick(pool, rosters[me]));
     if (a === 'sim' && !done) {
       window.clearTimeout(cpuTimer);
-      while (pick < picks.length) record(cpuPick(cpuPool(picks[pick]), rosters[picks[pick]], teams[picks[pick]].types));
+      while (pick < picks.length) record(cpuPick(pool, rosters[picks[pick]]));
       finish();
     }
   });
@@ -482,7 +457,7 @@ export function draftScreen(
   for (const dex of saved) {
     if (pick >= picks.length) break;
     // A Pokémon no longer in the game (older save): that pick becomes the team's best available.
-    record(pool.find((x) => x.dex === dex) ?? cpuPick(cpuPool(picks[pick]), rosters[picks[pick]], teams[picks[pick]].types));
+    record(pool.find((x) => x.dex === dex) ?? cpuPick(pool, rosters[picks[pick]]));
   }
   if (saved.length) log.push(`Draft resumed at pick ${pick + 1}.`);
   if (pick >= picks.length) return finish();

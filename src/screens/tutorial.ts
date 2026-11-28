@@ -48,7 +48,7 @@ export function tutorialConfig(settings: Settings, drill?: DrillId): GameConfig 
   const pool = [...POKEMON].sort((a, b) => b.ovr - a.ovr);
   const mine = cpuRoster(pool, 5);
   const gym = LEAGUE[0];
-  const theirs = cpuRoster(pool, 5, gym.types);
+  const theirs = cpuRoster(pool, 5);
   const name = lettersName(settings.teamName) || 'Pallet Town';
   const home: TeamDef = { name, abbr: abbr(name), ...USER_STYLE, roster: mine, human: true };
   const away = contrastAway(home, {
