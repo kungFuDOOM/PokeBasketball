@@ -2,7 +2,7 @@
 // Format is documented in docs/drafted-team.md.
 import { POKEMON, monByDex, type Mon } from '../data/pokemon';
 import { bestLineup } from '../game/game';
-import { cpuPick, type DraftTeam } from '../screens/draft';
+import { cpuPick, cpuTeamPick, type DraftTeam } from '../screens/draft';
 import { isNameBlocked, safeName } from '../nameFilter';
 import { abbr, fixAbbr, shuffle } from '../util';
 import { cleanName } from './share';
@@ -95,8 +95,9 @@ export function cpuRoster(pool: Mon[], size: number): Mon[] {
 }
 
 /**
- * Drafts a whole league without the draft screen: snake order, CPU picks. When `fixed` is given, team 0
- * (the user) keeps exactly those Pokémon and every other team drafts from the rest. `from` is the pool
+ * Drafts a whole league without the draft screen: snake order, CPU teams picking as in the draft screen and a human
+ * team getting Auto-pick. When `fixed` is given, team 0 (the user) keeps exactly those Pokémon and every other
+ * team drafts from the rest. `from` is the pool
  * (a franchise's open regions); `leftovers` is what is left of it.
  */
 export function autoDraft(teams: DraftTeam[], size: number, fixed?: Mon[], from: Mon[] = POKEMON): { rosters: Mon[][]; leftovers: Mon[] } {
@@ -111,7 +112,7 @@ export function autoDraft(teams: DraftTeam[], size: number, fixed?: Mon[], from:
   for (let round = 0; round < size; round++) {
     for (const t of round % 2 ? [...order].reverse() : order) {
       if (fixed && t === 0) continue;
-      const m = cpuPick(pool, rosters[t]);
+      const m = (teams[t].human ? cpuPick : cpuTeamPick)(pool, rosters[t]);
       pool.splice(pool.indexOf(m), 1);
       rosters[t].push(m);
     }

@@ -1,10 +1,10 @@
-// The franchise player draft: CPU teams take the best available from the same pool as the user.
+// The franchise player draft: CPU teams pick near the best available from the same pool as the user.
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { POKEMON, type Mon } from '../data/pokemon';
 import { LEAGUE } from '../franchise/league';
 import { poolMons } from '../franchise/regions';
 import { autoDraft } from '../season/team';
-import { cpuPick, draftScreen, type DraftTeam } from './draft';
+import { countAt, cpuPick, cpuTeamPick, draftScreen, type DraftTeam } from './draft';
 import { snakePicks } from './draft.logic';
 
 /** Deterministic Math.random (mulberry32). */
@@ -47,7 +47,7 @@ function fakeDom() {
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 describe('the franchise player draft with only Kanto open', () => {
-  it('drafts from poolMons([kanto]); CPU teams take the best available from it', () => {
+  it('drafts from poolMons([kanto]); CPU picks stay within 2 OVR of the best that fits', () => {
     const { root, press } = fakeDom();
     const teams: DraftTeam[] = [{ name: 'Me', abbr: 'MEE', color: '#000000', color2: '#ffffff', human: true }, ...LEAGUE.map((t) => ({ ...t, human: false }))];
     const order = teams.map((_, i) => i);
@@ -65,22 +65,40 @@ describe('the franchise player draft with only Kanto open', () => {
     const dexes = (mons: Mon[]) => mons.map((m) => m.dex).sort((a, b) => a - b);
     expect(dexes([...rosters.flat(), ...leftovers])).toEqual(dexes(pool));
 
-    // Pick by pick, it is plain `cpuPick`: no locked stars, no strongest-first gym drafter.
-    seeded(7);
-    const left = [...pool].sort((a, b) => b.ovr - a.ovr);
-    const want: Mon[][] = teams.map(() => []);
-    for (const t of snakePicks(order, 10)) {
-      const m = cpuPick(left, want[t]);
+    // Pick by pick: a fitting card, never more than 2 OVR below the best one. Your simmed picks are the very best.
+    const left = [...pool];
+    const had: Mon[][] = teams.map(() => []);
+    snakePicks(order, 10).forEach((t, i) => {
+      const m = left.find((x) => x.dex === state.taken[i])!;
+      const open = left.filter((x) => countAt(had[t], x.pos) < 2);
+      const cands = open.length ? open : left;
+      expect(cands).toContain(m);
+      const best = Math.max(...cands.map((x) => x.ovr));
+      expect(m.ovr).toBeGreaterThanOrEqual(teams[t].human ? best : best - 2);
       left.splice(left.indexOf(m), 1);
-      want[t].push(m);
-    }
-    expect(rosters.map(dexes)).toEqual(want.map(dexes));
+      had[t].push(m);
+    });
   });
 });
 
-describe('cpuPick is best available', () => {
+const card = (name: string, ovr: number, pos: Mon['pos'], type: Mon['types'][number] = 'Normal') =>
+  ({ ...POKEMON[0], name, ovr, pos, types: [type] }) as Mon;
+
+describe('cpuTeamPick', () => {
+  it('picks only within 2 OVR of the best that fits, favoring higher OVR', () => {
+    const pool = [card('97', 97, 'SF'), card('96', 96, 'PG'), card('95', 95, 'SG'), card('94', 94, 'PF'), card('91', 91, 'PF')];
+    const rolls = Array.from({ length: 1000 }, (_, i) => cpuTeamPick(pool, [], () => (i + 0.5) / 1000).ovr);
+    expect([97, 96, 95, 94, 91].map((o) => rolls.filter((r) => r === o).length)).toEqual([643, 286, 71, 0, 0]);
+    // The window is measured from the best that fits: with two small forwards, the 97 is out and 94 is in reach.
+    const full = [card('SF1', 80, 'SF'), card('SF2', 80, 'SF')];
+    expect(cpuTeamPick(pool, full, () => 0.999999).ovr).toBe(94);
+    // Nothing fits: the same window over the whole pool.
+    expect(cpuTeamPick([pool[0], pool[4]], [...full, card('PF1', 80, 'PF'), card('PF2', 80, 'PF')], () => 0.999999).ovr).toBe(97);
+  });
+});
+
+describe('cpuPick (Auto-pick) is strict best available', () => {
   it('always takes the highest OVR that fits an open slot', () => {
-    const card = (name: string, ovr: number, pos: Mon['pos'], type: Mon['types'][number]) => ({ ...POKEMON[0], name, ovr, pos, types: [type] }) as Mon;
     const arceus = card('Arceus', 97, 'C', 'Normal');
     const mewtwo = card('Mewtwo', 96, 'SF', 'Psychic');
     const water = card('Water star', 94, 'PG', 'Water');
@@ -96,7 +114,10 @@ describe('cpuPick is best available', () => {
       // Nothing fits: highest OVR.
       expect(cpuPick([card('C3', 80, 'C', 'Rock'), arceus], [arceus, arceus], () => r)).toBe(arceus);
     }
+    // A human team in autoDraft gets the same strict pick.
     vi.spyOn(Math, 'random').mockReturnValue(0.999999);
-    expect(autoDraft([gym], 1, undefined, [water, mewtwo, arceus]).rosters[0]).toEqual([arceus]);
+    expect(autoDraft([{ ...gym, human: true }], 1, undefined, [water, mewtwo, arceus]).rosters[0]).toEqual([arceus]);
+    // A CPU gym may reach for the 96, never for the 94.
+    expect(autoDraft([gym], 1, undefined, [water, mewtwo, arceus]).rosters[0]).toEqual([mewtwo]);
   });
 });
