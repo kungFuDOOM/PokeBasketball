@@ -1,4 +1,4 @@
-// Johto, Hoenn and Sinnoh draft like Kanto (the rules are in cpuDraft.test.ts): stars, entering and the old-save rebuild.
+// Johto, Hoenn and Sinnoh: stars, entering and the old-save rebuild (the drafter's rules are in cpuDraft.test.ts).
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { POKEMON, monByDex } from '../data/pokemon';
 import { autoDraft } from '../season/team';
@@ -7,6 +7,7 @@ import {
   LEAGUE, createFranchise, enterRegion, lineupOf, loadFranchise, matchStrength, saveFranchise, type Franchise, type FTeam,
 } from './league';
 import { STRENGTH_FIRST, cpuDraftPool, draftCpuLeague, regionRosters, starOf } from './kantoDraft';
+import { GYM_ROSTERS } from './gymRosters';
 import { GYMS_REV, HOENN, JOHTO, KANTO, KANTO_RETURN_BUMP, REGIONS, SINNOH, regionTeams, type RegionDef } from './regions';
 
 const store = new Map<string, string>();
@@ -41,8 +42,8 @@ function enter(r: RegionDef, f = testFranchise()): Franchise {
 const dexesOf = (f: Franchise, t: FTeam) => t.roster.map((u) => f.players[u].dex);
 const fiveOf = (f: Franchise, t: FTeam) => lineupOf(f, t).starters.map((u) => monByDex(f.players[u].dex));
 const plays = (f: Franchise) => f.teams.slice(1).map((t) => strengthOf(fiveOf(f, t), t.boost).total);
-/** What the app should seat for `r`: the drafter around only the user's team. */
-const expected = (r: RegionDef, f: Franchise) => regionRosters(r, dexesOf(f, f.teams[0])).map((x) => x.map((m) => m.dex));
+/** What the app should seat for `r`: its fixed rosters. */
+const expected = (r: RegionDef) => GYM_ROSTERS[r.id];
 
 describe('later-region stars', () => {
   it('keeps each ace as the star, with the two shared ones replaced', () => {
@@ -77,9 +78,9 @@ describe('later-region stars', () => {
 });
 
 describe('entering a later region', () => {
-  it.each(LATER)('seats the $name drafter around the user team, and the matchup card shows its strength', (r) => {
+  it.each(LATER)('seats the fixed $name rosters, and the matchup card shows its strength', (r) => {
     const f = enter(r);
-    expect(f.teams.slice(1).map((t) => dexesOf(f, t))).toEqual(expected(r, f));
+    expect(f.teams.slice(1).map((t) => dexesOf(f, t))).toEqual(expected(r));
     for (const t of f.teams.slice(1)) {
       const g = f.games.find((x) => (x.home === 0 && x.away === t.id) || (x.away === 0 && x.home === t.id))!;
       expect(matchStrength(f, g, t.id).total, t.name).toBe(strengthOf(fiveOf(f, t), t.boost).total);
@@ -134,9 +135,9 @@ function oldSave(r: RegionDef, rev: number | undefined): Franchise {
 }
 
 describe('the later-region save repair', () => {
-  it.each(LATER.flatMap((r) => [[r.name, r, undefined], [r.name, r, 9], [r.name, r, 10], [r.name, r, 11], [r.name, r, 12], [r.name, r, 13], [r.name, r, 14]] as const))(
+  it.each(LATER.flatMap((r) => [[r.name, r, undefined], [r.name, r, 9], [r.name, r, 10], [r.name, r, 11], [r.name, r, 12], [r.name, r, 13], [r.name, r, 14], [r.name, r, 16]] as const))(
     'rebuilds an old %s save once and leaves the user team (revision %#)', (_, r, rev) => {
-      expect(GYMS_REV).toBe(16);
+      expect(GYMS_REV).toBe(17);
       const f = oldSave(r, rev);
       // A Sinnoh title on record: only Kanto adds the return bump.
       f.titles = [{ regionId: 'sinnoh', season: 1 }];
@@ -149,7 +150,7 @@ describe('the later-region save repair', () => {
       expect(g.gymsRev).toBe(GYMS_REV);
       expect(g.teams[0]).toEqual(mine);
       expect(mine.roster.map((u) => g.players[u])).toEqual(myPlayers);
-      expect(g.teams.slice(1).map((t) => dexesOf(g, t))).toEqual(expected(r, g));
+      expect(g.teams.slice(1).map((t) => dexesOf(g, t))).toEqual(expected(r));
       expect(g.teams.slice(1).map((t) => t.boost)).toEqual(regionTeams(r).map((t) => t.boost));
       expect(g.teams[1].lineup).toBeUndefined();
       const strength = plays(g);

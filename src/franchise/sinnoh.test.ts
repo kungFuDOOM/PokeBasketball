@@ -10,7 +10,7 @@ import {
   regionOf, regionStatus, regionTitles, rookieOnClock, rookiePick, saveFranchise, seasonWeeks, sign, startRookieDraft, venueOf, weekGames,
   type Franchise,
 } from './league';
-import { regionRosters } from './kantoDraft';
+import { GYM_ROSTERS } from './gymRosters';
 import { HOENN, JOHTO, REGIONS, SINNOH, inPool, openRegionIds, poolMons, regionTeams } from './regions';
 import type { Game } from '../game/game';
 
@@ -274,7 +274,7 @@ describe('unlocking and entering Sinnoh', () => {
     expect(f.teams[0]).toEqual(me);
     expect(f.teams.slice(1).map((t) => t.name)).toEqual(regionTeams(SINNOH).map((t) => t.name));
     expect(f.teams.slice(1).map((t) => t.roster.map((u) => f.players[u].dex)))
-      .toEqual(regionRosters(SINNOH, f.teams[0].roster.map((u) => f.players[u].dex)).map((x) => x.map((m) => m.dex)));
+      .toEqual(GYM_ROSTERS.sinnoh);
     expect(Object.keys(f.players).length).toBeGreaterThanOrEqual(before);
     expect(Object.keys(f.players).length).toBeLessThan(before + 90);
     const refs = [...f.teams.flatMap((t) => t.roster), ...f.freeAgents];

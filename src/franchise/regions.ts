@@ -1,7 +1,7 @@
 // Franchise regions, in the order they unlock: Kanto, then Johto, then Hoenn, then Sinnoh. Each region is plain data: its dex
 // range, eight gyms in badge order and one final opponent. A later region is a new entry here, not new season code
 // (see "Franchise regions" in the README).
-import { POKEMON, type Mon, type PokeType } from '../data/pokemon';
+import { EVOLUTIONS, POKEMON, type Mon, type PokeType } from '../data/pokemon';
 
 /** A CPU team in the league: a gym (with its badge) or the region's final opponent. */
 export interface LeagueTeam {
@@ -17,17 +17,14 @@ export interface LeagueTeam {
   gym?: number;
   badge?: string;
   elite?: boolean;
-  /**
-   * Dex number of the star the team locks before the draft. It always starts. The rest of the roster is drafted (see
-   * `kantoDraft.ts`). Every gym and finale has one.
-   */
+  /** Dex number of the team's star: first on its fixed roster (`gymRosters.ts`) and always starting. Every gym and finale has one. */
   star?: number;
 }
 
 /** The largest boost a gym or final opponent may carry. */
 export const MAX_BOOST = 17;
 
-/** A region's team. Every region's teams draft their rosters around their stars; later regions add a city. */
+/** A region's team. Franchise rosters are fixed (`gymRosters.ts`); later regions add a city. */
 export interface RegionTeam extends LeagueTeam {
   /** City, for the gym's floor. */
   city?: string;
@@ -44,8 +41,7 @@ export interface RegionDef {
   /** Inclusive National Dex range the region adds to the franchise pool. */
   dex: [number, number];
   /**
-   * The region's own legendaries and mythicals: the only ones its gyms and final opponent may draft (see
-   * `cpuDraftPool`). It says nothing about the user's draft, free agents or trades.
+   * The region's own legendaries and mythicals: the only ones the gym drafter (`cpuDraftPool`) may take. It says nothing about the user's draft, free agents or trades.
    */
   legendaries: number[];
   /**
@@ -59,8 +55,8 @@ export interface RegionDef {
   finale: RegionTeam;
 }
 
-/** Bump when any region's gym stars, legendaries, drafter or boosts change: older saves rebuild their gyms and Elite once on load. */
-export const GYMS_REV = 16;
+/** Bump when any region's fixed gym rosters (`gymRosters.ts`), stars or boosts change: older saves rebuild their gyms and Elite once on load. */
+export const GYMS_REV = 17;
 /** The name from when only Kanto's teams were rebuilt. */
 export const KANTO_GYMS_REV = GYMS_REV;
 
@@ -71,9 +67,7 @@ export const KANTO: RegionDef = {
   generation: 1,
   dex: [1, 151],
   legendaries: [144, 145, 146, 150, 151],
-  // Each gym locks its star; then the nine draft from one board, strongest first and type first, from Gen 1 only (see
-  // `kantoDraft.ts`).
-  // The star is the gym's best Gen 1 family Pokémon of its type or its legendary. Boosts are fixed numbers that take each drafted card
+  // The star is the gym's best Gen 1 family Pokémon of its type or its legendary. Boosts are fixed numbers that take each card
   // to a set game strength (card OVR plus boost) against the 91 OVR test team; they never read the user's rating. Here:
   // 91, 92, 93 for gyms 1-3, then 95, 97, 99, 100, 101, and 105 for the Elite. Giovanni plays at least even with Blaine.
   gyms: [
@@ -90,12 +84,9 @@ export const KANTO: RegionDef = {
 };
 
 /**
- * Johto, Hoenn and Sinnoh draft like Kanto: each gym and final opponent locks its star, then drafts type first (bar
- * `STRENGTH_FIRST` in `kantoDraft.ts`: Pryce and Candice draft for strength, and their types are flavor) from
- * every generation up to the region's own (see `kantoDraft.ts`), with only the region's own legendaries and never a
- * Pokémon on the user's team (a team keeps its star even then). No Pokémon is on two teams of a region; other regions may use it. Boosts are all the boost a team
- * ever gets (bar `KANTO_RETURN_BUMP`). Against the 91 OVR test team each later region is harder overall, gyms 1-3 stay
- * well under gyms 6-8, and the finals play at 106 (Johto), 107 (Hoenn) and 108 (Sinnoh), each at or above its gym 8.
+ * Johto, Hoenn and Sinnoh, like Kanto, field fixed rosters (`gymRosters.ts`). Boosts are all the boost a team ever gets
+ * (bar `KANTO_RETURN_BUMP`). Against the 91 OVR test team each later region is harder overall, gyms 1-3 stay well under
+ * gyms 6-8, and the finals play at 106 (Johto), 107 (Hoenn) and 108 (Sinnoh), each at or above its gym 8.
  */
 export const JOHTO: RegionDef = {
   id: 'johto',
@@ -119,7 +110,7 @@ export const JOHTO: RegionDef = {
 };
 
 /**
- * Hoenn (see Johto's comment for how its teams are built). Steven keeps Metagross, so Tate & Liza's star is Espeon.
+ * Hoenn (see Johto's comment). Steven keeps Metagross, so Tate & Liza's star is Espeon.
  */
 export const HOENN: RegionDef = {
   id: 'hoenn',
@@ -145,7 +136,7 @@ export const HOENN: RegionDef = {
 };
 
 /**
- * Sinnoh (see Johto's comment for how its teams are built). Maylene keeps Lucario, so Byron's star is his Steelix.
+ * Sinnoh (see Johto's comment). Maylene keeps Lucario, so Byron's star is his Steelix.
  */
 export const SINNOH: RegionDef = {
   id: 'sinnoh',
@@ -195,6 +186,43 @@ export const openRegionIds = (unlocked: readonly string[] = []): string[] =>
 export function inPool(dex: number, open: readonly string[]): boolean {
   return !REGIONS.some((r) => open.indexOf(r.id) < 0 && dex >= r.dex[0] && dex <= r.dex[1] && !(r.open ?? []).includes(dex));
 }
+
+/**
+ * Dex numbers of later-gen Pokémon whose evolution family contains a Gen 1 (dex 1-151) member, built from `EVOLUTIONS`
+ * in both directions (a baby like Pichu is in Pikachu's family). Mamoswine, Togekiss, Garchomp and the like have no
+ * Gen 1 relative, so they are not here.
+ */
+const gen1FamilyDexes = (): ReadonlySet<number> => {
+  const adj = new Map<number, Set<number>>();
+  const link = (a: number, b: number) => {
+    if (!adj.has(a)) adj.set(a, new Set());
+    if (!adj.has(b)) adj.set(b, new Set());
+    adj.get(a)!.add(b);
+    adj.get(b)!.add(a);
+  };
+  for (const [from, e] of Object.entries(EVOLUTIONS)) for (const to of e.to) link(Number(from), to);
+  const out = new Set<number>();
+  const seen = new Set<number>();
+  for (const start of adj.keys()) {
+    if (seen.has(start)) continue;
+    const fam = [start];
+    seen.add(start);
+    for (let i = 0; i < fam.length; i++) for (const n of adj.get(fam[i])!) if (!seen.has(n)) { seen.add(n); fam.push(n); }
+    if (fam.some((d) => d <= KANTO.dex[1])) for (const d of fam) out.add(d);
+  }
+  return out;
+};
+let familyCache: ReadonlySet<number> | undefined;
+
+/** Whether `dex` is a later-gen Pokémon in a Gen 1 evolution family (Scizor, Steelix, Blissey, Pichu, ...). */
+export const isGen1FamilyDex = (dex: number): boolean => dex > KANTO.dex[1] && (familyCache ??= gen1FamilyDexes()).has(dex);
+
+/**
+ * Kanto's CPU teams (the eight gyms and the Indigo Elite) draft Gen 1 plus later-gen Pokémon in a Gen 1 evolution
+ * family, whatever the user's pool holds (including the Hoenn/Sinnoh `open` exceptions). This is only a CPU rule: the
+ * user's draft, free agents and trades use `poolMons`.
+ */
+export const isKantoCpuMon = (m: Pick<Mon, 'dex'>): boolean => (m.dex >= KANTO.dex[0] && m.dex <= KANTO.dex[1]) || isGen1FamilyDex(m.dex);
 
 /**
  * Extra boost for the nine Kanto CPU teams (gyms in badge order, then the Elite) when the league returns to Kanto after a
