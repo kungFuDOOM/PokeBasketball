@@ -13,9 +13,10 @@
 // separately, so teams in different regions may share a Pokémon. A region's teams draft nothing newer than its
 // generation, and its own legendaries are the only ones open to them, up to each team's cap. There is no randomness, so
 // the teams come out the same every time for the same held-back Pokémon.
-import { POKEMON, POSITIONS, monByDex, type Mon, type PokeType, type Pos } from '../data/pokemon';
+import { POKEMON, POSITIONS, type Mon, type PokeType, type Pos } from '../data/pokemon';
 import { bestLineup } from '../game/game';
 import { isLegendary } from '../multiplayer/shared/roster';
+import { gymMonByDex } from './gymRatings';
 import { KANTO, REGIONS, regionTeams, type RegionDef } from './regions';
 
 export interface CpuDraftTeam {
@@ -66,7 +67,8 @@ export const isOnType = (m: Mon, team: CpuDraftTeam): boolean =>
  * This is only a CPU rule: the user's draft, free agents and trades use `poolMons`.
  */
 export const cpuDraftPool = (region: RegionDef): Mon[] =>
-  POKEMON.filter((m) => m.dex <= region.dex[1] && (!isLegendary(m.dex) || region.legendaries.includes(m.dex)));
+  POKEMON.filter((m) => m.dex <= region.dex[1] && (!isLegendary(m.dex) || region.legendaries.includes(m.dex)))
+    .map((m) => gymMonByDex(m.dex));
 
 const ranked = (mons: readonly Mon[]): Mon[] => [...mons].sort((a, b) => b.ovr - a.ovr || a.dex - b.dex);
 
@@ -230,7 +232,7 @@ export function draftCpuLeague(
     const free = cpuPool.filter((m) => !held.has(m.dex));
     // No team drafts another's star.
     const stars = new Set(teams.map((t) => (t.human ? undefined : t.star)));
-    const rosters = teams.map((t) => (t.human ? null : t.star != null ? [monByDex(t.star)] : []));
+    const rosters = teams.map((t) => (t.human ? null : t.star != null ? [gymMonByDex(t.star)] : []));
     fillRosters(free.filter((m) => !stars.has(m.dex)), teams, rosters, size, native);
     return rosters.map((r) => r ?? []);
   };
@@ -277,10 +279,10 @@ export const kantoRosters = (held: readonly number[] = [], size = 10): Mon[][] =
  */
 export function livePick(region: RegionDef, slot: number, picks: readonly (readonly Mon[])[], held: readonly number[] = [], size = 10): Mon | undefined {
   const teams = regionTeams(region);
-  if (!picks[slot]?.length) return monByDex(teams[slot].star!);
+  if (!picks[slot]?.length) return gymMonByDex(teams[slot].star!);
   const plan = regionRosters(region, held, size);
   if (picks.every((p, i) => p.every((m, k) => plan[i][k]?.dex === m.dex))) return plan[slot][picks[slot].length];
-  const rosters = teams.map((t, i) => (picks[i]?.length ? [...picks[i]] : [monByDex(t.star!)]));
+  const rosters = teams.map((t, i) => (picks[i]?.length ? [...picks[i]] : [gymMonByDex(t.star!)]));
   const stars = new Set(teams.map((t) => t.star));
   fillRosters(cpuDraftPool(region).filter((m) => !held.includes(m.dex) && !stars.has(m.dex)), teams, rosters, size, region.dex);
   return rosters[slot][picks[slot].length];

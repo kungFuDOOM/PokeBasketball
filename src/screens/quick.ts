@@ -7,6 +7,7 @@ import type { Audio } from '../game/audio';
 import { type Game } from '../game/game';
 import { lineupWithStar } from '../franchise/kantoDraft';
 import { gymRosters } from '../franchise/gymRosters';
+import { gymMonByDex } from '../franchise/gymRatings';
 import { KANTO } from '../franchise/regions';
 import { strengthHtml, strengthOf } from './strength';
 import type { TeamDef } from '../game/types';
@@ -120,7 +121,7 @@ export function quickPlay(root: HTMLElement, settings: Settings, audio: Audio, a
     picked = null;
     // A gym or the Elite fields the same fixed ten as in a franchise.
     const cpuSide = (size: number) => {
-      const ten = lineupWithStar(gymRosters(KANTO)[opp.elite ? 8 : opp.gym! - 1], opp.star);
+      const ten = lineupWithStar(gymRosters(KANTO)[opp.elite ? 8 : opp.gym! - 1].map((m) => gymMonByDex(m.dex)), opp.star);
       return size >= 10 ? [...ten.starters, ...ten.bench] : ten.starters;
     };
     if (saved) {

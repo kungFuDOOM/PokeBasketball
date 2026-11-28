@@ -10,6 +10,7 @@ import { USER_STYLE, contrastAway } from '../multiplayer/shared/matchSetup';
 import { strengthOf, type Strength } from '../screens/strength';
 import { lineupWithStar, starOf } from './kantoDraft';
 import { gymRosters } from './gymRosters';
+import { gymMonByDex } from './gymRatings';
 import { GYMS_REV, KANTO, KANTO_RETURN_BUMP, REGIONS, SINNOH, inPool, nextRegion, openRegionIds, regionById, regionTeams, type LeagueTeam, type RegionDef } from './regions';
 
 const SAVE_KEY = 'pokejam.franchise.v1';
@@ -160,9 +161,19 @@ export interface Award {
 
 const emptyStats = (): SeasonStats => ({ gp: 0, pts: 0, fgm: 0, fga: 0, tpm: 0, tpa: 0, reb: 0, ast: 0, stl: 0, blk: 0, dnk: 0, sec: 0, gs: 0 });
 
+/** A player's card on the base ratings, whoever holds them. Season-start OVR and Most Improved compare these. */
+const ownCard = (p: FPlayer): Mon => (p.king === true ? kingKabutoCard(p.bonus) : withBonus(p.dex, p.bonus));
+
+/** Whether a gym or the Elite holds this player right now: only then do gym ratings (`gymRatings.ts`) apply. */
+const onGym = (f: Franchise, uid: string) => f.teams.some((t) => !t.human && !!(t.gym || t.elite) && t.roster.includes(uid));
+
+/** `dex` with this player's level-ups, rated for whoever holds the player. */
+const cardAs = (f: Franchise, uid: string, dex: number): Mon =>
+  withBonus(dex, f.players[uid].bonus, onGym(f, uid) ? gymMonByDex(dex) : monByDex(dex));
+
 export const monOf = (f: Franchise, uid: string): Mon => {
   const p = f.players[uid];
-  return p.king === true ? kingKabutoCard(p.bonus) : withBonus(p.dex, p.bonus);
+  return p.king === true ? ownCard(p) : cardAs(f, uid, p.dex);
 };
 
 /** Where this player can evolve, if anywhere. A saved King Kabuto stays King Kabuto. */
@@ -731,8 +742,8 @@ export function simulate(cfg: ConstructorParameters<typeof Game>[0]): Promise<Ga
   });
 }
 
-function levelUp(p: FPlayer, rng = Math.random): string[] {
-  const mon = monByDex(p.dex);
+/** `mon` is the player's species as their team rates it, before level-ups. */
+function levelUp(p: FPlayer, mon: Mon, rng = Math.random): string[] {
   const w = positionWeights(mon.pos);
   const keys = Object.keys(RATING_LABELS) as (keyof Ratings)[];
   const gains: string[] = [];
@@ -808,7 +819,7 @@ export function recordGame(f: Franchise, fg: FGame, g: Game, sides: [number, num
       p.xp -= xpToNext(p.level);
       p.level++;
       const name = monOf(f, uid).name;
-      const entry: Progress = { uid, team, name, level: p.level, gains: levelUp(p) };
+      const entry: Progress = { uid, team, name, level: p.level, gains: levelUp(p, onGym(f, uid) ? gymMonByDex(p.dex) : monByDex(p.dex)) };
       const evo = evolutionOf(p);
       const to = evo ? evolutionsFor(f, team, evo.to) : [];
       if (evo && to.length && p.level >= evo.level) {
@@ -886,9 +897,9 @@ function computeAwards(f: Franchise): Award[] {
     (p) => `${pg(p, 'stl').toFixed(1)} STL · ${pg(p, 'blk').toFixed(1)} BLK`);
   const bench = pool.filter(({ p }) => (p.stats.gs ?? 0) <= p.stats.gp / 2);
   add('smoy', 'Sixth Man', best(bench, (p) => gameScore(p.stats) / p.stats.gp), line);
-  const improved = pool.filter(({ uid, p }) => p.ovrStart !== undefined && monOf(f, uid).ovr - p.ovrStart >= 1);
-  add('mip', 'Most Improved', best(improved, (p) => withBonus(p.dex, p.bonus).ovr - (p.ovrStart ?? 0)),
-    (p) => `${p.ovrStart} → ${withBonus(p.dex, p.bonus).ovr} OVR`);
+  const improved = pool.filter(({ p }) => p.ovrStart !== undefined && ownCard(p).ovr - p.ovrStart >= 1);
+  add('mip', 'Most Improved', best(improved, (p) => ownCard(p).ovr - (p.ovrStart ?? 0)),
+    (p) => `${p.ovrStart} → ${ownCard(p).ovr} OVR`);
   return out;
 }
 
@@ -913,9 +924,9 @@ export function nextSeason(f: Franchise) {
   f.signedWeek = 0;
   f.games = schedule(f.teams.length, !f.weeks);
   for (const t of f.teams) Object.assign(t, { w: 0, l: 0, pf: 0, pa: 0, streak: 0 });
-  for (const [uid, p] of Object.entries(f.players)) {
+  for (const p of Object.values(f.players)) {
     p.stats = emptyStats();
-    p.ovrStart = monOf(f, uid).ovr;
+    p.ovrStart = ownCard(p).ovr;
     p.injury = 0;
   }
   f.awards = undefined;
@@ -941,7 +952,7 @@ export function tradeValue(f: Franchise, uid: string, toTeam?: FTeam): number {
   const evo = evolutionOf(p);
   if (evo) {
     // Upside: the best form it can reach, discounted by how far away it is.
-    const best = Math.max(...evo.to.map((d) => withBonus(d, p.bonus).ovr));
+    const best = Math.max(...evo.to.map((d) => cardAs(f, uid, d).ovr));
     const away = Math.max(0, evo.level - p.level);
     v += Math.max(0, Math.pow(Math.max(0, best - 55), 1.5) - v) * (0.55 - away * 0.08);
   }

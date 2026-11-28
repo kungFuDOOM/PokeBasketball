@@ -8,6 +8,7 @@ import {
   startRookieDraft, weekGames, type Franchise,
 } from './league';
 import { GYM_ROSTERS } from './gymRosters';
+import { gymMonByDex } from './gymRatings';
 import { strengthOf } from '../screens/strength';
 import { HOENN, JOHTO, KANTO, KANTO_GYMS_REV, KANTO_RETURN_BUMP, SINNOH, openRegionIds, poolMons, regionTeams } from './regions';
 
@@ -19,7 +20,7 @@ const eliteOf = (f: Franchise) => f.teams.find((t) => t.elite)!;
 
 /** The Elite plays strictly stronger than Giovanni, by the number on the matchup card. */
 function expectEliteAboveGiovanni(f: Franchise) {
-  const plays = (t: Franchise['teams'][number]) => strengthOf(lineupOf(f, t).starters.map((u) => monByDex(f.players[u].dex)), t.boost).total;
+  const plays = (t: Franchise['teams'][number]) => strengthOf(lineupOf(f, t).starters.map((u) => gymMonByDex(f.players[u].dex)), t.boost).total;
   expect(plays(eliteOf(f))).toBeGreaterThan(plays(f.teams.find((t) => t.gym === 8)!));
 }
 

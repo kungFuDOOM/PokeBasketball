@@ -1,6 +1,8 @@
 // Characterization tests: pin the draft logic so the visual rework can't change it.
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { POKEMON, POSITIONS, type Mon } from '../data/pokemon';
+import { gymMonByDex } from '../franchise/gymRatings';
+import { poolMons } from '../franchise/regions';
 import { bestLineup, teamOvr } from '../game/game';
 import { countAt, cpuPick, posTrackHtml, targetPer } from './draft';
 import { snakePicks } from './draft.logic';
@@ -89,6 +91,18 @@ describe('cpuPick', () => {
     expect(rosters.map((r) => r.map((m) => m.dex))).toMatchSnapshot();
     expect(left).toHaveLength(pool.length - 40);
     expect(rosters.map((r) => teamOvr(bestLineup(r).starters))).toMatchSnapshot();
+  });
+});
+
+describe('gym rating buffs', () => {
+  it('stay out of the draft pool: it rates the base cards, and only the gym overlay is buffed', () => {
+    // dex, base OVR, gym OVR: Arcanine, Hypno, then Haunter and Donphan (promoted mid-evolutions).
+    for (const [dex, base, gym] of [[59, 80, 92], [97, 75, 87], [93, 75, 82], [232, 80, 91]]) {
+      const card = poolMons().find((m) => m.dex === dex)!;
+      expect(card.ovr, card.name).toBe(base);
+      expect(POKEMON.find((m) => m.dex === dex)!.ovr, card.name).toBe(base);
+      expect(gymMonByDex(dex).ovr, card.name).toBe(gym);
+    }
   });
 });
 
