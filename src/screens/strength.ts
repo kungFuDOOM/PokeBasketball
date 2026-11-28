@@ -16,6 +16,12 @@ export function strengthOf(starters: Mon[], boost = 0): Strength {
   return { ovr, chem: chemistry(starters), boost, total: Math.round(ovr + boost) };
 }
 
+/** The boost folded into a team's per-player ratings in an opponent preview: gyms and the Elite only, never your team. */
+export const shownBoost = (t: { human?: boolean; boost?: number }) => (t.human ? 0 : t.boost ?? 0);
+
+/** The rating a player shows in an opponent preview: card OVR plus that boost, as Game strength counts it. Display only. */
+export const shownOvr = (m: Mon, boost = 0) => Math.min(99, Math.round(m.ovr + boost));
+
 /** A CPU card passes `hideOvr`: Team OVR next to Game strength would show how far the team is boosted. */
 export function strengthHtml(s: Strength, record = '', hideOvr = false): string {
   const plays = `<span class="nx-plays">Game strength <b>${s.total}</b></span>`;

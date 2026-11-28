@@ -2,8 +2,9 @@
 import { spriteUrl, type Mon } from '../data/pokemon';
 import { teamOvr } from '../game/game';
 import type { TeamDef } from '../game/types';
-import { esc } from '../util';
+import { esc, tier } from '../util';
 import { introEnabled, introLength, type IntroCtx, type IntroMode, type IntroVotes } from './intro.logic';
+import { shownBoost, shownOvr } from './strength';
 
 export interface IntroOptions {
   home: TeamDef;
@@ -29,11 +30,14 @@ export interface IntroHandle {
 }
 
 function teamHtml(t: TeamDef, label: string | undefined, mine: boolean): string {
-  const row = (m: Mon) =>
-    `<li><img src="${spriteUrl(m.dex)}" alt=""><b>${esc(m.pos)}</b><span>${esc(m.name)}</span><i>${m.ovr}</i></li>`;
+  const boost = shownBoost(t);
+  const row = (m: Mon) => {
+    const ovr = shownOvr(m, boost);
+    return `<li><img src="${spriteUrl(m.dex)}" alt=""><b>${esc(m.pos)}</b><span>${esc(m.name)}</span><i${boost ? ` class="t-${tier(ovr)}"` : ''}>${ovr}</i></li>`;
+  };
   return `<div class="intro-team${mine ? ' mine' : ''}" style="--team:${esc(t.color)}">
       <h2>${esc(t.name)}</h2>
-      <div class="intro-meta"><span class="intro-ovr">${teamOvr(t.roster)} OVR</span>${label ? `<span class="intro-rank">${esc(label)}</span>` : ''}</div>
+      <div class="intro-meta">${boost ? '' : `<span class="intro-ovr">${teamOvr(t.roster)} OVR</span>`}${label ? `<span class="intro-rank">${esc(label)}</span>` : ''}</div>
       <ul>${t.roster.slice(0, 5).map(row).join('')}</ul>
     </div>`;
 }

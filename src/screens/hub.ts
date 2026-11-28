@@ -7,7 +7,7 @@ import { badgeSvg } from '../ui/badges';
 import { staminaOf } from '../game/game';
 import { esc, tier } from '../util';
 import { bindSettings, settingsHtml, type Settings } from './menu';
-import { strengthHtml } from './strength';
+import { shownBoost, shownOvr, strengthHtml } from './strength';
 import { countAt, posTrackHtml, targetPer, typeChips } from './draft';
 
 export interface HubActions {
@@ -38,10 +38,11 @@ const byPos = (f: Franchise, roster: string[]) =>
   [...roster].sort((a, b) => POSITIONS.indexOf(monOf(f, a).pos) - POSITIONS.indexOf(monOf(f, b).pos));
 
 /** A team's starting five, PG to C. */
-function lineup(f: Franchise, t: FTeam): string {
+function lineup(f: Franchise, t: FTeam, boost = 0): string {
   return `<ul class="lineup">${byPos(f, lineupOf(f, t).starters).map((u) => {
     const m = monOf(f, u);
-    return `<li title="${esc(m.name)}"><img src="${spriteUrl(m.dex)}" alt=""><span>${m.pos}</span><b class="t-${tier(m.ovr)}">${m.ovr}</b></li>`;
+    const ovr = shownOvr(m, boost);
+    return `<li title="${esc(m.name)}"><img src="${spriteUrl(m.dex)}" alt=""><span>${m.pos}</span><b class="t-${tier(ovr)}">${ovr}</b></li>`;
   }).join('')}</ul>`;
 }
 
@@ -90,7 +91,7 @@ export function nextCard(f: Franchise, settings: Settings): string {
       <h3>${esc(t.name)}</h3>
       ${t.leader && !t.human ? `<p class="leader">${t.elite ? '' : 'Gym Leader '}${esc(t.leader)}${t.badge ? ` · ${esc(t.badge)} Badge on the line` : ''}</p>` : ''}
       ${strengthHtml(matchStrength(f, g, t.id), g.round ? '' : rec(t), !t.human)}
-      ${lineup(f, t)}
+      ${lineup(f, t, shownBoost(t))}
     </div>`;
   const title = g.round === 'final' ? 'The Final' : g.round === 'semi' ? 'Semifinal' : weekLabel(f);
   return `

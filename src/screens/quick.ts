@@ -9,7 +9,7 @@ import { lineupWithStar } from '../franchise/kantoDraft';
 import { gymRosters } from '../franchise/gymRosters';
 import { gymMonByDex } from '../franchise/gymRatings';
 import { KANTO } from '../franchise/regions';
-import { strengthHtml, strengthOf } from './strength';
+import { shownOvr, strengthHtml, strengthOf } from './strength';
 import type { TeamDef } from '../game/types';
 import { cpuRoster, draftedMons, draftedStarters, loadDrafted, renameDrafted, type TeamSource } from '../season/team';
 import { inlineRename } from '../ui/teamName';
@@ -36,9 +36,11 @@ export interface QuickActions {
 const levelLabel = (t: LeagueTeam) =>
   t.elite ? 'Final boss' : t.gym! <= 3 ? `Gym ${t.gym} · Easier` : t.gym! >= 6 ? `Gym ${t.gym} · Tough` : `Gym ${t.gym}`;
 
-function lineupHtml(mons: Mon[]): string {
-  return `<ul class="lineup">${[...mons].sort((a, b) => POSITIONS.indexOf(a.pos) - POSITIONS.indexOf(b.pos)).map((m) =>
-    `<li title="${esc(m.name)}"><img src="${spriteUrl(m.dex)}" alt=""><span>${m.pos}</span><b class="t-${tier(m.ovr)}">${m.ovr}</b></li>`).join('')}</ul>`;
+function lineupHtml(mons: Mon[], boost = 0): string {
+  return `<ul class="lineup">${[...mons].sort((a, b) => POSITIONS.indexOf(a.pos) - POSITIONS.indexOf(b.pos)).map((m) => {
+    const ovr = shownOvr(m, boost);
+    return `<li title="${esc(m.name)}"><img src="${spriteUrl(m.dex)}" alt=""><span>${m.pos}</span><b class="t-${tier(ovr)}">${ovr}</b></li>`;
+  }).join('')}</ul>`;
 }
 
 export function quickPlay(root: HTMLElement, settings: Settings, audio: Audio, act: QuickActions, initial: TeamSource = 'draft') {
@@ -161,8 +163,8 @@ export function quickPlay(root: HTMLElement, settings: Settings, audio: Audio, a
         <span class="where">${esc(sub)}</span>
         <h3 class="${mine ? 'nx-name' : ''}">${esc(name)}</h3>
         ${strengthHtml(strengthOf(mons, boost), '', !mine)}
-        ${lineupHtml(mons)}
-        ${bench.length ? `<p class="note nx-bench-lbl">Bench</p><div class="nx-bench">${lineupHtml(bench)}</div>` : ''}
+        ${lineupHtml(mons, boost)}
+        ${bench.length ? `<p class="note nx-bench-lbl">Bench</p><div class="nx-bench">${lineupHtml(bench, boost)}</div>` : ''}
       </div>`;
     root.innerHTML = `
       <div class="quick">
